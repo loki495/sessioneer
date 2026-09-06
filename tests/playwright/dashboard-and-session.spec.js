@@ -14,6 +14,9 @@ test('dashboard renders OpenCode usage without browser errors', async ({ page })
 
   const quota = page.locator('#quota-info');
   await expect(quota).toContainText('OpenCode');
+  await expect(quota).toContainText('61%');
+  await expect(quota).toContainText('45%');
+  await expect(quota).toContainText('22%');
   await expect(quota).toContainText('Cost $12.34');
   await expect(quota).toContainText('In 12,345');
   await expect(quota).toContainText('Out 678');

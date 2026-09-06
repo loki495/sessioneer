@@ -1523,10 +1523,13 @@ function run_headless_browser_checks(string $browser, int $port): void
 
     assert_contains('id="new-session-details"', $home['dom'], 'headless browser: renders the New Session folder browser');
     assert_contains('OpenCode', $home['dom'], 'headless browser: dashboard renders the OpenCode quota row');
-    assert_contains('Cost $12.34', $home['dom'], 'headless browser: OpenCode quota row renders cumulative cost');
-    assert_contains('In 12,345', $home['dom'], 'headless browser: OpenCode quota row renders input tokens');
-    assert_contains('Out 678', $home['dom'], 'headless browser: OpenCode quota row renders output tokens');
-    assert_contains('4 sessions', $home['dom'], 'headless browser: OpenCode quota row renders session count');
+    assert_contains('61%', $home['dom'], 'headless browser: OpenCode quota row renders the rolling (5hr) window pct');
+    assert_contains('45%', $home['dom'], 'headless browser: OpenCode quota row renders the weekly window pct');
+    assert_contains('22%', $home['dom'], 'headless browser: OpenCode quota row renders the monthly window pct');
+    assert_contains('Cost $12.34', $home['dom'], 'headless browser: OpenCode quota row renders cumulative cost on the usage line');
+    assert_contains('In 12,345', $home['dom'], 'headless browser: OpenCode quota row renders cumulative input tokens');
+    assert_contains('Out 678', $home['dom'], 'headless browser: OpenCode quota row renders cumulative output tokens');
+    assert_contains('4 sessions', $home['dom'], 'headless browser: OpenCode quota row renders cumulative session count');
     assert_true(!str_contains($home['stderr'], 'Uncaught'), 'headless browser: no uncaught JS errors on load');
 
     $detail = headless_dump_dom($browser, "{$base}/session.php?session=cc-20260101-1200");

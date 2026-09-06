@@ -385,6 +385,11 @@ $response = match ($action) {
                     'label' => 'OpenCode',
                     'ok' => true,
                     'quota' => [
+                        // opencode-go account-wide windows (rolling/weekly/monthly)
+                        // merged into the same quota object as the local totals.
+                        'session' => ['pct' => 61, 'resets_at' => time() + 3600 + 1200],
+                        'week_all' => ['pct' => 45, 'resets_at' => time() + 3 * 86400],
+                        'month_all' => ['pct' => 22, 'resets_at' => time() + 20 * 86400],
                         'cost' => 12.34,
                         'tokens_input' => 12345,
                         'tokens_output' => 678,
