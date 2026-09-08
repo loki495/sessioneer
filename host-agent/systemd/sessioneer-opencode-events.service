@@ -1,0 +1,14 @@
+[Unit]
+Description=Sessioneer OpenCode question event consumer
+After=opencode-serve.service
+Wants=opencode-serve.service
+
+[Service]
+Type=simple
+EnvironmentFile=-@REPO_ROOT@/host-agent/.env
+ExecStart=@PHP_BIN@ @REPO_ROOT@/host-agent/opencode_sse_consumer.php
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

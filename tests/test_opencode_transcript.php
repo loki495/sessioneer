@@ -215,6 +215,54 @@ try {
     $routerAttach = TranscriptRouter::read_attachment($sessionId, 1, 'uuid');
     assert_equal(false, $routerAttach['ok'] ?? true, 'TranscriptRouter::read_attachment for ses_* routes to opencode stub');
 
+    // --- question tool renders as a question block (not raw JSON) ---
+    $questionSessionId = 'ses_questiontest0';
+    insert_session($pdo, $questionSessionId, 'Question test');
+    insert_message($pdo, 'msg_q1', $questionSessionId, 3001, ['role' => 'assistant', 'time' => ['created' => 3001000]]);
+    insert_part($pdo, 'prt_q1', 'msg_q1', $questionSessionId, 3001, [
+        'type' => 'tool', 'tool' => 'question', 'callID' => 'call_q1',
+        'state' => [
+            'status' => 'running',
+            'input' => ['questions' => [[
+                'header' => 'Deploy',
+                'question' => 'Which environment?',
+                'options' => [['label' => 'Staging'], ['label' => 'Production']],
+            ]]],
+        ],
+    ]);
+    $qPage = OpenCodeTranscriptService::read_transcript_page($questionSessionId, null, 10);
+    assert_equal(1, count($qPage['entries'] ?? []), 'question session: 1 entry');
+    $qBlock = $qPage['entries'][0]['blocks'][0] ?? [];
+    assert_equal('question', $qBlock['kind'] ?? null, 'question tool block kind is question');
+    assert_equal('Which environment?', $qBlock['question'] ?? null, 'question block carries the question text');
+    assert_equal('Deploy', $qBlock['header'] ?? null, 'question block carries the header');
+    assert_equal('Which environment?', $qBlock['questions'][0]['question'] ?? null, 'question block retains structured questions for interactive rendering');
+    assert_true(($qBlock['pending'] ?? false), 'question block is pending while status=running');
+    assert_equal(3, count($qBlock['options'] ?? []), 'question block carries the 2 options plus a "Type something" free-text option');
+    assert_equal('Staging', $qBlock['options'][0]['label'] ?? null, 'question option 0 label');
+    assert_equal('Type something', $qBlock['options'][2]['label'] ?? null, 'question block surfaces the free-text option');
+
+    // --- completed question: the chosen answer is extracted from opencode's
+    // "User has answered your questions: ..." wrapper, not shown verbatim ---
+    $doneSessionId = 'ses_questiondone0';
+    insert_session($pdo, $doneSessionId, 'Done question test');
+    insert_message($pdo, 'msg_dq1', $doneSessionId, 4001, ['role' => 'assistant', 'time' => ['created' => 4001000]]);
+    insert_part($pdo, 'prt_dq1', 'msg_dq1', $doneSessionId, 4001, [
+        'type' => 'tool', 'tool' => 'question', 'callID' => 'call_dq1',
+        'state' => [
+            'status' => 'completed',
+            'input' => ['questions' => [[
+                'question' => 'Pick a color?',
+                'options' => [['label' => 'Red'], ['label' => 'Blue']],
+            ]]],
+            'output' => 'User has answered your questions: "Pick a color?"="Blue"',
+        ],
+    ]);
+    $donePage = OpenCodeTranscriptService::read_transcript_page($doneSessionId, null, 10);
+    $doneBlock = $donePage['entries'][0]['blocks'][0] ?? [];
+    assert_equal(false, ($doneBlock['pending'] ?? true), 'completed question block is not pending');
+    assert_equal('Blue', $doneBlock['answer'] ?? null, 'completed question block extracts the answer from the opencode wrapper');
+
     // --- truncate: very long block is capped ---
     $longSessionId = 'ses_longtexttest0';
     insert_session($pdo, $longSessionId, 'Long text test');

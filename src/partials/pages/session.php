@@ -267,7 +267,7 @@ $this->layout('layout', [
             ? $detail['agent_label']
             : (isset($detail['agent']) && $detail['agent'] === 'antigravity' ? 'Antigravity' : (isset($detail['agent']) && $detail['agent'] === 'codex' ? 'Codex' : 'Claude Code'));
         ?>
-        <?= \App\Views\TranscriptView::render_transcript_entries_html($entries, $sessionName, false, is_string($detail['workdir'] ?? null) ? $detail['workdir'] : null, $agentLabel) ?>
+        <?= \App\Views\TranscriptView::render_transcript_entries_html($entries, $sessionName, false, is_string($detail['workdir'] ?? null) ? $detail['workdir'] : null, $agentLabel, $csrfToken) ?>
       <?php endif; ?>
     </div>
 

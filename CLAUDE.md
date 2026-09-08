@@ -195,11 +195,16 @@ that only `create_agent_session()`-spawned sessions have).
   `docs/headless-runtime-plan.md`). When touching any opencode-server
   call, check whether a v2 endpoint exists and use it; fall back to v1
   only where v2 genuinely isn't available/working for that operation.
- - **OpenCode event streams (as of 1.18.21):** the global `GET /event`
-   stream only emits `server.connected`/`server.heartbeat` — no session
-   status/step/permission events. The per-session `GET /api/session/:id/event`
-   serves HTML, not SSE. Session status detection relies on throttled
-   `GET /session/status` polling (in `sessioneer_headless_sync()`).
+ - **OpenCode question events (1.18.21):** `GET /event` delivers
+   `question.asked/replied/rejected` when scoped with the URL-encoded
+   **exact session directory** in `x-opencode-directory`. An unscoped or
+   parent-directory connection can deliver only connected/heartbeat events.
+   The host-native `sessioneer-opencode-events.service` consumes these events
+   into `SessionStatusStore`; throttled headless polling must preserve its
+   live questions. Replies require the question request ID, not the tool
+   call ID. v2 replies use no-content success; scoped legacy replies return
+   JSON `true`. See `.ai/research/opencode-11821-webui-sse-question-prompts.md`
+   for the captured evidence and WebUI compatibility-layer distinctions.
 
 - **Claude Code tools/hooks questions: check the real docs first, not
   memory.** Whenever a change or investigation touches what tools/hooks a

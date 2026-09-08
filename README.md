@@ -280,7 +280,7 @@ systemctl --user enable --now sessioneer-antigravity-quota-check.timer
 ### OpenCode
 
 With `OPENCODE_BIN` configured, `host-agent/install.sh` installs and enables
-`opencode-serve.service` and copies
+`opencode-serve.service` and `sessioneer-opencode-events.service`, and copies
 `host-agent/opencode-plugins/sessioneer-permissions.js` to
 `~/.config/opencode/plugins/`. Restart the server and any already-running TUI
 sessions after installing or updating the plugin:
@@ -296,6 +296,14 @@ prompt; Sessioneer binds it reactively from `opencode.db`. The permissions
 plugin records `permission.asked` events because the tested OpenCode version
 does not expose reliable persistent permission state through its HTTP API.
 The dashboard health section checks both the service and plugin file.
+
+The events service listens to each tracked headless session's exact OpenCode
+directory and records question prompts for Sessioneer's existing answer forms.
+It reconnects independently of page visits; normal status polling preserves
+pending event-fed questions. Question replies use their server request ID,
+with a scoped legacy fallback where the v2 reply endpoint is unavailable.
+Check the consumer with `systemctl --user status sessioneer-opencode-events.service`
+and `journalctl --user -u sessioneer-opencode-events.service`.
 
 OpenCode supports model selection but not Sessioneer's Claude-style
 manual/accept-edits/plan mode vocabulary. Its quota display combines local

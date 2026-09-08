@@ -10,6 +10,7 @@
 <?php elseif ($kind === 'tool_use'): ?><div class="tool-use-block<?= $subagentClass ?>" data-line="<?= (int)$line ?>"><?php if (!empty($description)): ?><p class="text-sm lg:text-base text-sky-200 mb-1"><?= $this->e($description) ?></p><?php endif ?><?= $collapsibleHtml ?></div>
 <?php elseif ($kind === 'tool_result'): ?><div class="tool-detail<?= $subagentClass ?>" data-line="<?= (int)$line ?>"><?= $collapsibleHtml ?></div><?= $imageHtml ?><?= $attachmentsHtml ?>
 <?php elseif ($kind === 'task_notification'): ?><div class="tool-detail<?= $subagentClass ?>" data-line="<?= (int)$line ?>"><?php if (!empty($description)): ?><p class="text-sm lg:text-base text-fuchsia-200 mb-1"><?= $this->e($description) ?></p><?php endif ?><?= $collapsibleHtml ?></div>
+<?php elseif ($kind === 'question'): ?><div class="question-block" data-line="<?= (int)$line ?>"><?= $questionHtml ?></div>
 <?php elseif ($kind === 'image' && $imageHtml !== ''): ?><?= $imageHtml ?>
 <?php elseif ($text !== ''): ?><div class="copy-block" data-line="<?= (int)$line ?>"><p class="copy-source break-words text-xs text-slate-600"><?= $this->e($text) ?></p><button type="button" class="copy-btn select-none text-[11px] text-slate-700 active:text-slate-500">Copy</button></div>
 <?php endif ?>

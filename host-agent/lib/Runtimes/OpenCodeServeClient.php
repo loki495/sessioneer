@@ -435,6 +435,7 @@ class OpenCodeServeClient
         if ($question !== null) {
             $prompt = \HostAgent\Services\OpenCodeQuestionService::to_prompt($question);
             $prompt['request_id'] = $question['requestID'];
+            $prompt['tool_input'] = ['questions' => $question['questions']];
 
             return $prompt;
         }
@@ -446,12 +447,12 @@ class OpenCodeServeClient
      * Answers a pending question by label, via the global /question reply
      * endpoint OpenCodeQuestionService already uses (proven live).
      *
-     * @param array<int, array<int, string>|string> $labels
+     * @param array<int, array<int, string>|string> $labels OpenCode option labels or custom text
      * @return array{ok:bool, message?:string}
      */
-    public function answer_question(string $sessionId, array $labels): array
+    public function answer_question(string $sessionId, array $labels, ?string $requestId = null): array
     {
-        return \HostAgent\Services\OpenCodeQuestionService::answer($sessionId, $labels);
+        return \HostAgent\Services\OpenCodeQuestionService::answer($sessionId, $labels, $requestId);
     }
 
     /**

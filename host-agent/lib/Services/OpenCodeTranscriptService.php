@@ -125,6 +125,71 @@ class OpenCodeTranscriptService
         $state = is_array($partData['state'] ?? null) ? $partData['state'] : [];
         $blocks = [];
 
+        // A `question` tool is the opencode equivalent of Claude Code's
+        // AskUserQuestion. Render it as a distinct question card (question
+        // text + options) rather than the generic `question: {json}` tool_use
+        // summary, so it reads like the blocked-prompt card instead of a raw
+        // dump. The chosen answer (state.output) is surfaced when present.
+        if ($toolName === 'question') {
+            $input = is_array($state['input'] ?? null) ? $state['input'] : [];
+            $questions = is_array($input['questions'] ?? null) ? $input['questions'] : [];
+            $first = $questions[0] ?? [];
+            $questionText = is_string($first['question'] ?? null) ? $first['question'] : (is_string($input['question'] ?? null) ? $input['question'] : 'Waiting on input');
+            $header = is_string($first['header'] ?? null) ? $first['header'] : (is_string($input['header'] ?? null) ? $input['header'] : '');
+            $rawOptions = is_array($first['options'] ?? null) ? $first['options'] : (is_array($input['options'] ?? null) ? $input['options'] : []);
+            $options = [];
+
+            foreach ($rawOptions as $idx => $opt) {
+                if (is_string($opt)) {
+                    $options[] = ['number' => $idx + 1, 'label' => $opt];
+                } elseif (is_array($opt) && is_string($opt['label'] ?? null)) {
+                    $options[] = ['number' => $idx + 1, 'label' => $opt['label']];
+                } elseif (is_array($opt) && is_string($opt['value'] ?? null)) {
+                    $options[] = ['number' => $idx + 1, 'label' => $opt['value']];
+                }
+            }
+
+            // opencode's question UI always offers a free-text route alongside
+            // the numbered options (the serve's `custom` flag; default on) -
+            // surface it as the same "Type something" option Sessioneer's
+            // blocked-prompt template uses, so the free-text affordance shows
+            // for opencode questions just like it does elsewhere.
+            $custom = (bool)($first['custom'] ?? true);
+            if ($custom && !self::question_options_include_freetext($options)) {
+                $options[] = ['number' => count($options) + 1, 'label' => 'Type something'];
+            }
+
+            $status = is_string($state['status'] ?? null) ? $state['status'] : '';
+            $output = $state['output'] ?? null;
+            $answer = null;
+
+            if (is_string($output) && trim($output) !== '') {
+                // opencode formats a question answer as
+                //   User has answered your questions: "..."="..."
+                // Surface just the chosen answer (the part after the final
+                // `="`), not the whole wrapper line.
+                if (preg_match('/="(.*)"\s*$/s', trim($output), $m)) {
+                    $answer = $m[1];
+                } else {
+                    $answer = trim($output);
+                }
+            }
+
+            $blocks[] = [
+                'kind' => 'question',
+                'text' => $questionText !== '' ? $questionText : 'Waiting on input',
+                'question' => $questionText,
+                'questions' => $questions,
+                'header' => $header,
+                'options' => $options,
+                'pending' => in_array($status, ['running', 'pending'], true),
+                'answer' => $answer,
+                'tool_name' => 'question',
+            ];
+
+            return $blocks;
+        }
+
         $input = is_array($state['input'] ?? null) ? $state['input'] : null;
 
         if ($input !== null) {
@@ -174,6 +239,23 @@ class OpenCodeTranscriptService
         }
 
         return $blocks;
+    }
+
+    /**
+     * True if an option list already carries a free-text affordance (an
+     * option whose label reads as "type something") - so a question that
+     * explicitly includes one doesn't get a duplicate appended.
+     * @param array<int, array{number:int, label:string}> $options
+     */
+    private static function question_options_include_freetext(array $options): bool
+    {
+        foreach ($options as $opt) {
+            if (stripos($opt['label'], 'type something') !== false) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

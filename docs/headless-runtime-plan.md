@@ -315,12 +315,14 @@ no workspace plumbing required. This was the last risk for Sessioneer's
   label); an opencode model selector populated from `/config/providers` sits
   in the session footer; the dashboard quota table shows cumulative cost,
   input/output tokens, and session count instead of percentage windows.
- - **Phase 4 — status + events robustness.** **Status (2026-08-26):** the
-   global `/event` stream on opencode 1.18.21 emits only `server.connected` and
-   `server.heartbeat`, with no session status/step/permission events. The
-   per-session `/api/session/:id/event` serves HTML, not SSE. Status detection
-   therefore stays on the throttled `GET /session/status` poll in
-   `sessioneer_headless_sync()`; no event consumer is installed.
+ - **Phase 4 — status + events robustness.** The earlier heartbeat-only
+   observation was a scope issue: 1.18.21's v1 `/event` delivers question
+   events with an exact-directory `x-opencode-directory` header.
+   `sessioneer-opencode-events.service` now consumes per-directory streams
+   and stores question request IDs for replies. Throttled `/session/status`
+   polling remains, with atomic protection for event-fed questions and
+   request-specific clearing on resolution. The v2 session event route was
+   not a working SSE source in the original probes.
 - **Phase 5 — parity check + deferred.** Sweep every tmux capability for
   opencode headless and confirm an equivalent (or document the gap).
   claude/antigravity stay tmux unless a headless mode with the right
