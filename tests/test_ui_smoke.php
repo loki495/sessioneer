@@ -417,37 +417,50 @@ try {
         strpos($result['body'], 'rm -rf /tmp/canned-example') < strpos($result['body'], 'Waiting on input:'),
         'GET /session.php: the actual command text itself also comes before the card, confirming it moved out with the entry rather than just the label'
     );
-    assert_contains('id="go-to-bottom-btn"', $result['body'], 'GET /session.php: floating go-to-bottom button present');
-    assert_contains('id="jump-to-new-btn"', $result['body'], 'GET /session.php: floating jump-to-new-content button present (Andres\'s own ask, 2026-08-22)');
-    assert_contains('id="go-to-top-btn"', $result['body'], 'GET /session.php: floating go-to-top button present (Andres\'s own ask, 2026-08-23)');
-    assert_contains('id="prev-user-btn"', $result['body'], 'GET /session.php: floating prev-user-message button present (Andres\'s own ask, 2026-08-30)');
+    assert_contains('id="scroll-toolbar"', $result['body'], 'GET /session.php: docked #scroll-toolbar strip present (2026-09-06)');
+    assert_contains('id="go-to-bottom-btn"', $result['body'], 'GET /session.php: docked go-to-bottom button present');
+    assert_contains('id="jump-to-new-btn"', $result['body'], 'GET /session.php: docked jump-to-new-content button present (Andres\'s own ask, 2026-08-22)');
+    assert_contains('id="go-to-top-btn"', $result['body'], 'GET /session.php: docked go-to-top button present (Andres\'s own ask, 2026-08-23)');
+    assert_contains('id="prev-user-btn"', $result['body'], 'GET /session.php: docked prev-user-message button present (Andres\'s own ask, 2026-08-30)');
     assert_true(
         strpos($result['body'], 'id="go-to-top-btn"') < strpos($result['body'], 'id="prev-user-btn"'),
-        'GET /session.php: #go-to-top-btn is stacked ABOVE #prev-user-btn in the markup/visual stack'
+        'GET /session.php: #go-to-top-btn appears LEFT of #prev-user-btn in the toolbar (Top, then Prev)'
     );
     assert_true(
         strpos($result['body'], 'id="prev-user-btn"') < strpos($result['body'], 'id="jump-to-new-btn"'),
-        'GET /session.php: #prev-user-btn is stacked ABOVE #jump-to-new-btn in the markup/visual stack'
+        'GET /session.php: #prev-user-btn appears LEFT of #jump-to-new-btn in the toolbar'
     );
     assert_true(
         strpos($result['body'], 'id="jump-to-new-btn"') < strpos($result['body'], 'id="go-to-bottom-btn"'),
-        'GET /session.php: #jump-to-new-btn is stacked ABOVE #go-to-bottom-btn in the markup/visual stack, not the other way round'
+        'GET /session.php: #jump-to-new-btn appears LEFT of #go-to-bottom-btn in the toolbar (New, then Bottom)'
     );
     assert_true(
         strpos($result['body'], 'id="go-to-top-btn"') < strpos($result['body'], 'id="jump-to-new-btn"'),
-        'GET /session.php: #go-to-top-btn is stacked ABOVE #jump-to-new-btn in the markup/visual stack - the topmost of the four'
+        'GET /session.php: #go-to-top-btn appears LEFT of #jump-to-new-btn in the toolbar - the leftmost of the four'
     );
     assert_true(
-        preg_match('#id="jump-to-new-btn"\s+class="select-none hidden fixed#', $result['body']) === 1,
-        'GET /session.php: #jump-to-new-btn starts hidden, same as #go-to-bottom-btn - shown only once markNewContent() actually creates a "New" divider'
+        preg_match('#id="jump-to-new-btn"\s+class="flex-1 select-none py-1[^"]*disabled:text-slate-600[^"]*"#', $result['body']) === 1,
+        'GET /session.php: #jump-to-new-btn is always rendered as a flat, equal-width text cell (flex-1) with a disabled/muted state - shown only once markNewContent() actually creates a "New" divider'
     );
     assert_true(
-        preg_match('#id="go-to-top-btn"\s+class="select-none hidden fixed#', $result['body']) === 1,
-        'GET /session.php: #go-to-top-btn starts hidden too - shown only once scrolled away from the top'
+        preg_match('#id="go-to-top-btn"\s+class="flex-1 select-none py-1[^"]*disabled:text-slate-600[^"]*"#', $result['body']) === 1,
+        'GET /session.php: #go-to-top-btn is always rendered too, muted (disabled) while already at the top'
     );
     assert_true(
-        preg_match('#id="prev-user-btn"\s+class="select-none hidden fixed#', $result['body']) === 1,
-        'GET /session.php: #prev-user-btn starts hidden when there is no user-typed message yet in the transcript (checked: when the canned session has none)'
+        preg_match('#id="prev-user-btn"\s+class="flex-1 select-none py-1[^"]*disabled:text-slate-600[^"]*"#', $result['body']) === 1,
+        'GET /session.php: #prev-user-btn is always rendered, muted (disabled) when there is no user-typed message yet in the transcript (checked: when the canned session has none)'
+    );
+    assert_true(
+        substr_count($result['body'], ' class="flex-1 select-none py-1 text-center') === 4,
+        'GET /session.php: the toolbar renders exactly four equal-width (flex-1) flat text cells, one per control'
+    );
+    assert_true(
+        strpos($result['body'], 'id="scroll-toolbar"') < strpos($result['body'], 'id="go-to-bottom-btn"'),
+        'GET /session.php: the scroll buttons sit INSIDE #scroll-toolbar, not as body-level siblings (2026-09-06)'
+    );
+    assert_true(
+        !str_contains($result['body'], 'bottom-[152px]') && !str_contains($result['body'], 'bottom-[208px]') && !str_contains($result['body'], 'bottom-24 right-5'),
+        'GET /session.php: the four scroll controls are no longer position:fixed right-edge circles - docked into #scroll-toolbar instead (2026-09-06)'
     );
     assert_contains('data-role="user"', $result['body'], 'GET /session.php: at least one rendered entry carries data-role="user" marker for user-typed messages');
     assert_contains('id="navigation-blanket"', $result['body'], 'GET /session.php: the navigation-away loading blanket is present');
@@ -541,7 +554,11 @@ try {
     $scrollJs = curl_request('GET', "{$baseUrl}{$sessionScriptMatch[3]}");
     assert_equal(200, $scrollJs['status'], 'GET /js/scroll.js?v=...: 200 (served as a static file, no 404)');
     assert_contains('function maybeAutoScroll(', $scrollJs['body'], 'GET /js/scroll.js: maybeAutoScroll() is shipped');
-    assert_contains('function repositionGoToTopBtn(', $scrollJs['body'], 'GET /js/scroll.js: repositionGoToTopBtn() is shipped');
+    assert_contains('function updateGoToTopVisibility(', $scrollJs['body'], 'GET /js/scroll.js: updateGoToTopVisibility() (shows/hides #go-to-top-btn) is shipped');
+    assert_true(
+        !str_contains($scrollJs['body'], 'repositionGoToTopBtn'),
+        'GET /js/scroll.js: repositionGoToTopBtn() is gone - the scroll controls no longer stack position:fixed over the page (docked #scroll-toolbar, 2026-09-06)'
+    );
 
     $highlightsJs = curl_request('GET', "{$baseUrl}{$sessionScriptMatch[4]}");
     assert_equal(200, $highlightsJs['status'], 'GET /js/highlights.js?v=...: 200 (served as a static file, no 404)');
@@ -550,7 +567,7 @@ try {
     assert_contains('function updateJumpToNewVisibility(', $highlightsJs['body'], 'GET /js/highlights.js: updateJumpToNewVisibility() (shows/hides #jump-to-new-btn and picks its arrow direction, based on live geometry) is shipped');
     assert_contains('function jumpToNewContent(', $highlightsJs['body'], 'GET /js/highlights.js: jumpToNewContent() (the click handler, scrolls to the current "New" divider) is shipped');
     assert_contains('var alreadyVisible = dividerRect.bottom > pageContentRect.top && dividerRect.top < pageContentRect.bottom;', $highlightsJs['body'], 'GET /js/highlights.js: #jump-to-new-btn checks the divider\'s LIVE on-screen position directly, not the delayed newEntryObserver/dividerObserver fade timer - found live 2026-08-22 (Andres): reusing that delayed signal left the button shown for ~2.5s even when the new content was already visible (e.g. already scrolled to the bottom when it arrived)');
-    assert_contains("jumpToNewBtn.innerHTML = dividerRect.top < pageContentRect.top ? '&uarr;' : '&darr;'", $highlightsJs['body'], 'GET /js/highlights.js: #jump-to-new-btn points up when the unread content is above the visible area, down when it\'s below - not hardcoded to always point down');
+    assert_contains("jumpToNewBtn.innerHTML = dividerRect.top < pageContentRect.top ? '&uarr; New' : '&darr; New'", $highlightsJs['body'], 'GET /js/highlights.js: #jump-to-new-btn points up (with the "New" text label) when the unread content is above the visible area, down when it\'s below - not hardcoded to always point down');
     assert_contains("pageContent.addEventListener('scroll', updateJumpToNewVisibility", $highlightsJs['body'], 'GET /js/highlights.js: #jump-to-new-btn\'s visibility/direction is rechecked on every scroll, not just when new content first arrives');
     assert_contains("jumpToNewBtn.addEventListener('click', jumpToNewContent)", $highlightsJs['body'], 'GET /js/highlights.js: #jump-to-new-btn is wired to jumpToNewContent()');
     assert_contains('updateJumpToNewVisibility();', $highlightsJs['body'], 'GET /js/highlights.js: updateJumpToNewVisibility() is actually called (not just defined) from markNewContent()\'s divider lifecycle');
@@ -1506,10 +1523,13 @@ function run_headless_browser_checks(string $browser, int $port): void
 
     assert_contains('id="new-session-details"', $home['dom'], 'headless browser: renders the New Session folder browser');
     assert_contains('OpenCode', $home['dom'], 'headless browser: dashboard renders the OpenCode quota row');
-    assert_contains('Cost $12.34', $home['dom'], 'headless browser: OpenCode quota row renders cumulative cost');
-    assert_contains('In 12,345', $home['dom'], 'headless browser: OpenCode quota row renders input tokens');
-    assert_contains('Out 678', $home['dom'], 'headless browser: OpenCode quota row renders output tokens');
-    assert_contains('4 sessions', $home['dom'], 'headless browser: OpenCode quota row renders session count');
+    assert_contains('61%', $home['dom'], 'headless browser: OpenCode quota row renders the rolling (5hr) window pct');
+    assert_contains('45%', $home['dom'], 'headless browser: OpenCode quota row renders the weekly window pct');
+    assert_contains('22%', $home['dom'], 'headless browser: OpenCode quota row renders the monthly window pct');
+    assert_contains('Cost $12.34', $home['dom'], 'headless browser: OpenCode quota row renders cumulative cost on the usage line');
+    assert_contains('In 12,345', $home['dom'], 'headless browser: OpenCode quota row renders cumulative input tokens');
+    assert_contains('Out 678', $home['dom'], 'headless browser: OpenCode quota row renders cumulative output tokens');
+    assert_contains('4 sessions', $home['dom'], 'headless browser: OpenCode quota row renders cumulative session count');
     assert_true(!str_contains($home['stderr'], 'Uncaught'), 'headless browser: no uncaught JS errors on load');
 
     $detail = headless_dump_dom($browser, "{$base}/session.php?session=cc-20260101-1200");

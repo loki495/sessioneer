@@ -290,67 +290,41 @@ $this->layout('layout', [
 </div>
 </div>
 
-<?php include __DIR__ . '/../compose-bar.php'; ?>
+<!-- #scroll-toolbar: docked flat scroll-control strip (Andres's own ask,
+     2026-09-06) - replaced the four position:fixed circles that hovered
+     over the right edge and covered chat text on mobile. A real flex child
+     of #app-shell between #page-content and #compose-bar, so it takes
+     layout space instead of overlaying content - no position:fixed, no
+     footer-height repositioning (the same reason #compose-bar itself was
+     taken off position:fixed, see compose-bar.php's own comment). All four
+     controls always render, one equal quarter of the bar each (grid-cols-4),
+     flat - no rounding, no per-control background - and simply sit muted
+     (disabled) when their action isn't currently available: Top/Bottom at
+     their own edge, Prev with no user history, New with no unread divider.
+     Left-to-right: top, previous user, new, bottom. -->
+<div id="scroll-toolbar" class="select-none flex-none bg-slate-950/95 border-t border-slate-800">
+  <div class="max-w-2xl lg:max-w-4xl mx-auto flex text-xs divide-x divide-slate-800">
+    <button type="button" id="go-to-top-btn"
+      class="flex-1 select-none py-1 text-center text-slate-300 active:text-slate-100 disabled:cursor-default disabled:text-slate-600">
+      Top
+    </button>
+    <button type="button" id="prev-user-btn"
+      class="flex-1 select-none py-1 text-center text-slate-300 active:text-slate-100 disabled:cursor-default disabled:text-slate-600">
+      Prev user
+    </button>
+    <button type="button" id="jump-to-new-btn"
+      class="flex-1 select-none py-1 text-center text-amber-300 active:text-amber-200 disabled:cursor-default disabled:text-slate-600">
+      New
+    </button>
+    <button type="button" id="go-to-bottom-btn"
+      class="flex-1 select-none py-1 text-center text-slate-300 active:text-slate-100 disabled:cursor-default disabled:text-slate-600">
+      Bottom
+    </button>
+  </div>
 </div>
 
-<!-- Topmost of the three floating scroll buttons (Andres's own ask,
-     2026-08-23) - persistent counterpart to #go-to-bottom-btn below, shown
-     whenever #page-content isn't already scrolled to the top, same "hidden
-     only while already there" treatment. Sits ABOVE #jump-to-new-btn (not
-     always directly above #go-to-bottom-btn) so that button shows up
-     BETWEEN this one and #go-to-bottom-btn whenever it's otherwise visible
-     - repositionGoToTopBtn() (session.js) recomputes this on every footer-
-     height change AND every #jump-to-new-btn visibility change, since the
-     latter isn't driven by footer height at all. Markup order mirrors
-     visual top-to-bottom stack order (topmost first), matching the
-     existing #jump-to-new-btn/#go-to-bottom-btn convention below, even
-     though all three are position:fixed and DOM order has no effect on
-     where they actually render. bottom-[208px] here is only the no-
-     ResizeObserver static fallback (one more button-height + gap above
-     #jump-to-new-btn's own 152px fallback), same role as that button's own
-     comment explains. -->
-<button type="button" id="go-to-top-btn"
-  class="select-none hidden fixed bottom-[208px] right-5 z-20 w-11 h-11 rounded-full border border-slate-700 bg-slate-800 text-slate-200 shadow-lg active:bg-slate-700 flex items-center justify-center text-lg">
-  &uarr;
-</button>
-
-<!-- New button to jump to the previous user message not currently visible
-     (Andres's own ask, 2026-08-30) - positioned between #go-to-top-btn
-     (topmost) and #jump-to-new-btn, always shown whenever #history-list
-     has content. If no earlier user message is visible in the viewport,
-     triggers the #load-until-user-btn fallback to load more history.
-     Uses ▲ glyph (&#9650;) rather than ↑ to visually distinguish it from
-     #go-to-top-btn at a glance, despite both meaning "up". bottom-[152px]
-     is only the no-ResizeObserver static fallback - repositionGoToTopBtn()
-     and watchFixedFooterHeight() in scroll.js handle the real positioning. -->
-<button type="button" id="prev-user-btn"
-  class="select-none hidden fixed bottom-[152px] right-5 z-20 w-11 h-11 rounded-full border border-slate-700 bg-slate-800 text-slate-200 shadow-lg active:bg-slate-700 flex items-center justify-center text-lg">
-  &#9650;
-</button>
-
-<!-- Stacked directly above #go-to-bottom-btn (Andres's own ask, 2026-08-22)
-     - shown only while there's a "New" divider (see markNewContent() in
-     session.js) not yet scrolled into view, jumping straight to it rather
-     than all the way to the bottom, for a long batch of new content
-     arriving while scrolled up reading history. Amber, matching
-     .new-content-highlight's own color (the ring markNewContent() already
-     puts on each new entry) - distinct from #go-to-bottom-btn's plain
-     slate so the two read as different things at a glance. Positioned via
-     the SAME watchFixedFooterHeight() callback as #go-to-bottom-btn below
-     (see session.js) - the bottom-[152px] here is only the no-
-     ResizeObserver static fallback, same role as that button's own
-     bottom-24. The &darr; glyph below is only the initial value -
-     updateJumpToNewVisibility() (session.js) swaps it for &uarr; whenever
-     the unread content is actually above the visible area, not below. -->
-<button type="button" id="jump-to-new-btn"
-  class="select-none hidden fixed bottom-[152px] right-5 z-20 w-11 h-11 rounded-full border border-amber-600/60 bg-amber-950/80 text-amber-300 shadow-lg active:bg-amber-900 flex items-center justify-center text-lg">
-  &darr;
-</button>
-
-<button type="button" id="go-to-bottom-btn"
-  class="select-none hidden fixed bottom-24 right-5 z-20 w-11 h-11 rounded-full border border-slate-700 bg-slate-800 text-slate-200 shadow-lg active:bg-slate-700 flex items-center justify-center text-lg">
-  &darr;
-</button>
+<?php include __DIR__ . '/../compose-bar.php'; ?>
+</div>
 
 <script>
 window.SESSIONEER_BOOTSTRAP = <?= json_encode([

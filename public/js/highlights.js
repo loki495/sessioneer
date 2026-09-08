@@ -5,11 +5,9 @@
 // Plain global functions/vars, same convention as common.js/scroll.js;
 // own independent document.getElementById() lookups for #history-list/
 // #jump-to-new-btn (session.js holds its own separate references to the
-// same real elements for its own, unrelated purposes). Calls scroll.js's
-// repositionGoToTopBtn() directly (plain cross-file global call) whenever
-// #jump-to-new-btn's shown/hidden state changes, since that affects where
-// #go-to-top-btn should stack. Extracted from session.js 2026-08-24,
-// fourth cut of the "split session.js into modules" pass.
+// same real elements for its own, unrelated purposes). Extracted from
+// session.js 2026-08-24, fourth cut of the "split session.js into modules"
+// pass.
 
 // Minimum time the "New" divider/highlight must actually be on screen
 // before it starts fading - without this, a poll that lands while the
@@ -177,7 +175,7 @@ var currentDivider = null;
 // #page-content scroll (see the scroll listener further down), and
 // (harmlessly redundant, but cheap insurance) from dividerObserver's own
 // delayed callback too.
-var jumpToNewBtn = document.getElementById('jump-to-new-btn');
+var jumpToNewBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById('jump-to-new-btn'));
 
 function updateJumpToNewVisibility() {
   if (!jumpToNewBtn) {
@@ -185,8 +183,7 @@ function updateJumpToNewVisibility() {
   }
 
   if (!currentDivider) {
-    jumpToNewBtn.classList.add('hidden');
-    repositionGoToTopBtn();
+    jumpToNewBtn.disabled = true;
     return;
   }
 
@@ -194,20 +191,16 @@ function updateJumpToNewVisibility() {
   var pageContentRect = pageContent.getBoundingClientRect();
   var alreadyVisible = dividerRect.bottom > pageContentRect.top && dividerRect.top < pageContentRect.bottom;
 
-  jumpToNewBtn.classList.toggle('hidden', alreadyVisible);
+  jumpToNewBtn.disabled = alreadyVisible;
 
   if (!alreadyVisible) {
-    jumpToNewBtn.innerHTML = dividerRect.top < pageContentRect.top ? '&uarr;' : '&darr;';
+    jumpToNewBtn.innerHTML = dividerRect.top < pageContentRect.top ? '&uarr; New' : '&darr; New';
   }
-
-  // #go-to-top-btn (Andres's own ask, 2026-08-23) stacks one button-height
-  // higher whenever THIS button is actually shown - see
-  // repositionGoToTopBtn()'s own comment.
-  repositionGoToTopBtn();
 }
 
 if (jumpToNewBtn) {
   pageContent.addEventListener('scroll', updateJumpToNewVisibility, { passive: true });
+  updateJumpToNewVisibility();
 }
 
 // Jumps straight to the current "New" divider - same manual scrollTo()

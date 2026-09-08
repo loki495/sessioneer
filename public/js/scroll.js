@@ -1,42 +1,43 @@
 // @ts-check
-// session.php's go-to-bottom/go-to-top floating buttons, plus keeping them
-// (and #jump-to-new-btn, owned by highlights.js) correctly positioned
-// above the variable-height compose bar footer. Own independent
-// document.getElementById() lookups, same convention as common.js - other
-// files (session.js, highlights.js) look up the same real DOM elements by
-// the same IDs independently rather than this module passing references
-// around; a plain global function call (scrollToBottom(), maybeAutoScroll(),
-// repositionGoToTopBtn()) is how cross-file calls work here, matching
-// escapeHtml()/parseJsonResponse() in common.js. Extracted from session.js
-// 2026-08-24 (second cut of the "split session.js into modules" pass).
+// session.php's docked scroll-toolbar controls - go-to-bottom, go-to-top,
+// and previous-user-message (jump-to-new is owned by highlights.js) - plus
+// the compose-bar footer's stick-to-bottom behavior. Extracted from
+// session.js 2026-08-24 (second cut of the "split session.js into modules"
+// pass).
+//
+// Swap 2026-09-06 (Andres's own report): these controls used to be
+// position:fixed circles stacked over the page's right edge, which covered
+// chat text on mobile. They now live inside #scroll-toolbar (see
+// session.php), a real flex child of #app-shell between #page-content and
+// #compose-bar, so they take layout space instead of overlaying content -
+// dropping all the bottom-offset/repositioning math that used to hover
+// them over the compose bar's variable height. The only reason
+// #compose-bar's height is still watched is to keep the page glued to the
+// bottom through footer resizes.
+//
+// Own independent document.getElementById() lookups, same convention as
+// common.js - other files (session.js, highlights.js) look up the same real
+// DOM elements by the same IDs independently rather than this module
+// passing references around; a plain global function call (scrollToBottom(),
+// maybeAutoScroll()) is how cross-file calls work here, matching
+// escapeHtml()/parseJsonResponse() in common.js.
 var pageContent = document.getElementById('page-content');
-var goToBottomBtn = document.getElementById('go-to-bottom-btn');
-var goToTopBtn = document.getElementById('go-to-top-btn');
-var prevUserBtn = document.getElementById('prev-user-btn');
+var goToBottomBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById('go-to-bottom-btn'));
+var goToTopBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById('go-to-top-btn'));
+var prevUserBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById('prev-user-btn'));
 var historyList = document.getElementById('history-list');
 
-var GO_TO_BOTTOM_GAP_PX = 12;
-// Matches #go-to-bottom-btn/#jump-to-new-btn's own w-11 h-11 (44px) -
-// needed to stack #jump-to-new-btn a full button-height plus gap above
-// #go-to-bottom-btn, not just the same gap over the compose bar.
-var GO_TO_BOTTOM_BTN_HEIGHT_PX = 44;
 var SCROLL_BOTTOM_THRESHOLD_PX = 80;
 var SCROLL_TOP_THRESHOLD_PX = 80;
 
-// #page-content no longer needs bottom-padding to clear #compose-bar -
-// since the flex-column layout fix (see compose-bar.php's own comment),
-// the bar takes real flex space instead of overlaying content. Only
-// #go-to-bottom-btn/#jump-to-new-btn/#go-to-top-btn (still position:fixed)
-// need tracking, so they keep hovering just above the compose bar's real,
-// variable height - #jump-to-new-btn stacked directly above
-// #go-to-bottom-btn (Andres's own ask, 2026-08-22), #go-to-top-btn above
-// THAT, one more button-height further up whenever #jump-to-new-btn is
-// actually shown (Andres's own ask, 2026-08-23 - "the new entry button
-// should show up between them") - see repositionGoToTopBtn() below, which
-// also re-runs whenever #jump-to-new-btn's own visibility changes on
-// scroll (its shown/hidden state isn't driven by footer height at all -
-// see highlights.js's updateJumpToNewVisibility(), which calls this
-// directly, a plain cross-file global call).
+// #page-content is the page's own scrolling container (see #app-shell in
+// session.php), and #compose-bar takes real flex space instead of overlaying
+// content (see compose-bar.php's own comment), so #page-content no longer
+// needs bottom padding to clear it. Only #compose-bar's variable height is
+// tracked - to stick to the bottom through footer resizes - starting as
+// "unknown" until the ResizeObserver (or session.js's own synchronous seed)
+// delivers a real height. See the ResizeObserver callback for why the
+// seeding matters, not just the observer's own first delivery.
 var lastFixedFooterHeight = 0;
 // True once lastFixedFooterHeight actually reflects a real #compose-bar
 // height - either from the ResizeObserver below firing at least once, or
@@ -44,28 +45,6 @@ var lastFixedFooterHeight = 0;
 // synchronously up front. See the ResizeObserver callback for why the
 // seeding matters, not just the observer's own first delivery.
 var footerHeightKnown = false;
-
-function repositionGoToTopBtn() {
-  if (!goToTopBtn) {
-    return;
-  }
-
-  var jumpToNewBtnEl = document.getElementById('jump-to-new-btn');
-  // #go-to-bottom-btn is always (potentially) there, plus the gap below it
-  var stacked = GO_TO_BOTTOM_GAP_PX + GO_TO_BOTTOM_BTN_HEIGHT_PX + GO_TO_BOTTOM_GAP_PX;
-
-  // #prev-user-btn is always added (whenever history exists, see
-  // updatePrevUserBtnVisibility() - but its positioning tier is unconditional
-  // even when hidden, to keep the math consistent)
-  stacked += GO_TO_BOTTOM_BTN_HEIGHT_PX + GO_TO_BOTTOM_GAP_PX;
-
-  // #jump-to-new-btn adds one more tier when actually visible
-  if (jumpToNewBtnEl && !jumpToNewBtnEl.classList.contains('hidden')) {
-    stacked += GO_TO_BOTTOM_BTN_HEIGHT_PX + GO_TO_BOTTOM_GAP_PX;
-  }
-
-  goToTopBtn.style.bottom = (lastFixedFooterHeight + stacked) + 'px';
-}
 
 watchFixedFooterHeight(document.getElementById('compose-bar'), function (height) {
   // Stick to bottom through footer resizes - found live 2026-08-30
@@ -117,28 +96,9 @@ watchFixedFooterHeight(document.getElementById('compose-bar'), function (height)
 
   footerHeightKnown = true;
   lastFixedFooterHeight = height;
-
-  if (goToBottomBtn) {
-    goToBottomBtn.style.bottom = (height + GO_TO_BOTTOM_GAP_PX) + 'px';
-  }
-
-  // #prev-user-btn sits one tier above #go-to-bottom-btn (always, even when
-  // hidden - positioning consistency)
-  if (prevUserBtn) {
-    prevUserBtn.style.bottom = (height + GO_TO_BOTTOM_GAP_PX + GO_TO_BOTTOM_BTN_HEIGHT_PX + GO_TO_BOTTOM_GAP_PX) + 'px';
-  }
-
-  var jumpToNewBtnEl = document.getElementById('jump-to-new-btn');
-
-  if (jumpToNewBtnEl) {
-    // #jump-to-new-btn sits one tier above #prev-user-btn
-    jumpToNewBtnEl.style.bottom = (height + GO_TO_BOTTOM_GAP_PX + GO_TO_BOTTOM_BTN_HEIGHT_PX + GO_TO_BOTTOM_GAP_PX + GO_TO_BOTTOM_BTN_HEIGHT_PX + GO_TO_BOTTOM_GAP_PX) + 'px';
-  }
-
-  repositionGoToTopBtn();
 });
 
-// --- scroll-to-bottom: the floating button shows whenever there's more
+// --- scroll-to-bottom: the toolbar control enables whenever there's more
 // page below the viewport, and new content (polled messages, a
 // freshly-appeared/updated prompt) only auto-scrolls into view if the
 // user was already at the bottom - never yanks them away from history
@@ -161,7 +121,7 @@ function scrollToBottom(smooth) {
 
 function updateGoToBottomVisibility() {
   if (goToBottomBtn) {
-    goToBottomBtn.classList.toggle('hidden', isNearBottom());
+    goToBottomBtn.disabled = isNearBottom();
   }
 }
 
@@ -176,10 +136,11 @@ function maybeAutoScroll(wasNearBottom) {
 if (goToBottomBtn) {
   pageContent.addEventListener('scroll', updateGoToBottomVisibility, { passive: true });
   goToBottomBtn.addEventListener('click', function () { scrollToBottom(true); });
+  updateGoToBottomVisibility();
 }
 
 // --- scroll-to-top: the persistent counterpart above (Andres's own ask,
-// 2026-08-23) - same "hidden only while already there" treatment as
+// 2026-08-23) - same "disabled while already there" treatment as
 // #go-to-bottom-btn, its own dedicated threshold (SCROLL_TOP_THRESHOLD_PX,
 // not SCROLL_BOTTOM_THRESHOLD_PX reused under a top-facing name) even
 // though the two happen to share the same value today, since there's no
@@ -194,13 +155,14 @@ function scrollToTop(smooth) {
 
 function updateGoToTopVisibility() {
   if (goToTopBtn) {
-    goToTopBtn.classList.toggle('hidden', isNearTop());
+    goToTopBtn.disabled = isNearTop();
   }
 }
 
 if (goToTopBtn) {
   pageContent.addEventListener('scroll', updateGoToTopVisibility, { passive: true });
   goToTopBtn.addEventListener('click', function () { scrollToTop(true); });
+  updateGoToTopVisibility();
 }
 
 // --- scroll to previous user message: jump to the nearest earlier user
@@ -216,10 +178,10 @@ function updatePrevUserBtnVisibility() {
     return;
   }
 
-  // Always show when there's any rendered history, hidden only if history
-  // list itself is empty or doesn't exist
+  // Always available when there's any rendered history, disabled only if
+  // history list itself is empty or doesn't exist
   var hasHistory = historyList.children.length > 0;
-  prevUserBtn.classList.toggle('hidden', !hasHistory);
+  prevUserBtn.disabled = !hasHistory;
 }
 
 function scrollToPrevUserMessage() {

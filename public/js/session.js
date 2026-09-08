@@ -109,15 +109,16 @@
     }
   }
 
-  // repositionGoToTopBtn()/the compose-bar footer-height watcher/
-  // scrollToBottom()/scrollToTop() and the go-to-bottom/go-to-top buttons'
-  // own state now live in scroll.js (loaded before this file - see
-  // session.php), plain global functions/vars, same convention as
-  // common.js - extracted 2026-08-24, third cut of the "split session.js
-  // into modules" pass. pageContent itself is also declared there now;
-  // every other reference to it in this file falls through to that global
-  // (same pattern already used for escapeHtml()/parseJsonResponse() from
-  // common.js), not redeclared locally here.
+  // the compose-bar footer-height watcher/scrollToBottom()/scrollToTop()
+  // and the go-to-bottom/go-to-top buttons' own state now live in
+  // scroll.js (loaded before this file - see session.php), plain global
+  // functions/vars, same convention as common.js - extracted 2026-08-24,
+  // third cut of the "split session.js into modules" pass. pageContent
+  // itself is also declared there now; every other reference to it in this
+  // file falls through to that global (same pattern already used for
+  // escapeHtml()/parseJsonResponse() from common.js), not redeclared
+  // locally here. (The scroll controls are docked in #scroll-toolbar, not
+  // position:fixed, since 2026-09-06 - see session.php.)
 
   // The slideable sidebar (other sessions' status/prompt, uploaded files,
   // plan/handoff files, confirm-before-answer/show-subagent settings, and

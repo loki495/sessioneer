@@ -63,11 +63,11 @@ class BlockedPromptView extends View
      * renders as plain text instead: an expand affordance for something
      * that's already fully visible is just extra chrome, not a real collapse.
      *
-     * The expanded/full text never wraps - a long command or line of output
-     * that gets broken across several lines reads as if it's been cut off,
-     * even though nothing is actually missing. It scrolls both axes instead
-     * (horizontally for a long line, vertically past a capped height for a
-     * lot of output), so what's shown is always exactly what's really there.
+     * The expanded/full text wraps by default (whitespace-pre-wrap +
+     * break-words, so a long command or line of output reads as a wrapped
+     * block rather than needing horizontal scrolling) - a lot of output
+     * still scrolls vertically past its capped height, and the vertical
+     * scroll shows exactly what's really there.
      */
     public static function render_collapsible_block(string $rawText, string $borderClass, string $textClass, string $prefix): string
     {

@@ -279,7 +279,10 @@
     trCodex.appendChild(tdX4);
     tbody.appendChild(trCodex);
 
-    // OpenCode has cumulative local usage, not percentage-based windows.
+    // OpenCode: the opencode-go account-wide rolling/weekly/monthly windows
+    // (how much of the real quota is left + when it resets) go in the three
+    // columns like the Claude/Codex rows, with a compact cumulative-usage
+    // summary line below (local opencode.db cost/token/session totals).
     var trOc = document.createElement('tr');
     var ocLabel = (oc && oc.label) ? oc.label : 'OpenCode';
     var tdO1 = document.createElement('td');
@@ -287,35 +290,56 @@
     tdO1.textContent = ocLabel;
     trOc.appendChild(tdO1);
 
+    var ocQ = (oc && oc.quota) ? oc.quota : null;
+    var ocNoData = (oc && oc.message) ? 'No data' : '—';
+
     var tdO2 = document.createElement('td');
-    tdO2.className = 'py-1.5 px-2 whitespace-nowrap text-xs';
-    if (oc && oc.quota) {
-      var ocQ = oc.quota;
-      var ocCost = typeof ocQ.cost === 'number' ? ('$' + ocQ.cost.toFixed(2)) : '—';
-      tdO2.innerHTML = '<span class="text-slate-300">Cost ' + escapeHtml(ocCost) + '</span>';
+    tdO2.className = 'py-1.5 px-2 whitespace-nowrap';
+    if (ocQ && ocQ.session && typeof ocQ.session.pct === 'number') {
+      var ocSess = renderBucketText(ocQ.session, 'session');
+      tdO2.innerHTML = '<span class="' + pctColorClass(ocSess.pct) + '">' + escapeHtml(dashboardBucketText(ocSess)) + '</span>';
     } else {
-      tdO2.innerHTML = '<span class="text-slate-600 font-normal">' + (oc && oc.message ? 'No data' : '—') + '</span>';
+      tdO2.innerHTML = '<span class="text-slate-600 font-normal">' + escapeHtml(ocNoData) + '</span>';
     }
     trOc.appendChild(tdO2);
 
     var tdO3 = document.createElement('td');
-    tdO3.className = 'py-1.5 px-2 whitespace-nowrap text-xs';
-    if (oc && oc.quota) {
-      tdO3.innerHTML = '<span class="text-slate-300">In ' + escapeHtml(tokenText(oc.quota.tokens_input)) + '</span>'
-        + '<span class="text-slate-500"> · Out ' + escapeHtml(tokenText(oc.quota.tokens_output)) + '</span>';
+    tdO3.className = 'py-1.5 px-2 whitespace-nowrap';
+    if (ocQ && ocQ.week_all && typeof ocQ.week_all.pct === 'number') {
+      var ocWeek = renderBucketText(ocQ.week_all, 'week');
+      tdO3.innerHTML = '<span class="' + pctColorClass(ocWeek.pct) + '">' + escapeHtml(dashboardBucketText(ocWeek)) + '</span>';
     } else {
-      tdO3.innerHTML = '<span class="text-slate-600">—</span>';
+      tdO3.innerHTML = '<span class="text-slate-600 font-normal">' + escapeHtml(ocNoData) + '</span>';
     }
     trOc.appendChild(tdO3);
+
     var tdO4 = document.createElement('td');
-    tdO4.className = 'py-1.5 pl-2 whitespace-nowrap text-xs';
-    if (oc && oc.quota && typeof oc.quota.session_count === 'number') {
-      tdO4.innerHTML = '<span class="text-slate-300">' + escapeHtml(String(oc.quota.session_count)) + ' sessions</span>';
+    tdO4.className = 'py-1.5 pl-2 whitespace-nowrap';
+    if (ocQ && ocQ.month_all && typeof ocQ.month_all.pct === 'number') {
+      var ocMonth = renderBucketText(ocQ.month_all, 'week');
+      tdO4.innerHTML = '<span class="' + pctColorClass(ocMonth.pct) + '">' + escapeHtml(dashboardBucketText(ocMonth)) + '</span>';
     } else {
-      tdO4.innerHTML = '<span class="text-slate-600">—</span>';
+      tdO4.innerHTML = '<span class="text-slate-600 font-normal">' + escapeHtml(ocNoData) + '</span>';
     }
     trOc.appendChild(tdO4);
     tbody.appendChild(trOc);
+
+    // Cumulative-usage summary line - only shown when there's at least one
+    // local total to report.
+    if (ocQ && (typeof ocQ.cost === 'number' || typeof ocQ.tokens_input === 'number' || typeof ocQ.session_count === 'number')) {
+      var trOcCum = document.createElement('tr');
+      var tdCum = document.createElement('td');
+      tdCum.colSpan = 4;
+      tdCum.className = 'py-1.5 px-2 whitespace-nowrap text-xs text-slate-500';
+      var cumParts = [];
+      if (typeof ocQ.cost === 'number') cumParts.push('Cost $' + ocQ.cost.toFixed(2));
+      if (typeof ocQ.tokens_input === 'number') cumParts.push('In ' + tokenText(ocQ.tokens_input));
+      if (typeof ocQ.tokens_output === 'number') cumParts.push('Out ' + tokenText(ocQ.tokens_output));
+      if (typeof ocQ.session_count === 'number') cumParts.push(ocQ.session_count + ' sessions');
+      tdCum.textContent = cumParts.join(' · ');
+      trOcCum.appendChild(tdCum);
+      tbody.appendChild(trOcCum);
+    }
 
     table.appendChild(tbody);
     container.appendChild(table);
