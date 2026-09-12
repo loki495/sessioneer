@@ -2,12 +2,22 @@
 # Runs every tests/test_*.php file against isolated fixtures (see
 # tests/.env.testing) and guarantees cleanup of anything they start -
 # tmux sessions, the fake claude process, sidecar files - even if a test
-# fails or the run is interrupted. Usage: bash tests/run.sh [--bail] [--cleanup] [--replay] [--no-browser] [--browser]
+# fails or the run is interrupted. Usage: bash tests/run.sh [--bail] [--cleanup] [--replay] [--no-browser] [--browser] [--live]
 #   --bail     stop at the first failing test file instead of running the rest
 #   --replay   only run the session-replay test files (test_session_replay*.php)
 #              - fast iteration on tests/lib/replay_fixture.php,
 #              tests/lib/cdp.php, or tests/fixtures/replay/* without paying
 #              for the other 10 unrelated test files every time
+#   --live     the ONLY way to run a *_live.php test file (matched by filename,
+#              currently just test_claude_trust_prompt_live.php) - every other
+#              flag combination, including the plain default run, always
+#              excludes them. Unlike every other test file here, a *_live.php
+#              file spawns a REAL agent binary (never fake_claude), so it
+#              needs that binary actually installed, is slower, and depends
+#              on whatever's genuinely on this host - opt-in only, on
+#              purpose, to keep the default suite hermetic and fast (see
+#              test_claude_trust_prompt_live.php's own header comment for
+#              why it's still zero real API cost either way).
 #   --no-browser  skip any test file that needs a real browser (matched by
 #              filename, *_browser.php - currently just
 #              test_session_replay_browser.php) - for a host with no Chrome/
@@ -46,6 +56,7 @@ replay_only=0
 no_browser=0
 browser_only=0
 headed=0
+live_only=0
 for arg in "$@"; do
     case "$arg" in
         --bail) bail=1 ;;
@@ -54,12 +65,18 @@ for arg in "$@"; do
         --no-browser) no_browser=1 ;;
         --browser) browser_only=1 ;;
         --headed) headed=1 ;;
+        --live) live_only=1 ;;
         *)
             echo "Unknown argument: $arg" >&2
             exit 1
             ;;
     esac
 done
+
+if [ "$live_only" -eq 1 ] && { [ "$replay_only" -eq 1 ] || [ "$no_browser" -eq 1 ] || [ "$browser_only" -eq 1 ]; }; then
+    echo "Contradictory flags: --live selects a different, non-overlapping set of test files than --replay/--no-browser/--browser." >&2
+    exit 1
+fi
 
 if [ "$no_browser" -eq 1 ] && [ "$browser_only" -eq 1 ]; then
     echo "Contradictory flags: --no-browser and --browser can't both be set." >&2
@@ -208,10 +225,21 @@ mkdir -p "$(dirname "$TMUX_SOCKET")" "$SIDECAR_DIR" "$CACHE_DIR"
 
 failures=0
 
-if [ "$replay_only" -eq 1 ]; then
+if [ "$live_only" -eq 1 ]; then
+    test_files=("$SCRIPT_DIR"/test_*_live.php)
+elif [ "$replay_only" -eq 1 ]; then
     test_files=("$SCRIPT_DIR"/test_session_replay*.php)
 else
-    test_files=("$SCRIPT_DIR"/test_*.php)
+    # *_live.php is excluded from every other selection, always - it spawns
+    # a REAL agent binary (see --live's own header comment above), so it
+    # only ever runs when explicitly asked for.
+    test_files=()
+    for test_file in "$SCRIPT_DIR"/test_*.php; do
+        case "$(basename "$test_file")" in
+            *_live.php) ;; # skipped by default - see --live
+            *) test_files+=("$test_file") ;;
+        esac
+    done
 fi
 
 if [ "$no_browser" -eq 1 ]; then

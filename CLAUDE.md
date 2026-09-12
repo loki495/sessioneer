@@ -15,15 +15,29 @@ access control is the network binding (LAN-only), not a login.
 ```bash
 bash tests/run.sh          # run the whole test suite
 bash tests/run.sh --bail   # stop at the first failing test file
+bash tests/run.sh --live   # run ONLY the live smoke test (see below) - never part of the default run
 ```
 
 No Composer test runner, no Pest, no build step for JS/CSS (plain files,
 no bundler/npm — there is no `package.json`). `tests/run.sh` runs each
-`tests/test_*.php` directly via the `php` CLI. Tests are self-isolating:
-they point `TMUX_SOCKET`/`CLAUDE_BIN`/sidecar paths at fixtures
-(`tests/.env.testing`), so they never touch the real tmux server or spawn
-a real (billable) `claude` process, and `run.sh` always cleans up its
-isolated tmux server + fixture processes on exit, failure, or interrupt.
+`tests/test_*.php` directly via the `php` CLI. The default suite is
+self-isolating: it points `TMUX_SOCKET`/`CLAUDE_BIN`/sidecar paths at
+fixtures (`tests/.env.testing`), so it never touches the real tmux server
+or spawns a real (billable) `claude` process, and `run.sh` always cleans
+up its isolated tmux server + fixture processes on exit, failure, or
+interrupt. One deliberate, opt-in exception:
+`test_claude_trust_prompt_live.php` (any `*_live.php` file) spawns the
+REAL `claude` binary in a fresh, never-before-trusted directory, to prove
+the folder-trust dialog's detection/handling still matches whatever the
+currently-installed CLI actually renders — added 2026-09-11 after a real
+CLI version silently broke this app's trust-dialog handling (dropped its
+option numbers, reversed the default order) with every fixture-based test
+still green, since none of them replay anything but a frozen capture.
+Still zero real API cost (only ever declines trust, before any model call
+happens), but it's genuinely slower and needs the real binary installed,
+so it only ever runs via `--live` — every other flag, including the plain
+default run, always excludes it. See its own header comment for the full
+reasoning.
 
 To exercise a single area, run that one `tests/test_*.php` file directly
 with `php` rather than the whole suite (check its own header comment for
