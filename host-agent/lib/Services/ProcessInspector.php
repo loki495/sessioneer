@@ -159,10 +159,22 @@ class ProcessInspector
             // binary path - the tmux server's own argv[0] is "tmux", which
             // never collides with either check, so this doesn't reopen that
             // false-positive risk.
-            if (
-                $argv0 === ''
-                || (basename($argv0) !== $claudeBinBasename && ($claudeBinRealpath === null || @realpath($argv0) !== $claudeBinRealpath))
-            ) {
+            //
+            // A THIRD shape, found live 2026-09-12: the CLI's own background
+            // daemon (`claude daemon run`) rewrites its worker processes'
+            // argv[0] to a single, space-containing descriptive string for
+            // `ps` readability - "claude bg-spare" or "claude bg-pty-host" as
+            // ONE argv element, not "claude" followed by a separate "bg-spare"
+            // element. basename() of that whole string never equals "claude"
+            // exactly (there's no "/" in it to split on), so it needs its own
+            // explicit prefix check - anchored on a trailing space so this
+            // can never partially match some unrelated "claudeXYZ" binary.
+            $argv0Basename = basename($argv0);
+            $matchesBasename = $argv0Basename === $claudeBinBasename;
+            $matchesRealpath = $claudeBinRealpath !== null && @realpath($argv0) === $claudeBinRealpath;
+            $matchesDaemonWorkerLabel = str_starts_with($argv0Basename, $claudeBinBasename . ' ');
+
+            if ($argv0 === '' || (!$matchesBasename && !$matchesRealpath && !$matchesDaemonWorkerLabel)) {
                 continue;
             }
 

@@ -79,6 +79,12 @@ $resumeArgTestSession = null;
 /** @var string|null $realpathMatchTestSession a non-cc-* tmux session used to test ProcessInspector::find_claude_processes()'s realpath-based match, for the finally-block safety net */
 $realpathMatchTestSession = null;
 
+/** @var string|null $daemonLabelTestSession a non-cc-* tmux session used to test ProcessInspector::find_claude_processes()'s "claude <subcommand>" argv[0] match, for the finally-block safety net */
+$daemonLabelTestSession = null;
+
+/** @var resource|null $rosterBareProc a plain (non-tmux) fake claude process used to test the daemon-roster resolution tier, for the finally-block safety net */
+$rosterBareProc = null;
+
 /** @var string|null $sendTestSession a cc-* session used to test PromptInteractionService::send_message(), for the finally-block safety net */
 $sendTestSession = null;
 
@@ -962,6 +968,102 @@ try {
     $realpathMatchTestSession = null;
     putenv($originalClaudeBinEnv !== false ? "CLAUDE_BIN={$originalClaudeBinEnv}" : 'CLAUDE_BIN');
     @unlink($claudeBinSymlink);
+
+    // --- ProcessInspector::find_claude_processes(): matches a process
+    // whose argv[0] is "claude <subcommand>" as ONE space-containing argv
+    // element, not "claude" followed by a separate element. Found live
+    // 2026-09-12: the CLI's own background daemon (`claude daemon run`)
+    // rewrites its bg-spare/bg-pty-host worker processes' argv[0] to
+    // exactly this shape for `ps` readability - basename() of a string
+    // with no "/" in it is the string itself, so it never equals plain
+    // "claude" and was invisible to both the pre-existing basename check
+    // and the realpath check just above (there's no real file at a path
+    // like "claude bg-spare" to resolve at all). ---
+    $daemonLabelTestSession = 'sessioneer-test-daemon-label-' . getmypid();
+    $daemonLabelSetup = TmuxService::tmux_run([
+        'new-session', '-d', '-s', $daemonLabelTestSession, '-c', Config::www_root(),
+        'bash', '-c', 'exec -a "' . basename(Config::claude_bin()) . ' bg-spare" cat',
+    ]);
+    assert_equal(0, $daemonLabelSetup['exit'], 'daemon-label setup: created a live session whose argv[0] mimics the CLI daemon\'s own "claude bg-spare" process-title trick');
+    usleep(300000);
+
+    $foundViaDaemonLabel = false;
+    foreach (SessionService::list_all_sessions()['bare'] as $b) {
+        if (($b['tmux_session'] ?? null) === $daemonLabelTestSession) {
+            $foundViaDaemonLabel = true;
+            break;
+        }
+    }
+    assert_true($foundViaDaemonLabel, 'find_claude_processes: recognizes a process whose argv[0] is "claude <subcommand>" - the CLI daemon\'s own worker process-title convention');
+
+    TmuxService::tmux_run(['kill-session', '-t', $daemonLabelTestSession]);
+    $daemonLabelTestSession = null;
+
+    // --- BareProcessService's daemon-roster resolution tier
+    // (daemon_roster_session_ids()/resolve_via_daemon_roster()): the ONLY
+    // way to identify a bg-spare/bg-pty-host worker's own conversation at
+    // all, since that shape has no --resume in its own argv anywhere (the
+    // daemon dispatches it over a private rendezvous socket instead) -
+    // this is exactly what was still hiding Andres's own live session
+    // (running through this exact pool) in the archived list even after
+    // the argv-resume and realpath fixes above. A plain bare fake_claude
+    // process stands in for a real daemon worker here - only roster.json's
+    // OWN bookkeeping (pid + sessionId) is under test, not the real
+    // daemon's argv-rewriting trick (already covered just above). ---
+    $rosterUuid = '88888888-8888-4888-8888-888888888888';
+    @mkdir($archivedFakeHome . '/.claude/daemon', 0700, true);
+    @mkdir($archivedFakeHome . '/.claude/projects/-roster-project', 0700, true);
+    file_put_contents(
+        $archivedFakeHome . '/.claude/projects/-roster-project/' . $rosterUuid . '.jsonl',
+        '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hi"}]},"cwd":"/some/roster/path"}' . "\n"
+    );
+
+    $rosterBareCwd = Config::www_root() . '/project-a';
+    $rosterBareProc = proc_open([Config::claude_bin()], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $rosterBarePipes, $rosterBareCwd);
+    assert_true(is_resource($rosterBareProc), 'roster setup: spawned a plain (non-tmux) fake claude process to act as a daemon "worker"');
+    $rosterBarePid = is_resource($rosterBareProc) ? (proc_get_status($rosterBareProc)['pid'] ?? null) : null;
+    usleep(300000);
+
+    file_put_contents($archivedFakeHome . '/.claude/daemon/roster.json', json_encode([
+        'proto' => 1,
+        'workers' => [
+            'rostertst' => [
+                'pid' => $rosterBarePid,
+                'sessionId' => $rosterUuid,
+                'cwd' => $rosterBareCwd,
+            ],
+        ],
+    ]));
+
+    $rosterIds = BareProcessService::live_bare_agent_session_ids();
+    assert_true(in_array($rosterUuid, $rosterIds, true), 'live_bare_agent_session_ids: includes the daemon roster\'s own sessionId for a worker whose pid is still actually running');
+
+    $rosterArchived = ArchivedSessionService::list_archived_dashboard()['archived'] ?? [];
+    assert_true(!in_array($rosterUuid, array_column($rosterArchived, 'agent_session_id'), true), 'list_archived_dashboard: excludes a session the daemon roster says is currently live');
+
+    $rosterDetail = BareProcessService::resolve_bare_process_detail($rosterBarePid ?? 0);
+    assert_equal($rosterUuid, $rosterDetail['agent_session_id'] ?? null, 'resolve_bare_process_detail: resolves via the daemon roster when the pid itself has no --resume in its own argv');
+    assert_equal('confirmed', $rosterDetail['confidence'] ?? null, 'resolve_bare_process_detail: a daemon-roster match is confirmed, not a guess');
+
+    // --- liveness safety net: once the worker's pid is actually gone, the
+    // roster's own sessionId must stop being trusted - otherwise a crashed
+    // daemon that never prunes its own stale roster would permanently hide
+    // a truly-dead session from "archived" and refuse to ever let it be
+    // resumed again (see daemon_roster_session_ids()'s own docblock). ---
+    if (is_resource($rosterBareProc)) {
+        proc_terminate($rosterBareProc);
+        proc_close($rosterBareProc);
+    }
+    $rosterBareProc = null;
+    usleep(300000);
+
+    $rosterIdsAfterDeath = BareProcessService::live_bare_agent_session_ids();
+    assert_true(!in_array($rosterUuid, $rosterIdsAfterDeath, true), 'live_bare_agent_session_ids: stops trusting the roster\'s sessionId once its worker pid is actually gone');
+
+    @unlink($archivedFakeHome . '/.claude/daemon/roster.json');
+    @rmdir($archivedFakeHome . '/.claude/daemon');
+    @unlink($archivedFakeHome . '/.claude/projects/-roster-project/' . $rosterUuid . '.jsonl');
+    @rmdir($archivedFakeHome . '/.claude/projects/-roster-project');
 
     @rmdir($archivedFakeHome . '/.claude/projects');
     @rmdir($archivedFakeHome . '/.claude');
@@ -2365,6 +2467,13 @@ try {
     }
     if ($realpathMatchTestSession !== null) {
         TmuxService::tmux_run(['kill-session', '-t', $realpathMatchTestSession]);
+    }
+    if ($daemonLabelTestSession !== null) {
+        TmuxService::tmux_run(['kill-session', '-t', $daemonLabelTestSession]);
+    }
+    if ($rosterBareProc !== null && is_resource($rosterBareProc)) {
+        proc_terminate($rosterBareProc);
+        proc_close($rosterBareProc);
     }
     if ($sendTestSession !== null) {
         TmuxService::tmux_run(['kill-session', '-t', $sendTestSession]);
