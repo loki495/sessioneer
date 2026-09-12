@@ -67,6 +67,12 @@ $adoptedTestSession = null;
 /** @var string|null $promptTestSession a cc-* session used to test PromptInteractionService::answer_prompt(), for the finally-block safety net */
 $promptTestSession = null;
 
+/** @var string|null $folderTrustTestSession a cc-* session used to test PromptInteractionService::answer_prompt()'s folder-trust arrow-key path, for the finally-block safety net */
+$folderTrustTestSession = null;
+
+/** @var string|null $archivedBareAdhocName a non-cc-* tmux session used to test BareProcessService::live_bare_agent_session_ids()'s exclusion from the archived list and resume guard, for the finally-block safety net */
+$archivedBareAdhocName = null;
+
 /** @var string|null $sendTestSession a cc-* session used to test PromptInteractionService::send_message(), for the finally-block safety net */
 $sendTestSession = null;
 
@@ -215,6 +221,30 @@ assert_equal(
     $trustParsed['options'] ?? null,
     'parse_blocking_prompt: real trust dialog - both options extracted'
 );
+
+// Claude Code v2.1.269 dropped this dialog's option numbers entirely and
+// reversed the default order (verified live 2026-09-11 - see PromptParser's
+// own docblock and tests/fixtures/claude_folder_trust_prompt_pane_v2_1_269.txt,
+// a verbatim capture from a real, never-before-trusted directory). This is
+// the actual regression Andres hit ("can't start a session in a new
+// folder"): the old digit-anchored parse below found nothing at all here,
+// so the app never saw the trust dialog as blocking, and answer_prompt()'s
+// digit-then-Enter would have confirmed whatever's default-selected instead
+// ("No, exit" - killing the session) rather than the option the human meant.
+$realTrustDialogV21269 = (string)file_get_contents(__DIR__ . '/fixtures/claude_folder_trust_prompt_pane_v2_1_269.txt');
+$trustParsedV21269 = PromptParser::parse_blocking_prompt($realTrustDialogV21269);
+assert_true($trustParsedV21269 !== null, 'parse_blocking_prompt: v2.1.269 unnumbered trust dialog is still recognized as a blocking prompt, not silently missed');
+assert_equal(
+    "Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source project, or work from your team). If not, take a moment to review what's in this folder first.",
+    $trustParsedV21269['question'] ?? null,
+    'parse_blocking_prompt: v2.1.269 trust dialog - question still extracted with no leading marker to anchor on'
+);
+assert_equal(
+    [['number' => 1, 'label' => 'No, exit'], ['number' => 2, 'label' => 'Yes, I trust this folder']],
+    $trustParsedV21269['options'] ?? null,
+    'parse_blocking_prompt: v2.1.269 trust dialog - both options extracted from the unnumbered list, in their real (now reversed) on-screen order'
+);
+assert_equal(true, $trustParsedV21269['is_folder_trust'] ?? null, 'parse_blocking_prompt: v2.1.269 trust dialog - still flagged is_folder_trust despite having no numbers to key off');
 
 $realPermissionPrompt = "● Bash(echo hello-permission-test > /tmp/sessioneer-permission-test.txt)\n"
     . "\n"
@@ -1691,6 +1721,67 @@ try {
     SidecarStore::delete_sidecar($promptTestSession);
     $promptTestSession = null;
 
+    // --- PromptInteractionService::answer_prompt(): the initial per-folder
+    // trust dialog specifically. Found live 2026-09-11 (Andres: couldn't
+    // start a session in a new folder): Claude Code v2.1.269 dropped this
+    // dialog's option numbers entirely (see PromptParser's own docblock),
+    // so the plain digit-then-Enter path used for every other prompt shape
+    // would type a digit the dialog just ignores, then Enter confirms
+    // whatever's DEFAULT-highlighted instead ("No, exit") - silently
+    // killing the whole session rather than trusting the folder. This
+    // verifies the ACTUAL keys sent, not just the reported ok/message:
+    // cat's own stdout is teed to a raw log file, bypassing tmux's own
+    // escape-sequence interpretation of the captured "screen" (a bare
+    // Up/Down arrow moves the virtual cursor without printing anything
+    // visible, so the plain capture-pane trick the test above uses
+    // wouldn't show whether an arrow was sent at all) - so both the real
+    // Down-arrow-then-Enter sequence, and the absence of a literal digit,
+    // can be checked directly. ---
+    $folderTrustTestSession = 'cc-test-trust-answer-' . getmypid();
+    $folderTrustKeyLog = sys_get_temp_dir() . '/sessioneer-test-trust-keys-' . getmypid() . '.bin';
+    @unlink($folderTrustKeyLog);
+    $trustSetup = TmuxService::tmux_run([
+        'new-session', '-d', '-s', $folderTrustTestSession, '-c', Config::www_root(),
+        'bash', '-c', 'stty -echo; exec cat | tee ' . escapeshellarg($folderTrustKeyLog),
+    ]);
+    assert_equal(0, $trustSetup['exit'], 'answer_prompt (folder trust) setup: created a live cc-* session to answer the trust dialog in');
+    SidecarStore::write_sidecar($folderTrustTestSession, ['workdir' => Config::www_root(), 'spawned_at' => time()]);
+    usleep(300000);
+
+    // Types the real (unnumbered, reversed-order) v2.1.269 dialog text in
+    // verbatim, one real pane line per fixture line - same technique the
+    // digit-based prompt tests above use, just with the real captured
+    // fixture instead of a hand-typed shape.
+    foreach (explode("\n", $realTrustDialogV21269) as $fixtureLine) {
+        TmuxService::tmux_run(['send-keys', '-t', $folderTrustTestSession, '-l', $fixtureLine]);
+        TmuxService::tmux_run(['send-keys', '-t', $folderTrustTestSession, 'Enter']);
+    }
+    usleep(300000);
+
+    // The fixture text itself (a real captured workspace path, e.g.
+    // ".../blah-newproj-test3-1789184921") legitimately contains digits,
+    // including "2" - only the bytes answer_prompt() itself sends, AFTER
+    // this setup phase, are what the assertions below care about.
+    $trustKeyLogOffsetBeforeAnswer = filesize($folderTrustKeyLog);
+
+    $trustAnswer = PromptInteractionService::answer_prompt($folderTrustTestSession, 2); // option 2 = "Yes, I trust this folder"
+    assert_true($trustAnswer['ok'] ?? false, 'answer_prompt: folder trust dialog answers ok=true');
+    assert_equal(
+        "Confirmed 'Yes, I trust this folder' for {$folderTrustTestSession}",
+        $trustAnswer['message'] ?? null,
+        'answer_prompt: folder trust dialog reports the real option label, resolved from the live cursor position rather than a fixed offset'
+    );
+    usleep(300000);
+
+    $trustKeysSent = substr((string)file_get_contents($folderTrustKeyLog), $trustKeyLogOffsetBeforeAnswer);
+    assert_true(!str_contains($trustKeysSent, '2'), 'answer_prompt: folder trust dialog - never sends the bare digit "2" (the old, now-broken behavior) - v2.1.269 ignores it entirely and would go on to confirm whatever is already default-highlighted instead of the requested option');
+    assert_true(str_ends_with($trustKeysSent, "\x1b[B\n"), 'answer_prompt: folder trust dialog - sends exactly one Down-arrow (off the default "No, exit") then Enter, to actually reach "Yes, I trust this folder"');
+
+    TmuxService::tmux_run(['kill-session', '-t', $folderTrustTestSession]);
+    SidecarStore::delete_sidecar($folderTrustTestSession);
+    @unlink($folderTrustKeyLog);
+    $folderTrustTestSession = null;
+
     // --- TmuxService::tmux_capture_pane(): a long single logical line (e.g. the command
     // in a permission prompt) that the terminal soft-wraps across several
     // pane rows must come back rejoined into one line, not split mid-word -
@@ -2103,6 +2194,12 @@ try {
     }
     if ($promptTestSession !== null) {
         TmuxService::tmux_run(['kill-session', '-t', $promptTestSession]);
+    }
+    if ($folderTrustTestSession !== null) {
+        TmuxService::tmux_run(['kill-session', '-t', $folderTrustTestSession]);
+    }
+    if ($archivedBareAdhocName !== null) {
+        TmuxService::tmux_run(['kill-session', '-t', $archivedBareAdhocName]);
     }
     if ($sendTestSession !== null) {
         TmuxService::tmux_run(['kill-session', '-t', $sendTestSession]);

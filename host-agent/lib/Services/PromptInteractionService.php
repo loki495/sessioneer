@@ -263,6 +263,66 @@ class PromptInteractionService
             return ['ok' => true, 'message' => "Confirmed '{$prompt['options'][$option - 1]['label']}' for {$name}"];
         }
 
+        // The initial per-folder trust dialog: answered via Up/Down + Enter,
+        // same reasoning as the OpenCode permission block above - found live
+        // 2026-09-11 (Andres: couldn't start a session in a new folder) that
+        // Claude Code v2.1.269 dropped this dialog's option numbers entirely
+        // ("❯ No, exit" / "  Yes, I trust this folder" - see PromptParser's
+        // own docblock), so typing the digit does nothing at all here; the
+        // Enter that used to just confirm the typed digit's selection now
+        // fires alone, confirming whatever's DEFAULT-highlighted instead -
+        // which is "No, exit", so a "confirm" click was silently killing the
+        // whole session (the tmux pane's own process exits) rather than
+        // trusting the folder. Re-captures the pane fresh (not the $prompt
+        // already parsed above) purely to find which option the ❯ cursor is
+        // CURRENTLY on - $prompt['options'] itself no longer carries that,
+        // since every label had its own leading ❯ stripped when building it.
+        if (!empty($prompt['is_folder_trust'])) {
+            $currentIndex = null;
+
+            foreach (explode("\n", TmuxService::tmux_capture_pane($name)) as $line) {
+                if (preg_match('/^\s*❯\s*(.+?)\s*$/u', $line, $m) !== 1) {
+                    continue;
+                }
+
+                foreach ($prompt['options'] as $idx => $opt) {
+                    if ($opt['label'] === $m[1]) {
+                        $currentIndex = $idx;
+                        break 2;
+                    }
+                }
+            }
+
+            if ($currentIndex === null) {
+                return ['ok' => false, 'message' => 'Rejected: could not tell which option the trust dialog currently has selected'];
+            }
+
+            $targetIndex = $option - 1;
+            $steps = $targetIndex - $currentIndex;
+            $direction = $steps >= 0 ? 'Down' : 'Up';
+
+            for ($i = 0; $i < abs($steps); $i++) {
+                usleep(self::TMUX_KEY_STEP_DELAY_USEC);
+                $arrow = TmuxService::tmux_run(['send-keys', '-t', $name, $direction]);
+
+                if ($arrow['exit'] !== 0) {
+                    return ['ok' => false, 'message' => "Failed to select the {$prompt['options'][$targetIndex]['label']} option: " . trim($arrow['stderr'])];
+                }
+            }
+
+            usleep(self::TMUX_KEY_STEP_DELAY_USEC);
+            $enterResult = TmuxService::tmux_run(['send-keys', '-t', $name, 'Enter']);
+
+            if ($enterResult['exit'] !== 0) {
+                return ['ok' => false, 'message' => "Failed to confirm: " . trim($enterResult['stderr'])];
+            }
+
+            PendingToolStore::delete_pending_tool($name);
+            SessionStatusStore::update_status($name, ['status' => 'working', 'blocked' => null]);
+
+            return ['ok' => true, 'message' => "Confirmed '{$prompt['options'][$targetIndex]['label']}' for {$name}"];
+        }
+
         $digitResult = TmuxService::tmux_run(['send-keys', '-t', $name, (string)$option]);
 
         if ($digitResult['exit'] !== 0) {
