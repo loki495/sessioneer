@@ -684,10 +684,21 @@ class PromptParser
      * question happens to be the LAST one before the Review tab, not just a
      * middle one. Re-verify live before relying on this if it ever misbehaves.
      *
-     * Deliberately scoped to 2+ questions only - a single-question
-     * AskUserQuestion has no tab bar at all and is already handled by the
-     * existing pane-scraped answer_prompt()/answer_prompt_with_text() path,
-     * which has no "which tab" ambiguity to begin with.
+     * A lone SINGLE-SELECT question has no tab bar at all and is already
+     * handled by the existing pane-scraped answer_prompt()/
+     * answer_prompt_with_text() path - still rejected here, no "which tab"
+     * ambiguity to begin with. A lone MULTISELECT question is different:
+     * found live 2026-09-12 (Andres: sessioneer's own dashboard rendered
+     * this shape via the plain one-button-submits-immediately options.php
+     * form, with no way to check several boxes then confirm, unlike Claude
+     * Code's own real TUI) - it DOES get a tab bar
+     * ("← ☐ <header>  ✔ Submit →"), and is mechanically identical in every
+     * respect verified live to a real 2+-question call: toggle the same way,
+     * then Right lands on the exact same "Review your answers" / "1. Submit
+     * answers" screen (confirmed against a real, disposable session, not
+     * assumed from the 2+-question mechanics alone). So this only rejects a
+     * lone question when it's NOT multiSelect, not "fewer than 2" as a
+     * blanket rule.
      *
      * @param array<int, array{question?:mixed, header?:mixed, multiSelect?:mixed, options?:mixed}> $questions
      * @param array<int, mixed> $answers one entry per question, in the same order:
@@ -706,7 +717,9 @@ class PromptParser
      */
     public static function build_multi_question_key_sequence(array $questions, array $answers): ?array
     {
-        if (count($questions) < 2 || count($answers) !== count($questions)) {
+        $isLoneSingleSelect = count($questions) === 1 && (is_array($questions[0] ?? null) ? ($questions[0]['multiSelect'] ?? false) : false) !== true;
+
+        if (count($questions) < 1 || $isLoneSingleSelect || count($answers) !== count($questions)) {
             return null;
         }
 

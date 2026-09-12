@@ -363,9 +363,32 @@ try {
         'build_multi_question_key_sequence: matches the exact real free-text-within-a-multi-question capture'
     );
 
+    // --- a LONE multiSelect question: found live 2026-09-12 (Andres: sessioneer's
+    // own dashboard rendered this shape with no way to check several boxes then
+    // confirm at all, unlike Claude Code's own real TUI) - it gets a tab bar just
+    // like a real 2+-question call, and is mechanically identical in every respect
+    // re-verified live against a real, disposable session: toggle the checked
+    // options, Right advances straight to the Review tab (there's only one
+    // question to review), "1. Submit answers" confirms. ---
+
+    $loneToppingsQuestion = [
+        ['question' => 'Pick your toppings', 'header' => 'Toppings', 'multiSelect' => true, 'options' => [['label' => 'Cheese'], ['label' => 'Pepperoni'], ['label' => 'Mushroom']]],
+    ];
+    $loneMultiSelectSequence = PromptParser::build_multi_question_key_sequence($loneToppingsQuestion, [[1, 3]]);
+    assert_equal(
+        [
+            ['type' => 'digit', 'value' => '1'], // toggle Cheese
+            ['type' => 'digit', 'value' => '3'], // toggle Mushroom
+            ['type' => 'right'],                 // advance straight to the Review tab (only one question)
+            ['type' => 'digit', 'value' => '1'], // Review tab: "1. Submit answers"
+        ],
+        $loneMultiSelectSequence,
+        'build_multi_question_key_sequence: a LONE multiSelect question matches the exact real single-question capture, not rejected as "too few questions"'
+    );
+
     // --- sad paths: malformed/mismatched $answers is rejected outright, never a partial sequence ---
 
-    assert_equal(null, PromptParser::build_multi_question_key_sequence([$petConfirmQuestions[0]], [1]), 'build_multi_question_key_sequence: fewer than 2 questions is rejected - no tab bar exists for a single question, use the pane-scraped path instead');
+    assert_equal(null, PromptParser::build_multi_question_key_sequence([$petConfirmQuestions[0]], [1]), 'build_multi_question_key_sequence: a LONE SINGLE-select question is still rejected - no tab bar exists for that specific shape, use the pane-scraped path instead');
     assert_equal(null, PromptParser::build_multi_question_key_sequence($petConfirmQuestions, [1]), 'build_multi_question_key_sequence: answers count must match questions count');
     assert_equal(null, PromptParser::build_multi_question_key_sequence($petConfirmQuestions, [1, 99]), 'build_multi_question_key_sequence: an out-of-range single-select option index is rejected');
     assert_equal(null, PromptParser::build_multi_question_key_sequence($petConfirmQuestions, [1, []]), 'build_multi_question_key_sequence: an array answer for a non-multiSelect question is rejected');
