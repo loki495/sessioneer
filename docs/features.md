@@ -74,7 +74,21 @@ cannot represent those states completely. Multi-question calls retain the
 full hook payload and are answered as a single validated key sequence.
 
 Claude is the only integration with process-table discovery and **Take over**
-for sessions started outside Sessioneer. Model and permission-mode changes
+for sessions started outside Sessioneer. Discovery covers not just a plain
+`claude` process started by hand, but also a worker dispatched through the
+CLI's own background daemon (a `bg-spare`/`bg-pty-host` warm-pool pair used
+to start new/resumed sessions instantly) - identified with certainty via
+either an explicit `--resume`/`--session-id` in the process's own argv, or
+the daemon's own `~/.claude/daemon/roster.json` worker registry, never a
+guess. The dashboard shows each identified bare row's real title
+automatically (no click needed) and collapses a daemon worker's two real
+processes (the pty-host wrapper, whose own cwd never leaves the daemon's
+internal pool path, plus its REPL child, whose cwd is the real project
+folder) into one row rather than showing both separately. **Take over** on
+a daemon-managed worker kills both halves of the pair (not just the one
+clicked) and resumes into the real project cwd. A row this can't identify
+with certainty still falls back to the pre-existing closest-start-time
+heuristic, clearly labeled as a guess. Model and permission-mode changes
 drive Claude's own pickers. Quota comes from the status-line JSON marker and
 will be unavailable until Claude renders that status line at least once.
 
