@@ -176,6 +176,13 @@ class ArchivedSessionService
             }
         }
 
+        // Found live 2026-09-11: a bare (untracked) claude process - e.g.
+        // one typed by hand directly in a terminal, no tmux involved at
+        // all - is just as "not dormant" as a tracked one, but was never
+        // excluded here; see BareProcessService::live_bare_agent_session_
+        // ids()'s own docblock for the full incident and reasoning.
+        $trackedIds = array_merge($trackedIds, BareProcessService::live_bare_agent_session_ids());
+
         return ['archived' => self::list_archived_sessions($trackedIds)];
     }
 

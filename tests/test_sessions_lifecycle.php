@@ -67,6 +67,30 @@ $adoptedTestSession = null;
 /** @var string|null $promptTestSession a cc-* session used to test PromptInteractionService::answer_prompt(), for the finally-block safety net */
 $promptTestSession = null;
 
+/** @var string|null $folderTrustTestSession a cc-* session used to test PromptInteractionService::answer_prompt()'s folder-trust arrow-key path, for the finally-block safety net */
+$folderTrustTestSession = null;
+
+/** @var string|null $archivedBareAdhocName a non-cc-* tmux session used to test BareProcessService::live_bare_agent_session_ids()'s exclusion from the archived list and resume guard, for the finally-block safety net */
+$archivedBareAdhocName = null;
+
+/** @var string|null $resumeArgTestSession a non-cc-* tmux session used to test the argv-derived --resume/--session-id resolution tier, for the finally-block safety net */
+$resumeArgTestSession = null;
+
+/** @var string|null $realpathMatchTestSession a non-cc-* tmux session used to test ProcessInspector::find_claude_processes()'s realpath-based match, for the finally-block safety net */
+$realpathMatchTestSession = null;
+
+/** @var string|null $daemonLabelTestSession a non-cc-* tmux session used to test ProcessInspector::find_claude_processes()'s "claude <subcommand>" argv[0] match, for the finally-block safety net */
+$daemonLabelTestSession = null;
+
+/** @var resource|null $rosterBareProc a plain (non-tmux) fake claude process used to test the daemon-roster resolution tier, for the finally-block safety net */
+$rosterBareProc = null;
+
+/** @var resource|null $rosterPtyHostProc one half of a fake daemon worker pair used to test take_over_bare_process()'s roster resolution + sibling-kill, for the finally-block safety net */
+$rosterPtyHostProc = null;
+
+/** @var resource|null $rosterSpareProc the other half of that same fake daemon worker pair, for the finally-block safety net */
+$rosterSpareProc = null;
+
 /** @var string|null $sendTestSession a cc-* session used to test PromptInteractionService::send_message(), for the finally-block safety net */
 $sendTestSession = null;
 
@@ -119,6 +143,26 @@ function find_session(string $name): ?array
     }
 
     return null;
+}
+
+/**
+ * NOT just is_dir("/proc/{$pid}") - a killed process this script itself
+ * spawned (via proc_open) stays a zombie, with its /proc entry still very
+ * much present, until this script's own proc_close()/proc_terminate() (or
+ * exit) reaps it - same finding as test_socket_harness.php's own
+ * pid_alive() (2026-08-08), hit again 2026-09-12 writing the roster
+ * take-over test below: a naive is_dir() check kept reporting a pid this
+ * app had already correctly killed as "still alive".
+ */
+function pid_alive(int $pid): bool
+{
+    $status = @file_get_contents("/proc/{$pid}/status");
+
+    if ($status === false) {
+        return false;
+    }
+
+    return preg_match('/^State:\s+Z/m', $status) !== 1;
 }
 
 // --- PromptParser::clean_pane_title(): strips Claude Code's animated spinner glyph,
@@ -215,6 +259,30 @@ assert_equal(
     $trustParsed['options'] ?? null,
     'parse_blocking_prompt: real trust dialog - both options extracted'
 );
+
+// Claude Code v2.1.269 dropped this dialog's option numbers entirely and
+// reversed the default order (verified live 2026-09-11 - see PromptParser's
+// own docblock and tests/fixtures/claude_folder_trust_prompt_pane_v2_1_269.txt,
+// a verbatim capture from a real, never-before-trusted directory). This is
+// the actual regression Andres hit ("can't start a session in a new
+// folder"): the old digit-anchored parse below found nothing at all here,
+// so the app never saw the trust dialog as blocking, and answer_prompt()'s
+// digit-then-Enter would have confirmed whatever's default-selected instead
+// ("No, exit" - killing the session) rather than the option the human meant.
+$realTrustDialogV21269 = (string)file_get_contents(__DIR__ . '/fixtures/claude_folder_trust_prompt_pane_v2_1_269.txt');
+$trustParsedV21269 = PromptParser::parse_blocking_prompt($realTrustDialogV21269);
+assert_true($trustParsedV21269 !== null, 'parse_blocking_prompt: v2.1.269 unnumbered trust dialog is still recognized as a blocking prompt, not silently missed');
+assert_equal(
+    "Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source project, or work from your team). If not, take a moment to review what's in this folder first.",
+    $trustParsedV21269['question'] ?? null,
+    'parse_blocking_prompt: v2.1.269 trust dialog - question still extracted with no leading marker to anchor on'
+);
+assert_equal(
+    [['number' => 1, 'label' => 'No, exit'], ['number' => 2, 'label' => 'Yes, I trust this folder']],
+    $trustParsedV21269['options'] ?? null,
+    'parse_blocking_prompt: v2.1.269 trust dialog - both options extracted from the unnumbered list, in their real (now reversed) on-screen order'
+);
+assert_equal(true, $trustParsedV21269['is_folder_trust'] ?? null, 'parse_blocking_prompt: v2.1.269 trust dialog - still flagged is_folder_trust despite having no numbers to key off');
 
 $realPermissionPrompt = "● Bash(echo hello-permission-test > /tmp/sessioneer-permission-test.txt)\n"
     . "\n"
@@ -774,6 +842,305 @@ try {
     @unlink($archivedFakeHome . '/.claude/projects/-archived-project/' . $archivedUuid . '.jsonl');
     @rmdir($archivedFakeHome . '/.claude/projects/-tracked-project');
     @rmdir($archivedFakeHome . '/.claude/projects/-archived-project');
+
+    // --- Same two fixes, the BARE-process half: a bare (untracked, no
+    // sidecar) claude process whose live agent_session_id is confidently
+    // known via the statusline marker must ALSO be excluded from
+    // "archived", and resume_agent_session() must ALSO refuse to resume
+    // it. Found live 2026-09-11 (Andres: his own real terminal session -
+    // no tmux, no sidecar at all - showed up as "archived" and "resuming"
+    // it from there made no sense) - see BareProcessService::
+    // live_bare_agent_session_ids()'s own docblock for the full incident.
+    // Reuses the exact marker-matched bare-process technique the
+    // take-over tests below use (a fake_claude pane fed a literal
+    // "sessioneer-data:{...}" line), just to exercise these two OTHER
+    // call sites instead. ---
+    $archivedBareUuid = '44444444-4444-4444-8444-444444444444';
+    @mkdir($archivedFakeHome . '/.claude/projects/-bare-project', 0700, true);
+    file_put_contents(
+        $archivedFakeHome . '/.claude/projects/-bare-project/' . $archivedBareUuid . '.jsonl',
+        '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hi"}]},"cwd":"/some/bare/path"}' . "\n"
+    );
+    $archivedBareAdhocName = 'sessioneer-test-archived-bare-' . getmypid();
+    $archivedBareSetup = TmuxService::tmux_run(['new-session', '-d', '-s', $archivedBareAdhocName, '-c', Config::www_root(), Config::claude_bin()]);
+    assert_equal(0, $archivedBareSetup['exit'], 'bare-liveness setup: created a live non-cc-* tmux session hosting a fake_claude process');
+    usleep(300000);
+    TmuxService::tmux_run(['send-keys', '-t', $archivedBareAdhocName, 'sessioneer-data:{"session_id":"' . $archivedBareUuid . '"}', 'Enter']);
+    usleep(300000);
+
+    $dashboardArchivedWithBare = ArchivedSessionService::list_archived_dashboard()['archived'] ?? [];
+    $archivedIdsWithBare = array_column($dashboardArchivedWithBare, 'agent_session_id');
+    assert_true(!in_array($archivedBareUuid, $archivedIdsWithBare, true), 'list_archived_dashboard: a BARE (untracked) process\'s own live session is excluded too, not just a tracked one');
+
+    $bareResumeAttempt = SessionLifecycleService::resume_agent_session(Config::www_root(), $archivedBareUuid);
+    assert_equal(false, $bareResumeAttempt['ok'] ?? null, 'resume_agent_session: refuses a agent_session_id that is currently live via a BARE process, not just a tracked one');
+
+    // --- BareProcessService::resolve_bare_process_detail(): the dashboard's
+    // "Identify" button - a marker-matched bare process (this exact fixture)
+    // resolves with confidence='confirmed', not the weaker heuristic guess. ---
+    $archivedBarePid = null;
+    foreach (SessionService::list_all_sessions()['bare'] as $b) {
+        if (($b['tmux_session'] ?? null) === $archivedBareAdhocName) {
+            $archivedBarePid = (int)$b['pid'];
+            break;
+        }
+    }
+    assert_true($archivedBarePid !== null, 'resolve_bare_process_detail setup: the fixture bare process is visible as bare');
+    $bareDetail = BareProcessService::resolve_bare_process_detail($archivedBarePid ?? 0);
+    assert_equal(true, $bareDetail['ok'] ?? null, 'resolve_bare_process_detail: ok=true for a currently running process');
+    assert_equal($archivedBareUuid, $bareDetail['agent_session_id'] ?? null, 'resolve_bare_process_detail: resolves the marker-matched agent_session_id');
+    assert_equal('confirmed', $bareDetail['confidence'] ?? null, 'resolve_bare_process_detail: a marker match is reported as confirmed, not a guess');
+
+    $missingBareDetail = BareProcessService::resolve_bare_process_detail(0);
+    assert_equal(false, $missingBareDetail['ok'] ?? null, 'resolve_bare_process_detail: ok=false for a pid that is not a currently running claude process');
+
+    TmuxService::tmux_run(['kill-session', '-t', $archivedBareAdhocName]);
+    $archivedBareAdhocName = null;
+    @unlink($archivedFakeHome . '/.claude/projects/-bare-project/' . $archivedBareUuid . '.jsonl');
+    @rmdir($archivedFakeHome . '/.claude/projects/-bare-project');
+
+    // --- BareProcessService::agent_session_id_from_resume_arg() (via
+    // resolve_bare_process_detail()/live_bare_agent_session_ids()): a bare
+    // process started with an explicit --resume/--session-id resolves with
+    // confidence='confirmed' straight from its own argv - no marker, no
+    // timing guess. Found live 2026-09-11 (Andres: a real claude-code-ui-
+    // launched `claude --resume <path>.jsonl` process still showed up in
+    // the archived list) - that shape's transcript can be arbitrarily
+    // older than the resuming process's own start time, which is exactly
+    // what the pre-existing closest-start-time heuristic gets wrong.
+    //
+    // fake_claude discards its own argv entirely before exec'ing into
+    // `cat` (see its own header comment) - /proc/<pid>/cmdline would never
+    // show a real --resume flag through that stand-in, so this spawns a
+    // small bash-only pane directly instead, using `exec -a` the same way
+    // fake_claude does to fix argv[0] back to $0, but (unlike fake_claude)
+    // forwarding the rest of argv through to a second bash -c that just
+    // blocks on stdin forever, never erroring out on flags it doesn't
+    // understand the way a real coreutils tool would.
+    $resumeArgUuid = '66666666-6666-4666-8666-666666666666';
+    @mkdir($archivedFakeHome . '/.claude/projects/-resume-arg-project', 0700, true);
+    file_put_contents(
+        $archivedFakeHome . '/.claude/projects/-resume-arg-project/' . $resumeArgUuid . '.jsonl',
+        '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hi"}]},"cwd":"/some/resume-arg/path"}' . "\n"
+    );
+    $resumeArgTestSession = 'sessioneer-test-resume-arg-' . getmypid();
+    $resumeArgSetup = TmuxService::tmux_run([
+        'new-session', '-d', '-s', $resumeArgTestSession, '-c', Config::www_root(),
+        'bash', '-c', 'exec -a "$0" bash -c \'while :; do read -r _ 2>/dev/null || sleep 3600; done\' -- "$@"',
+        Config::claude_bin(), '--resume', $resumeArgUuid,
+    ]);
+    assert_equal(0, $resumeArgSetup['exit'], 'resume-arg setup: created a live non-cc-* tmux session whose real argv carries --resume <uuid>');
+    usleep(300000);
+
+    $resumeArgPid = null;
+    foreach (SessionService::list_all_sessions()['bare'] as $b) {
+        if (($b['tmux_session'] ?? null) === $resumeArgTestSession) {
+            $resumeArgPid = (int)$b['pid'];
+            break;
+        }
+    }
+    assert_true($resumeArgPid !== null, 'resume-arg setup: the fixture bare process is visible as bare');
+
+    $resumeArgDetail = BareProcessService::resolve_bare_process_detail($resumeArgPid ?? 0);
+    assert_equal($resumeArgUuid, $resumeArgDetail['agent_session_id'] ?? null, 'resolve_bare_process_detail: resolves the id straight from --resume in argv, no marker needed');
+    assert_equal('confirmed', $resumeArgDetail['confidence'] ?? null, 'resolve_bare_process_detail: an argv-derived id is confirmed, not a guess');
+
+    $dashboardArchivedWithResumeArg = ArchivedSessionService::list_archived_dashboard()['archived'] ?? [];
+    assert_true(
+        !in_array($resumeArgUuid, array_column($dashboardArchivedWithResumeArg, 'agent_session_id'), true),
+        'list_archived_dashboard: a bare --resume\'d process\'s own live session is excluded via its argv-derived id too'
+    );
+
+    TmuxService::tmux_run(['kill-session', '-t', $resumeArgTestSession]);
+    $resumeArgTestSession = null;
+    @unlink($archivedFakeHome . '/.claude/projects/-resume-arg-project/' . $resumeArgUuid . '.jsonl');
+    @rmdir($archivedFakeHome . '/.claude/projects/-resume-arg-project');
+
+    // --- ProcessInspector::find_claude_processes(): matches a process
+    // whose argv[0] is the REALPATH-resolved target of CLAUDE_BIN (a
+    // symlink, same as the real ~/.local/bin/claude install), not just an
+    // exact basename match. Found live 2026-09-11 alongside the argv-
+    // resume fix above: a real claude-code-ui-launched process's argv[0]
+    // was the fully-resolved versioned binary path
+    // (~/.local/share/claude/versions/X.Y.Z, basename "X.Y.Z") because
+    // that tool resolves the ~/.local/bin/claude symlink itself before
+    // exec'ing, rather than exec'ing the stable launcher path - invisible
+    // to the pre-existing basename-only check, so this whole class of
+    // process was never even seen as "bare" at all, let alone excluded
+    // from anywhere. ---
+    $fakeClaudeRealPath = realpath(Config::claude_bin());
+    assert_true($fakeClaudeRealPath !== false, 'realpath-match setup: CLAUDE_BIN resolves to a real file');
+    $claudeBinSymlink = sys_get_temp_dir() . '/sessioneer-test-claude-bin-symlink-' . getmypid();
+    @unlink($claudeBinSymlink);
+    symlink((string)$fakeClaudeRealPath, $claudeBinSymlink);
+    $originalClaudeBinEnv = getenv('CLAUDE_BIN');
+    putenv("CLAUDE_BIN={$claudeBinSymlink}");
+
+    $realpathMatchTestSession = 'sessioneer-test-realpath-match-' . getmypid();
+    $realpathMatchSetup = TmuxService::tmux_run(['new-session', '-d', '-s', $realpathMatchTestSession, '-c', Config::www_root(), (string)$fakeClaudeRealPath]);
+    assert_equal(0, $realpathMatchSetup['exit'], 'realpath-match setup: spawned a process using the REAL target path directly, not the CLAUDE_BIN symlink');
+    usleep(300000);
+
+    $foundViaRealpath = false;
+    foreach (SessionService::list_all_sessions()['bare'] as $b) {
+        if (($b['tmux_session'] ?? null) === $realpathMatchTestSession) {
+            $foundViaRealpath = true;
+            break;
+        }
+    }
+    assert_true($foundViaRealpath, 'find_claude_processes: recognizes a process via realpath match even though its argv[0] basename does not match CLAUDE_BIN\'s own basename at all');
+
+    TmuxService::tmux_run(['kill-session', '-t', $realpathMatchTestSession]);
+    $realpathMatchTestSession = null;
+    putenv($originalClaudeBinEnv !== false ? "CLAUDE_BIN={$originalClaudeBinEnv}" : 'CLAUDE_BIN');
+    @unlink($claudeBinSymlink);
+
+    // --- ProcessInspector::find_claude_processes(): matches a process
+    // whose argv[0] is "claude <subcommand>" as ONE space-containing argv
+    // element, not "claude" followed by a separate element. Found live
+    // 2026-09-12: the CLI's own background daemon (`claude daemon run`)
+    // rewrites its bg-spare/bg-pty-host worker processes' argv[0] to
+    // exactly this shape for `ps` readability - basename() of a string
+    // with no "/" in it is the string itself, so it never equals plain
+    // "claude" and was invisible to both the pre-existing basename check
+    // and the realpath check just above (there's no real file at a path
+    // like "claude bg-spare" to resolve at all). ---
+    $daemonLabelTestSession = 'sessioneer-test-daemon-label-' . getmypid();
+    $daemonLabelSetup = TmuxService::tmux_run([
+        'new-session', '-d', '-s', $daemonLabelTestSession, '-c', Config::www_root(),
+        'bash', '-c', 'exec -a "' . basename(Config::claude_bin()) . ' bg-spare" cat',
+    ]);
+    assert_equal(0, $daemonLabelSetup['exit'], 'daemon-label setup: created a live session whose argv[0] mimics the CLI daemon\'s own "claude bg-spare" process-title trick');
+    usleep(300000);
+
+    $foundViaDaemonLabel = false;
+    foreach (SessionService::list_all_sessions()['bare'] as $b) {
+        if (($b['tmux_session'] ?? null) === $daemonLabelTestSession) {
+            $foundViaDaemonLabel = true;
+            break;
+        }
+    }
+    assert_true($foundViaDaemonLabel, 'find_claude_processes: recognizes a process whose argv[0] is "claude <subcommand>" - the CLI daemon\'s own worker process-title convention');
+
+    TmuxService::tmux_run(['kill-session', '-t', $daemonLabelTestSession]);
+    $daemonLabelTestSession = null;
+
+    // --- BareProcessService's daemon-roster resolution tier
+    // (daemon_roster_session_ids()/resolve_via_daemon_roster()): the ONLY
+    // way to identify a bg-spare/bg-pty-host worker's own conversation at
+    // all, since that shape has no --resume in its own argv anywhere (the
+    // daemon dispatches it over a private rendezvous socket instead) -
+    // this is exactly what was still hiding Andres's own live session
+    // (running through this exact pool) in the archived list even after
+    // the argv-resume and realpath fixes above. A plain bare fake_claude
+    // process stands in for a real daemon worker here - only roster.json's
+    // OWN bookkeeping (pid + sessionId) is under test, not the real
+    // daemon's argv-rewriting trick (already covered just above). ---
+    $rosterUuid = '88888888-8888-4888-8888-888888888888';
+    @mkdir($archivedFakeHome . '/.claude/daemon', 0700, true);
+    @mkdir($archivedFakeHome . '/.claude/projects/-roster-project', 0700, true);
+    file_put_contents(
+        $archivedFakeHome . '/.claude/projects/-roster-project/' . $rosterUuid . '.jsonl',
+        '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hi"}]},"cwd":"/some/roster/path"}' . "\n"
+    );
+
+    $rosterBareCwd = Config::www_root() . '/project-a';
+    $rosterBareProc = proc_open([Config::claude_bin()], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $rosterBarePipes, $rosterBareCwd);
+    assert_true(is_resource($rosterBareProc), 'roster setup: spawned a plain (non-tmux) fake claude process to act as a daemon "worker"');
+    $rosterBarePid = is_resource($rosterBareProc) ? (proc_get_status($rosterBareProc)['pid'] ?? null) : null;
+    usleep(300000);
+
+    file_put_contents($archivedFakeHome . '/.claude/daemon/roster.json', json_encode([
+        'proto' => 1,
+        'workers' => [
+            'rostertst' => [
+                'pid' => $rosterBarePid,
+                'sessionId' => $rosterUuid,
+                'cwd' => $rosterBareCwd,
+            ],
+        ],
+    ]));
+
+    $rosterIds = BareProcessService::live_bare_agent_session_ids();
+    assert_true(in_array($rosterUuid, $rosterIds, true), 'live_bare_agent_session_ids: includes the daemon roster\'s own sessionId for a worker whose pid is still actually running');
+
+    $rosterArchived = ArchivedSessionService::list_archived_dashboard()['archived'] ?? [];
+    assert_true(!in_array($rosterUuid, array_column($rosterArchived, 'agent_session_id'), true), 'list_archived_dashboard: excludes a session the daemon roster says is currently live');
+
+    $rosterDetail = BareProcessService::resolve_bare_process_detail($rosterBarePid ?? 0);
+    assert_equal($rosterUuid, $rosterDetail['agent_session_id'] ?? null, 'resolve_bare_process_detail: resolves via the daemon roster when the pid itself has no --resume in its own argv');
+    assert_equal('confirmed', $rosterDetail['confidence'] ?? null, 'resolve_bare_process_detail: a daemon-roster match is confirmed, not a guess');
+
+    // --- BareProcessService::enrich_bare_with_confirmed_ids(): the
+    // dashboard's "add the title by default" ask (Andres, 2026-09-12) -
+    // a whole bare[] batch gets resolved_agent_session_id/resolved_title
+    // attached in one pass (one roster read shared across every row),
+    // for every row this can identify with CERTAINTY, with no click
+    // needed - never the unconfirmed heuristic guess, which stays behind
+    // the explicit "Identify" button. Mixes in an unresolvable row (a
+    // made-up pid with no roster/argv match at all) to prove that one
+    // comes back untouched rather than crashing or getting a bogus id. ---
+    $enrichedBare = BareProcessService::enrich_bare_with_confirmed_ids([
+        ['pid' => $rosterBarePid, 'cwd' => $rosterBareCwd],
+        ['pid' => 0, 'cwd' => '/some/unrelated/path'],
+    ]);
+    assert_equal($rosterUuid, $enrichedBare[0]['resolved_agent_session_id'] ?? null, 'enrich_bare_with_confirmed_ids: resolves a daemon-roster match within a batch');
+    assert_true(!array_key_exists('resolved_agent_session_id', $enrichedBare[1]), 'enrich_bare_with_confirmed_ids: a row with no resolvable id at all is left untouched, not given a bogus one');
+
+    // --- BareProcessService::declutter_bare_list(): Andres's own ask
+    // (2026-09-12) once he was seeing ~14 "Other claude processes on host"
+    // rows that were really just the daemon's own internals - pure
+    // array-in/array-out logic, no live process/tmux fixture needed at
+    // all. Display-only: never changes what a row's own Kill/Take-over
+    // targets, never touches a row with no resolved id at all. ---
+    $declutterInput = [
+        ['pid' => 100, 'cwd' => '/home/andres', 'is_daemon_supervisor' => true],
+        ['pid' => 200, 'cwd' => '/tmp/cc-daemon-1000/abc/spare', 'resolved_agent_session_id' => 'sess-a', 'resolved_title' => 'Session A'],
+        ['pid' => 201, 'cwd' => '/home/andres/www/project-a', 'resolved_agent_session_id' => 'sess-a', 'resolved_title' => 'Session A'],
+        ['pid' => 300, 'cwd' => '/tmp/cc-daemon-1000/def/spare'],
+    ];
+    $decluttered = BareProcessService::declutter_bare_list($declutterInput);
+    assert_equal(2, count($decluttered), 'declutter_bare_list: drops the daemon supervisor row and collapses the matched pair down to one, leaving the untouched row alone');
+    assert_true(!in_array(100, array_column($decluttered, 'pid'), true), 'declutter_bare_list: the daemon supervisor row (is_daemon_supervisor=true) is gone entirely');
+
+    $keptPair = null;
+    foreach ($decluttered as $row) {
+        if (in_array($row['pid'], [200, 201], true)) {
+            $keptPair = $row;
+        }
+    }
+    assert_equal(201, $keptPair['pid'] ?? null, 'declutter_bare_list: of the two rows resolving to the same session, keeps the one whose cwd is a real project path, not the daemon\'s internal /tmp pool path');
+    assert_equal(1, $keptPair['hidden_worker_count'] ?? null, 'declutter_bare_list: tags the kept row with how many other real pids also back the same session, rather than silently dropping them with no trace');
+
+    $untouchedRow = null;
+    foreach ($decluttered as $row) {
+        if ($row['pid'] === 300) {
+            $untouchedRow = $row;
+        }
+    }
+    assert_true($untouchedRow !== null, 'declutter_bare_list: a row with no resolved_agent_session_id at all (an idle, not-yet-claimed spare) passes through');
+    assert_true(!array_key_exists('hidden_worker_count', $untouchedRow ?? []), 'declutter_bare_list: an untouched row never gets a bogus hidden_worker_count');
+
+    // --- liveness safety net: once the worker's pid is actually gone, the
+    // roster's own sessionId must stop being trusted - otherwise a crashed
+    // daemon that never prunes its own stale roster would permanently hide
+    // a truly-dead session from "archived" and refuse to ever let it be
+    // resumed again (see daemon_roster_session_ids()'s own docblock). ---
+    if (is_resource($rosterBareProc)) {
+        proc_terminate($rosterBareProc);
+        proc_close($rosterBareProc);
+    }
+    $rosterBareProc = null;
+    usleep(300000);
+
+    $rosterIdsAfterDeath = BareProcessService::live_bare_agent_session_ids();
+    assert_true(!in_array($rosterUuid, $rosterIdsAfterDeath, true), 'live_bare_agent_session_ids: stops trusting the roster\'s sessionId once its worker pid is actually gone');
+
+    @unlink($archivedFakeHome . '/.claude/daemon/roster.json');
+    @rmdir($archivedFakeHome . '/.claude/daemon');
+    @unlink($archivedFakeHome . '/.claude/projects/-roster-project/' . $rosterUuid . '.jsonl');
+    @rmdir($archivedFakeHome . '/.claude/projects/-roster-project');
+
     @rmdir($archivedFakeHome . '/.claude/projects');
     @rmdir($archivedFakeHome . '/.claude');
     @rmdir($archivedFakeHome);
@@ -1244,6 +1611,87 @@ try {
     @rmdir($markerFakeHome);
     putenv('HOME_ROOT');
 
+    // --- take_over_bare_process(): a daemon-managed worker pair - Andres's
+    // own explicit ask (2026-09-12), once this could be resolved with
+    // certainty via the daemon roster: "I'm ok with a plain kill and
+    // --resume inside a managed tmux". A worker is really TWO real
+    // processes sharing one conversation (a bg-pty-host wrapper, whose own
+    // cwd never leaves the daemon's internal pool location, and its bg-
+    // spare/REPL child, whose cwd is the real project folder) - taking
+    // over EITHER one must kill BOTH (not leave the other orphaned) and
+    // resume into the REAL cwd, never the pool path. ---
+    $rosterTakeOverUuid = '99999999-9999-4999-8999-999999999999';
+    $rosterTakeOverFakeHome = sys_get_temp_dir() . '/sessioneer-test-take-over-roster-home-' . getmypid();
+    $rosterTakeOverPoolCwd = sys_get_temp_dir() . '/sessioneer-test-take-over-roster-pool-' . getmypid();
+    @mkdir($rosterTakeOverFakeHome . '/.claude/daemon', 0700, true);
+    @mkdir($rosterTakeOverFakeHome . '/.claude/projects/-roster-take-over-project', 0700, true);
+    @mkdir($rosterTakeOverPoolCwd, 0700, true);
+    $rosterTakeOverCwd = Config::www_root() . '/project-a';
+    file_put_contents(
+        $rosterTakeOverFakeHome . '/.claude/projects/-roster-take-over-project/' . $rosterTakeOverUuid . '.jsonl',
+        json_encode(['type' => 'user', 'message' => ['role' => 'user', 'content' => [['type' => 'text', 'text' => 'hi']]], 'cwd' => $rosterTakeOverCwd]) . "\n"
+    );
+    putenv("HOME_ROOT={$rosterTakeOverFakeHome}");
+
+    $rosterPtyHostProc = proc_open([Config::claude_bin()], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $rosterPtyHostPipes, $rosterTakeOverPoolCwd);
+    $rosterPtyHostPid = is_resource($rosterPtyHostProc) ? (proc_get_status($rosterPtyHostProc)['pid'] ?? null) : null;
+    $rosterSpareProc = proc_open([Config::claude_bin()], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $rosterSparePipes, $rosterTakeOverCwd);
+    $rosterSparePid = is_resource($rosterSpareProc) ? (proc_get_status($rosterSpareProc)['pid'] ?? null) : null;
+    assert_true($rosterPtyHostPid !== null && $rosterSparePid !== null, 'roster take-over setup: spawned both halves of a fake daemon worker pair');
+    usleep(300000);
+
+    file_put_contents($rosterTakeOverFakeHome . '/.claude/daemon/roster.json', json_encode([
+        'proto' => 1,
+        'workers' => [
+            'rostertakeovertst' => [
+                'pid' => $rosterPtyHostPid,
+                'replPid' => $rosterSparePid,
+                'sessionId' => $rosterTakeOverUuid,
+                'cwd' => $rosterTakeOverCwd,
+            ],
+        ],
+    ]));
+
+    $rosterTakeOverResult = BareProcessService::take_over_bare_process((int)$rosterPtyHostPid);
+    assert_true($rosterTakeOverResult['ok'] ?? false, 'take_over_bare_process: ok=true for a daemon-roster-matched worker');
+    assert_true(!($rosterTakeOverResult['needs_choice'] ?? false), 'take_over_bare_process: no picker needed - the daemon roster gave a confident match');
+    $rosterTakeOverName = $rosterTakeOverResult['name'] ?? null;
+    assert_true(is_string($rosterTakeOverName) && str_starts_with($rosterTakeOverName, 'cc-'), 'take_over_bare_process: returns the new pane name, already resumed');
+
+    usleep(300000);
+    assert_true(!pid_alive((int)$rosterPtyHostPid), 'take_over_bare_process: killed the bg-pty-host half take-over was actually called on');
+    assert_true(!pid_alive((int)$rosterSparePid), 'take_over_bare_process: ALSO killed the sibling bg-spare half - not left orphaned');
+
+    $rosterTakeOverEntry = is_string($rosterTakeOverName) ? find_session($rosterTakeOverName) : null;
+    assert_true($rosterTakeOverEntry !== null, 'take_over_bare_process: the new session appears in list_all_sessions()');
+    assert_equal($rosterTakeOverCwd, $rosterTakeOverEntry['workdir'] ?? null, 'take_over_bare_process: resumed into the REAL project cwd (the sibling\'s) - not the daemon pool path the targeted pid itself was sitting in');
+    assert_equal($rosterTakeOverUuid, $rosterTakeOverEntry['agent_session_id'] ?? null, 'take_over_bare_process: sidecar records the exact agent_session_id read from the daemon roster');
+
+    if (is_string($rosterTakeOverName)) {
+        SessionLifecycleService::kill_agent_session($rosterTakeOverName);
+    }
+
+    if (is_resource($rosterPtyHostProc)) {
+        proc_terminate($rosterPtyHostProc);
+        proc_close($rosterPtyHostProc);
+    }
+    $rosterPtyHostProc = null;
+    if (is_resource($rosterSpareProc)) {
+        proc_terminate($rosterSpareProc);
+        proc_close($rosterSpareProc);
+    }
+    $rosterSpareProc = null;
+
+    @unlink($rosterTakeOverFakeHome . '/.claude/daemon/roster.json');
+    @rmdir($rosterTakeOverFakeHome . '/.claude/daemon');
+    @unlink($rosterTakeOverFakeHome . '/.claude/projects/-roster-take-over-project/' . $rosterTakeOverUuid . '.jsonl');
+    @rmdir($rosterTakeOverFakeHome . '/.claude/projects/-roster-take-over-project');
+    @rmdir($rosterTakeOverFakeHome . '/.claude/projects');
+    @rmdir($rosterTakeOverFakeHome . '/.claude');
+    @rmdir($rosterTakeOverFakeHome);
+    @rmdir($rosterTakeOverPoolCwd);
+    putenv('HOME_ROOT');
+
     // --- bare_process_take_over_candidates(): excludes another OTHER
     // live (marker-matched) bare process's own session for the same
     // cwd, even though nothing tracks it via a sidecar (Andres's own
@@ -1691,6 +2139,67 @@ try {
     SidecarStore::delete_sidecar($promptTestSession);
     $promptTestSession = null;
 
+    // --- PromptInteractionService::answer_prompt(): the initial per-folder
+    // trust dialog specifically. Found live 2026-09-11 (Andres: couldn't
+    // start a session in a new folder): Claude Code v2.1.269 dropped this
+    // dialog's option numbers entirely (see PromptParser's own docblock),
+    // so the plain digit-then-Enter path used for every other prompt shape
+    // would type a digit the dialog just ignores, then Enter confirms
+    // whatever's DEFAULT-highlighted instead ("No, exit") - silently
+    // killing the whole session rather than trusting the folder. This
+    // verifies the ACTUAL keys sent, not just the reported ok/message:
+    // cat's own stdout is teed to a raw log file, bypassing tmux's own
+    // escape-sequence interpretation of the captured "screen" (a bare
+    // Up/Down arrow moves the virtual cursor without printing anything
+    // visible, so the plain capture-pane trick the test above uses
+    // wouldn't show whether an arrow was sent at all) - so both the real
+    // Down-arrow-then-Enter sequence, and the absence of a literal digit,
+    // can be checked directly. ---
+    $folderTrustTestSession = 'cc-test-trust-answer-' . getmypid();
+    $folderTrustKeyLog = sys_get_temp_dir() . '/sessioneer-test-trust-keys-' . getmypid() . '.bin';
+    @unlink($folderTrustKeyLog);
+    $trustSetup = TmuxService::tmux_run([
+        'new-session', '-d', '-s', $folderTrustTestSession, '-c', Config::www_root(),
+        'bash', '-c', 'stty -echo; exec cat | tee ' . escapeshellarg($folderTrustKeyLog),
+    ]);
+    assert_equal(0, $trustSetup['exit'], 'answer_prompt (folder trust) setup: created a live cc-* session to answer the trust dialog in');
+    SidecarStore::write_sidecar($folderTrustTestSession, ['workdir' => Config::www_root(), 'spawned_at' => time()]);
+    usleep(300000);
+
+    // Types the real (unnumbered, reversed-order) v2.1.269 dialog text in
+    // verbatim, one real pane line per fixture line - same technique the
+    // digit-based prompt tests above use, just with the real captured
+    // fixture instead of a hand-typed shape.
+    foreach (explode("\n", $realTrustDialogV21269) as $fixtureLine) {
+        TmuxService::tmux_run(['send-keys', '-t', $folderTrustTestSession, '-l', $fixtureLine]);
+        TmuxService::tmux_run(['send-keys', '-t', $folderTrustTestSession, 'Enter']);
+    }
+    usleep(300000);
+
+    // The fixture text itself (a real captured workspace path, e.g.
+    // ".../blah-newproj-test3-1789184921") legitimately contains digits,
+    // including "2" - only the bytes answer_prompt() itself sends, AFTER
+    // this setup phase, are what the assertions below care about.
+    $trustKeyLogOffsetBeforeAnswer = filesize($folderTrustKeyLog);
+
+    $trustAnswer = PromptInteractionService::answer_prompt($folderTrustTestSession, 2); // option 2 = "Yes, I trust this folder"
+    assert_true($trustAnswer['ok'] ?? false, 'answer_prompt: folder trust dialog answers ok=true');
+    assert_equal(
+        "Confirmed 'Yes, I trust this folder' for {$folderTrustTestSession}",
+        $trustAnswer['message'] ?? null,
+        'answer_prompt: folder trust dialog reports the real option label, resolved from the live cursor position rather than a fixed offset'
+    );
+    usleep(300000);
+
+    $trustKeysSent = substr((string)file_get_contents($folderTrustKeyLog), $trustKeyLogOffsetBeforeAnswer);
+    assert_true(!str_contains($trustKeysSent, '2'), 'answer_prompt: folder trust dialog - never sends the bare digit "2" (the old, now-broken behavior) - v2.1.269 ignores it entirely and would go on to confirm whatever is already default-highlighted instead of the requested option');
+    assert_true(str_ends_with($trustKeysSent, "\x1b[B\n"), 'answer_prompt: folder trust dialog - sends exactly one Down-arrow (off the default "No, exit") then Enter, to actually reach "Yes, I trust this folder"');
+
+    TmuxService::tmux_run(['kill-session', '-t', $folderTrustTestSession]);
+    SidecarStore::delete_sidecar($folderTrustTestSession);
+    @unlink($folderTrustKeyLog);
+    $folderTrustTestSession = null;
+
     // --- TmuxService::tmux_capture_pane(): a long single logical line (e.g. the command
     // in a permission prompt) that the terminal soft-wraps across several
     // pane rows must come back rejoined into one line, not split mid-word -
@@ -2103,6 +2612,33 @@ try {
     }
     if ($promptTestSession !== null) {
         TmuxService::tmux_run(['kill-session', '-t', $promptTestSession]);
+    }
+    if ($folderTrustTestSession !== null) {
+        TmuxService::tmux_run(['kill-session', '-t', $folderTrustTestSession]);
+    }
+    if ($archivedBareAdhocName !== null) {
+        TmuxService::tmux_run(['kill-session', '-t', $archivedBareAdhocName]);
+    }
+    if ($resumeArgTestSession !== null) {
+        TmuxService::tmux_run(['kill-session', '-t', $resumeArgTestSession]);
+    }
+    if ($realpathMatchTestSession !== null) {
+        TmuxService::tmux_run(['kill-session', '-t', $realpathMatchTestSession]);
+    }
+    if ($daemonLabelTestSession !== null) {
+        TmuxService::tmux_run(['kill-session', '-t', $daemonLabelTestSession]);
+    }
+    if ($rosterBareProc !== null && is_resource($rosterBareProc)) {
+        proc_terminate($rosterBareProc);
+        proc_close($rosterBareProc);
+    }
+    if ($rosterPtyHostProc !== null && is_resource($rosterPtyHostProc)) {
+        proc_terminate($rosterPtyHostProc);
+        proc_close($rosterPtyHostProc);
+    }
+    if ($rosterSpareProc !== null && is_resource($rosterSpareProc)) {
+        proc_terminate($rosterSpareProc);
+        proc_close($rosterSpareProc);
     }
     if ($sendTestSession !== null) {
         TmuxService::tmux_run(['kill-session', '-t', $sendTestSession]);

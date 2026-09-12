@@ -142,9 +142,22 @@ class HeadlessRuntime implements RuntimeProvider
 
         // Multi-question: labels passed straight through (['answers'=>[[label],…]]).
         $labels = $answers['answers'] ?? null;
+        $requestId = is_string($pending['request_id'] ?? null) ? $pending['request_id'] : null;
 
         if (is_array($labels)) {
-            return $this->client->answer_question($sessionRef, $labels);
+            $normalized = $this->normalize_question_answers($pending, $labels);
+            if ($normalized === null) {
+                return ['ok' => false, 'message' => 'Rejected: answers do not match this question'];
+            }
+            return $this->client->answer_question($sessionRef, $normalized, $requestId);
+        }
+
+        // Free-text answer ("type your own answer" option) - the custom text
+        // becomes the answer label for the opencode question reply.
+        $text = $answers['text'] ?? null;
+
+        if (is_string($text) && trim($text) !== '') {
+            return $this->client->answer_question($sessionRef, [[trim($text)]], $requestId);
         }
 
         // Single question answered by option number (the Sessioneer canonical shape):
@@ -155,7 +168,10 @@ class HeadlessRuntime implements RuntimeProvider
         if ($option !== null && (is_int($option) || ctype_digit((string)$option))) {
             foreach ($pending['options'] as $o) {
                 if ($o['number'] === (int)$option) {
-                    return $this->client->answer_question($sessionRef, [$o['label']]);
+                    if ($o['label'] === 'Type something') {
+                        return ['ok' => false, 'message' => 'Rejected: a custom answer requires text'];
+                    }
+                    return $this->client->answer_question($sessionRef, [$o['label']], $requestId);
                 }
             }
 
@@ -163,5 +179,48 @@ class HeadlessRuntime implements RuntimeProvider
         }
 
         return ['ok' => false, 'message' => 'Rejected: no valid answer supplied'];
+    }
+
+    /**
+     * The shared multi-question card predates OpenCode and submits option
+     * positions (or {text: ...}); OpenCode requires labels. A label-shaped
+     * caller remains supported for the runtime API.
+     *
+     * @param array<string,mixed> $pending
+     * @param array<int,mixed> $answers
+     * @return array<int, array<int,string>|string>|null
+     */
+    private function normalize_question_answers(array $pending, array $answers): ?array
+    {
+        $questions = is_array($pending['tool_input']['questions'] ?? null) ? $pending['tool_input']['questions'] : [];
+        if (count($questions) !== count($answers)) return null;
+
+        $normalized = [];
+        foreach ($questions as $index => $question) {
+            if (!is_array($question) || !array_key_exists($index, $answers)) return null;
+            $answer = $answers[$index];
+            if (is_array($answer) && array_key_exists('text', $answer)) {
+                $text = $answer['text'];
+                if (!is_string($text) || trim($text) === '') return null;
+                $normalized[] = trim($text);
+                continue;
+            }
+
+            $selected = is_array($answer) ? $answer : [$answer];
+            if ($selected === []) return null;
+            $labels = [];
+            foreach ($selected as $value) {
+                if (is_string($value)) {
+                    $labels[] = $value;
+                    continue;
+                }
+                if (!is_int($value)) return null;
+                $option = $question['options'][(int) $value - 1] ?? null;
+                if (!is_array($option) || !is_string($option['label'] ?? null)) return null;
+                $labels[] = $option['label'];
+            }
+            $normalized[] = $labels;
+        }
+        return $normalized;
     }
 }

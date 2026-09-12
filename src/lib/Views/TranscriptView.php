@@ -153,9 +153,9 @@ class TranscriptView extends View
      * showing it immediately in full defeats the point of the outer
      * collapse in the first place.
      *
-     * @param array{kind:string, text:string, image?:array{media_type:string, data:string}, attachments?:array<int, array{file_uuid:string, filename:string, size:int, isImage:bool, media_type:string}>} $block
+     * @param array{kind:string, text:string, image?:array{media_type:string, data:string}, attachments?:array<int, array{file_uuid:string, filename:string, size:int, isImage:bool, media_type:string}>, question?:string, questions?:array<int, array{question?:string, header?:string, options?:array<int, array{label?:string}>, multiSelect?:bool, multiple?:bool, custom?:bool}>, header?:string, options?:array<int, array{number?:int, label?:string}>, answer?:string|null, pending?:bool, agent_type?:string, description?:string, status?:string, summary?:string} $block
      */
-    public static function render_transcript_block(array $block, string $sessionIdentifier, int $line, bool $isArchived = false, bool $isSubagent = false, bool $forceFullBlock = false): string
+    public static function render_transcript_block(array $block, string $sessionIdentifier, int $line, bool $isArchived = false, bool $isSubagent = false, bool $forceFullBlock = false, ?string $csrfToken = null): string
     {
         $imageHtml = isset($block['image']) ? self::render_transcript_image_html($block['image']) : '';
         $attachmentsHtml = !empty($block['attachments']) ? self::render_transcript_attachments_html($block['attachments'], $sessionIdentifier, $line, $isArchived) : '';
@@ -199,6 +199,62 @@ class TranscriptView extends View
             $description = $summary !== null ? "{$statusLabel}: {$summary}" : $statusLabel;
         }
 
+        // An opencode `question` block renders as a question card using the
+        // SAME blocked-prompt options component Claude Code's questions use
+        // (numbered answer buttons + the "Type something" free-text reveal).
+        // While the question is still pending in a live, answerable session
+        // it is fully interactive; once answered (or in a read-only/archived
+        // view) the options render in the same button styling,
+        // non-interactive, with the chosen answer shown.
+        $questionHtml = '';
+
+        if ($block['kind'] === 'question') {
+            $question = (string)($block['question'] ?? $block['text']);
+            $header = (string)($block['header'] ?? '');
+            $options = $block['options'] ?? [];
+            $questions = is_array($block['questions'] ?? null) ? $block['questions'] : [];
+            $answer = $block['answer'] ?? null;
+            $pending = !empty($block['pending']);
+            $isMultiQuestion = count($questions) > 1
+                || (!empty($questions) && (($questions[0]['multiSelect'] ?? $questions[0]['multiple'] ?? false) === true));
+
+            $heading = $header !== '' ? '<p class="text-[11px] font-semibold uppercase tracking-wider text-amber-500 mb-1">' . htmlspecialchars($header, ENT_QUOTES, 'UTF-8') . '</p>' : '';
+            $questionP = $isMultiQuestion ? '' : '<p class="text-sm lg:text-base text-amber-100">' . htmlspecialchars($question, ENT_QUOTES, 'UTF-8') . '</p>';
+
+            if ($pending && $csrfToken !== null && !$isArchived) {
+                // Live, still awaiting an answer - reuse the real component.
+                $optionsHtml = $isMultiQuestion
+                    ? BlockedPromptView::blocked_multi_question_html([
+                        'name' => $sessionIdentifier,
+                        'prompt_questions' => $questions,
+                    ], $csrfToken)
+                    : BlockedPromptView::blocked_prompt_options_html([
+                        'name' => $sessionIdentifier,
+                        'prompt_options' => $options,
+                    ], $csrfToken);
+
+                $questionHtml = '<div class="copy-block rounded border border-amber-700/40 bg-amber-950/20 px-3 py-2">' . $heading . $questionP . $optionsHtml . '<span class="copy-source sr-only">' . htmlspecialchars($question, ENT_QUOTES, 'UTF-8') . '</span><button type="button" class="copy-btn select-none text-[11px] text-amber-700 active:text-amber-500 mt-1">Copy</button></div>';
+            } else {
+                // Answered (or read-only) - same button styling, non-interactive.
+                $optionsHtml = '';
+                if ($options !== []) {
+                    $optionsHtml = '<div class="mt-2 flex flex-wrap gap-2">';
+                    foreach ($options as $opt) {
+                        $num = (int)($opt['number'] ?? 0);
+                        $label = htmlspecialchars((string)($opt['label'] ?? ''), ENT_QUOTES, 'UTF-8');
+                        $optionsHtml .= '<span class="rounded-lg border border-amber-700/60 bg-amber-900/40 text-amber-100 text-xs font-medium px-3 py-2 break-words max-w-full text-left">' . $num . '. ' . $label . '</span>';
+                    }
+                    $optionsHtml .= '</div>';
+                }
+
+                $answerHtml = ($answer !== null && $answer !== '')
+                    ? '<p class="mt-2 text-xs text-amber-300/70">Answered: ' . htmlspecialchars((string)$answer, ENT_QUOTES, 'UTF-8') . '</p>'
+                    : '';
+
+                $questionHtml = '<div class="copy-block rounded border border-amber-700/40 bg-amber-950/20 px-3 py-2">' . $heading . $questionP . $optionsHtml . $answerHtml . '<span class="copy-source sr-only">' . htmlspecialchars($question, ENT_QUOTES, 'UTF-8') . '</span><button type="button" class="copy-btn select-none text-[11px] text-amber-700 active:text-amber-500 mt-1">Copy</button></div>';
+            }
+        }
+
         return self::render('transcript/block', [
             'kind' => $block['kind'],
             'text' => $block['text'],
@@ -209,6 +265,7 @@ class TranscriptView extends View
             'imageHtml' => $imageHtml,
             'attachmentsHtml' => $attachmentsHtml,
             'subagentClass' => $isSubagent ? ($block['kind'] === 'tool_use' ? ' subagent-use-block' : ' subagent-detail') : '',
+            'questionHtml' => $questionHtml,
         ]);
     }
 
@@ -426,6 +483,7 @@ class TranscriptView extends View
         $isSubagent = false;
         $hasPlan = false;
         $hasTaskNotification = false;
+        $hasQuestion = false;
         $planStatus = null;
 
         foreach ($blocks as $block) {
@@ -435,6 +493,7 @@ class TranscriptView extends View
                 'tool_result' => $hasToolResult = true,
                 'plan' => $hasPlan = true,
                 'task_notification' => $hasTaskNotification = true,
+                'question' => $hasQuestion = true,
                 default => null,
             };
 
@@ -460,6 +519,14 @@ class TranscriptView extends View
 
         if (!$hasText && $hasPlan) {
             return 'plan_presented';
+        }
+
+        // An opencode `question` tool (see OpenCodeTranscriptService::
+        // tool_part_to_blocks()) reads as its own kind too - same "waiting
+        // on you" reasoning, so it renders as a question card rather than
+        // another tool call.
+        if (!$hasText && $hasQuestion) {
+            return 'question';
         }
 
         // A subagent launch/report (Claude Code's "Agent" tool - see
@@ -517,6 +584,9 @@ class TranscriptView extends View
             // above, extended to all three plan states (presented/approved/
             // rejected) - told apart by role label alone.
             'plan_presented', 'plan_approved', 'plan_rejected' => ['border' => 'border-amber-800/60', 'bg' => 'bg-amber-950/40', 'label' => 'text-amber-300'],
+            // An opencode question prompt - amber like the blocked-prompt
+            // card it mirrors (see entry_color_kind()'s comment).
+            'question' => ['border' => 'border-amber-700/40', 'bg' => 'bg-amber-950/20', 'label' => 'text-amber-300'],
             default => ['border' => 'border-slate-800', 'bg' => 'bg-slate-900/50', 'label' => 'text-slate-400'],
         };
     }
@@ -547,7 +617,7 @@ class TranscriptView extends View
      *
      * @param array<int, array{role?:?string, timestamp?:?string, line?:int, blocks:array<int, array{kind:string, text:string}>}> $entries
      */
-    public static function render_transcript_entries_html(array $entries, string $sessionIdentifier, bool $isArchived = false, ?string $cwd = null, ?string $agentLabel = null): string
+    public static function render_transcript_entries_html(array $entries, string $sessionIdentifier, bool $isArchived = false, ?string $cwd = null, ?string $agentLabel = null, ?string $csrfToken = null): string
     {
         $html = '';
         $count = count($entries);
@@ -557,7 +627,7 @@ class TranscriptView extends View
             $entry = $entries[$index];
 
             if (!self::entry_is_groupable_tool_call($entry)) {
-                $html .= self::render_transcript_entry($entry, $sessionIdentifier, $isArchived, $agentLabel);
+                $html .= self::render_transcript_entry($entry, $sessionIdentifier, $isArchived, $agentLabel, $csrfToken);
                 $index++;
 
                 continue;
@@ -776,12 +846,12 @@ class TranscriptView extends View
     /**
      * @param array{line?:int, blocks:array<int, array{kind:string, text:string}>} $entry
      */
-    private static function render_entry_blocks_html(array $entry, string $sessionIdentifier, bool $isArchived, bool $forceFullBlock = false): string
+    private static function render_entry_blocks_html(array $entry, string $sessionIdentifier, bool $isArchived, bool $forceFullBlock = false, ?string $csrfToken = null): string
     {
         $line = (int)($entry['line'] ?? 0);
 
         return implode('', array_map(
-            static fn(array $block): string => self::render_transcript_block($block, $sessionIdentifier, $line, $isArchived, false, $forceFullBlock),
+            static fn(array $block): string => self::render_transcript_block($block, $sessionIdentifier, $line, $isArchived, false, $forceFullBlock, $csrfToken),
             $entry['blocks']
         ));
     }
@@ -794,7 +864,7 @@ class TranscriptView extends View
      *
      * @param array{role:?string, timestamp:?string, line?:int, blocks:array<int, array{kind:string, text:string}>} $entry
      */
-    public static function render_transcript_entry(array $entry, string $sessionIdentifier, bool $isArchived = false, ?string $agentLabel = null): string
+    public static function render_transcript_entry(array $entry, string $sessionIdentifier, bool $isArchived = false, ?string $agentLabel = null, ?string $csrfToken = null): string
     {
         $role = $entry['role'] ?? 'system';
         $colorKind = self::entry_color_kind($entry);
@@ -812,6 +882,7 @@ class TranscriptView extends View
             'plan_presented' => 'Plan',
             'plan_approved' => 'Plan approved',
             'plan_rejected' => 'Plan rejected',
+            'question' => 'Question',
             default => ucfirst((string)$role),
         };
         $parsedTimestamp = is_string($entry['timestamp'] ?? null) ? strtotime($entry['timestamp']) : false;
@@ -843,7 +914,7 @@ class TranscriptView extends View
 
         $line = (int)($entry['line'] ?? 0);
         $blocksHtml = implode('', array_map(
-            static fn(array $block): string => self::render_transcript_block($block, $sessionIdentifier, $line, $isArchived, $isSubagent),
+            static fn(array $block): string => self::render_transcript_block($block, $sessionIdentifier, $line, $isArchived, $isSubagent, false, $csrfToken),
             $entry['blocks']
         ));
 

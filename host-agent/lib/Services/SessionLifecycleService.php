@@ -243,6 +243,23 @@ class SessionLifecycleService
                 return ['ok' => false, 'message' => 'This session already has a live pane - refusing to open a second one on the same transcript'];
             }
 
+            // agent_session_id_already_live() above only checks TRACKED
+            // (tmux+sidecar) sessions - a bare process (e.g. a plain
+            // `claude` typed by hand in a real terminal, no tmux at all)
+            // has no sidecar to find there, so without this a resume could
+            // still spawn a second process fighting over the same
+            // transcript a bare one is actively writing to. Kept as its
+            // own separate check rather than folded into
+            // agent_session_id_already_live() itself - that method is also
+            // on session_start.php's hot hook path (fires on every
+            // /clear, /compact, --resume), which has no bare-process
+            // angle to guard against and shouldn't pay for scanning them
+            // on every hook fire. See BareProcessService::live_bare_
+            // agent_session_ids()'s own docblock for the live incident.
+            if (in_array($agentSessionId, BareProcessService::live_bare_agent_session_ids(), true)) {
+                return ['ok' => false, 'message' => 'This session already has a live pane - refusing to open a second one on the same transcript'];
+            }
+
             $isOpencodeResume = OpenCodeTranscriptService::is_opencode_id($agentSessionId);
             $resumeAgentId = $isOpencodeResume ? 'opencode' : 'claude';
             $resumeAgent = AgentRegistry::get($resumeAgentId);

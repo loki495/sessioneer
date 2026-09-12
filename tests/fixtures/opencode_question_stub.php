@@ -23,7 +23,6 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 if ($method === 'GET' && $uri === '/question') {
     // A canned pending question for session ses_stub123; empty for anything else.
     // Mirrors the real QuestionRequest shape: {id, sessionID, questions[]}.
-    file_put_contents($stubStateFile, json_encode(['replies' => [], 'asked' => 1]));
     echo json_encode([[
         'id' => 'que_stubrequest',
         'sessionID' => 'ses_stub123',
@@ -42,11 +41,47 @@ if ($method === 'GET' && $uri === '/question') {
     exit;
 }
 
+if ($method === 'POST' && preg_match('#^/api/session/([^/]+)/question/([A-Za-z0-9_]+)/reply$#', $uri, $m)) {
+    $body = json_decode((string)file_get_contents('php://input'), true);
+    $state = json_decode((string)file_get_contents($stubStateFile), true) ?: ['replies' => []];
+    $state['v2'][] = [
+        'sessionID' => rawurldecode($m[1]),
+        'requestID' => $m[2],
+        'answers' => $body['answers'] ?? [],
+        'directory' => $_SERVER['HTTP_X_OPENCODE_DIRECTORY'] ?? null,
+    ];
+    file_put_contents($stubStateFile, json_encode($state));
+
+    $mode = $state['mode'] ?? 'v2_success';
+    if ($mode === 'v2_not_found' || $mode === 'v1_not_found') {
+        http_response_code(404);
+        echo '{"error":"not found"}';
+    } elseif ($mode === 'v2_server_error') {
+        http_response_code(500);
+        echo '{"error":"broken"}';
+    } elseif ($mode === 'v2_html_200') {
+        http_response_code(200);
+        echo '<html>unexpected proxy response</html>';
+    } else {
+        http_response_code(204);
+    }
+    exit;
+}
+
 if ($method === 'POST' && preg_match('#^/question/([A-Za-z0-9_]+)/reply$#', $uri, $m)) {
     $body = json_decode((string)file_get_contents('php://input'), true);
-    $state = json_decode((string)file_get_contents($stubStateFile), true);
-    $state['replies'][] = ['requestID' => $m[1], 'answers' => $body['answers'] ?? []];
+    $state = json_decode((string)file_get_contents($stubStateFile), true) ?: ['replies' => []];
+    $state['replies'][] = [
+        'requestID' => $m[1],
+        'answers' => $body['answers'] ?? [],
+        'directory' => $_SERVER['HTTP_X_OPENCODE_DIRECTORY'] ?? null,
+    ];
     file_put_contents($stubStateFile, json_encode($state));
+    if (($state['mode'] ?? null) === 'v1_not_found') {
+        http_response_code(404);
+        echo '{"name":"QuestionNotFoundError","message":"Question request not found"}';
+        exit;
+    }
     echo 'true';
     exit;
 }

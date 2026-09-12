@@ -2,7 +2,12 @@
   <?php foreach ($questions as $qIndex => $q): ?>
     <?php
       $options = is_array($q['options'] ?? null) ? $q['options'] : [];
-      $isMulti = ($q['multiSelect'] ?? false) === true;
+      // OpenCode names this field `multiple`; Claude/Codex hook payloads
+      // use `multiSelect`. Both describe the same checkbox answer shape.
+      $isMulti = ($q['multiSelect'] ?? $q['multiple'] ?? false) === true;
+      // OpenCode defaults custom answers on when the key is omitted, while
+      // an explicit false must suppress the free-text affordance.
+      $allowsCustom = ($q['custom'] ?? true) === true;
       $inputType = $isMulti ? 'checkbox' : 'radio';
       $inputName = 'q' . (int)$qIndex . ($isMulti ? '[]' : '');
       $freetextValue = count($options) + 1;
@@ -16,7 +21,7 @@
             <span class="break-words"><?= $this->e((string)($opt['label'] ?? '')) ?></span>
           </label>
         <?php endforeach ?>
-        <?php if (!$isMulti): ?>
+        <?php if (!$isMulti && $allowsCustom): ?>
           <label class="flex items-center gap-2 text-sm text-amber-100">
             <input type="radio" name="<?= $inputName ?>" value="<?= $freetextValue ?>" class="freetext-toggle accent-indigo-600">
             <span>Type something&hellip;</span>

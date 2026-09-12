@@ -181,18 +181,6 @@ parameters:
 			path: host-agent/lib/Services/ProcessInspector.php
 
 		-
-			message: '#^Offset 0 on non\-empty\-list\<string\> on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: host-agent/lib/Services/ProcessInspector.php
-
-		-
-			message: '#^Strict comparison using \=\=\= between string and null will always evaluate to false\.$#'
-			identifier: identical.alwaysFalse
-			count: 1
-			path: host-agent/lib/Services/ProcessInspector.php
-
-		-
 			message: '#^Match expression does not handle remaining value\: string$#'
 			identifier: match.unhandled
 			count: 1
@@ -589,24 +577,6 @@ parameters:
 			path: src/lib/Views/TranscriptView.php
 
 		-
-			message: '#^Match arm comparison between null and ''completed'' is always false\.$#'
-			identifier: match.alwaysFalse
-			count: 1
-			path: src/lib/Views/TranscriptView.php
-
-		-
-			message: '#^Match arm comparison between null and ''failed'' is always false\.$#'
-			identifier: match.alwaysFalse
-			count: 1
-			path: src/lib/Views/TranscriptView.php
-
-		-
-			message: '#^Match arm comparison between null and null is always true\.$#'
-			identifier: match.alwaysTrue
-			count: 1
-			path: src/lib/Views/TranscriptView.php
-
-		-
 			message: '#^Method App\\Views\\TranscriptView\:\:render_antigravity_model_toggle_html\(\) has parameter \$detail with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
@@ -667,12 +637,6 @@ parameters:
 			path: src/lib/Views/TranscriptView.php
 
 		-
-			message: '#^Offset ''agent_type'' on array\{kind\: ''tool_result'', text\: string, image\?\: array\{media_type\: string, data\: string\}, attachments\?\: array\<int, array\{file_uuid\: string, filename\: string, size\: int, isImage\: bool, media_type\: string\}\>\} in isset\(\) does not exist\.$#'
-			identifier: isset.offset
-			count: 1
-			path: src/lib/Views/TranscriptView.php
-
-		-
 			message: '#^Offset ''agent_type'' on array\{kind\: string\} on left side of \?\? does not exist\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
@@ -692,12 +656,6 @@ parameters:
 
 		-
 			message: '#^Offset ''command'' on array\{kind\: string, text\: string\} on left side of \?\? does not exist\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: src/lib/Views/TranscriptView.php
-
-		-
-			message: '#^Offset ''description'' on array\{kind\: string, text\: string, image\?\: array\{media_type\: string, data\: string\}, attachments\?\: array\<int, array\{file_uuid\: string, filename\: string, size\: int, isImage\: bool, media_type\: string\}\>\} on left side of \?\? does not exist\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
 			path: src/lib/Views/TranscriptView.php
@@ -739,18 +697,6 @@ parameters:
 			path: src/lib/Views/TranscriptView.php
 
 		-
-			message: '#^Offset ''status'' on array\{kind\: ''task_notification'', text\: string, image\?\: array\{media_type\: string, data\: string\}, attachments\?\: array\<int, array\{file_uuid\: string, filename\: string, size\: int, isImage\: bool, media_type\: string\}\>\} on left side of \?\? does not exist\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: src/lib/Views/TranscriptView.php
-
-		-
-			message: '#^Offset ''summary'' on array\{kind\: ''task_notification'', text\: string, image\?\: array\{media_type\: string, data\: string\}, attachments\?\: array\<int, array\{file_uuid\: string, filename\: string, size\: int, isImage\: bool, media_type\: string\}\>\} on left side of \?\? does not exist\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: src/lib/Views/TranscriptView.php
-
-		-
 			message: '#^Offset ''text'' on array\{kind\: string, text\: string\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
@@ -765,7 +711,7 @@ parameters:
 		-
 			message: '#^Result of && is always false\.$#'
 			identifier: booleanAnd.alwaysFalse
-			count: 5
+			count: 4
 			path: src/lib/Views/TranscriptView.php
 
 		-
@@ -789,7 +735,7 @@ parameters:
 		-
 			message: '#^Strict comparison using \!\=\= between null and null will always evaluate to false\.$#'
 			identifier: notIdentical.alwaysFalse
-			count: 9
+			count: 8
 			path: src/lib/Views/TranscriptView.php
 
 		-

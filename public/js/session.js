@@ -426,6 +426,34 @@
           + renderCollapsibleMarkdownBlock(block.text, 'border-fuchsia-800/40', 'text-fuchsia-300', '') + '</div>';
       case 'image':
         return imageHtml || (text ? '<div class="copy-block" data-line="' + line + '"><p class="copy-source break-words text-xs text-slate-600">' + text + '</p><button type="button" class="copy-btn select-none text-[11px] text-slate-700 active:text-slate-500">Copy</button></div>' : '');
+      case 'question':
+        // Mirrors TranscriptView::render_transcript_block()'s question
+        // rendering (PHP) - an opencode `question` tool renders as a question
+        // card using the blocked-prompt component's button styling. Pending
+        // questions stay actionable even when they first arrive through the
+        // poll path: renderPromptOptionsHtml() carries the same real session
+        // and CSRF fields as the PHP-rendered component, and the document
+        // delegated handlers below own both locations.
+        var questions = Array.isArray(block.questions) ? block.questions : [];
+        var isMultiQuestion = questions.length > 1 || (questions[0] && (questions[0].multiSelect === true || questions[0].multiple === true));
+        var q = '<div class="question-block" data-line="' + line + '"><div class="copy-block rounded border border-amber-700/40 bg-amber-950/20 px-3 py-2">';
+        if (block.header) { q += '<p class="text-[11px] font-semibold uppercase tracking-wider text-amber-500 mb-1">' + escapeHtml(block.header) + '</p>'; }
+        if (!isMultiQuestion) { q += '<p class="text-sm lg:text-base text-amber-100">' + escapeHtml(block.question || block.text || 'Waiting on input') + '</p>'; }
+        if (block.pending && isMultiQuestion) {
+          q += renderMultiQuestionFormHtml(sessionName, csrfToken, questions);
+        } else if (block.pending && block.options && block.options.length) {
+          q += renderPromptOptionsFormHtml(block.options);
+        } else if (block.options && block.options.length) {
+          q += '<div class="mt-2 flex flex-wrap gap-2">';
+          block.options.forEach(function (o) {
+            q += '<span class="rounded-lg border border-amber-700/60 bg-amber-900/40 text-amber-100 text-xs font-medium px-3 py-2 break-words max-w-full text-left">' + o.number + '. ' + escapeHtml(o.label) + '</span>';
+          });
+          q += '</div>';
+        }
+        if (block.answer) { q += '<p class="mt-2 text-xs text-amber-300/70">Answered: ' + escapeHtml(block.answer) + '</p>'; }
+        else if (block.pending) { q += '<p class="mt-2 text-xs text-amber-400/80">Awaiting your answer</p>'; }
+        q += '<span class="copy-source sr-only">' + escapeHtml(block.question || block.text || 'Waiting on input') + '</span><button type="button" class="copy-btn select-none text-[11px] text-amber-700 active:text-amber-500 mt-1">Copy</button></div></div>';
+        return q;
       default:
         return text ? '<div class="copy-block" data-line="' + line + '"><p class="copy-source break-words text-xs text-slate-600">' + text + '</p><button type="button" class="copy-btn select-none text-[11px] text-slate-700 active:text-slate-500">Copy</button></div>' : '';
     }
@@ -448,6 +476,7 @@
     var isSubagent = blocks.some(function (b) { return b.agent_type != null; });
     var hasPlan = blocks.some(function (b) { return b.kind === 'plan'; });
     var hasTaskNotification = blocks.some(function (b) { return b.kind === 'task_notification'; });
+    var hasQuestion = blocks.some(function (b) { return b.kind === 'question'; });
     var planStatus = null;
     blocks.forEach(function (b) { if (b.plan_status != null) { planStatus = b.plan_status; } });
 
@@ -461,6 +490,13 @@
 
     if (!hasText && hasPlan) {
       return 'plan_presented';
+    }
+
+    // An opencode `question` tool reads as its own kind too - same
+    // "waiting on you" reasoning as plan/subagent, see
+    // TranscriptView::entry_color_kind() (PHP).
+    if (!hasText && hasQuestion) {
+      return 'question';
     }
 
     // See TranscriptView::entry_color_kind() (PHP) for why this check comes
@@ -512,6 +548,10 @@
       case 'plan_approved':
       case 'plan_rejected':
         return { border: 'border-amber-800/60', bg: 'bg-amber-950/40', label: 'text-amber-300' };
+      case 'question':
+        // See TranscriptView::entry_color_classes() (PHP) - amber like the
+        // blocked-prompt card it mirrors.
+        return { border: 'border-amber-700/40', bg: 'bg-amber-950/20', label: 'text-amber-300' };
       default:
         return { border: 'border-slate-800', bg: 'bg-slate-900/50', label: 'text-slate-400' };
     }
@@ -531,6 +571,7 @@
       : colorKind === 'plan_presented' ? 'Plan'
       : colorKind === 'plan_approved' ? 'Plan approved'
       : colorKind === 'plan_rejected' ? 'Plan rejected'
+      : colorKind === 'question' ? 'Question'
       : (ROLE_LABELS[entry.role] || (entry.role ? escapeHtml(entry.role) : 'System'));
     var parsedMs = entry.timestamp ? Date.parse(entry.timestamp) : NaN;
     var timestamp = !isNaN(parsedMs) ? escapeHtml(relativeTimeLabel(Math.floor(parsedMs / 1000))) : '';
@@ -1222,7 +1263,8 @@
 
     questions.forEach(function (q, qIndex) {
       var options = q.options || [];
-      var isMulti = q.multiSelect === true;
+      var isMulti = q.multiSelect === true || q.multiple === true;
+      var allowsCustom = q.custom !== false;
       var inputType = isMulti ? 'checkbox' : 'radio';
       var inputName = 'q' + qIndex + (isMulti ? '[]' : '');
       var freetextValue = options.length + 1;
@@ -1238,7 +1280,7 @@
           + '</label>';
       });
 
-      if (!isMulti) {
+      if (!isMulti && allowsCustom) {
         html += '<label class="flex items-center gap-2 text-sm text-amber-100">'
           + '<input type="radio" name="' + inputName + '" value="' + freetextValue + '" class="freetext-toggle accent-indigo-600">'
           + '<span>Type something&hellip;</span>'
@@ -1547,8 +1589,11 @@
   // successful answer needs no explicit revert - the card either gets
   // replaced (new/no prompt) or re-dimmed by the check above on the next
   // rebuild, either way never left stale.
-  function markBlockedSectionPending(noteText) {
-    var card = blockedSection.firstElementChild;
+  function markBlockedSectionPending(noteText, card) {
+    // The card is the blocked-prompt card by default, but a pending opencode
+    // question can also render its answer component inside a transcript
+    // .question-block - target whichever card the form actually lives in.
+    card = card || (blockedSection && blockedSection.firstElementChild);
 
     if (card) {
       card.classList.add('opacity-50');
@@ -1572,17 +1617,17 @@
     // the browser, even though it still LOOKED like a real request went
     // out. Regression test: test_session_replay_browser.php's "the click's
     // real submit reached /answer_prompt.php" assertion.
-    blockedSection.querySelectorAll('button, textarea, select, input:not([type="hidden"])').forEach(function (el) {
+    (card || blockedSection).querySelectorAll('button, textarea, select, input:not([type="hidden"])').forEach(function (el) {
       if (el instanceof HTMLButtonElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement || el instanceof HTMLInputElement) el.disabled = true;
     });
   }
 
-  function markBlockedSectionAnswerPending() {
-    markBlockedSectionPending('Answered - waiting to confirm…');
+  function markBlockedSectionAnswerPending(card) {
+    markBlockedSectionPending('Answered - waiting to confirm…', card);
   }
 
-  function revertBlockedSectionPending() {
-    var card = blockedSection.firstElementChild;
+  function revertBlockedSectionPending(card) {
+    card = card || (blockedSection && blockedSection.firstElementChild);
 
     if (card) {
       card.classList.remove('opacity-50');
@@ -1596,7 +1641,7 @@
     // Same :not([type="hidden"]) exclusion as markBlockedSectionPending()
     // above, kept symmetric even though re-enabling a hidden field was
     // never itself the bug - see that function's own comment.
-    blockedSection.querySelectorAll('button, textarea, select, input:not([type="hidden"])').forEach(function (el) {
+    (card || blockedSection).querySelectorAll('button, textarea, select, input:not([type="hidden"])').forEach(function (el) {
       if (el instanceof HTMLButtonElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement || el instanceof HTMLInputElement) el.disabled = false;
     });
   }
@@ -1608,7 +1653,8 @@
   // common enough that a full page reload per answer would be poor UX
   // (same reasoning as compose send).
   if (blockedSection) {
-    blockedSection.addEventListener('submit', function (e) {
+    document.addEventListener('submit', function (e) {
+      if (!closestEventTarget(e, '#blocked-prompt-section, #history-list .question-block')) return;
       var form = closestEventTarget(e, 'form[data-confirm-label]');
 
       if (!form) {
@@ -1621,8 +1667,12 @@
         return;
       }
 
+      // The card is the blocked-prompt card by default, but a pending
+      // opencode question's answer component can also sit inside a
+      // transcript .question-block - gray whichever card the form lives in.
+      var card = form.closest('.question-block') || (blockedSection && blockedSection.firstElementChild);
       answerPendingReason = currentBlockedReason;
-      markBlockedSectionAnswerPending();
+      markBlockedSectionAnswerPending(card);
       // See renderThinkingIndicator()'s own comment - shows the optimistic
       // thinking bubble immediately, without waiting on any poll.
       renderThinkingIndicator({ working: false, blocked_reason: null });
@@ -1645,7 +1695,7 @@
             renderThinkingIndicator({ working: false, blocked_reason: currentBlockedReason });
             answerPendingHistoryEl = null;
             removePendingEntry(pendingEl);
-            revertBlockedSectionPending();
+            revertBlockedSectionPending(card);
           }
         })
         .catch(function () {
@@ -1654,7 +1704,7 @@
           renderThinkingIndicator({ working: false, blocked_reason: currentBlockedReason });
           answerPendingHistoryEl = null;
           removePendingEntry(pendingEl);
-          revertBlockedSectionPending();
+          revertBlockedSectionPending(card);
         });
     });
   }
@@ -1676,8 +1726,9 @@
       textarea.disabled = true;
       sendBtn.disabled = true;
 
+      var card = wrapper.closest('.question-block') || (blockedSection && blockedSection.firstElementChild);
       answerPendingReason = currentBlockedReason;
-      markBlockedSectionAnswerPending();
+      markBlockedSectionAnswerPending(card);
       renderThinkingIndicator({ working: false, blocked_reason: null });
       var pendingEl = appendPendingEntry('user', [{ kind: 'text', text: text }]);
       answerPendingHistoryEl = pendingEl;
@@ -1701,7 +1752,7 @@
             renderThinkingIndicator({ working: false, blocked_reason: currentBlockedReason });
             answerPendingHistoryEl = null;
             removePendingEntry(pendingEl);
-            revertBlockedSectionPending();
+            revertBlockedSectionPending(card);
           }
         })
         .catch(function () {
@@ -1712,7 +1763,7 @@
           renderThinkingIndicator({ working: false, blocked_reason: currentBlockedReason });
           answerPendingHistoryEl = null;
           removePendingEntry(pendingEl);
-          revertBlockedSectionPending();
+          revertBlockedSectionPending(card);
         });
     }
 
@@ -1730,8 +1781,9 @@
         return;
       }
 
+      var card = wrapper.closest('.question-block') || (blockedSection && blockedSection.firstElementChild);
       answerPendingReason = currentBlockedReason;
-      markBlockedSectionAnswerPending();
+      markBlockedSectionAnswerPending(card);
       renderThinkingIndicator({ working: false, blocked_reason: null });
       var pendingEl = appendPendingEntry('user', [{ kind: 'text', text: collected.summaryParts.join('\n') }]);
       answerPendingHistoryEl = pendingEl;
@@ -1750,7 +1802,7 @@
             renderThinkingIndicator({ working: false, blocked_reason: currentBlockedReason });
             answerPendingHistoryEl = null;
             removePendingEntry(pendingEl);
-            revertBlockedSectionPending();
+            revertBlockedSectionPending(card);
           }
         })
         .catch(function () {
@@ -1759,11 +1811,12 @@
           renderThinkingIndicator({ working: false, blocked_reason: currentBlockedReason });
           answerPendingHistoryEl = null;
           removePendingEntry(pendingEl);
-          revertBlockedSectionPending();
+          revertBlockedSectionPending(card);
         });
     }
 
-    blockedSection.addEventListener('click', function (e) {
+    document.addEventListener('click', function (e) {
+      if (!closestEventTarget(e, '#blocked-prompt-section, #history-list .question-block')) return;
       var revealBtn = closestEventTarget(e, '.reveal-freetext-btn');
 
       if (revealBtn) {
@@ -1796,7 +1849,8 @@
     // shows/hides that question's own free-text input - handleMultiQuestionFreetextToggle()
     // (common.js, shared with index.js's own delegated listener) does the
     // actual work; only the listener registration itself is per-page.
-    blockedSection.addEventListener('change', function (e) {
+    document.addEventListener('change', function (e) {
+      if (!closestEventTarget(e, '#blocked-prompt-section, #history-list .question-block')) return;
       handleMultiQuestionFreetextToggle(e.target);
     });
 
@@ -1804,7 +1858,8 @@
     // handling needed here); only Shift+Enter submits, same convention as
     // the compose box. shiftKeyPhysicallyHeld cross-check - see its own
     // doc comment in common.js.
-    blockedSection.addEventListener('keydown', function (e) {
+    document.addEventListener('keydown', function (e) {
+      if (!closestEventTarget(e, '#blocked-prompt-section, #history-list .question-block')) return;
       if (e.key === 'Enter' && e.shiftKey && shiftKeyPhysicallyHeld && eventTargetHasClass(e, 'freetext-reply-textarea')) {
         e.preventDefault();
         submitFreetextReply(closestEventTarget(e, '.freetext-reply'));

@@ -221,20 +221,25 @@ class PushDeliveryService
     }
 
     /**
-     * Maps a blocked prompt's numbered options onto Approve (the first
-     * option)/Deny (the last option) for send_push_notification()'s own
-     * $actions - PromptParser::build_options_from_permission_suggestions()
-     * always builds "1. Yes" ... "N. No" (an optional middle
-     * suggestion-derived option in between doesn't change either end), and
-     * the one other real source of $prompt_options here, the folder-trust
-     * dialog, is confirmed live to use "Yes, I trust this folder" / "No,
-     * exit" - so checking the label text (not just position) is a real
-     * correctness check, not just paranoia: null for anything that
-     * doesn't actually look like a plain Yes/No choice (a multi-question
-     * AskUserQuestion never populates $prompt_options at all, so this
-     * never runs for that shape in the first place) rather than guessing
-     * from position alone and risking Approve secretly meaning something
-     * else entirely.
+     * Maps a blocked prompt's options onto Approve/Deny for
+     * send_push_notification()'s own $actions -
+     * PromptParser::build_options_from_permission_suggestions() always
+     * builds "1. Yes" ... "N. No" (an optional middle suggestion-derived
+     * option in between doesn't change either end), and the one other real
+     * source of $prompt_options here, the folder-trust dialog, uses "No,
+     * exit" / "Yes, I trust this folder" - checking label text rather than
+     * position is what makes this a real correctness check, not just
+     * paranoia, so it never assumed a fixed position in the first place:
+     * null for anything that doesn't actually look like a plain Yes/No
+     * choice (a multi-question AskUserQuestion never populates
+     * $prompt_options at all, so this never runs for that shape) rather
+     * than guessing and risking Approve secretly meaning something else.
+     *
+     * Found live 2026-09-11: Claude Code v2.1.269 reversed the folder-trust
+     * dialog's default option order ("No, exit" now comes first, not
+     * "Yes, I trust this folder" - see PromptParser's own docblock), which
+     * would have silently broken a first-vs-last check - scans every
+     * option for its label instead of assuming either end.
      *
      * @param array<int, mixed> $promptOptions
      * @return array{session:string, approve_option:int, deny_option:int}|null
@@ -245,19 +250,31 @@ class PushDeliveryService
             return null;
         }
 
-        $first = $promptOptions[0];
-        $last = $promptOptions[count($promptOptions) - 1];
+        $approveOption = null;
+        $denyOption = null;
 
-        if (
-            !is_array($first) || !is_int($first['number'] ?? null) || !is_string($first['label'] ?? null)
-            || !is_array($last) || !is_int($last['number'] ?? null) || !is_string($last['label'] ?? null)
-            || stripos($first['label'], 'yes') !== 0
-            || stripos($last['label'], 'no') !== 0
-        ) {
+        foreach ($promptOptions as $opt) {
+            if (!is_array($opt) || !is_int($opt['number'] ?? null) || !is_string($opt['label'] ?? null)) {
+                return null;
+            }
+
+            // First "yes"-prefixed option wins (e.g. a permission prompt's
+            // real menu, "1. Yes" / "2. Yes, and always allow this" / "3. No" -
+            // the SECOND option there is also "yes"-prefixed but is an
+            // "always" variant, not what Approve should mean); only one
+            // "no"-prefixed option is ever expected, so plain overwrite is fine.
+            if ($approveOption === null && stripos($opt['label'], 'yes') === 0) {
+                $approveOption = $opt['number'];
+            } elseif (stripos($opt['label'], 'no') === 0) {
+                $denyOption = $opt['number'];
+            }
+        }
+
+        if ($approveOption === null || $denyOption === null) {
             return null;
         }
 
-        return ['session' => $sessionName, 'approve_option' => $first['number'], 'deny_option' => $last['number']];
+        return ['session' => $sessionName, 'approve_option' => $approveOption, 'deny_option' => $denyOption];
     }
 
     /**

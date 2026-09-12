@@ -109,7 +109,7 @@ class ProcessInspector
      * ~/.local/share/claude/versions/*, so exe changes on every update while
      * the launcher path in argv stays stable.
      *
-     * @return array{pid:int, cwd:?string, started_at:?int}[]
+     * @return array{pid:int, cwd:?string, started_at:?int, resume_arg:?string, is_daemon_supervisor:bool}[]
      */
     public static function find_claude_processes(): array
     {
@@ -124,6 +124,20 @@ class ProcessInspector
         // typed.
         $claudeBinBasename = basename(Config::claude_bin());
 
+        // ALSO matched by realpath, not just basename - found live
+        // 2026-09-11 (a real `claude --resume <path>` process launched by
+        // claude-code-ui, a different tool entirely, was invisible to this
+        // whole scan): Config::claude_bin() (e.g. ~/.local/bin/claude) is
+        // itself a symlink to a versioned binary
+        // (~/.local/share/claude/versions/<version>) that changes on every
+        // update - a caller that resolves that symlink itself before
+        // exec'ing (rather than exec'ing the stable launcher path) ends up
+        // with argv[0] set to the versioned path directly, whose basename
+        // ("2.1.269") never matches "claude" at all. Resolving both sides
+        // to the same real target catches this regardless of which literal
+        // path string was used to invoke it.
+        $claudeBinRealpath = realpath(Config::claude_bin()) ?: null;
+
         foreach (glob('/proc/[0-9]*', GLOB_ONLYDIR) ?: [] as $procDir) {
             $pid = (int)basename($procDir);
             $cmdlineRaw = @file_get_contents("$procDir/cmdline");
@@ -133,24 +147,74 @@ class ProcessInspector
             }
 
             $argv = explode("\0", rtrim($cmdlineRaw, "\0"));
+            $argv0 = $argv[0];
 
             // Match argv[0] specifically, not "appears anywhere in argv": the
             // tmux server process that auto-starts to run `new-session ...
             // ~/.local/bin/claude` retains that whole command line
             // as its own argv, which would otherwise false-positive-match the
             // tmux server itself as a bare claude process. Comparing by
-            // basename only widens this to also match "claude" (bare,
-            // PATH-resolved) - the tmux server's own argv[0] is "tmux",
-            // whose basename never collides with "claude" either way, so
-            // this doesn't reopen that false-positive risk.
-            if (($argv[0] ?? null) === null || basename((string)$argv[0]) !== $claudeBinBasename) {
+            // basename (or matching realpath, see above) only widens this to
+            // also match "claude" (bare, PATH-resolved) or a versioned
+            // binary path - the tmux server's own argv[0] is "tmux", which
+            // never collides with either check, so this doesn't reopen that
+            // false-positive risk.
+            //
+            // A THIRD shape, found live 2026-09-12: the CLI's own background
+            // daemon (`claude daemon run`) rewrites its worker processes'
+            // argv[0] to a single, space-containing descriptive string for
+            // `ps` readability - "claude bg-spare" or "claude bg-pty-host" as
+            // ONE argv element, not "claude" followed by a separate "bg-spare"
+            // element. basename() of that whole string never equals "claude"
+            // exactly (there's no "/" in it to split on), so it needs its own
+            // explicit prefix check - anchored on a trailing space so this
+            // can never partially match some unrelated "claudeXYZ" binary.
+            $argv0Basename = basename($argv0);
+            $matchesBasename = $argv0Basename === $claudeBinBasename;
+            $matchesRealpath = $claudeBinRealpath !== null && @realpath($argv0) === $claudeBinRealpath;
+            $matchesDaemonWorkerLabel = str_starts_with($argv0Basename, $claudeBinBasename . ' ');
+
+            if ($argv0 === '' || (!$matchesBasename && !$matchesRealpath && !$matchesDaemonWorkerLabel)) {
                 continue;
             }
+
+            // The exact value passed to --resume/--session-id, when present -
+            // a UUID directly, or (some third-party launchers, e.g.
+            // claude-code-ui, confirmed live 2026-09-11) a full path to the
+            // transcript .jsonl file itself. Found live the same day: a bare
+            // process started this way has a REAL, deterministic
+            // agent_session_id sitting right there in its own argv - no
+            // marker or timing-heuristic guess needed at all, and this is
+            // the one signal that actually identifies a `--resume`d
+            // conversation correctly (see BareProcessService::
+            // bare_process_take_over_candidates()'s own docblock: its
+            // closest-start-time heuristic is explicitly wrong for exactly
+            // this shape, since a resumed conversation's first message can
+            // be arbitrarily older than the resuming process's own start
+            // time).
+            $resumeArg = null;
+
+            foreach ($argv as $i => $part) {
+                if (($part === '--resume' || $part === '--session-id') && isset($argv[$i + 1])) {
+                    $resumeArg = $argv[$i + 1];
+                    break;
+                }
+            }
+
+            // True for the daemon's own supervisor process ("claude daemon
+            // run ...", argv[1] === "daemon") - never a conversation, never
+            // resolvable to one, purely infrastructure that spawns/manages
+            // the bg-spare/bg-pty-host worker pool. Distinguished from a
+            // worker itself here, at the source, rather than making every
+            // caller re-derive "is this just daemon noise" its own way.
+            $isDaemonSupervisor = ($argv[1] ?? null) === 'daemon';
 
             $procs[] = [
                 'pid' => $pid,
                 'cwd' => @readlink("$procDir/cwd") ?: null,
                 'started_at' => self::process_start_time($pid),
+                'resume_arg' => $resumeArg,
+                'is_daemon_supervisor' => $isDaemonSupervisor,
             ];
         }
 

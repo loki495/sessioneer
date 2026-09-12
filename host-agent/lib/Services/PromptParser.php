@@ -101,6 +101,7 @@ class PromptParser
     {
         $lines = explode("\n", $paneContent);
         $choiceIndex = null;
+        $unnumberedOptions = false;
 
         // Scans from the bottom: the ❯ cursor only ever appears on one line
         // per active choice list, but if the pane's visible screen still
@@ -111,6 +112,39 @@ class PromptParser
             if (preg_match('/^\s*❯\s*\d+[.)]/u', $lines[$i]) === 1) {
                 $choiceIndex = $i;
                 break;
+            }
+        }
+
+        // Found live 2026-09-11 (Andres: couldn't start a session in a new
+        // folder - the app never saw the trust dialog as blocking at all,
+        // and a "confirm" click killed the whole session instead): Claude
+        // Code v2.1.269 dropped the leading digit from the initial
+        // per-folder trust dialog specifically ("❯ No, exit" /
+        // "  Yes, I trust this folder" - verified against a live capture,
+        // see tests/fixtures/claude_folder_trust_prompt_pane_v2_1_269.txt),
+        // so the digit-anchored scan above never finds it - every other
+        // prompt shape (tool permission, AskUserQuestion) kept its numbers.
+        // Anchored on this dialog's own distinctive footer
+        // ("Enter to confirm · Esc to cancel", vs every numbered prompt's
+        // "Enter to select · ↑/↓ to navigate · Esc to cancel") rather than
+        // loosening the digit scan to accept any bare "❯ ..." line - the
+        // plain chat compose box also renders a bare "❯ " cursor with
+        // nothing after it, and that must never be misread as a prompt.
+        // Bounded to a few lines above the footer since this dialog's own
+        // option list is always short.
+        if ($choiceIndex === null) {
+            for ($i = count($lines) - 1; $i >= 0; $i--) {
+                if (str_contains($lines[$i], 'Enter to confirm') && str_contains($lines[$i], 'Esc to cancel')) {
+                    for ($j = $i - 1; $j >= max(0, $i - 8); $j--) {
+                        if (preg_match('/^\s*❯\s*\S/u', $lines[$j]) === 1) {
+                            $choiceIndex = $j;
+                            $unnumberedOptions = true;
+                            break;
+                        }
+                    }
+
+                    break;
+                }
             }
         }
 
@@ -316,6 +350,29 @@ class PromptParser
 
             if (preg_match('/^\s*❯?\s*(\d+)[.)]\s*(.+?)\s*$/u', $lines[$i], $m) === 1) {
                 $options[] = ['number' => (int)$m[1], 'label' => $m[2]];
+            }
+        }
+
+        // The unnumbered trust dialog (see $unnumberedOptions above) has no
+        // digit for the numbered regex above to match at all, so $options
+        // stays empty - build it here instead, assigning sequential numbers
+        // by on-screen top-to-bottom order (the same order
+        // PromptInteractionService::answer_prompt() uses to compute how many
+        // Up/Down presses reach a given option).
+        if ($options === [] && $unnumberedOptions) {
+            $number = 1;
+
+            for ($i = $choiceIndex; $i < count($lines); $i++) {
+                if (trim($lines[$i]) === '') {
+                    break;
+                }
+
+                $label = trim(preg_replace('/^\s*❯\s*/u', '', $lines[$i]) ?? $lines[$i]);
+
+                if ($label !== '') {
+                    $options[] = ['number' => $number, 'label' => $label];
+                    $number++;
+                }
             }
         }
 

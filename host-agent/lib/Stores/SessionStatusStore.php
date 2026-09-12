@@ -110,7 +110,7 @@ class SessionStatusStore
      *
      * @param array<string, mixed> $fields
      */
-    public static function update_status(string $sessionName, array $fields): void
+    public static function update_status(string $sessionName, array $fields, bool $preserveOpenCodeQuestion = false): void
     {
         // Ensure a row exists first so the COALESCE-against-self UPDATE
         // below always has something to coalesce against - a plain INSERT
@@ -143,7 +143,28 @@ class SessionStatusStore
         $params[':updated_at'] = time();
 
         $sql = 'UPDATE session_status SET ' . implode(', ', $sets) . ' WHERE session_name = :session_name';
+        if ($preserveOpenCodeQuestion) {
+            // Check in the write itself: an SSE event can arrive after a poll's read.
+            $sql .= " AND COALESCE(json_extract(blocked_json, '$.source'), '') <> 'opencode_sse'";
+        }
         $db->prepare($sql)->execute($params);
+    }
+
+    public static function resolve_opencode_question(string $sessionName, string $requestId): bool
+    {
+        if ($requestId === '') {
+            return false;
+        }
+
+        $stmt = self::db()->prepare(
+            "UPDATE session_status SET blocked_json = NULL, status = 'working', updated_at = :now
+             WHERE session_name = :session_name
+               AND json_extract(blocked_json, '$.source') = 'opencode_sse'
+               AND json_extract(blocked_json, '$.request_id') = :request_id"
+        );
+        $stmt->execute([':now' => time(), ':session_name' => $sessionName, ':request_id' => $requestId]);
+
+        return $stmt->rowCount() > 0;
     }
 
     public static function write_status(string $sessionName, array $data): void

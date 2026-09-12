@@ -117,11 +117,14 @@ echo "  systemctl --user enable --now sessioneer-antigravity-quota-check.timer"
 # PushHealthService::health_check() for the matching health-box entry.
 if [ -n "$OPENCODE_BIN" ]; then
     render_unit opencode-serve.service
+    render_unit sessioneer-opencode-events.service
     systemctl --user daemon-reload
     systemctl --user enable --now opencode-serve.service
+    systemctl --user enable --now sessioneer-opencode-events.service
     echo
-    echo "opencode-serve.service installed and enabled (at $UNIT_DIR/opencode-serve.service)."
+    echo "opencode-serve.service and sessioneer-opencode-events.service installed and enabled."
     systemctl --user is-active opencode-serve.service || true
+    systemctl --user is-active sessioneer-opencode-events.service || true
 
 else
     echo

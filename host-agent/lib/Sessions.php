@@ -44,6 +44,7 @@ function dispatch_action(array $request): array
         case 'list':
             $list = ['ok' => true] + SessionService::list_all_sessions();
             $list['sessions'] = sessioneer_merge_headless_sessions($list['sessions']);
+            $list['bare'] = BareProcessService::declutter_bare_list(BareProcessService::enrich_bare_with_confirmed_ids($list['bare']));
 
             return $list;
 
@@ -240,6 +241,9 @@ function dispatch_action(array $request): array
 
         case 'take_over_bare':
             return BareProcessService::take_over_bare_process((int)($request['pid'] ?? 0));
+
+        case 'bare_process_detail':
+            return BareProcessService::resolve_bare_process_detail((int)($request['pid'] ?? 0));
 
         case 'take_over_bare_with_id':
             return BareProcessService::take_over_bare_process_with_id(
@@ -609,9 +613,12 @@ function sessioneer_headless_sync(): void
         $updated = $updatedMs > 0 ? (int)round($updatedMs / 1000) : 0;
 
         // Dormant / not recently active - don't adopt and don't keep a stale
-        // sidecar around for it.
+        // sidecar around for it. A live question can wait longer than this window.
         if ($updated > 0 && ($now - $updated) > $window) {
-            continue;
+            $existing = SessionStatusStore::read_status($id);
+            if (($existing['blocked']['source'] ?? null) !== 'opencode_sse') {
+                continue;
+            }
         }
 
         $liveIds[$id] = true;
@@ -651,11 +658,12 @@ function sessioneer_headless_sync(): void
     // empty). Default to 'idle' for anything it didn't report, so status is
     // deterministic across every headless session. Clearing `blocked` here
     // (then re-set below for genuinely-blocked ones) prevents a stale prompt
-    // from lingering once it's been resolved.
+    // from lingering once it's been resolved. Event-fed questions are preserved
+    // atomically: these list endpoints can omit a still-pending SSE request.
     $statuses = $client->status_map()['statuses'] ?? [];
 
     foreach ($liveIds as $id => $_) {
-        SessionStatusStore::update_status($id, ['status' => $statuses[$id] ?? 'idle', 'blocked' => null]);
+        SessionStatusStore::update_status($id, ['status' => $statuses[$id] ?? 'idle', 'blocked' => null], true);
     }
 
     // Blocked-prompt detection: ONE GET /permission + ONE GET /question
@@ -685,16 +693,16 @@ function sessioneer_headless_sync(): void
 
     foreach ($liveIds as $id => $_) {
         if (isset($permBySession[$id])) {
-            SessionStatusStore::update_status($id, ['status' => 'blocked', 'blocked' => sessioneer_headless_permission_prompt($permBySession[$id])]);
+            SessionStatusStore::update_status($id, ['status' => 'blocked', 'blocked' => sessioneer_headless_permission_prompt($permBySession[$id])], true);
         } elseif (isset($questionBySession[$id])) {
-            SessionStatusStore::update_status($id, ['status' => 'blocked', 'blocked' => sessioneer_headless_question_prompt($questionBySession[$id])]);
+            SessionStatusStore::update_status($id, ['status' => 'blocked', 'blocked' => sessioneer_headless_question_prompt($questionBySession[$id])], true);
         } else {
             // Plugin store fallback: the Sessioneer plugin writes permission.ask
             // records to PermissionStore; GET /permission doesn't see them.
             $pluginPerm = \HostAgent\Services\PermissionStore::read_pending_permission($id);
 
             if ($pluginPerm !== null) {
-                SessionStatusStore::update_status($id, ['status' => 'blocked', 'blocked' => sessioneer_headless_permission_prompt($pluginPerm)]);
+                SessionStatusStore::update_status($id, ['status' => 'blocked', 'blocked' => sessioneer_headless_permission_prompt($pluginPerm)], true);
             }
         }
     }
@@ -1004,6 +1012,21 @@ function sessioneer_headless_detail_shape(array $serve, string $agentId = 'openc
     $status = SessionStatusStore::read_status($id);
     $model = is_array($serve['model'] ?? null) ? $serve['model'] : [];
     $blocked = is_array($status['blocked'] ?? null) ? $status['blocked'] : null;
+
+    // OpenCode: 'blocked' is normally written by the throttled headless sync
+    // (sessioneer_headless_sync(), which only runs off the dashboard `list`
+    // action). A question that just appeared - or a session whose sync is
+    // stale - wouldn't be reflected here, leaving the session page with no
+    // prompt while the opencode webui/TUI shows it. Fall back to the live
+    // serve question, the same authoritative source the answer path
+    // (OpenCodeServeClient::pending_blocked()) already uses.
+    if ($agentId === 'opencode') {
+        $liveBlocked = (new OpenCodeServeClient())->pending_blocked($id);
+        if ($liveBlocked !== null) {
+            $blocked = $liveBlocked;
+            $status['status'] = 'blocked';
+        }
+    }
 
     // Fetch the todo/task list from the serve's GET /session/:id/todo
     // endpoint. Each item is mapped to the Sessioneer sidebar shape

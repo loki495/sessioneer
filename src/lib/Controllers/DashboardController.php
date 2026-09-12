@@ -344,6 +344,26 @@ class DashboardController extends Controller
     }
 
     /**
+     * GET-only JSON endpoint backing a bare-process row's "Identify"
+     * button - fetched lazily on click, never as part of fragment()'s
+     * regular poll (that best-guess resolution isn't free: see
+     * BareProcessService::resolve_bare_process_detail()'s own docblock).
+     * Read-only, same reasoning as archivedHistoryFragment(). Identification
+     * only - once the client has agent_session_id back, it fetches the
+     * actual message preview from archived_session_history_fragment.php,
+     * the exact same endpoint an archived row's own history uses, rather
+     * than this rendering that content a second, slightly different way.
+     */
+    public function bareProcessDetail(): void
+    {
+        $this->start_readonly_json();
+
+        $pid = (int)($_GET['pid'] ?? 0);
+
+        echo json_encode(AgentClient::agent_call(['action' => 'bare_process_detail', 'pid' => $pid]));
+    }
+
+    /**
      * POST-only JSON endpoint for the take-over picker's confirm step -
      * only ever reached after takeOverBare() above came back
      * needs_choice=true and a human picked a specific agent_session_id.

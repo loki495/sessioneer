@@ -29,6 +29,7 @@ $router->get('/take_over_bare.php', [DashboardController::class, 'takeOverBare']
 $router->post('/take_over_bare.php', [DashboardController::class, 'takeOverBare']);
 $router->get('/take_over_bare_confirm.php', [DashboardController::class, 'takeOverBareConfirm']);
 $router->post('/take_over_bare_confirm.php', [DashboardController::class, 'takeOverBareConfirm']);
+$router->get('/bare_process_detail.php', [DashboardController::class, 'bareProcessDetail']);
 $router->get('/search_sessions.php', [DashboardController::class, 'search']);
 
 // Reads `session` from either GET or POST with no method check at all.

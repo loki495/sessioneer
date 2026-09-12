@@ -124,7 +124,7 @@ Implementation entry points:
 ## OpenCode implementation
 
 `OpenCodeAdapter` offers `RuntimeType::HEADLESS` first and tmux second. The
-installer enables `opencode-serve.service`; the headless runtime uses
+installer enables `opencode-serve.service` and `sessioneer-opencode-events.service`; the headless runtime uses
 OpenCode's HTTP API for lifecycle, messages, questions, and prompt replies.
 The TUI fallback is driven through tmux.
 
@@ -138,8 +138,11 @@ The global `sessioneer-permissions.js` plugin subscribes to
 OpenCode API does not persist a reliable equivalent. For TUI sessions, the
 pane is the final authority that the permission dialog is still visible; this
 prevents a stale plugin record from showing answer controls after the dialog
-has gone away. Questions prefer the serve API, then the database/pane
-fallbacks.
+has gone away. Headless questions arrive over directory-scoped SSE and retain
+their server request IDs in the status store, protected from polling resets.
+Replies validate selections/custom text and use HTTP, including the scoped
+legacy reply endpoint when the v2 route is unavailable. Transcript question
+cards share the existing AJAX answer controls; SQLite remains the history source.
 
 The health box verifies both `opencode-serve.service` and the installed plugin
 file. Restart the service and existing TUIs after updating the plugin. OpenCode
