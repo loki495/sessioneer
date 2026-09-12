@@ -187,6 +187,128 @@ class BareProcessService
     }
 
     /**
+     * Every agent_session_id currently live via a BARE (untracked) claude
+     * process on the host - found live 2026-09-11 (Andres: his own actual,
+     * currently-open terminal session showed up in the dashboard's
+     * "archived" list, and "resuming" it from there wouldn't have made
+     * sense - it was never dormant in the first place). Neither
+     * ArchivedSessionService::list_archived_dashboard() nor
+     * SessionLifecycleService::resume_agent_session() checked bare
+     * processes at all before this - only TRACKED (tmux+sidecar) sessions
+     * were ever excluded from "archived"/guarded against a duplicate
+     * resume, so a plain `claude` typed by hand in a real terminal (no
+     * tmux, no sidecar - exactly how this app's own live session runs)
+     * was invisible to both checks.
+     *
+     * Prefers the certain signal (bare_process_live_agent_session_id() -
+     * a real statusline-marker read, only available when the pid has an
+     * owning tmux pane) and falls back to bare_process_take_over_
+     * candidates()'s own closest-start-time guess when there's no marker
+     * to read at all (the common case for a truly bare, no-tmux terminal
+     * session) - that guess can occasionally be wrong (see its own
+     * docblock), but the asymmetry favors erring toward inclusion here: a
+     * dormant transcript wrongly hidden from "archived" for as long as an
+     * unrelated bare process happens to share its cwd is a minor,
+     * self-correcting annoyance, while a truly-live one left resumable
+     * risks two processes silently fighting over one transcript file.
+     *
+     * @return string[]
+     */
+    public static function live_bare_agent_session_ids(): array
+    {
+        $ids = [];
+
+        foreach (SessionService::list_all_sessions()['bare'] as $b) {
+            $pid = (int)($b['pid'] ?? 0);
+
+            if ($pid <= 0) {
+                continue;
+            }
+
+            $markerId = self::bare_process_live_agent_session_id($pid);
+
+            if ($markerId !== null) {
+                $ids[] = $markerId;
+
+                continue;
+            }
+
+            $cwd = is_string($b['cwd'] ?? null) ? $b['cwd'] : null;
+            $startedAt = is_int($b['started_at'] ?? null) ? $b['started_at'] : null;
+
+            if ($cwd === null || $startedAt === null) {
+                continue;
+            }
+
+            $heuristicId = self::bare_process_take_over_candidates($cwd, $startedAt, $pid)['suggested_agent_session_id'];
+
+            if ($heuristicId !== null) {
+                $ids[] = $heuristicId;
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * Best-effort identification for one bare (untracked) process's dashboard
+     * row - Andres's own ask (2026-09-11), after finding that "Other claude
+     * processes on host" gave no way to tell whether a row duplicated
+     * something already in the archived list. Reuses the exact same
+     * resolution this class already relies on elsewhere (never invented
+     * fresh for this): the certain statusline-marker match
+     * (bare_process_live_agent_session_id()) when the pid has an owning
+     * tmux pane with the marker installed, falling back to
+     * bare_process_take_over_candidates()'s own closest-start-time GUESS
+     * otherwise - `confidence` tells the caller which one it got, so the
+     * view can label a guess as a guess rather than asserting it. Read-only:
+     * unlike take_over_bare_process(), nothing is killed or resumed here.
+     *
+     * Identification only, deliberately - once the caller has the resolved
+     * agent_session_id back, the actual message history is one already-
+     * existing call away (archived_session_history_fragment.php, the same
+     * endpoint an archived row's own preview uses), rather than this method
+     * re-reading and re-rendering transcript content a second, slightly
+     * different way.
+     *
+     * @return array{ok:bool, message?:string, agent_session_id?:?string, confidence?:?string, title?:?string}
+     */
+    public static function resolve_bare_process_detail(int $pid): array
+    {
+        $cwd = null;
+        $startedAt = null;
+
+        foreach (ProcessInspector::find_claude_processes() as $proc) {
+            if ($proc['pid'] === $pid) {
+                $cwd = $proc['cwd'];
+                $startedAt = $proc['started_at'];
+                break;
+            }
+        }
+
+        if ($cwd === null) {
+            return ['ok' => false, 'message' => 'Rejected: not a currently running claude process, or its working directory could not be determined'];
+        }
+
+        $agentSessionId = self::bare_process_live_agent_session_id($pid);
+        $confidence = $agentSessionId !== null ? 'confirmed' : null;
+
+        if ($agentSessionId === null) {
+            $agentSessionId = self::bare_process_take_over_candidates($cwd, $startedAt ?? time(), $pid)['suggested_agent_session_id'];
+            $confidence = $agentSessionId !== null ? 'guess' : null;
+        }
+
+        if ($agentSessionId === null) {
+            return ['ok' => true, 'agent_session_id' => null, 'confidence' => null, 'title' => null];
+        }
+
+        $path = TranscriptRouter::find_transcript_path($agentSessionId);
+        $title = $path !== null ? SessionService::title_cascade(TranscriptService::find_latest_ai_title($path), null, $cwd, $agentSessionId) : null;
+
+        return ['ok' => true, 'agent_session_id' => $agentSessionId, 'confidence' => $confidence, 'title' => $title];
+    }
+
+    /**
      * "Take over" a foreign (bare/untracked) claude process - the
      * unify-claude-sessions plan's phase 6. Two outcomes:
      *

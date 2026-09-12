@@ -804,6 +804,63 @@ try {
     @unlink($archivedFakeHome . '/.claude/projects/-archived-project/' . $archivedUuid . '.jsonl');
     @rmdir($archivedFakeHome . '/.claude/projects/-tracked-project');
     @rmdir($archivedFakeHome . '/.claude/projects/-archived-project');
+
+    // --- Same two fixes, the BARE-process half: a bare (untracked, no
+    // sidecar) claude process whose live agent_session_id is confidently
+    // known via the statusline marker must ALSO be excluded from
+    // "archived", and resume_agent_session() must ALSO refuse to resume
+    // it. Found live 2026-09-11 (Andres: his own real terminal session -
+    // no tmux, no sidecar at all - showed up as "archived" and "resuming"
+    // it from there made no sense) - see BareProcessService::
+    // live_bare_agent_session_ids()'s own docblock for the full incident.
+    // Reuses the exact marker-matched bare-process technique the
+    // take-over tests below use (a fake_claude pane fed a literal
+    // "sessioneer-data:{...}" line), just to exercise these two OTHER
+    // call sites instead. ---
+    $archivedBareUuid = '44444444-4444-4444-8444-444444444444';
+    @mkdir($archivedFakeHome . '/.claude/projects/-bare-project', 0700, true);
+    file_put_contents(
+        $archivedFakeHome . '/.claude/projects/-bare-project/' . $archivedBareUuid . '.jsonl',
+        '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hi"}]},"cwd":"/some/bare/path"}' . "\n"
+    );
+    $archivedBareAdhocName = 'sessioneer-test-archived-bare-' . getmypid();
+    $archivedBareSetup = TmuxService::tmux_run(['new-session', '-d', '-s', $archivedBareAdhocName, '-c', Config::www_root(), Config::claude_bin()]);
+    assert_equal(0, $archivedBareSetup['exit'], 'bare-liveness setup: created a live non-cc-* tmux session hosting a fake_claude process');
+    usleep(300000);
+    TmuxService::tmux_run(['send-keys', '-t', $archivedBareAdhocName, 'sessioneer-data:{"session_id":"' . $archivedBareUuid . '"}', 'Enter']);
+    usleep(300000);
+
+    $dashboardArchivedWithBare = ArchivedSessionService::list_archived_dashboard()['archived'] ?? [];
+    $archivedIdsWithBare = array_column($dashboardArchivedWithBare, 'agent_session_id');
+    assert_true(!in_array($archivedBareUuid, $archivedIdsWithBare, true), 'list_archived_dashboard: a BARE (untracked) process\'s own live session is excluded too, not just a tracked one');
+
+    $bareResumeAttempt = SessionLifecycleService::resume_agent_session(Config::www_root(), $archivedBareUuid);
+    assert_equal(false, $bareResumeAttempt['ok'] ?? null, 'resume_agent_session: refuses a agent_session_id that is currently live via a BARE process, not just a tracked one');
+
+    // --- BareProcessService::resolve_bare_process_detail(): the dashboard's
+    // "Identify" button - a marker-matched bare process (this exact fixture)
+    // resolves with confidence='confirmed', not the weaker heuristic guess. ---
+    $archivedBarePid = null;
+    foreach (SessionService::list_all_sessions()['bare'] as $b) {
+        if (($b['tmux_session'] ?? null) === $archivedBareAdhocName) {
+            $archivedBarePid = (int)$b['pid'];
+            break;
+        }
+    }
+    assert_true($archivedBarePid !== null, 'resolve_bare_process_detail setup: the fixture bare process is visible as bare');
+    $bareDetail = BareProcessService::resolve_bare_process_detail($archivedBarePid ?? 0);
+    assert_equal(true, $bareDetail['ok'] ?? null, 'resolve_bare_process_detail: ok=true for a currently running process');
+    assert_equal($archivedBareUuid, $bareDetail['agent_session_id'] ?? null, 'resolve_bare_process_detail: resolves the marker-matched agent_session_id');
+    assert_equal('confirmed', $bareDetail['confidence'] ?? null, 'resolve_bare_process_detail: a marker match is reported as confirmed, not a guess');
+
+    $missingBareDetail = BareProcessService::resolve_bare_process_detail(0);
+    assert_equal(false, $missingBareDetail['ok'] ?? null, 'resolve_bare_process_detail: ok=false for a pid that is not a currently running claude process');
+
+    TmuxService::tmux_run(['kill-session', '-t', $archivedBareAdhocName]);
+    $archivedBareAdhocName = null;
+    @unlink($archivedFakeHome . '/.claude/projects/-bare-project/' . $archivedBareUuid . '.jsonl');
+    @rmdir($archivedFakeHome . '/.claude/projects/-bare-project');
+
     @rmdir($archivedFakeHome . '/.claude/projects');
     @rmdir($archivedFakeHome . '/.claude');
     @rmdir($archivedFakeHome);

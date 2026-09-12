@@ -241,6 +241,9 @@ function dispatch_action(array $request): array
         case 'take_over_bare':
             return BareProcessService::take_over_bare_process((int)($request['pid'] ?? 0));
 
+        case 'bare_process_detail':
+            return BareProcessService::resolve_bare_process_detail((int)($request['pid'] ?? 0));
+
         case 'take_over_bare_with_id':
             return BareProcessService::take_over_bare_process_with_id(
                 (int)($request['pid'] ?? 0),

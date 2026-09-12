@@ -156,12 +156,13 @@ class SessionController extends Controller
 
         $agentSessionId = (string)($_GET['agent_session_id'] ?? '');
         $before = isset($_GET['before']) ? (int)$_GET['before'] : null;
+        $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 30;
 
         $history = AgentClient::agent_call([
             'action' => 'archived_session_history',
             'agent_session_id' => $agentSessionId,
             'before' => $before,
-            'limit' => 30,
+            'limit' => $limit,
         ]);
 
         if (!($history['ok'] ?? false)) {

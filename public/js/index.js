@@ -335,6 +335,90 @@ document.addEventListener('keydown', function (e) {
   });
 })();
 
+// "Identify" a bare (untracked) process's row - Andres's own ask
+// (2026-09-11), after the archived-list/resume bug turned up a case where
+// a live bare process's own session had no way to tell whether it
+// duplicated something already in the archived list. Two-step, both
+// lazy-loaded on first click and cached after that (same pattern as
+// "Show last 3 messages" below): first /bare_process_detail.php resolves
+// pid -> agent_session_id (a real statusline-marker match, or a
+// best-guess heuristic - see BareProcessService::resolve_bare_process_
+// detail()'s own docblock), then - only once an id comes back -
+// /archived_session_history_fragment.php?limit=3 renders its last few
+// messages, reusing the exact same endpoint an archived row's own
+// history uses rather than a second, parallel rendering path.
+(function () {
+  document.addEventListener('click', function (e) {
+    var btn = closestEventTarget(e, '.bare-identify-btn');
+
+    if (!btn) {
+      return;
+    }
+
+    var row = btn.closest('[data-bare-row]');
+    var container = row.querySelector('.bare-detail');
+
+    if (btn.dataset.loaded === '1') {
+      container.classList.toggle('hidden');
+      btn.textContent = container.classList.contains('hidden') ? 'Identify' : 'Hide';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Identifying…';
+
+    fetch('/bare_process_detail.php?pid=' + encodeURIComponent(row.dataset.pid), { credentials: 'same-origin' })
+      .then(function (r) { return parseJsonResponse(r, 'bare-process-detail'); })
+      .then(function (data) {
+        btn.disabled = false;
+
+        if (!data || !data.ok) {
+          btn.textContent = (data && data.message) || 'Failed to identify this process.';
+          return;
+        }
+
+        if (!data.agent_session_id) {
+          container.innerHTML = '<div class="text-xs text-slate-500">Couldn\'t identify a past conversation for this process\'s working directory.</div>';
+          container.classList.remove('hidden');
+          btn.dataset.loaded = '1';
+          btn.textContent = 'Hide';
+          return;
+        }
+
+        var header = document.createElement('div');
+        if (data.confidence === 'guess') {
+          header.innerHTML = '<div class="mb-1 inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border bg-amber-900/30 text-amber-400 border-amber-700/40">Best guess - not confirmed</div>';
+        }
+        var titleEl = document.createElement('div');
+        titleEl.className = 'text-sm text-slate-300 truncate';
+        titleEl.textContent = data.title || data.agent_session_id;
+        header.appendChild(titleEl);
+
+        container.innerHTML = '';
+        container.appendChild(header);
+        container.classList.remove('hidden');
+        btn.dataset.loaded = '1';
+        btn.textContent = 'Hide';
+
+        fetch('/archived_session_history_fragment.php?agent_session_id=' + encodeURIComponent(data.agent_session_id) + '&limit=3', { credentials: 'same-origin' })
+          .then(function (r) { return parseJsonResponse(r, 'bare-process-detail-history'); })
+          .then(function (historyData) {
+            if (historyData && historyData.ok && historyData.html) {
+              var messages = document.createElement('div');
+              messages.className = 'mt-2 space-y-2';
+              messages.innerHTML = historyData.html;
+              container.appendChild(messages);
+            }
+          })
+          .catch(function () {});
+      })
+      .catch(function () {
+        btn.disabled = false;
+        btn.textContent = 'Network error - try again';
+      });
+  });
+})();
+
 // "Show last 3 messages" toggle, one per session row. Lazy-loaded on
 // first click (via session_history.php, the same endpoint session.php's
 // "load more" uses) and cached in the DOM after that - toggling again

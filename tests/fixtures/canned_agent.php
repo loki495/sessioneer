@@ -306,6 +306,13 @@ $response = match ($action) {
         && (string)($request['workdir'] ?? '') === '/home/user/www/some-other-project'
         ? ['ok' => true, 'message' => 'Resumed session ' . CANNED_TAKEN_OVER_SESSION_NAME . ' in /home/user/www/some-other-project', 'name' => CANNED_TAKEN_OVER_SESSION_NAME]
         : ['ok' => false, 'message' => 'Rejected: could not take over this process'],
+    // Both real resolutions (marker-matched 'confirmed' vs the heuristic
+    // 'guess') are exercised server-side in test_sessions_lifecycle.php;
+    // this fixture only needs to prove the HTTP layer passes a resolved
+    // detail through intact, and handles "found nothing" too.
+    'bare_process_detail' => (int)($request['pid'] ?? 0) === CANNED_BARE_PID
+        ? ['ok' => true, 'agent_session_id' => CANNED_ARCHIVED_CLAUDE_SESSION_ID, 'confidence' => 'guess', 'title' => 'Refactor the old widget']
+        : ['ok' => false, 'message' => 'Rejected: not a currently running claude process, or its working directory could not be determined'],
     // An attachment with no typed text at all is a valid send (mirrors
     // SessionService::send_message()'s own real semantics) - lets
     // test_ui_smoke.php prove session_send.php's attachments[] field

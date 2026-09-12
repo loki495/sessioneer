@@ -1430,6 +1430,25 @@ try {
     $takeOverConfirmRejectBody = json_decode($takeOverConfirmRejectResult['body'], true);
     assert_equal(false, $takeOverConfirmRejectBody['ok'] ?? null, 'POST /take_over_bare_confirm.php: canned agent rejects a agent_session_id that does not match the resolved candidate');
 
+    // --- bare_process_detail.php: the "Identify" button's endpoint, read-
+    // only (GET-only, no CSRF needed - same reasoning as
+    // archived_session_history_fragment.php). Identification only (see
+    // BareProcessService::resolve_bare_process_detail()'s own docblock) -
+    // the actual message history is a separate, already-existing call
+    // (archived_session_history_fragment.php) the client makes once it has
+    // the resolved agent_session_id back, not duplicated here. ---
+    $bareDetailResult = curl_request('GET', "{$baseUrl}/bare_process_detail.php?pid=54321");
+    assert_equal(200, $bareDetailResult['status'], 'GET /bare_process_detail.php: 200 (read-only, no CSRF needed)');
+    $bareDetailBody = json_decode($bareDetailResult['body'], true);
+    assert_true(is_array($bareDetailBody) && ($bareDetailBody['ok'] ?? false), 'GET /bare_process_detail.php: canned agent resolves the pid, response decodes as ok=true JSON');
+    assert_equal(CANNED_ARCHIVED_CLAUDE_SESSION_ID, $bareDetailBody['agent_session_id'] ?? null, 'GET /bare_process_detail.php: canned agent_session_id passed through');
+    assert_equal('guess', $bareDetailBody['confidence'] ?? null, 'GET /bare_process_detail.php: canned confidence passed through');
+    assert_equal('Refactor the old widget', $bareDetailBody['title'] ?? null, 'GET /bare_process_detail.php: canned title passed through');
+
+    $bareDetailRejectResult = curl_request('GET', "{$baseUrl}/bare_process_detail.php?pid=99999");
+    $bareDetailRejectBody = json_decode($bareDetailRejectResult['body'], true);
+    assert_equal(false, $bareDetailRejectBody['ok'] ?? null, 'GET /bare_process_detail.php: canned agent rejects an unrecognized pid');
+
     // --- sessions_fragment.php's bare_html: proves the Take over form
     // (SessionRowView::bare_process_row_html() -> bare-process-row.php)
     // actually rendered, with the real pid and a fresh csrf_token, not
@@ -1439,6 +1458,10 @@ try {
     assert_true(
         preg_match('#<form method="post" action="/take_over_bare\.php" class="take-over-form"[^>]*>\s*<input type="hidden" name="csrf_token"[^>]*>\s*<input type="hidden" name="pid" value="54321">\s*<button type="submit"[^>]*>\s*Take over#', $takeOverFragmentBody['bare_html'] ?? '') === 1,
         'GET /sessions_fragment.php: bare_html carries a Take over form for the canned bare pid'
+    );
+    assert_true(
+        str_contains($takeOverFragmentBody['bare_html'] ?? '', 'bare-identify-btn'),
+        'GET /sessions_fragment.php: bare_html also carries an Identify button for the canned bare pid'
     );
 
     // --- session.php: a brand-new session (found, but no transcript on
