@@ -109,7 +109,7 @@ class ProcessInspector
      * ~/.local/share/claude/versions/*, so exe changes on every update while
      * the launcher path in argv stays stable.
      *
-     * @return array{pid:int, cwd:?string, started_at:?int, resume_arg:?string}[]
+     * @return array{pid:int, cwd:?string, started_at:?int, resume_arg:?string, is_daemon_supervisor:bool}[]
      */
     public static function find_claude_processes(): array
     {
@@ -201,11 +201,20 @@ class ProcessInspector
                 }
             }
 
+            // True for the daemon's own supervisor process ("claude daemon
+            // run ...", argv[1] === "daemon") - never a conversation, never
+            // resolvable to one, purely infrastructure that spawns/manages
+            // the bg-spare/bg-pty-host worker pool. Distinguished from a
+            // worker itself here, at the source, rather than making every
+            // caller re-derive "is this just daemon noise" its own way.
+            $isDaemonSupervisor = ($argv[1] ?? null) === 'daemon';
+
             $procs[] = [
                 'pid' => $pid,
                 'cwd' => @readlink("$procDir/cwd") ?: null,
                 'started_at' => self::process_start_time($pid),
                 'resume_arg' => $resumeArg,
+                'is_daemon_supervisor' => $isDaemonSupervisor,
             ];
         }
 

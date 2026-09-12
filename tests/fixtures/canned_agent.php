@@ -13,6 +13,14 @@ declare(strict_types=1);
 const CANNED_SESSION_NAME = 'cc-20260101-1200';
 const CANNED_BLOCKED_SESSION_NAME = 'cc-20260101-1300';
 const CANNED_BARE_PID = 54321;
+// Its own separate pid/row - the resolved_title case is deliberately kept
+// OUT of CANNED_BARE_PID's own row, which every other bare_* action
+// fixture (kill_bare/take_over_bare/bare_process_detail) already keys off
+// and other tests already assert its raw pane `title` ("Bare title")
+// renders - bare-process-row.php prefers resolved_title over that raw
+// title when both are present, so overloading the same row would have
+// silently broken those.
+const CANNED_BARE_RESOLVED_PID = 54322;
 const CANNED_CLAUDE_SESSION_ID = '11111111-2222-4333-8444-555555555555';
 // A real, tiny, valid 1x1 PNG (not a placeholder string) - lets the UI
 // smoke test's headless browser actually decode/render it, not just check
@@ -161,6 +169,19 @@ $response = match ($action) {
             'started_at' => time() - 600,
             'tmux_session' => 'sessioneer-test-adhoc',
             'title' => 'Bare title',
+        ], [
+            'pid' => CANNED_BARE_RESOLVED_PID,
+            'cwd' => '/home/user/www/another-project',
+            'started_at' => time() - 300,
+            'tmux_session' => null,
+            'title' => null,
+            // Stands in for what BareProcessService::enrich_bare_with_confirmed_ids()
+            // (a real host-agent-side call this fixture bypasses entirely -
+            // see canned_agent.php's own header) would have attached - this
+            // fixture only needs to prove the VIEW layer renders it, not
+            // re-exercise that resolution logic (already covered directly
+            // in test_sessions_lifecycle.php).
+            'resolved_title' => 'Refactor the old widget',
         ]],
     ],
     'list_archived' => [

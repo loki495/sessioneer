@@ -147,6 +147,18 @@ class SessionRowView extends View
             'cwd' => $b['cwd'] ?? null,
             'startedAt' => ($b['started_at'] ?? null) !== null ? self::relative_time((int)$b['started_at']) : null,
             'csrfToken' => $csrfToken,
+            // Set only when BareProcessService::enrich_bare_with_confirmed_ids()
+            // (see its own docblock) could identify this row with certainty
+            // (an argv --resume/--session-id, or the daemon roster) - never
+            // the unconfirmed heuristic guess, which stays behind the
+            // explicit "Identify" click below.
+            'resolvedTitle' => is_string($b['resolved_title'] ?? null) ? $b['resolved_title'] : null,
+            // Set only by BareProcessService::declutter_bare_list() - a
+            // daemon-managed worker's OTHER real process (its bg-pty-host
+            // wrapper or bg-spare child, whichever this row's own cwd
+            // didn't win out over) that's backing this exact same session
+            // but isn't shown as its own separate row.
+            'hiddenWorkerCount' => (int)($b['hidden_worker_count'] ?? 0),
         ]);
     }
 

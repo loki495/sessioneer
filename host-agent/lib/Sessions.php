@@ -44,6 +44,7 @@ function dispatch_action(array $request): array
         case 'list':
             $list = ['ok' => true] + SessionService::list_all_sessions();
             $list['sessions'] = sessioneer_merge_headless_sessions($list['sessions']);
+            $list['bare'] = BareProcessService::declutter_bare_list(BareProcessService::enrich_bare_with_confirmed_ids($list['bare']));
 
             return $list;
 

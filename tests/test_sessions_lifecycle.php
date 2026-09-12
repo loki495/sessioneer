@@ -85,6 +85,12 @@ $daemonLabelTestSession = null;
 /** @var resource|null $rosterBareProc a plain (non-tmux) fake claude process used to test the daemon-roster resolution tier, for the finally-block safety net */
 $rosterBareProc = null;
 
+/** @var resource|null $rosterPtyHostProc one half of a fake daemon worker pair used to test take_over_bare_process()'s roster resolution + sibling-kill, for the finally-block safety net */
+$rosterPtyHostProc = null;
+
+/** @var resource|null $rosterSpareProc the other half of that same fake daemon worker pair, for the finally-block safety net */
+$rosterSpareProc = null;
+
 /** @var string|null $sendTestSession a cc-* session used to test PromptInteractionService::send_message(), for the finally-block safety net */
 $sendTestSession = null;
 
@@ -137,6 +143,26 @@ function find_session(string $name): ?array
     }
 
     return null;
+}
+
+/**
+ * NOT just is_dir("/proc/{$pid}") - a killed process this script itself
+ * spawned (via proc_open) stays a zombie, with its /proc entry still very
+ * much present, until this script's own proc_close()/proc_terminate() (or
+ * exit) reaps it - same finding as test_socket_harness.php's own
+ * pid_alive() (2026-08-08), hit again 2026-09-12 writing the roster
+ * take-over test below: a naive is_dir() check kept reporting a pid this
+ * app had already correctly killed as "still alive".
+ */
+function pid_alive(int $pid): bool
+{
+    $status = @file_get_contents("/proc/{$pid}/status");
+
+    if ($status === false) {
+        return false;
+    }
+
+    return preg_match('/^State:\s+Z/m', $status) !== 1;
 }
 
 // --- PromptParser::clean_pane_title(): strips Claude Code's animated spinner glyph,
@@ -1045,6 +1071,56 @@ try {
     assert_equal($rosterUuid, $rosterDetail['agent_session_id'] ?? null, 'resolve_bare_process_detail: resolves via the daemon roster when the pid itself has no --resume in its own argv');
     assert_equal('confirmed', $rosterDetail['confidence'] ?? null, 'resolve_bare_process_detail: a daemon-roster match is confirmed, not a guess');
 
+    // --- BareProcessService::enrich_bare_with_confirmed_ids(): the
+    // dashboard's "add the title by default" ask (Andres, 2026-09-12) -
+    // a whole bare[] batch gets resolved_agent_session_id/resolved_title
+    // attached in one pass (one roster read shared across every row),
+    // for every row this can identify with CERTAINTY, with no click
+    // needed - never the unconfirmed heuristic guess, which stays behind
+    // the explicit "Identify" button. Mixes in an unresolvable row (a
+    // made-up pid with no roster/argv match at all) to prove that one
+    // comes back untouched rather than crashing or getting a bogus id. ---
+    $enrichedBare = BareProcessService::enrich_bare_with_confirmed_ids([
+        ['pid' => $rosterBarePid, 'cwd' => $rosterBareCwd],
+        ['pid' => 0, 'cwd' => '/some/unrelated/path'],
+    ]);
+    assert_equal($rosterUuid, $enrichedBare[0]['resolved_agent_session_id'] ?? null, 'enrich_bare_with_confirmed_ids: resolves a daemon-roster match within a batch');
+    assert_true(!array_key_exists('resolved_agent_session_id', $enrichedBare[1]), 'enrich_bare_with_confirmed_ids: a row with no resolvable id at all is left untouched, not given a bogus one');
+
+    // --- BareProcessService::declutter_bare_list(): Andres's own ask
+    // (2026-09-12) once he was seeing ~14 "Other claude processes on host"
+    // rows that were really just the daemon's own internals - pure
+    // array-in/array-out logic, no live process/tmux fixture needed at
+    // all. Display-only: never changes what a row's own Kill/Take-over
+    // targets, never touches a row with no resolved id at all. ---
+    $declutterInput = [
+        ['pid' => 100, 'cwd' => '/home/andres', 'is_daemon_supervisor' => true],
+        ['pid' => 200, 'cwd' => '/tmp/cc-daemon-1000/abc/spare', 'resolved_agent_session_id' => 'sess-a', 'resolved_title' => 'Session A'],
+        ['pid' => 201, 'cwd' => '/home/andres/www/project-a', 'resolved_agent_session_id' => 'sess-a', 'resolved_title' => 'Session A'],
+        ['pid' => 300, 'cwd' => '/tmp/cc-daemon-1000/def/spare'],
+    ];
+    $decluttered = BareProcessService::declutter_bare_list($declutterInput);
+    assert_equal(2, count($decluttered), 'declutter_bare_list: drops the daemon supervisor row and collapses the matched pair down to one, leaving the untouched row alone');
+    assert_true(!in_array(100, array_column($decluttered, 'pid'), true), 'declutter_bare_list: the daemon supervisor row (is_daemon_supervisor=true) is gone entirely');
+
+    $keptPair = null;
+    foreach ($decluttered as $row) {
+        if (in_array($row['pid'], [200, 201], true)) {
+            $keptPair = $row;
+        }
+    }
+    assert_equal(201, $keptPair['pid'] ?? null, 'declutter_bare_list: of the two rows resolving to the same session, keeps the one whose cwd is a real project path, not the daemon\'s internal /tmp pool path');
+    assert_equal(1, $keptPair['hidden_worker_count'] ?? null, 'declutter_bare_list: tags the kept row with how many other real pids also back the same session, rather than silently dropping them with no trace');
+
+    $untouchedRow = null;
+    foreach ($decluttered as $row) {
+        if ($row['pid'] === 300) {
+            $untouchedRow = $row;
+        }
+    }
+    assert_true($untouchedRow !== null, 'declutter_bare_list: a row with no resolved_agent_session_id at all (an idle, not-yet-claimed spare) passes through');
+    assert_true(!array_key_exists('hidden_worker_count', $untouchedRow ?? []), 'declutter_bare_list: an untouched row never gets a bogus hidden_worker_count');
+
     // --- liveness safety net: once the worker's pid is actually gone, the
     // roster's own sessionId must stop being trusted - otherwise a crashed
     // daemon that never prunes its own stale roster would permanently hide
@@ -1533,6 +1609,87 @@ try {
     @rmdir($markerFakeHome . '/.claude/projects');
     @rmdir($markerFakeHome . '/.claude');
     @rmdir($markerFakeHome);
+    putenv('HOME_ROOT');
+
+    // --- take_over_bare_process(): a daemon-managed worker pair - Andres's
+    // own explicit ask (2026-09-12), once this could be resolved with
+    // certainty via the daemon roster: "I'm ok with a plain kill and
+    // --resume inside a managed tmux". A worker is really TWO real
+    // processes sharing one conversation (a bg-pty-host wrapper, whose own
+    // cwd never leaves the daemon's internal pool location, and its bg-
+    // spare/REPL child, whose cwd is the real project folder) - taking
+    // over EITHER one must kill BOTH (not leave the other orphaned) and
+    // resume into the REAL cwd, never the pool path. ---
+    $rosterTakeOverUuid = '99999999-9999-4999-8999-999999999999';
+    $rosterTakeOverFakeHome = sys_get_temp_dir() . '/sessioneer-test-take-over-roster-home-' . getmypid();
+    $rosterTakeOverPoolCwd = sys_get_temp_dir() . '/sessioneer-test-take-over-roster-pool-' . getmypid();
+    @mkdir($rosterTakeOverFakeHome . '/.claude/daemon', 0700, true);
+    @mkdir($rosterTakeOverFakeHome . '/.claude/projects/-roster-take-over-project', 0700, true);
+    @mkdir($rosterTakeOverPoolCwd, 0700, true);
+    $rosterTakeOverCwd = Config::www_root() . '/project-a';
+    file_put_contents(
+        $rosterTakeOverFakeHome . '/.claude/projects/-roster-take-over-project/' . $rosterTakeOverUuid . '.jsonl',
+        json_encode(['type' => 'user', 'message' => ['role' => 'user', 'content' => [['type' => 'text', 'text' => 'hi']]], 'cwd' => $rosterTakeOverCwd]) . "\n"
+    );
+    putenv("HOME_ROOT={$rosterTakeOverFakeHome}");
+
+    $rosterPtyHostProc = proc_open([Config::claude_bin()], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $rosterPtyHostPipes, $rosterTakeOverPoolCwd);
+    $rosterPtyHostPid = is_resource($rosterPtyHostProc) ? (proc_get_status($rosterPtyHostProc)['pid'] ?? null) : null;
+    $rosterSpareProc = proc_open([Config::claude_bin()], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $rosterSparePipes, $rosterTakeOverCwd);
+    $rosterSparePid = is_resource($rosterSpareProc) ? (proc_get_status($rosterSpareProc)['pid'] ?? null) : null;
+    assert_true($rosterPtyHostPid !== null && $rosterSparePid !== null, 'roster take-over setup: spawned both halves of a fake daemon worker pair');
+    usleep(300000);
+
+    file_put_contents($rosterTakeOverFakeHome . '/.claude/daemon/roster.json', json_encode([
+        'proto' => 1,
+        'workers' => [
+            'rostertakeovertst' => [
+                'pid' => $rosterPtyHostPid,
+                'replPid' => $rosterSparePid,
+                'sessionId' => $rosterTakeOverUuid,
+                'cwd' => $rosterTakeOverCwd,
+            ],
+        ],
+    ]));
+
+    $rosterTakeOverResult = BareProcessService::take_over_bare_process((int)$rosterPtyHostPid);
+    assert_true($rosterTakeOverResult['ok'] ?? false, 'take_over_bare_process: ok=true for a daemon-roster-matched worker');
+    assert_true(!($rosterTakeOverResult['needs_choice'] ?? false), 'take_over_bare_process: no picker needed - the daemon roster gave a confident match');
+    $rosterTakeOverName = $rosterTakeOverResult['name'] ?? null;
+    assert_true(is_string($rosterTakeOverName) && str_starts_with($rosterTakeOverName, 'cc-'), 'take_over_bare_process: returns the new pane name, already resumed');
+
+    usleep(300000);
+    assert_true(!pid_alive((int)$rosterPtyHostPid), 'take_over_bare_process: killed the bg-pty-host half take-over was actually called on');
+    assert_true(!pid_alive((int)$rosterSparePid), 'take_over_bare_process: ALSO killed the sibling bg-spare half - not left orphaned');
+
+    $rosterTakeOverEntry = is_string($rosterTakeOverName) ? find_session($rosterTakeOverName) : null;
+    assert_true($rosterTakeOverEntry !== null, 'take_over_bare_process: the new session appears in list_all_sessions()');
+    assert_equal($rosterTakeOverCwd, $rosterTakeOverEntry['workdir'] ?? null, 'take_over_bare_process: resumed into the REAL project cwd (the sibling\'s) - not the daemon pool path the targeted pid itself was sitting in');
+    assert_equal($rosterTakeOverUuid, $rosterTakeOverEntry['agent_session_id'] ?? null, 'take_over_bare_process: sidecar records the exact agent_session_id read from the daemon roster');
+
+    if (is_string($rosterTakeOverName)) {
+        SessionLifecycleService::kill_agent_session($rosterTakeOverName);
+    }
+
+    if (is_resource($rosterPtyHostProc)) {
+        proc_terminate($rosterPtyHostProc);
+        proc_close($rosterPtyHostProc);
+    }
+    $rosterPtyHostProc = null;
+    if (is_resource($rosterSpareProc)) {
+        proc_terminate($rosterSpareProc);
+        proc_close($rosterSpareProc);
+    }
+    $rosterSpareProc = null;
+
+    @unlink($rosterTakeOverFakeHome . '/.claude/daemon/roster.json');
+    @rmdir($rosterTakeOverFakeHome . '/.claude/daemon');
+    @unlink($rosterTakeOverFakeHome . '/.claude/projects/-roster-take-over-project/' . $rosterTakeOverUuid . '.jsonl');
+    @rmdir($rosterTakeOverFakeHome . '/.claude/projects/-roster-take-over-project');
+    @rmdir($rosterTakeOverFakeHome . '/.claude/projects');
+    @rmdir($rosterTakeOverFakeHome . '/.claude');
+    @rmdir($rosterTakeOverFakeHome);
+    @rmdir($rosterTakeOverPoolCwd);
     putenv('HOME_ROOT');
 
     // --- bare_process_take_over_candidates(): excludes another OTHER
@@ -2474,6 +2631,14 @@ try {
     if ($rosterBareProc !== null && is_resource($rosterBareProc)) {
         proc_terminate($rosterBareProc);
         proc_close($rosterBareProc);
+    }
+    if ($rosterPtyHostProc !== null && is_resource($rosterPtyHostProc)) {
+        proc_terminate($rosterPtyHostProc);
+        proc_close($rosterPtyHostProc);
+    }
+    if ($rosterSpareProc !== null && is_resource($rosterSpareProc)) {
+        proc_terminate($rosterSpareProc);
+        proc_close($rosterSpareProc);
     }
     if ($sendTestSession !== null) {
         TmuxService::tmux_run(['kill-session', '-t', $sendTestSession]);

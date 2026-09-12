@@ -140,69 +140,52 @@ class BareProcessService
     }
 
     /**
-     * Every agent_session_id the daemon roster currently knows about, live
-     * or not - collected from TWO places per worker, not just one: the
-     * roster's own `sessionId` field, and (when the worker's own pid/
-     * replPid is still actually running) whatever --resume/--session-id
-     * its LIVE process's real argv currently carries. Found live
-     * 2026-09-12 that these can genuinely disagree: one worker's roster
-     * `sessionId` pointed at a transcript untouched in days, while that
-     * exact same live process had since been asked to serve a completely
-     * different, actually-current transcript via a fresh --resume in its
-     * own argv - the roster's own bookkeeping had simply not caught up.
-     * Collecting both errs toward inclusion rather than picking one and
-     * risking the wrong one.
-     *
-     * @return string[]
+     * A plain is_dir("/proc/{$pid}") isn't enough - found live 2026-09-12
+     * writing take_over_bare_process()'s own daemon-worker test: a process
+     * that's just been sent SIGTERM becomes a ZOMBIE (state "Z") the
+     * instant it actually exits, not gone from /proc entirely - that only
+     * happens once its parent reaps it via wait()/proc_close(), which can
+     * take a moment (or, in a test spawning it via proc_open() itself,
+     * however long until that call happens). A zombie can never come back,
+     * write to anything, or compete for a transcript file, so treating it
+     * as "still alive" was exactly backwards - it made resume_agent_
+     * session() reject resuming a session as "already live" against the
+     * very process take_over_bare_process() had itself just killed
+     * moments earlier.
      */
-    private static function daemon_roster_session_ids(): array
-    {
-        $ids = [];
-
-        foreach (self::daemon_roster_workers() as $worker) {
-            $workerPids = array_filter([$worker['pid'] ?? null, $worker['replPid'] ?? null], 'is_int');
-            $anyAlive = false;
-
-            foreach ($workerPids as $workerPid) {
-                if (!self::pid_is_alive($workerPid)) {
-                    continue;
-                }
-
-                $anyAlive = true;
-                $liveResumeId = self::agent_session_id_from_resume_arg(self::resume_arg_from_pid($workerPid));
-
-                if ($liveResumeId !== null) {
-                    $ids[] = $liveResumeId;
-                }
-            }
-
-            // The roster's own `sessionId` field is only trusted while at
-            // least one of this worker's own pids is still actually
-            // running - never indefinitely just because roster.json still
-            // mentions it. Without this, a daemon crash that leaves a
-            // stale roster behind (never confirmed to self-prune promptly)
-            // would permanently hide a truly-dead session from "archived"
-            // and refuse to ever let it be resumed again.
-            if ($anyAlive && is_string($worker['sessionId'] ?? null)) {
-                $ids[] = $worker['sessionId'];
-            }
-        }
-
-        return array_values(array_unique($ids));
-    }
-
     private static function pid_is_alive(int $pid): bool
     {
-        return $pid > 0 && is_dir("/proc/{$pid}");
+        if ($pid <= 0) {
+            return false;
+        }
+
+        $stat = @file_get_contents("/proc/{$pid}/stat");
+
+        if ($stat === false) {
+            return false;
+        }
+
+        // Fields are space-separated after the comm field (2nd field,
+        // itself parenthesized and possibly containing spaces or ")" -
+        // e.g. a script's own name) - split on the LAST ")" rather than
+        // assuming a fixed field count/format for the fields before it.
+        $afterComm = strrpos($stat, ')');
+
+        if ($afterComm === false) {
+            return true;
+        }
+
+        $state = trim(substr($stat, $afterComm + 1))[0] ?? '';
+
+        return $state !== 'Z';
     }
 
     /**
      * The exact value passed to --resume/--session-id for a KNOWN pid,
      * read directly from /proc rather than going through
      * ProcessInspector::find_claude_processes()'s own full host scan -
-     * used by daemon_roster_session_ids()/resolve_via_daemon_roster() to
-     * check one specific worker pid/replPid at a time, not every claude
-     * process on the box.
+     * used by daemon_roster_pid_map() to check one specific worker pid/
+     * replPid at a time, not every claude process on the box.
      */
     private static function resume_arg_from_pid(int $pid): ?string
     {
@@ -224,32 +207,114 @@ class BareProcessService
     }
 
     /**
+     * Every pid the daemon roster currently knows about, mapped to its own
+     * best-resolved agent_session_id - built in ONE pass over the roster
+     * file (rather than re-reading/re-scanning it once per pid asked
+     * about), since a dashboard poll may need to resolve a dozen-plus bare
+     * rows at once (enrich_bare_with_confirmed_ids()) as well as one
+     * specific pid at a time (resolve_bare_process_detail(),
+     * take_over_bare_process()).
+     *
+     * Each worker contributes an entry for EACH of its own pid/replPid
+     * (not just one merged entry for the worker) - a bg-pty-host wrapper
+     * and its bg-spare child are two separate real processes, and either
+     * one's pid might be what a caller is actually asking about.
+     *
+     * Only ever populated for a pid that's still actually alive right now
+     * (self::pid_is_alive()) - never trusted indefinitely just because
+     * roster.json still mentions it, so a daemon crash that leaves a stale
+     * roster behind (never confirmed to self-prune promptly) can't
+     * permanently hide a truly-dead session from "archived" or block it
+     * from ever being resumed again.
+     *
+     * Per pid, prefers that SAME live process's own --resume/--session-id
+     * (if its argv happens to carry one) over the roster's own `sessionId`
+     * field for the WORKER as a whole - found live 2026-09-12 that these
+     * can genuinely disagree: one worker's roster `sessionId` pointed at a
+     * transcript untouched in days, while that exact same live process had
+     * since been asked to serve a completely different, actually-current
+     * transcript via a fresh --resume in its own argv, and the roster's
+     * own bookkeeping had simply not caught up.
+     *
+     * @return array<int, string>
+     */
+    private static function daemon_roster_pid_map(): array
+    {
+        $map = [];
+
+        foreach (self::daemon_roster_workers() as $worker) {
+            $workerSessionId = is_string($worker['sessionId'] ?? null) ? $worker['sessionId'] : null;
+
+            foreach (array_filter([$worker['pid'] ?? null, $worker['replPid'] ?? null], 'is_int') as $workerPid) {
+                if (!self::pid_is_alive($workerPid)) {
+                    continue;
+                }
+
+                $resolved = self::agent_session_id_from_resume_arg(self::resume_arg_from_pid($workerPid)) ?? $workerSessionId;
+
+                if ($resolved !== null) {
+                    $map[$workerPid] = $resolved;
+                }
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Every agent_session_id the daemon roster currently knows about -
+     * the union of daemon_roster_pid_map()'s values, deduplicated. See
+     * that method's own docblock for the full reasoning (liveness check,
+     * live-argv-over-roster-field preference).
+     *
+     * @return string[]
+     */
+    private static function daemon_roster_session_ids(): array
+    {
+        return array_values(array_unique(self::daemon_roster_pid_map()));
+    }
+
+    /**
      * Resolves ONE known pid against the daemon roster - the pid a bare-
      * process row is actually asking about (resolve_bare_process_detail())
-     * or take-over is targeting, cross-checked against every worker's
-     * `pid`/`replPid` rather than scanning the whole roster's ids
-     * unconditionally. Prefers that SAME worker's own live argv --resume
-     * value over the roster's own `sessionId` field when both exist - see
-     * daemon_roster_session_ids()'s own docblock for why the roster field
-     * can lag behind it.
+     * or take-over is targeting. See daemon_roster_pid_map()'s own
+     * docblock for the resolution rules.
      */
     private static function resolve_via_daemon_roster(int $pid): ?string
     {
+        return self::daemon_roster_pid_map()[$pid] ?? null;
+    }
+
+    /**
+     * A daemon-managed worker is really TWO real, separate processes - a
+     * bg-pty-host wrapper and its bg-spare/REPL child (see
+     * declutter_bare_list()'s own docblock) - sharing one conversation.
+     * Taking that conversation over means ending BOTH, not just whichever
+     * one pid a click happened to target, or the other would be left
+     * running as an orphan with nothing left pointing at it. Returns the
+     * other still-alive pid(s) from the SAME roster worker entry as $pid
+     * (its `pid` and `replPid` are checked against each other), or [] for
+     * anything not in the roster at all (a plain bare process has no such
+     * pairing to worry about).
+     *
+     * @return int[]
+     */
+    private static function daemon_roster_sibling_pids(int $pid): array
+    {
         foreach (self::daemon_roster_workers() as $worker) {
-            if (($worker['pid'] ?? null) !== $pid && ($worker['replPid'] ?? null) !== $pid) {
-                continue;
+            $workerPid = $worker['pid'] ?? null;
+            $replPid = $worker['replPid'] ?? null;
+
+            if ($workerPid === $pid && is_int($replPid) && self::pid_is_alive($replPid)) {
+                return [$replPid];
             }
 
-            $liveResumeId = self::agent_session_id_from_resume_arg(self::resume_arg_from_pid($pid));
-
-            if ($liveResumeId !== null) {
-                return $liveResumeId;
+            if ($replPid === $pid && is_int($workerPid) && self::pid_is_alive($workerPid)) {
+                return [$workerPid];
             }
-
-            return is_string($worker['sessionId'] ?? null) ? $worker['sessionId'] : null;
         }
 
-        return null;
+        return [];
     }
 
     /**
@@ -460,6 +525,135 @@ class BareProcessService
     }
 
     /**
+     * Attaches `resolved_agent_session_id`/`resolved_title` to every bare
+     * row this app can identify with CERTAINTY, with no extra clicking -
+     * Andres's own ask (2026-09-12), once "Other claude processes on host"
+     * started regularly showing over a dozen daemon-managed workers and he
+     * wanted their titles visible by default to actually review/clean them
+     * up, rather than clicking "Identify" on each one by one.
+     *
+     * Deliberately only the two CHEAP, CERTAIN tiers - the row's own
+     * argv-derived --resume/--session-id (already sitting on $b['resume_arg']
+     * from ProcessInspector::find_claude_processes(), no extra work at all)
+     * and one single-pass daemon_roster_pid_map() lookup shared across
+     * every row in the batch. NEVER the statusline-marker tier (a tmux
+     * capture-pane call per candidate pane) or bare_process_take_over_
+     * candidates()'s heuristic GUESS (a transcript-directory scan per
+     * candidate) - both real per-row costs that are fine to pay for once,
+     * on an explicit "Identify" click (see resolve_bare_process_detail()),
+     * but not on every regular dashboard poll for every bare row at once.
+     * A row this doesn't resolve still gets its guess (labeled as a guess)
+     * the same way it always has, just still only on request.
+     *
+     * @param array<int, array<string, mixed>> $bare
+     * @return array<int, array<string, mixed>>
+     */
+    public static function enrich_bare_with_confirmed_ids(array $bare): array
+    {
+        $rosterPidMap = self::daemon_roster_pid_map();
+
+        return array_map(static function (array $b) use ($rosterPidMap): array {
+            $pid = (int)($b['pid'] ?? 0);
+
+            if ($pid <= 0) {
+                return $b;
+            }
+
+            $agentSessionId = self::agent_session_id_from_resume_arg(is_string($b['resume_arg'] ?? null) ? $b['resume_arg'] : null)
+                ?? $rosterPidMap[$pid] ?? null;
+
+            if ($agentSessionId === null) {
+                return $b;
+            }
+
+            $path = TranscriptRouter::find_transcript_path($agentSessionId);
+            $cwd = is_string($b['cwd'] ?? null) ? $b['cwd'] : null;
+            $title = $path !== null ? SessionService::title_cascade(TranscriptService::find_latest_ai_title($path), null, $cwd, $agentSessionId) : null;
+
+            return $b + ['resolved_agent_session_id' => $agentSessionId, 'resolved_title' => $title];
+        }, $bare);
+    }
+
+    /**
+     * Filters the daemon's own noise out of an already-enriched bare[]
+     * batch (see enrich_bare_with_confirmed_ids() - MUST run first, this
+     * reads the `resolved_agent_session_id`/`is_daemon_supervisor` fields
+     * it/ProcessInspector attach) - Andres's own ask (2026-09-12), once
+     * "Other claude processes on host" started regularly showing over a
+     * dozen rows that were really just the daemon's own internals, not
+     * distinct conversations to review:
+     *
+     * 1. Drops the daemon's own supervisor process(es) outright ("claude
+     *    daemon run ...") - pure infrastructure, never a conversation,
+     *    never resolvable to one either.
+     * 2. Collapses a claimed worker's TWO real processes (a bg-pty-host
+     *    wrapper, whose own cwd stays stuck at the internal spare-pool
+     *    path, plus its bg-spare/REPL child, whose cwd correctly reflects
+     *    the real project folder) - which resolve to the exact SAME
+     *    agent_session_id, since daemon_roster_pid_map() checks both a
+     *    worker's `pid` and `replPid` - down to the single row whose own
+     *    cwd looks like a real project path (not under /tmp), tagging it
+     *    with how many other real pids also back that same session
+     *    (`hidden_worker_count`) rather than just silently dropping them -
+     *    nothing disappears without a trace, it just isn't its own
+     *    separate, confusing row anymore.
+     *
+     * Deliberately display-only: does not change what Kill/Take-over
+     * target (still exactly the one pid on the row they're clicked from),
+     * and never touches an unresolved row (an idle, not-yet-claimed spare,
+     * or any bare process with no confirmed id at all) - those pass
+     * through completely unchanged, one row each, same as before this
+     * method existed.
+     *
+     * @param array<int, array<string, mixed>> $bare
+     * @return array<int, array<string, mixed>>
+     */
+    public static function declutter_bare_list(array $bare): array
+    {
+        $withoutSupervisors = array_values(array_filter(
+            $bare,
+            static fn(array $b): bool => empty($b['is_daemon_supervisor']),
+        ));
+
+        $byResolvedId = [];
+        $result = [];
+
+        foreach ($withoutSupervisors as $b) {
+            $resolvedId = $b['resolved_agent_session_id'] ?? null;
+
+            if (!is_string($resolvedId) || $resolvedId === '') {
+                $result[] = $b;
+
+                continue;
+            }
+
+            if (!isset($byResolvedId[$resolvedId])) {
+                $byResolvedId[$resolvedId] = count($result);
+                $result[] = $b;
+
+                continue;
+            }
+
+            $existingIndex = $byResolvedId[$resolvedId];
+            $existingCwd = is_string($result[$existingIndex]['cwd'] ?? null) ? $result[$existingIndex]['cwd'] : '';
+            $thisCwd = is_string($b['cwd'] ?? null) ? $b['cwd'] : '';
+
+            // Prefer whichever of the two looks like a real project
+            // directory (not the daemon's own internal /tmp pool path) as
+            // the one kept and shown - if somehow neither or both qualify,
+            // the first one seen stays, arbitrarily but deterministically.
+            if (str_starts_with($existingCwd, '/tmp/') && !str_starts_with($thisCwd, '/tmp/')) {
+                $b['hidden_worker_count'] = ($result[$existingIndex]['hidden_worker_count'] ?? 0) + 1;
+                $result[$existingIndex] = $b;
+            } else {
+                $result[$existingIndex]['hidden_worker_count'] = ($result[$existingIndex]['hidden_worker_count'] ?? 0) + 1;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
      * Best-effort identification for one bare (untracked) process's dashboard
      * row - Andres's own ask (2026-09-11), after finding that "Other claude
      * processes on host" gave no way to tell whether a row duplicated
@@ -539,10 +733,17 @@ class BareProcessService
      * unify-claude-sessions plan's phase 6. Two outcomes:
      *
      * 1. A confident match (the argv-derived id, see
-     *    agent_session_id_from_resume_arg(), or bare_process_live_agent_
-     *    session_id()'s statusline marker): kills the pid and resumes that
-     *    exact session in one call - a genuine single click, nothing more
-     *    needed from the caller.
+     *    agent_session_id_from_resume_arg(); the daemon roster, see
+     *    resolve_via_daemon_roster() - added 2026-09-12, Andres explicitly
+     *    accepted the plain-kill-then-resume approach for this shape once
+     *    it could be resolved with certainty; or bare_process_live_agent_
+     *    session_id()'s statusline marker): kills the pid (AND, for a
+     *    daemon-managed worker, its sibling pid too - see
+     *    daemon_roster_sibling_pids()'s own docblock for why a worker is
+     *    really two real processes sharing one conversation, and both
+     *    need to end together or the other is left running as an orphan)
+     *    and resumes that exact session in one call - a genuine single
+     *    click, nothing more needed from the caller.
      * 2. No confident match: returns the cwd's candidate sessions instead,
      *    WITHOUT killing anything - fully cancelable, no side effects,
      *    until the caller picks one and calls
@@ -572,14 +773,50 @@ class BareProcessService
             return ['ok' => false, 'message' => 'Rejected: not a currently running claude process, or its working directory could not be determined'];
         }
 
-        $matchedId = self::agent_session_id_from_resume_arg($resumeArg) ?? self::bare_process_live_agent_session_id($pid);
+        $matchedId = self::agent_session_id_from_resume_arg($resumeArg) ?? self::resolve_via_daemon_roster($pid) ?? self::bare_process_live_agent_session_id($pid);
 
         if ($matchedId !== null) {
+            $siblingPids = self::daemon_roster_sibling_pids($pid);
+
+            // A daemon-managed worker's bg-pty-host wrapper half never
+            // chdirs out of the internal spare-pool location (see
+            // declutter_bare_list()'s own docblock) - if THIS pid is that
+            // half, resume into its sibling's real cwd instead of the
+            // pool path this one's own $workdir would otherwise carry.
+            if (str_starts_with($workdir, '/tmp/') && $siblingPids !== []) {
+                foreach (ProcessInspector::find_claude_processes() as $proc) {
+                    if ($proc['pid'] === $siblingPids[0] && $proc['cwd'] !== null && !str_starts_with($proc['cwd'], '/tmp/')) {
+                        $workdir = $proc['cwd'];
+                        break;
+                    }
+                }
+            }
+
             $killResult = self::kill_bare_process($pid);
 
             if (!($killResult['ok'] ?? false)) {
                 return $killResult;
             }
+
+            foreach ($siblingPids as $siblingPid) {
+                self::kill_bare_process($siblingPid);
+            }
+
+            // A tmux-hosted bare process's kill_bare_process() call is
+            // synchronous (it tears down the whole tmux session, which
+            // tmux itself doesn't report done until the pane's process is
+            // actually gone) - but a daemon-managed worker runs on a raw
+            // pty, no tmux pane at all, so this instead sends a plain
+            // SIGTERM (self::kill_bare_process() -> ProcessRunner::
+            // run_process(['kill', '-TERM', ...])), which only delivers
+            // the signal and returns immediately, before the kernel has
+            // necessarily reaped the target. Found live 2026-09-12
+            // writing this exact test: resume_agent_session() right below
+            // was rejecting its OWN just-killed pid as "already live",
+            // since live_bare_agent_session_ids()'s daemon-roster check
+            // still saw it in /proc for a brief window after kill_bare_
+            // process() had already returned ok=true.
+            usleep(300000);
 
             return SessionLifecycleService::resume_agent_session($workdir, $matchedId);
         }
@@ -602,7 +839,10 @@ class BareProcessService
      * from the candidates. Kills $pid only if it's still actually
      * running - it may have exited on its own in the time it took to
      * choose, and that's fine, the resume below still makes sense either
-     * way.
+     * way. Also best-effort kills a daemon-managed pid's sibling process
+     * (see daemon_roster_sibling_pids()'s own docblock) so a take-over
+     * reached via this picker path can't leave one half of a worker pair
+     * orphaned any more than the direct one-click path can.
      *
      * @return array{ok:bool, message:string, name?:string}
      */
@@ -615,6 +855,15 @@ class BareProcessService
                 if (!($killResult['ok'] ?? false)) {
                     return $killResult;
                 }
+
+                foreach (self::daemon_roster_sibling_pids($pid) as $siblingPid) {
+                    self::kill_bare_process($siblingPid);
+                }
+
+                // Same settle-delay as take_over_bare_process()'s own -
+                // see its docblock for why a bare (non-tmux) SIGTERM needs
+                // this but a tmux-hosted kill doesn't.
+                usleep(300000);
 
                 break;
             }

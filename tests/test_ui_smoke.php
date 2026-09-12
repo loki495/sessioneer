@@ -1463,6 +1463,10 @@ try {
         str_contains($takeOverFragmentBody['bare_html'] ?? '', 'bare-identify-btn'),
         'GET /sessions_fragment.php: bare_html also carries an Identify button for the canned bare pid'
     );
+    assert_true(
+        str_contains($takeOverFragmentBody['bare_html'] ?? '', 'Refactor the old widget') && str_contains($takeOverFragmentBody['bare_html'] ?? '', 'Identified'),
+        'GET /sessions_fragment.php: bare_html shows a confirmed resolved_title by default, with no click needed'
+    );
 
     // --- session.php: a brand-new session (found, but no transcript on
     // disk yet) must still render #history-list (with a placeholder note
