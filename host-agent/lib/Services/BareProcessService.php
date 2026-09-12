@@ -64,6 +64,46 @@ class BareProcessService
     }
 
     /**
+     * The MOST certain signal of all for a bare process's own
+     * agent_session_id - more certain than the statusline marker below,
+     * since it needs no tmux pane to read at all: the exact value passed
+     * to --resume/--session-id, straight from ProcessInspector::
+     * find_claude_processes()'s own argv read. Found live 2026-09-11
+     * (Andres: a real `claude --resume <path-to-transcript>.jsonl` process,
+     * launched by a different tool entirely - claude-code-ui - was still
+     * showing up in the archived list): a resumed conversation's transcript
+     * can be arbitrarily older than the resuming process's own start time,
+     * which is exactly what makes bare_process_take_over_candidates()'s
+     * closest-start-time heuristic unreliable for this shape specifically -
+     * this sidesteps that guesswork entirely when the id is just sitting
+     * there in argv. A bare `claude` with no such flag (an organic new
+     * terminal conversation) has nothing here to read, and falls through
+     * to the marker/heuristic tiers same as before.
+     */
+    private static function agent_session_id_from_resume_arg(?string $resumeArg): ?string
+    {
+        if ($resumeArg === null || $resumeArg === '') {
+            return null;
+        }
+
+        $uuidPattern = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i';
+
+        if (preg_match($uuidPattern, $resumeArg) === 1) {
+            return $resumeArg;
+        }
+
+        if (str_ends_with($resumeArg, '.jsonl')) {
+            $base = basename($resumeArg, '.jsonl');
+
+            if (preg_match($uuidPattern, $base) === 1) {
+                return $base;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * The one signal that can identify a bare (untracked) process's exact
      * agent_session_id with certainty: Claude Code's statusLine feature
      * reports session_id in the JSON it feeds a configured statusline
@@ -200,17 +240,18 @@ class BareProcessService
      * tmux, no sidecar - exactly how this app's own live session runs)
      * was invisible to both checks.
      *
-     * Prefers the certain signal (bare_process_live_agent_session_id() -
-     * a real statusline-marker read, only available when the pid has an
-     * owning tmux pane) and falls back to bare_process_take_over_
-     * candidates()'s own closest-start-time guess when there's no marker
-     * to read at all (the common case for a truly bare, no-tmux terminal
-     * session) - that guess can occasionally be wrong (see its own
-     * docblock), but the asymmetry favors erring toward inclusion here: a
-     * dormant transcript wrongly hidden from "archived" for as long as an
-     * unrelated bare process happens to share its cwd is a minor,
-     * self-correcting annoyance, while a truly-live one left resumable
-     * risks two processes silently fighting over one transcript file.
+     * Prefers the argv-derived id above (certain, needs no tmux pane at
+     * all), then the statusline marker (also certain, but only readable
+     * when the pid has an owning tmux pane), and only falls back to
+     * bare_process_take_over_candidates()'s own closest-start-time guess
+     * when neither of those found anything (the common case for a truly
+     * bare, no-tmux, NOT explicitly --resume'd terminal session) - that
+     * guess can occasionally be wrong (see its own docblock), but the
+     * asymmetry favors erring toward inclusion here: a dormant transcript
+     * wrongly hidden from "archived" for as long as an unrelated bare
+     * process happens to share its cwd is a minor, self-correcting
+     * annoyance, while a truly-live one left resumable risks two processes
+     * silently fighting over one transcript file.
      *
      * @return string[]
      */
@@ -222,6 +263,14 @@ class BareProcessService
             $pid = (int)($b['pid'] ?? 0);
 
             if ($pid <= 0) {
+                continue;
+            }
+
+            $resumeId = self::agent_session_id_from_resume_arg(is_string($b['resume_arg'] ?? null) ? $b['resume_arg'] : null);
+
+            if ($resumeId !== null) {
+                $ids[] = $resumeId;
+
                 continue;
             }
 
@@ -256,12 +305,14 @@ class BareProcessService
      * processes on host" gave no way to tell whether a row duplicated
      * something already in the archived list. Reuses the exact same
      * resolution this class already relies on elsewhere (never invented
-     * fresh for this): the certain statusline-marker match
-     * (bare_process_live_agent_session_id()) when the pid has an owning
-     * tmux pane with the marker installed, falling back to
-     * bare_process_take_over_candidates()'s own closest-start-time GUESS
-     * otherwise - `confidence` tells the caller which one it got, so the
-     * view can label a guess as a guess rather than asserting it. Read-only:
+     * fresh for this): the certain argv-derived id
+     * (agent_session_id_from_resume_arg()) first, then the certain
+     * statusline-marker match (bare_process_live_agent_session_id()) when
+     * the pid has an owning tmux pane with the marker installed, falling
+     * back to bare_process_take_over_candidates()'s own closest-start-time
+     * GUESS only when neither found anything - `confidence` tells the
+     * caller which tier it got, so the view can label a guess as a guess
+     * rather than asserting it. Read-only:
      * unlike take_over_bare_process(), nothing is killed or resumed here.
      *
      * Identification only, deliberately - once the caller has the resolved
@@ -277,11 +328,13 @@ class BareProcessService
     {
         $cwd = null;
         $startedAt = null;
+        $resumeArg = null;
 
         foreach (ProcessInspector::find_claude_processes() as $proc) {
             if ($proc['pid'] === $pid) {
                 $cwd = $proc['cwd'];
                 $startedAt = $proc['started_at'];
+                $resumeArg = $proc['resume_arg'] ?? null;
                 break;
             }
         }
@@ -290,8 +343,13 @@ class BareProcessService
             return ['ok' => false, 'message' => 'Rejected: not a currently running claude process, or its working directory could not be determined'];
         }
 
-        $agentSessionId = self::bare_process_live_agent_session_id($pid);
+        $agentSessionId = self::agent_session_id_from_resume_arg($resumeArg);
         $confidence = $agentSessionId !== null ? 'confirmed' : null;
+
+        if ($agentSessionId === null) {
+            $agentSessionId = self::bare_process_live_agent_session_id($pid);
+            $confidence = $agentSessionId !== null ? 'confirmed' : null;
+        }
 
         if ($agentSessionId === null) {
             $agentSessionId = self::bare_process_take_over_candidates($cwd, $startedAt ?? time(), $pid)['suggested_agent_session_id'];
@@ -312,9 +370,11 @@ class BareProcessService
      * "Take over" a foreign (bare/untracked) claude process - the
      * unify-claude-sessions plan's phase 6. Two outcomes:
      *
-     * 1. A confident match (see bare_process_live_agent_session_id()):
-     *    kills the pid and resumes that exact session in one call - a
-     *    genuine single click, nothing more needed from the caller.
+     * 1. A confident match (the argv-derived id, see
+     *    agent_session_id_from_resume_arg(), or bare_process_live_agent_
+     *    session_id()'s statusline marker): kills the pid and resumes that
+     *    exact session in one call - a genuine single click, nothing more
+     *    needed from the caller.
      * 2. No confident match: returns the cwd's candidate sessions instead,
      *    WITHOUT killing anything - fully cancelable, no side effects,
      *    until the caller picks one and calls
@@ -329,11 +389,13 @@ class BareProcessService
     {
         $workdir = null;
         $startedAt = null;
+        $resumeArg = null;
 
         foreach (ProcessInspector::find_claude_processes() as $proc) {
             if ($proc['pid'] === $pid) {
                 $workdir = $proc['cwd'];
                 $startedAt = $proc['started_at'];
+                $resumeArg = $proc['resume_arg'] ?? null;
                 break;
             }
         }
@@ -342,7 +404,7 @@ class BareProcessService
             return ['ok' => false, 'message' => 'Rejected: not a currently running claude process, or its working directory could not be determined'];
         }
 
-        $matchedId = self::bare_process_live_agent_session_id($pid);
+        $matchedId = self::agent_session_id_from_resume_arg($resumeArg) ?? self::bare_process_live_agent_session_id($pid);
 
         if ($matchedId !== null) {
             $killResult = self::kill_bare_process($pid);

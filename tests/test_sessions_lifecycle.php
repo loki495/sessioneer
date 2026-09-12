@@ -73,6 +73,12 @@ $folderTrustTestSession = null;
 /** @var string|null $archivedBareAdhocName a non-cc-* tmux session used to test BareProcessService::live_bare_agent_session_ids()'s exclusion from the archived list and resume guard, for the finally-block safety net */
 $archivedBareAdhocName = null;
 
+/** @var string|null $resumeArgTestSession a non-cc-* tmux session used to test the argv-derived --resume/--session-id resolution tier, for the finally-block safety net */
+$resumeArgTestSession = null;
+
+/** @var string|null $realpathMatchTestSession a non-cc-* tmux session used to test ProcessInspector::find_claude_processes()'s realpath-based match, for the finally-block safety net */
+$realpathMatchTestSession = null;
+
 /** @var string|null $sendTestSession a cc-* session used to test PromptInteractionService::send_message(), for the finally-block safety net */
 $sendTestSession = null;
 
@@ -860,6 +866,102 @@ try {
     $archivedBareAdhocName = null;
     @unlink($archivedFakeHome . '/.claude/projects/-bare-project/' . $archivedBareUuid . '.jsonl');
     @rmdir($archivedFakeHome . '/.claude/projects/-bare-project');
+
+    // --- BareProcessService::agent_session_id_from_resume_arg() (via
+    // resolve_bare_process_detail()/live_bare_agent_session_ids()): a bare
+    // process started with an explicit --resume/--session-id resolves with
+    // confidence='confirmed' straight from its own argv - no marker, no
+    // timing guess. Found live 2026-09-11 (Andres: a real claude-code-ui-
+    // launched `claude --resume <path>.jsonl` process still showed up in
+    // the archived list) - that shape's transcript can be arbitrarily
+    // older than the resuming process's own start time, which is exactly
+    // what the pre-existing closest-start-time heuristic gets wrong.
+    //
+    // fake_claude discards its own argv entirely before exec'ing into
+    // `cat` (see its own header comment) - /proc/<pid>/cmdline would never
+    // show a real --resume flag through that stand-in, so this spawns a
+    // small bash-only pane directly instead, using `exec -a` the same way
+    // fake_claude does to fix argv[0] back to $0, but (unlike fake_claude)
+    // forwarding the rest of argv through to a second bash -c that just
+    // blocks on stdin forever, never erroring out on flags it doesn't
+    // understand the way a real coreutils tool would.
+    $resumeArgUuid = '66666666-6666-4666-8666-666666666666';
+    @mkdir($archivedFakeHome . '/.claude/projects/-resume-arg-project', 0700, true);
+    file_put_contents(
+        $archivedFakeHome . '/.claude/projects/-resume-arg-project/' . $resumeArgUuid . '.jsonl',
+        '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hi"}]},"cwd":"/some/resume-arg/path"}' . "\n"
+    );
+    $resumeArgTestSession = 'sessioneer-test-resume-arg-' . getmypid();
+    $resumeArgSetup = TmuxService::tmux_run([
+        'new-session', '-d', '-s', $resumeArgTestSession, '-c', Config::www_root(),
+        'bash', '-c', 'exec -a "$0" bash -c \'while :; do read -r _ 2>/dev/null || sleep 3600; done\' -- "$@"',
+        Config::claude_bin(), '--resume', $resumeArgUuid,
+    ]);
+    assert_equal(0, $resumeArgSetup['exit'], 'resume-arg setup: created a live non-cc-* tmux session whose real argv carries --resume <uuid>');
+    usleep(300000);
+
+    $resumeArgPid = null;
+    foreach (SessionService::list_all_sessions()['bare'] as $b) {
+        if (($b['tmux_session'] ?? null) === $resumeArgTestSession) {
+            $resumeArgPid = (int)$b['pid'];
+            break;
+        }
+    }
+    assert_true($resumeArgPid !== null, 'resume-arg setup: the fixture bare process is visible as bare');
+
+    $resumeArgDetail = BareProcessService::resolve_bare_process_detail($resumeArgPid ?? 0);
+    assert_equal($resumeArgUuid, $resumeArgDetail['agent_session_id'] ?? null, 'resolve_bare_process_detail: resolves the id straight from --resume in argv, no marker needed');
+    assert_equal('confirmed', $resumeArgDetail['confidence'] ?? null, 'resolve_bare_process_detail: an argv-derived id is confirmed, not a guess');
+
+    $dashboardArchivedWithResumeArg = ArchivedSessionService::list_archived_dashboard()['archived'] ?? [];
+    assert_true(
+        !in_array($resumeArgUuid, array_column($dashboardArchivedWithResumeArg, 'agent_session_id'), true),
+        'list_archived_dashboard: a bare --resume\'d process\'s own live session is excluded via its argv-derived id too'
+    );
+
+    TmuxService::tmux_run(['kill-session', '-t', $resumeArgTestSession]);
+    $resumeArgTestSession = null;
+    @unlink($archivedFakeHome . '/.claude/projects/-resume-arg-project/' . $resumeArgUuid . '.jsonl');
+    @rmdir($archivedFakeHome . '/.claude/projects/-resume-arg-project');
+
+    // --- ProcessInspector::find_claude_processes(): matches a process
+    // whose argv[0] is the REALPATH-resolved target of CLAUDE_BIN (a
+    // symlink, same as the real ~/.local/bin/claude install), not just an
+    // exact basename match. Found live 2026-09-11 alongside the argv-
+    // resume fix above: a real claude-code-ui-launched process's argv[0]
+    // was the fully-resolved versioned binary path
+    // (~/.local/share/claude/versions/X.Y.Z, basename "X.Y.Z") because
+    // that tool resolves the ~/.local/bin/claude symlink itself before
+    // exec'ing, rather than exec'ing the stable launcher path - invisible
+    // to the pre-existing basename-only check, so this whole class of
+    // process was never even seen as "bare" at all, let alone excluded
+    // from anywhere. ---
+    $fakeClaudeRealPath = realpath(Config::claude_bin());
+    assert_true($fakeClaudeRealPath !== false, 'realpath-match setup: CLAUDE_BIN resolves to a real file');
+    $claudeBinSymlink = sys_get_temp_dir() . '/sessioneer-test-claude-bin-symlink-' . getmypid();
+    @unlink($claudeBinSymlink);
+    symlink((string)$fakeClaudeRealPath, $claudeBinSymlink);
+    $originalClaudeBinEnv = getenv('CLAUDE_BIN');
+    putenv("CLAUDE_BIN={$claudeBinSymlink}");
+
+    $realpathMatchTestSession = 'sessioneer-test-realpath-match-' . getmypid();
+    $realpathMatchSetup = TmuxService::tmux_run(['new-session', '-d', '-s', $realpathMatchTestSession, '-c', Config::www_root(), (string)$fakeClaudeRealPath]);
+    assert_equal(0, $realpathMatchSetup['exit'], 'realpath-match setup: spawned a process using the REAL target path directly, not the CLAUDE_BIN symlink');
+    usleep(300000);
+
+    $foundViaRealpath = false;
+    foreach (SessionService::list_all_sessions()['bare'] as $b) {
+        if (($b['tmux_session'] ?? null) === $realpathMatchTestSession) {
+            $foundViaRealpath = true;
+            break;
+        }
+    }
+    assert_true($foundViaRealpath, 'find_claude_processes: recognizes a process via realpath match even though its argv[0] basename does not match CLAUDE_BIN\'s own basename at all');
+
+    TmuxService::tmux_run(['kill-session', '-t', $realpathMatchTestSession]);
+    $realpathMatchTestSession = null;
+    putenv($originalClaudeBinEnv !== false ? "CLAUDE_BIN={$originalClaudeBinEnv}" : 'CLAUDE_BIN');
+    @unlink($claudeBinSymlink);
 
     @rmdir($archivedFakeHome . '/.claude/projects');
     @rmdir($archivedFakeHome . '/.claude');
@@ -2257,6 +2359,12 @@ try {
     }
     if ($archivedBareAdhocName !== null) {
         TmuxService::tmux_run(['kill-session', '-t', $archivedBareAdhocName]);
+    }
+    if ($resumeArgTestSession !== null) {
+        TmuxService::tmux_run(['kill-session', '-t', $resumeArgTestSession]);
+    }
+    if ($realpathMatchTestSession !== null) {
+        TmuxService::tmux_run(['kill-session', '-t', $realpathMatchTestSession]);
     }
     if ($sendTestSession !== null) {
         TmuxService::tmux_run(['kill-session', '-t', $sendTestSession]);
