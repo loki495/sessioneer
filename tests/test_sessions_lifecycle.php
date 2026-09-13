@@ -1026,7 +1026,7 @@ try {
     $daemonLabelTestSession = null;
 
     // --- BareProcessService's daemon-roster resolution tier
-    // (daemon_roster_session_ids()/resolve_via_daemon_roster()): the ONLY
+    // (daemon_roster_pid_map()/resolve_via_daemon_roster()): the ONLY
     // way to identify a bg-spare/bg-pty-host worker's own conversation at
     // all, since that shape has no --resume in its own argv anywhere (the
     // daemon dispatches it over a private rendezvous socket instead) -
@@ -1125,7 +1125,7 @@ try {
     // roster's own sessionId must stop being trusted - otherwise a crashed
     // daemon that never prunes its own stale roster would permanently hide
     // a truly-dead session from "archived" and refuse to ever let it be
-    // resumed again (see daemon_roster_session_ids()'s own docblock). ---
+    // resumed again (see daemon_roster_pid_map()'s own docblock). ---
     if (is_resource($rosterBareProc)) {
         proc_terminate($rosterBareProc);
         proc_close($rosterBareProc);

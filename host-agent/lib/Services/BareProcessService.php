@@ -262,19 +262,6 @@ class BareProcessService
     }
 
     /**
-     * Every agent_session_id the daemon roster currently knows about -
-     * the union of daemon_roster_pid_map()'s values, deduplicated. See
-     * that method's own docblock for the full reasoning (liveness check,
-     * live-argv-over-roster-field preference).
-     *
-     * @return string[]
-     */
-    private static function daemon_roster_session_ids(): array
-    {
-        return array_values(array_unique(self::daemon_roster_pid_map()));
-    }
-
-    /**
      * Resolves ONE known pid against the daemon roster - the pid a bare-
      * process row is actually asking about (resolve_bare_process_detail())
      * or take-over is targeting. See daemon_roster_pid_map()'s own
@@ -478,16 +465,47 @@ class BareProcessService
      * lookup per pid anyway, so the whole roster is folded in once up
      * front instead.
      *
+     * Two categories of bare pid never reach the heuristic fallback at
+     * all, found live 2026-09-13 (Andres: "show archived sessions" taking
+     * ~3s - 83% of it was this one method): bare_process_take_over_
+     * candidates() is not cheap (a full ArchivedSessionService::
+     * list_archived_sessions() re-scan of every archived transcript on
+     * every call - see its own docblock), and calling it once per
+     * UNRESOLVED bare pid multiplied that one ~450ms scan into seconds on
+     * a host with several such pids. Neither category below can EVER
+     * resolve to a real conversation, so paying that cost for them was
+     * pure waste, not a correctness trade-off:
+     * - `is_daemon_supervisor` (the daemon's own `claude daemon run`
+     *   process) is pure infrastructure, never a conversation.
+     * - A cwd still under the daemon's own internal spare-pool path
+     *   (`/tmp/...` - same check declutter_bare_list() already uses to
+     *   tell a pty-host wrapper's own never-real cwd apart from its
+     *   REPL child's) means this pid is either that pty-host wrapper
+     *   half (whose sibling, if claimed, already resolves it via the
+     *   roster/argv tiers above) or a genuinely idle, not-yet-claimed
+     *   spare with no conversation assigned to guess about at all - no
+     *   archived transcript will ever legitimately have that cwd either.
+     *
+     * Also checks each bare pid against the SAME roster pid map the union
+     * above is built from (not just adding the union once and separately
+     * re-deriving each pid's own tier from scratch) - found live
+     * 2026-09-13 alongside the fix above: a pid the roster union already
+     * covers (e.g. a claimed daemon worker with no --resume in its own
+     * argv, no tmux pane for the marker tier to read) would otherwise
+     * still fall through to the expensive heuristic for itself,
+     * needlessly, since nothing here remembered it was already resolved.
+     *
      * @return string[]
      */
     public static function live_bare_agent_session_ids(): array
     {
-        $ids = self::daemon_roster_session_ids();
+        $rosterPidMap = self::daemon_roster_pid_map();
+        $ids = array_values(array_unique($rosterPidMap));
 
         foreach (SessionService::list_all_sessions()['bare'] as $b) {
             $pid = (int)($b['pid'] ?? 0);
 
-            if ($pid <= 0) {
+            if ($pid <= 0 || !empty($b['is_daemon_supervisor']) || isset($rosterPidMap[$pid])) {
                 continue;
             }
 
@@ -510,7 +528,7 @@ class BareProcessService
             $cwd = is_string($b['cwd'] ?? null) ? $b['cwd'] : null;
             $startedAt = is_int($b['started_at'] ?? null) ? $b['started_at'] : null;
 
-            if ($cwd === null || $startedAt === null) {
+            if ($cwd === null || $startedAt === null || str_starts_with($cwd, '/tmp/')) {
                 continue;
             }
 
@@ -662,7 +680,7 @@ class BareProcessService
      * fresh for this): the certain argv-derived id
      * (agent_session_id_from_resume_arg()) first, then the daemon roster
      * (also certain - the only way to identify a bg-spare/bg-pty-host
-     * worker at all, see daemon_roster_session_ids()'s own docblock), then
+     * worker at all, see daemon_roster_pid_map()'s own docblock), then
      * the certain statusline-marker match
      * (bare_process_live_agent_session_id()) when the pid has an owning
      * tmux pane with the marker installed, falling back to
