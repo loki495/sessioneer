@@ -499,11 +499,21 @@ class PromptInteractionService
         $hookBlocked = is_array($hookStatus['blocked'] ?? null) ? $hookStatus['blocked'] : null;
         $questions = is_array($hookBlocked['tool_input']['questions'] ?? null) ? $hookBlocked['tool_input']['questions'] : null;
 
+        // count(...) < 2 alone would wrongly reject a LONE multiSelect
+        // question too - found live 2026-09-12: that shape gets a tab bar
+        // just like a real 2+-question call (see PromptParser::
+        // build_multi_question_key_sequence()'s own docblock for the full
+        // live-verified mechanics), so it needs this exact same path, not
+        // the plain single-select answer_prompt() one. Only a lone
+        // SINGLE-select question (no tab bar at all) is still rejected here.
+        $isLoneSingleSelect = $questions !== null && count($questions) === 1 && ($questions[0]['multiSelect'] ?? false) !== true;
+
         if (
             ($hookStatus['status'] ?? null) !== 'blocked'
             || ($hookBlocked['tool_name'] ?? null) !== 'AskUserQuestion'
             || $questions === null
-            || count($questions) < 2
+            || count($questions) < 1
+            || $isLoneSingleSelect
         ) {
             return ['ok' => false, 'message' => 'Rejected: this session is not currently showing a multi-question prompt'];
         }

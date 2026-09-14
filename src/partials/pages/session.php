@@ -193,7 +193,7 @@ $this->layout('layout', [
 <div id="app-shell" class="flex flex-col h-full min-h-0" style="<?= ($detail['agent'] ?? 'claude') === 'opencode' ? 'background-color: rgba(46, 16, 101, 0.16)' : (($detail['agent'] ?? 'claude') === 'codex' ? 'background-color: rgba(3, 78, 92, 0.14)' : (($detail['agent'] ?? 'claude') === 'antigravity' ? 'background-color: rgba(69, 26, 3, 0.12)' : '')) ?>">
 <?php include __DIR__ . '/../header.php'; ?>
 
-<div id="page-content" class="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+<div id="page-content" class="flex-1 min-h-0 overflow-y-auto overscroll-contain h-dvh">
 <div class="max-w-2xl lg:max-w-4xl mx-auto px-4 py-6">
 
   <?php if (!$found): ?>

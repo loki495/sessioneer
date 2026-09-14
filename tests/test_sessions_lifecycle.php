@@ -1026,7 +1026,7 @@ try {
     $daemonLabelTestSession = null;
 
     // --- BareProcessService's daemon-roster resolution tier
-    // (daemon_roster_session_ids()/resolve_via_daemon_roster()): the ONLY
+    // (daemon_roster_pid_map()/resolve_via_daemon_roster()): the ONLY
     // way to identify a bg-spare/bg-pty-host worker's own conversation at
     // all, since that shape has no --resume in its own argv anywhere (the
     // daemon dispatches it over a private rendezvous socket instead) -
@@ -1125,7 +1125,7 @@ try {
     // roster's own sessionId must stop being trusted - otherwise a crashed
     // daemon that never prunes its own stale roster would permanently hide
     // a truly-dead session from "archived" and refuse to ever let it be
-    // resumed again (see daemon_roster_session_ids()'s own docblock). ---
+    // resumed again (see daemon_roster_pid_map()'s own docblock). ---
     if (is_resource($rosterBareProc)) {
         proc_terminate($rosterBareProc);
         proc_close($rosterBareProc);
@@ -1984,13 +1984,15 @@ try {
         'answer_multi_question: rejects when the blocked tool is not AskUserQuestion'
     );
 
-    // AskUserQuestion, but only 1 question - no tab bar exists for that shape,
-    // use answer_prompt()/answer_prompt_with_text() instead.
+    // AskUserQuestion, but only 1 SINGLE-select question - no tab bar exists
+    // for that specific shape, use answer_prompt()/answer_prompt_with_text()
+    // instead. A lone MULTISELECT question is different (see the accept-path
+    // test further below) - it DOES get a tab bar, found live 2026-09-12.
     SessionStatusStore::write_status($promptTestSession, ['status' => 'blocked', 'blocked' => ['tool_name' => 'AskUserQuestion', 'tool_input' => ['questions' => [$multiQuestionSet[0]]]]]);
     assert_equal(
         false,
         PromptInteractionService::answer_multi_question($promptTestSession, [1])['ok'] ?? null,
-        'answer_multi_question: rejects a single-question AskUserQuestion (no tab bar exists for one question)'
+        'answer_multi_question: rejects a lone SINGLE-select AskUserQuestion (no tab bar exists for that shape)'
     );
 
     // Real multi-question hook data, but the pane doesn't show it at all
@@ -2060,6 +2062,35 @@ try {
     $statusAfterMultiAnswer = SessionStatusStore::read_status($promptTestSession);
     assert_equal('working', $statusAfterMultiAnswer['status'] ?? null, 'answer_multi_question: marks the session working once the whole sequence is sent, same as answer_prompt()');
     assert_true(array_key_exists('blocked', $statusAfterMultiAnswer) && $statusAfterMultiAnswer['blocked'] === null, 'answer_multi_question: clears the blocked status, same as answer_prompt()');
+
+    SessionStatusStore::delete_status($promptTestSession);
+
+    // --- answer_multi_question(): a LONE multiSelect question - found live
+    // 2026-09-12 (Andres: sessioneer's own dashboard rendered this shape via
+    // the plain one-button-submits-immediately options.php form, with no
+    // way to check several boxes then confirm at all, unlike Claude Code's
+    // own real TUI). Real fixture below is a verbatim capture from a real,
+    // disposable session (just this one question, multiSelect true, 3
+    // options) - re-verified live that toggling checked options then Right
+    // lands directly on the "Review your answers" / "1. Submit answers"
+    // screen, since there's only one question to review. ---
+    $loneMultiSelectQuestion = ['question' => 'Pick your toppings', 'header' => 'Toppings', 'multiSelect' => true, 'options' => [['label' => 'Cheese'], ['label' => 'Pepperoni'], ['label' => 'Mushroom']]];
+    SessionStatusStore::write_status($promptTestSession, ['status' => 'blocked', 'blocked' => ['tool_name' => 'AskUserQuestion', 'tool_input' => ['questions' => [$loneMultiSelectQuestion]]]]);
+
+    TmuxService::tmux_run(['send-keys', '-t', $promptTestSession, '-l', "\x1b[2J\x1b[H"]);
+    TmuxService::tmux_run(['send-keys', '-t', $promptTestSession, "←  ☐ Toppings  ✔ Submit  →", 'Enter']);
+    TmuxService::tmux_run(['send-keys', '-t', $promptTestSession, '', 'Enter']);
+    TmuxService::tmux_run(['send-keys', '-t', $promptTestSession, 'Pick your toppings', 'Enter']);
+    TmuxService::tmux_run(['send-keys', '-t', $promptTestSession, '❯ 1. Cheese', 'Enter']);
+    TmuxService::tmux_run(['send-keys', '-t', $promptTestSession, '  2. Pepperoni', 'Enter']);
+    TmuxService::tmux_run(['send-keys', '-t', $promptTestSession, '  3. Mushroom', 'Enter']);
+    usleep(300000);
+
+    $loneMultiSelectAnswered = PromptInteractionService::answer_multi_question($promptTestSession, [[1, 3]]);
+    assert_true($loneMultiSelectAnswered['ok'] ?? false, 'answer_multi_question: ok=true for a LONE multiSelect question with a real matching pane - not rejected as "too few questions"');
+
+    $statusAfterLoneMultiSelect = SessionStatusStore::read_status($promptTestSession);
+    assert_equal('working', $statusAfterLoneMultiSelect['status'] ?? null, 'answer_multi_question: a lone multiSelect answer marks the session working too, same as the 2+-question case');
 
     SessionStatusStore::delete_status($promptTestSession);
 

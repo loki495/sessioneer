@@ -297,14 +297,22 @@ class SessionService
         // answer) every question at once via SessionService::
         // answer_multi_question(), instead of only whichever tab the pane
         // currently has up (see that method's own docblock). Never set for
-        // a single-question AskUserQuestion - no tab-bar ambiguity exists
-        // there, so it keeps using the existing pane-scraped $prompt above
-        // via answer_prompt()/answer_prompt_with_text() unchanged.
+        // a lone SINGLE-select question - no tab-bar ambiguity exists there,
+        // so it keeps using the existing pane-scraped $prompt above via
+        // answer_prompt()/answer_prompt_with_text() unchanged. A lone
+        // MULTISELECT question IS included here too, though - found live
+        // 2026-09-12 that shape gets a tab bar identical in every mechanical
+        // respect to a real 2+-question call (see PromptParser::
+        // build_multi_question_key_sequence()'s own docblock), so it was
+        // wrongly falling through to the plain one-button-submits-
+        // immediately options.php rendering, with no way to check several
+        // boxes then confirm at all.
         $promptQuestions = null;
 
         if ($hookStatusValue === 'blocked' && $hookBlockedToolName === 'AskUserQuestion') {
             $rawQuestions = is_array($hookBlocked['tool_input']['questions'] ?? null) ? $hookBlocked['tool_input']['questions'] : null;
-            $promptQuestions = ($rawQuestions !== null && count($rawQuestions) >= 2) ? $rawQuestions : null;
+            $isLoneSingleSelect = $rawQuestions !== null && count($rawQuestions) === 1 && ($rawQuestions[0]['multiSelect'] ?? false) !== true;
+            $promptQuestions = ($rawQuestions !== null && $rawQuestions !== [] && !$isLoneSingleSelect) ? $rawQuestions : null;
         }
 
         $agentSessionId = is_string($sidecar['agent_session_id'] ?? null) ? $sidecar['agent_session_id'] : null;
