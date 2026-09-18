@@ -112,6 +112,30 @@ class StatuslineMarkerService
     }
 
     /**
+     * Expands a bash-style `$HOME`/`${HOME}` reference in a statusLine
+     * command TOKEN to Config::home_root() - found live 2026-09-18: a
+     * command string written the normal way a user would type it (e.g.
+     * "bash $HOME/.claude/statusline-command.sh", Andres's own real one)
+     * is never shell-evaluated here, so is_file() on the literal,
+     * unexpanded token could never match a real file - every check below
+     * silently reported "not installed" against an already-fully-installed
+     * script forever. Config::home_root(), not a raw getenv('HOME'), so
+     * this resolves the same fixture/override path every other
+     * home-directory-scoped lookup in this class already uses (see
+     * test_statusline_marker.php's HOME_ROOT fixture). Only $HOME is
+     * handled - the one variable a statusLine command actually needs (this
+     * app's own generated fallback script never uses one at all, see
+     * install_fallback_script() below, which always writes an absolute
+     * path), not general shell expansion.
+     */
+    private static function expand_home_token(string $token): string
+    {
+        $home = Config::home_root();
+
+        return $home !== '' ? str_replace(['${HOME}', '$HOME'], $home, $token) : $token;
+    }
+
+    /**
      * Finds the actual script file a `{"type":"command","command":"..."}`
      * statusLine entry invokes, so the marker can be appended to Andres's
      * own script rather than this app owning/replacing the whole thing.
@@ -120,6 +144,9 @@ class StatuslineMarkerService
      * a "/"), picking the LAST such token in the command (the interpreter,
      * e.g. "bash", normally comes first). Anything else (an inline
      * one-liner, an unrecognized shape) returns null rather than guessing.
+     * Each token is checked post-$HOME-expansion (see expand_home_token())
+     * and the EXPANDED, real path is what's returned - every caller needs
+     * an actual filesystem path to read/write, not the literal command text.
      *
      * @param array<string, mixed> $settings
      */
@@ -141,8 +168,10 @@ class StatuslineMarkerService
         $found = null;
 
         foreach ($tokens as $token) {
-            if (str_contains($token, '/') && is_file($token) && is_writable($token)) {
-                $found = $token;
+            $resolved = self::expand_home_token($token);
+
+            if (str_contains($resolved, '/') && is_file($resolved) && is_writable($resolved)) {
+                $found = $resolved;
             }
         }
 
