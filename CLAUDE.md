@@ -220,6 +220,25 @@ that only `create_agent_session()`-spawned sessions have).
    JSON `true`. See `.ai/research/opencode-11821-webui-sse-question-prompts.md`
    for the captured evidence and WebUI compatibility-layer distinctions.
 
+- **Claude Code multi-account ("profile") support: any new Claude-specific
+  transcript/session-lookup function needs a `?string $profile = null`
+  parameter, or it silently only works for the default account.** Added
+  2026-09-18 (Dibs plan #230/#234/#236) - a session can be spawned under a
+  different `CLAUDE_CONFIG_DIR` (a separate account, e.g. work), named in
+  `host-agent/config/agents.php`. `Config::claude_config_dir($profile)` is
+  the base every Claude-account-scoped path is built from; the profile name
+  itself lives on the sidecar's `profile` column and flows through
+  `SessionService::build_session_entry()`'s own `profile` field. A caller
+  with no sidecar to consult (a bare/untracked process, an archived-session
+  lookup with no explicit profile) should scan every configured account via
+  `Config::claude_profiles_to_scan()` /
+  `TranscriptRouter::find_claude_profile_for_session_id()` rather than only
+  ever checking the default - the exact bug `archived_session_detail()` had
+  before this convention was written down (an archived work-profile
+  session reported "Session not found"). See `docs/features.md`'s "Claude
+  Code implementation" section for the full user-facing picture (account
+  badge, per-account quota footer).
+
 - **Claude Code tools/hooks questions: check the real docs first, not
   memory.** Whenever a change or investigation touches what tools/hooks a
   Claude Code session has available (this came up 2026-08-22/23

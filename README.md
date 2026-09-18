@@ -250,6 +250,16 @@ hook payload does not contain enough UI state. Bare-process discovery and
 Claude quota data is captured when Claude renders its configured status line;
 it can show unavailable until at least one session has rendered that line.
 
+**Multiple accounts:** to run sessions under more than one Claude account
+(e.g. a separate work login), add named profiles to
+`host-agent/config/agents.php`, each with its own `config_dir` (the account's
+`CLAUDE_CONFIG_DIR`) and optionally its own `bin`. Once configured, the New
+Session form shows an Account selector; each configured account's hooks and
+status-line quota capture need installing into that account's own
+`CLAUDE_CONFIG_DIR`/`settings.json` the same way as the default account
+above. A session's account is shown as a small badge on its row, header, and
+archived view, and the quota footer shows one row per configured account.
+
 ### Antigravity
 
 Sessioneer starts `ag-*` sessions in tmux. Install the four global hooks
