@@ -84,6 +84,19 @@ $this->layout('layout', [
         Nothing recorded.
       </div>
     <?php else: ?>
+      <?php
+        // Found live 2026-09-18: this used to hardcode 'Claude Code' below
+        // regardless of the session's real agent - now that
+        // archived_session_detail() resolves 'agent' (see
+        // SessionDetailService.php), match it the same way session.php's
+        // own $agentLabel derivation does.
+        $agentLabel = match ($detail['agent'] ?? 'claude') {
+            'antigravity' => 'Antigravity',
+            'opencode' => 'OpenCode',
+            'codex' => 'Codex',
+            default => 'Claude Code',
+        };
+      ?>
       <button type="button" id="load-more-btn"
         data-claude-session-id="<?= $this->e($agentSessionId) ?>"
         data-before="<?= $nextBefore !== null ? (int)$nextBefore : '' ?>"
@@ -91,7 +104,7 @@ $this->layout('layout', [
         Load older messages
       </button>
       <div id="history-list" class="flex flex-col gap-2">
-        <?= \App\Views\TranscriptView::render_transcript_entries_html($entries, $agentSessionId, true, is_string($detail['cwd'] ?? null) ? $detail['cwd'] : null, 'Claude Code') ?>
+        <?= \App\Views\TranscriptView::render_transcript_entries_html($entries, $agentSessionId, true, is_string($detail['cwd'] ?? null) ? $detail['cwd'] : null, $agentLabel) ?>
       </div>
     <?php endif; ?>
   <?php endif; ?>
