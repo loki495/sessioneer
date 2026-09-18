@@ -40,6 +40,36 @@ class SessionRowView extends View
     }
 
     /**
+     * The human-readable label for a session's Claude account/config-dir
+     * profile (host-agent/config/agents.php's 'claude.profiles' keys) -
+     * null/''/'personal' all mean the default account (see
+     * SessionService::build_session_entry()'s own null-profile fallback
+     * comment), so they collapse to the same "Personal" label a raw null
+     * would otherwise show as nothing.
+     */
+    public static function profile_label(?string $profile): string
+    {
+        return match ($profile) {
+            null, '', 'personal' => 'Personal',
+            default => ucfirst($profile),
+        };
+    }
+
+    /**
+     * Badge CSS class for a profile label - the default account stays the
+     * same neutral slate as an agent's default badge (unremarkable, since
+     * it's the common case), any other named profile gets a distinct
+     * accent so a non-default account actually stands out in the list.
+     */
+    public static function profile_badge_class(?string $profile): string
+    {
+        return match ($profile) {
+            null, '', 'personal' => 'bg-slate-800 text-slate-400 border-slate-700',
+            default => 'bg-teal-900/30 text-teal-400 border-teal-700/40',
+        };
+    }
+
+    /**
      * A compact "Thinking…" badge for a dashboard row - the dashboard's own
      * version of TranscriptView::render_thinking_indicator_html() (same
      * $s['working'] source field, see SessionStatusStore and
@@ -102,6 +132,7 @@ class SessionRowView extends View
             'runtime' => $s['runtime'] ?? 'tmux',
             'kind' => $s['kind'] ?? 'user',
             'parentSessionId' => $s['parent_session_id'] ?? null,
+            'profile' => $s['profile'] ?? null,
         ]);
     }
 
@@ -221,6 +252,7 @@ class SessionRowView extends View
             'agentId' => $a['agent'] ?? 'claude',
             'agentLabel' => $a['agent_label'] ?? 'Claude Code',
             'runtime' => $a['runtime'] ?? (($a['agent'] ?? 'claude') === 'opencode' ? 'headless' : 'tmux'),
+            'profile' => $a['profile'] ?? null,
         ]);
     }
 
@@ -286,6 +318,7 @@ class SessionRowView extends View
             'attached' => !empty($s['attached']),
             'contextUsedPercentage' => $s['context_used_percentage'] ?? null,
             'gitWorktree' => $s['git_worktree'] ?? null,
+            'profile' => $s['profile'] ?? null,
         ]);
     }
 

@@ -19,6 +19,9 @@
       ?>
       <div class="select-none mt-0.5 mb-1 flex items-center gap-1.5">
         <span class="inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border <?= $agentBadgeClass ?>"><?= $this->e($agentLabel) ?></span>
+        <?php if (($agentId ?? 'claude') === 'claude'): ?>
+          <span class="inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border <?= App\Views\SessionRowView::profile_badge_class($profile ?? null) ?>"><?= $this->e(App\Views\SessionRowView::profile_label($profile ?? null)) ?></span>
+        <?php endif ?>
         <?php if ($runtime === 'headless'): ?><span class="inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border bg-violet-900/30 text-violet-400 border-violet-700/40">Headless</span><?php endif ?>
       </div>
     <?php endif ?>

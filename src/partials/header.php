@@ -6,6 +6,15 @@
         title="<?= $found ? htmlspecialchars((string)($detail['title'] ?? $detail['name']), ENT_QUOTES) : '' ?>">
         <?= $found ? htmlspecialchars((string)($detail['title'] ?? $detail['name']), ENT_QUOTES) : '' ?>
       </div>
+      <?php // Account/profile badge - Claude-only for now, same gate as the
+            // session-list rows (see SessionRowView::profile_badge_class()'s
+            // own docblock: other agents have no config-dir profile concept
+            // yet, so their 'profile' always resolves to null). ?>
+      <?php if ($found && ($detail['agent'] ?? 'claude') === 'claude'): ?>
+        <div class="mt-0.5">
+          <span class="inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border <?= App\Views\SessionRowView::profile_badge_class($detail['profile'] ?? null) ?>"><?= htmlspecialchars(App\Views\SessionRowView::profile_label($detail['profile'] ?? null), ENT_QUOTES) ?></span>
+        </div>
+      <?php endif ?>
       <?php if ($found && !empty($detail['workdir'])): ?>
         <div id="header-cwd" class="text-[11px] text-slate-500 truncate cursor-pointer" title="<?= htmlspecialchars((string)$detail['workdir'], ENT_QUOTES) ?>"><?= htmlspecialchars((string)$detail['workdir'], ENT_QUOTES) ?></div>
       <?php endif ?>

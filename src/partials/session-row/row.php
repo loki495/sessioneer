@@ -30,6 +30,13 @@
       ?>
       <div class="select-none mt-0.5 mb-1.5 flex items-center gap-1.5">
         <span class="inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border <?= $agentBadgeClass ?>"><?= $this->e($agentLabel) ?></span>
+        <?php // Profile/account badge is Claude-only for now - other agents have no
+              // config-dir profile concept yet (see Config::claude_profile_config()'s
+              // own docblock), so build_session_entry() always resolves their
+              // 'profile' to null and a badge here would just be noise. ?>
+        <?php if (($agentId ?? 'claude') === 'claude'): ?>
+          <span class="inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border <?= App\Views\SessionRowView::profile_badge_class($profile ?? null) ?>"><?= $this->e(App\Views\SessionRowView::profile_label($profile ?? null)) ?></span>
+        <?php endif ?>
         <?php if ($runtime === 'headless'): ?><span class="inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border bg-violet-900/30 text-violet-400 border-violet-700/40">Headless</span><?php endif ?>
         <?php if ($kind === 'worker'): ?><span class="inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border bg-sky-900/30 text-sky-400 border-sky-700/40">Worker</span><?php endif ?>
       </div>

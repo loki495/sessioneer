@@ -26,6 +26,14 @@ $this->layout('layout', [
     <div class="select-none mb-4 rounded-xl border border-slate-800 bg-slate-900/50 px-4 py-3 flex items-start justify-between gap-3">
       <div class="min-w-0 flex-1">
         <div class="text-sm text-slate-200"><?= $this->e((string)($detail['title'] ?? $agentSessionId)) ?></div>
+        <?php // Account/profile badge - same Claude-only gate as the live session
+              // header/list rows (see SessionRowView::profile_badge_class()'s own
+              // docblock). ?>
+        <?php if (($detail['agent'] ?? 'claude') === 'claude'): ?>
+          <div class="mt-0.5">
+            <span class="inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border <?= \App\Views\SessionRowView::profile_badge_class($detail['profile'] ?? null) ?>"><?= $this->e(\App\Views\SessionRowView::profile_label($detail['profile'] ?? null)) ?></span>
+          </div>
+        <?php endif ?>
         <?php if (!empty($detail['cwd'])): ?><div class="text-xs text-slate-500 truncate mt-0.5"><?= $this->e((string)$detail['cwd']) ?></div><?php endif ?>
         <div class="text-xs text-slate-400 mt-1">Last active <?= $this->e(\App\Views\SessionRowView::relative_time((int)($detail['last_activity'] ?? 0))) ?></div>
       </div>
