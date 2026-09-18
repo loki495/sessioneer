@@ -128,11 +128,15 @@ class QuotaService
      * reports "no quota data yet" for that case, nothing more to fall back
      * to.
      *
+     * $profile selects which account's captured state to read (see
+     * Config::quota_live_state_key()) - null (the default) preserves
+     * today's single-account behavior unchanged.
+     *
      * @return array{quota:array, fetched_at:int}|null
      */
-    public static function quota_from_statusline_state(): ?array
+    public static function quota_from_statusline_state(?string $profile = null): ?array
     {
-        $decoded = GlobalStateStore::read(Config::quota_live_state_key());
+        $decoded = GlobalStateStore::read(Config::quota_live_state_key($profile));
 
         if (!is_array($decoded) || !isset($decoded['captured_at']) || !is_int($decoded['captured_at'])) {
             return null;
@@ -334,6 +338,26 @@ class QuotaService
     }
 
     /**
+     * Config::claude_profiles_to_scan() as a [jsonKey => profile] map -
+     * null (the default account) can't be a JSON object key, so it's
+     * spelled 'personal' here (matching agents.php's own name for it and
+     * Config::claude_profile_label()'s null-collapses-to-"Personal" rule)
+     * while every other entry keeps its real profile name unchanged.
+     *
+     * @return array<string, ?string>
+     */
+    private static function claude_profiles_to_scan_keyed(): array
+    {
+        $keyed = [];
+
+        foreach (Config::claude_profiles_to_scan() as $profile) {
+            $keyed[$profile ?? 'personal'] = $profile;
+        }
+
+        return $keyed;
+    }
+
+    /**
      * When $sessionName is given, returns the real quota for that session's
      * specific agent (Claude Code or Antigravity, looked up from its sidecar),
      * plus the full multi-agent `agents` map for consistency with the
@@ -350,7 +374,11 @@ class QuotaService
      * `cached`/`stale`/`refreshing` are always false now - kept in the
      * return shape for frontend compatibility.
      *
-     * @return array{ok:bool, quota:?array, agents:array<string, array{label:string, ok:bool, quota:?array, fetched_at:?int, message:?string}>, fetched_at:?int, cached:bool, stale:bool, refreshing:bool, agent?:string, agent_label?:string, context?:array{pct:int}, message?:?string}
+     * `claude_profiles` is always present too (regardless of $sessionName
+     * or which agent a given session turns out to be) - one entry per
+     * distinct configured Claude account, see claude_profiles_to_scan_keyed().
+     *
+     * @return array{ok:bool, quota:?array, agents:array<string, array{label:string, ok:bool, quota:?array, fetched_at:?int, message:?string}>, claude_profiles:array<string, array{label:string, ok:bool, quota:?array, fetched_at:?int, message:?string}>, fetched_at:?int, cached:bool, stale:bool, refreshing:bool, agent?:string, agent_label?:string, context?:array{pct:int}, message?:?string}
      */
     public static function get_quota(?string $sessionName = null): array
     {
@@ -364,6 +392,26 @@ class QuotaService
             $ocLive = [
                 'quota' => ($ocLive['quota'] ?? []) + $ocGoLive['quota'],
                 'fetched_at' => max($ocLive['fetched_at'] ?? 0, $ocGoLive['fetched_at']),
+            ];
+        }
+
+        // One entry per distinct configured Claude account (see
+        // Config::claude_profiles_to_scan()'s own dedup-by-resolved-dir
+        // logic), always computed regardless of $sessionName - "show every
+        // profile's quota" is a footer-wide concern, not tied to which
+        // single session's page happens to be open. Collapses to just the
+        // one default entry (key 'personal') on an install with no work
+        // profile configured, so quota-footer.js's rendering degrades back
+        // to today's single "Claude Code" row automatically.
+        $claudeProfiles = [];
+        foreach (self::claude_profiles_to_scan_keyed() as $profileKey => $profile) {
+            $live = $profile === null ? $claudeLive : self::quota_from_statusline_state($profile);
+            $claudeProfiles[$profileKey] = [
+                'label' => Config::claude_profile_label($profile),
+                'ok' => $live !== null,
+                'quota' => $live['quota'] ?? null,
+                'fetched_at' => $live['fetched_at'] ?? null,
+                'message' => $live === null ? 'No quota data yet - open a Claude Code session under this account to populate it' : null,
             ];
         }
 
@@ -406,6 +454,7 @@ class QuotaService
                 'ok' => $hasAnyData,
                 'quota' => $claudeLive['quota'] ?? ($agLive['quota'] ?? ($ocLive['quota'] ?? ($codexLive['quota'] ?? null))),
                 'agents' => $agents,
+                'claude_profiles' => $claudeProfiles,
                 'fetched_at' => $claudeLive['fetched_at'] ?? ($agLive['fetched_at'] ?? ($ocLive['fetched_at'] ?? ($codexLive['fetched_at'] ?? null))),
                 'cached' => false,
                 'stale' => false,
@@ -424,6 +473,7 @@ class QuotaService
                     'ok' => true,
                     'quota' => $agLive['quota'],
                     'agents' => $agents,
+                'claude_profiles' => $claudeProfiles,
                     'fetched_at' => $agLive['fetched_at'],
                     'cached' => false,
                     'stale' => false,
@@ -437,6 +487,7 @@ class QuotaService
                 'ok' => false,
                 'quota' => null,
                 'agents' => $agents,
+                'claude_profiles' => $claudeProfiles,
                 'fetched_at' => null,
                 'cached' => false,
                 'stale' => false,
@@ -463,6 +514,7 @@ class QuotaService
                     'ok' => true,
                     'quota' => $ocSessionLive['quota'],
                     'agents' => $agents,
+                'claude_profiles' => $claudeProfiles,
                     'fetched_at' => $ocSessionLive['fetched_at'],
                     'cached' => false,
                     'stale' => false,
@@ -476,6 +528,7 @@ class QuotaService
                 'ok' => false,
                 'quota' => null,
                 'agents' => $agents,
+                'claude_profiles' => $claudeProfiles,
                 'fetched_at' => null,
                 'cached' => false,
                 'stale' => false,
@@ -492,6 +545,7 @@ class QuotaService
                 'ok' => $codexSessionLive !== null,
                 'quota' => $codexSessionLive['quota'] ?? null,
                 'agents' => $agents,
+                'claude_profiles' => $claudeProfiles,
                 'fetched_at' => $codexSessionLive['fetched_at'] ?? null,
                 'cached' => false,
                 'stale' => false,
@@ -510,6 +564,7 @@ class QuotaService
                 'ok' => true,
                 'quota' => $claudeLive['quota'],
                 'agents' => $agents,
+                'claude_profiles' => $claudeProfiles,
                 'fetched_at' => $claudeLive['fetched_at'],
                 'cached' => false,
                 'stale' => false,
@@ -522,6 +577,7 @@ class QuotaService
                 'ok' => false,
                 'quota' => null,
                 'agents' => $agents,
+                'claude_profiles' => $claudeProfiles,
                 'fetched_at' => null,
                 'cached' => false,
                 'stale' => false,

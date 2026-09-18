@@ -179,38 +179,52 @@
     var tbody = document.createElement('tbody');
     tbody.className = 'divide-y divide-slate-800/60 font-medium';
 
-    // Claude Code row
-    var trClaude = document.createElement('tr');
-    var claudeLabel = (claude && claude.label) ? claude.label : 'Claude Code';
-    var tdC1 = document.createElement('td');
-    tdC1.className = 'py-1.5 pr-3 text-slate-300 whitespace-nowrap font-medium';
-    tdC1.textContent = claudeLabel;
-    trClaude.appendChild(tdC1);
+    // Claude Code row(s) - one per distinct configured account (see
+    // QuotaService::claude_profiles_to_scan_keyed()). Falls back to the
+    // single `agents.claude` entry under the 'personal' key when
+    // `claude_profiles` is absent (an older cached response shape), and
+    // collapses to exactly today's single "Claude Code" row/label when
+    // only one account is configured - no visible change for that,
+    // still-common, single-account case.
+    var claudeProfiles = data.claude_profiles || (claude ? { personal: claude } : {});
+    var claudeProfileKeys = Object.keys(claudeProfiles);
+    var multiProfile = claudeProfileKeys.length > 1;
 
-    var tdC2 = document.createElement('td');
-    tdC2.className = 'py-1.5 px-2 whitespace-nowrap';
-    if (claude && claude.quota && claude.quota.session) {
-      var sInfo = renderBucketText(claude.quota.session, 'session');
-      tdC2.innerHTML = '<span class="' + pctColorClass(sInfo.pct) + '">' + escapeHtml(dashboardBucketText(sInfo)) + '</span>';
-    } else {
-      tdC2.innerHTML = '<span class="text-slate-600 font-normal">' + (claude && claude.message ? 'No data' : '—') + '</span>';
-    }
-    trClaude.appendChild(tdC2);
+    claudeProfileKeys.forEach(function (profileKey) {
+      var entry = claudeProfiles[profileKey];
+      var rowLabel = (!multiProfile || profileKey === 'personal') ? 'Claude Code' : 'Claude Code (' + profileKey + ')';
 
-    var tdC3 = document.createElement('td');
-    tdC3.className = 'py-1.5 px-2 whitespace-nowrap';
-    if (claude && claude.quota && claude.quota.week_all) {
-      var wInfo = renderBucketText(claude.quota.week_all, 'week');
-      tdC3.innerHTML = '<span class="' + pctColorClass(wInfo.pct) + '">' + escapeHtml(dashboardBucketText(wInfo)) + '</span>';
-    } else {
-      tdC3.innerHTML = '<span class="text-slate-600 font-normal">' + (claude && claude.message ? 'No data' : '—') + '</span>';
-    }
-    trClaude.appendChild(tdC3);
-    var tdC4 = document.createElement('td');
-    tdC4.className = 'py-1.5 pl-2 whitespace-nowrap text-slate-600';
-    tdC4.textContent = '—';
-    trClaude.appendChild(tdC4);
-    tbody.appendChild(trClaude);
+      var trClaude = document.createElement('tr');
+      var tdC1 = document.createElement('td');
+      tdC1.className = 'py-1.5 pr-3 text-slate-300 whitespace-nowrap font-medium';
+      tdC1.textContent = rowLabel;
+      trClaude.appendChild(tdC1);
+
+      var tdC2 = document.createElement('td');
+      tdC2.className = 'py-1.5 px-2 whitespace-nowrap';
+      if (entry && entry.quota && entry.quota.session) {
+        var sInfo = renderBucketText(entry.quota.session, 'session');
+        tdC2.innerHTML = '<span class="' + pctColorClass(sInfo.pct) + '">' + escapeHtml(dashboardBucketText(sInfo)) + '</span>';
+      } else {
+        tdC2.innerHTML = '<span class="text-slate-600 font-normal">' + (entry && entry.message ? 'No data' : '—') + '</span>';
+      }
+      trClaude.appendChild(tdC2);
+
+      var tdC3 = document.createElement('td');
+      tdC3.className = 'py-1.5 px-2 whitespace-nowrap';
+      if (entry && entry.quota && entry.quota.week_all) {
+        var wInfo = renderBucketText(entry.quota.week_all, 'week');
+        tdC3.innerHTML = '<span class="' + pctColorClass(wInfo.pct) + '">' + escapeHtml(dashboardBucketText(wInfo)) + '</span>';
+      } else {
+        tdC3.innerHTML = '<span class="text-slate-600 font-normal">' + (entry && entry.message ? 'No data' : '—') + '</span>';
+      }
+      trClaude.appendChild(tdC3);
+      var tdC4 = document.createElement('td');
+      tdC4.className = 'py-1.5 pl-2 whitespace-nowrap text-slate-600';
+      tdC4.textContent = '—';
+      trClaude.appendChild(tdC4);
+      tbody.appendChild(trClaude);
+    });
 
     // Antigravity row
     var trAg = document.createElement('tr');
@@ -352,7 +366,17 @@
       container.appendChild(contextLine);
     }
 
-    var capturedAt = (claude && claude.quota && claude.quota.captured_at) || (ag && ag.quota && ag.quota.captured_at) || (codex && codex.quota && codex.quota.captured_at) || (oc && oc.quota && oc.quota.captured_at);
+    var claudeProfileCapturedAt = null;
+    claudeProfileKeys.some(function (profileKey) {
+      var entry = claudeProfiles[profileKey];
+      if (entry && entry.quota && entry.quota.captured_at) {
+        claudeProfileCapturedAt = entry.quota.captured_at;
+        return true;
+      }
+      return false;
+    });
+
+    var capturedAt = claudeProfileCapturedAt || (ag && ag.quota && ag.quota.captured_at) || (codex && codex.quota && codex.quota.captured_at) || (oc && oc.quota && oc.quota.captured_at);
     el.title = capturedAt ? 'Captured ' + relativeTimeAgo(capturedAt) : '';
     el.innerHTML = '';
     el.appendChild(container);
