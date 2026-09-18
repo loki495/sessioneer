@@ -666,8 +666,60 @@ document.addEventListener('keydown', function (e) {
   var agentSelect = document.getElementById('new-session-agent');
   var modelSelect = document.getElementById('new-session-model');
   var modelProviderInput = document.getElementById('new-session-model-provider');
+  var profileLabel = document.getElementById('new-session-profile-label');
+  var profileSelect = document.getElementById('new-session-profile');
 
   if (!agentSelect || !modelSelect) { return; }
+
+  // --- Claude account (profile) picker - see this label's own comment in
+  // src/partials/pages/index.php. Fetched once, cached, shown only when
+  // agent === 'claude' AND more than one profile is actually configured
+  // (a single-account install should never see this at all).
+  var claudeProfilesCache = null;
+
+  function loadClaudeProfiles() {
+    if (!profileLabel || !profileSelect) { return; }
+
+    if (claudeProfilesCache) {
+      showOrHideProfilePicker(claudeProfilesCache);
+      return;
+    }
+
+    fetch('/session_list_claude_profiles.php', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        claudeProfilesCache = (data && data.ok && Array.isArray(data.profiles)) ? data.profiles : [];
+        showOrHideProfilePicker(claudeProfilesCache);
+      })
+      .catch(function () {
+        claudeProfilesCache = [];
+        showOrHideProfilePicker(claudeProfilesCache);
+      });
+  }
+
+  function showOrHideProfilePicker(profiles) {
+    if (!profileLabel || !profileSelect) { return; }
+
+    if (agentSelect.value !== 'claude' || profiles.length < 2) {
+      profileLabel.classList.remove('flex');
+      profileLabel.classList.add('hidden');
+      profileSelect.value = '';
+      return;
+    }
+
+    while (profileSelect.options.length > 1) {
+      profileSelect.remove(1);
+    }
+    profiles.forEach(function (p) {
+      var opt = document.createElement('option');
+      opt.value = p;
+      opt.textContent = p;
+      profileSelect.appendChild(opt);
+    });
+
+    profileLabel.classList.remove('hidden');
+    profileLabel.classList.add('flex');
+  }
 
   var CLAUDE_MODELS = [
     { id: '', label: 'Default' },
@@ -765,6 +817,7 @@ document.addEventListener('keydown', function (e) {
   function onAgentChange() {
     var agent = agentSelect.value;
     clearModels();
+    loadClaudeProfiles();
 
     if (agent === 'opencode') {
       loadOpenCodeModels();

@@ -25,26 +25,35 @@ class ArchivedSessionService
      * re-parsing a potentially huge transcript).
      *
      * @param string[] $excludeAgentSessionIds
-     * @return array<int, array{agent_session_id:string, cwd:?string, title:string, last_activity:int}>
+     * @return array<int, array{agent_session_id:string, cwd:?string, title:string, last_activity:int, profile?:?string}>
      */
     public static function list_archived_sessions(array $excludeAgentSessionIds): array
     {
         $exclude = array_flip($excludeAgentSessionIds);
         $archived = [];
 
-        foreach (TranscriptService::list_all_transcripts() as $t) {
-            if (isset($exclude[$t['agent_session_id']])) {
-                continue;
-            }
+        foreach (Config::claude_profiles_to_scan() as $profile) {
+            foreach (TranscriptService::list_all_transcripts($profile) as $t) {
+                if (isset($exclude[$t['agent_session_id']])) {
+                    continue;
+                }
 
-            $archived[] = [
-                'agent_session_id' => $t['agent_session_id'],
-                'cwd' => $t['cwd'],
-                'title' => SessionService::title_cascade($t['ai_title'], null, $t['cwd'], $t['agent_session_id']),
-                'last_activity' => $t['last_activity'],
-                'agent' => 'claude',
-                'agent_label' => 'Claude Code',
-            ];
+                $archived[] = [
+                    'agent_session_id' => $t['agent_session_id'],
+                    'cwd' => $t['cwd'],
+                    'title' => SessionService::title_cascade($t['ai_title'], null, $t['cwd'], $t['agent_session_id']),
+                    'last_activity' => $t['last_activity'],
+                    'agent' => 'claude',
+                    'agent_label' => 'Claude Code',
+                    // Which account this dormant session belongs to (see
+                    // Dibs plan #230) - null for the default account, so
+                    // resuming/opening it later can pass the right profile
+                    // back through (see Sessions.php's archived_* dispatch
+                    // cases). Every other agent's archived entries below
+                    // have no such concept and never set this key.
+                    'profile' => $profile,
+                ];
+            }
         }
 
         foreach (AntigravityTranscriptService::list_all_transcripts() as $t) {
@@ -227,8 +236,16 @@ class ArchivedSessionService
 
         $results = [];
 
-        // Claude Code transcripts (JSONL files).
-        $transcripts = TranscriptService::list_all_transcripts();
+        // Claude Code transcripts (JSONL files) - every configured profile,
+        // same dedup as list_archived_sessions() above.
+        $transcripts = [];
+
+        foreach (Config::claude_profiles_to_scan() as $profile) {
+            foreach (TranscriptService::list_all_transcripts($profile) as $t) {
+                $transcripts[] = $t + ['profile' => $profile];
+            }
+        }
+
         usort($transcripts, fn(array $a, array $b) => $b['last_activity'] <=> $a['last_activity']);
 
         foreach ($transcripts as $t) {
@@ -245,6 +262,7 @@ class ArchivedSessionService
                 'cwd' => $t['cwd'],
                 'last_activity' => $t['last_activity'],
                 'matches' => $matches,
+                'profile' => $t['profile'],
             ];
 
             if (count($results) >= $maxSessions) {
@@ -298,7 +316,7 @@ class ArchivedSessionService
             return ['ok' => false, 'message' => 'No transcript recorded for this session'];
         }
 
-        return self::transcript_search_for_claude_session($agentSessionId, $query, $maxMatches);
+        return self::transcript_search_for_claude_session($agentSessionId, $query, $maxMatches, is_string($sidecar['profile'] ?? null) ? $sidecar['profile'] : null);
     }
 
     /**
@@ -308,9 +326,9 @@ class ArchivedSessionService
      *
      * @return array{ok:bool, matches?:array<int, array>, message?:string}
      */
-    public static function archived_session_transcript_search(string $agentSessionId, string $query, int $maxMatches): array
+    public static function archived_session_transcript_search(string $agentSessionId, string $query, int $maxMatches, ?string $profile = null): array
     {
-        return self::transcript_search_for_claude_session($agentSessionId, $query, $maxMatches);
+        return self::transcript_search_for_claude_session($agentSessionId, $query, $maxMatches, $profile);
     }
 
     /**
@@ -321,9 +339,9 @@ class ArchivedSessionService
      *
      * @return array{ok:bool, matches?:array<int, array>, message?:string}
      */
-    private static function transcript_search_for_claude_session(string $agentSessionId, string $query, int $maxMatches): array
+    private static function transcript_search_for_claude_session(string $agentSessionId, string $query, int $maxMatches, ?string $profile = null): array
     {
-        $path = TranscriptRouter::find_transcript_path($agentSessionId);
+        $path = TranscriptRouter::find_transcript_path($agentSessionId, $profile);
 
         if ($path === null) {
             return ['ok' => false, 'message' => 'Transcript file not found'];

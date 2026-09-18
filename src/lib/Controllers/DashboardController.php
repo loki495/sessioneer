@@ -101,10 +101,14 @@ class DashboardController extends Controller
                 $agent = trim((string)($_POST['agent'] ?? ''));
                 $model = trim((string)($_POST['model'] ?? ''));
                 $modelProvider = trim((string)($_POST['model_provider'] ?? ''));
+                $profile = trim((string)($_POST['profile'] ?? ''));
                 $createParams = ['action' => 'create', 'workdir' => $workdir, 'enable_task_tools' => $enableTaskTools, 'starting_mode' => $startingMode, 'agent' => $agent];
                 if ($model !== '') {
                     $createParams['model'] = $model;
                     $createParams['model_provider'] = $modelProvider;
+                }
+                if ($profile !== '') {
+                    $createParams['profile'] = $profile;
                 }
                 $result = AgentClient::agent_call($createParams);
                 $ok = (bool)($result['ok'] ?? false);

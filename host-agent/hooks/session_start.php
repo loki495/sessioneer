@@ -102,9 +102,20 @@ if ($existingSidecar === null && !$createIfMissing) {
 // this hook fires (SessionStart can fire before Claude Code's own first
 // write to the new transcript path - same kind of ordering surprise
 // already found for the Stop hook, see tests/README/todo notes on that).
+// Which Claude Code account this pane's session was originally spawned
+// under (see Dibs plan #230) - read from the sidecar being rebound, NOT
+// re-derived from anything in this hook's own env, since CLAUDE_CONFIG_DIR
+// is only ever set at spawn time (create_agent_session()), not something
+// this hook receives directly. A work-profile session's transcript lives
+// under that account's own CLAUDE_CONFIG_DIR, not the default ~/.claude -
+// without this, every /clear, /compact, --resume, --fork-session on a
+// work-profile session would search the wrong directory and never find
+// it, silently breaking tracking the moment any of those happen.
+$profile = is_string($existingSidecar['profile'] ?? null) ? $existingSidecar['profile'] : null;
+
 $transcriptConfirmed = false;
 for ($attempt = 0; $attempt < 4; $attempt++) {
-    if (TranscriptService::find_transcript_path($agentSessionId) !== null) {
+    if (TranscriptService::find_transcript_path($agentSessionId, $profile) !== null) {
         $transcriptConfirmed = true;
         break;
     }
@@ -147,4 +158,10 @@ SidecarStore::write_sidecar($sessionName, [
     // just tear down a pane this app made, versus needing more care for
     // one Andres is also using directly outside the app).
     'spawned_by_app' => $existingSidecar['spawned_by_app'] ?? (is_string($spawnedByApp) && $spawnedByApp !== ''),
+    // Preserved from the existing sidecar, same as agent/workdir above -
+    // this hook fires on EVERY session start including the very first one
+    // right after spawn, so omitting this would silently wipe the profile
+    // create_agent_session() just wrote, defeating multi-account support
+    // immediately.
+    'profile' => $profile,
 ]);

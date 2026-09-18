@@ -33,10 +33,176 @@ class Config
      * every other path below, there's no environment-derived fallback
      * that's reliably correct, so this is empty until CLAUDE_BIN is set
      * explicitly. Run `which claude` to find the real path.
+     *
+     * $profile's own 'bin' override (see agents_config()) wins when set -
+     * only needed if a work account genuinely runs a different binary, not
+     * the common case (a different CLAUDE_CONFIG_DIR is usually enough,
+     * see claude_config_dir()).
      */
-    public static function claude_bin(): string
+    public static function claude_bin(?string $profile = null): string
     {
-        return self::sessioneer_config('CLAUDE_BIN', '');
+        $override = self::claude_profile_config($profile)['bin'] ?? null;
+
+        return is_string($override) && $override !== '' ? $override : self::sessioneer_config('CLAUDE_BIN', '');
+    }
+
+    /**
+     * host-agent/config/agents.php's raw return value, required once per
+     * process and cached (same one-process-per-request lifetime as
+     * SqliteDb's connection cache) - a plain PHP array rather than JSON so
+     * the file can carry comments and doesn't need a parser. Missing file
+     * (nothing configured yet) resolves to an empty array, not an error -
+     * every profile lookup below already treats "no such profile" as
+     * "use today's single-account defaults".
+     */
+    /** @var array<string, mixed>|null */
+    private static ?array $agentsConfig = null;
+
+    /** @return array<string, mixed> */
+    public static function agents_config(): array
+    {
+        if (self::$agentsConfig !== null) {
+            return self::$agentsConfig;
+        }
+
+        $path = self::sessioneer_repo_root() . '/host-agent/config/agents.php';
+        $config = is_file($path) ? require $path : [];
+
+        return self::$agentsConfig = is_array($config) ? $config : [];
+    }
+
+    /**
+     * One Claude Code profile's raw config ('config_dir'/'bin', both
+     * ?string) from agents_config()'s 'claude.profiles' map. $profile
+     * null, empty, or naming a profile that doesn't exist all resolve to
+     * an all-null entry - "use today's single-account defaults" - rather
+     * than an error, so an unconfigured/removed profile never breaks a
+     * session that already references it.
+     *
+     * @return array{config_dir: ?string, bin: ?string}
+     */
+    public static function claude_profile_config(?string $profile): array
+    {
+        if ($profile === null || $profile === '') {
+            return ['config_dir' => null, 'bin' => null];
+        }
+
+        $entry = self::agents_config()['claude']['profiles'][$profile] ?? null;
+
+        return [
+            'config_dir' => is_string($entry['config_dir'] ?? null) && $entry['config_dir'] !== '' ? $entry['config_dir'] : null,
+            'bin' => is_string($entry['bin'] ?? null) && $entry['bin'] !== '' ? $entry['bin'] : null,
+        ];
+    }
+
+    /**
+     * Every configured Claude Code profile NAME (agents_config()'s own
+     * 'claude.profiles' keys) - lets a caller that needs to scan every
+     * known account (e.g. ArchivedSessionService's dormant-session listing)
+     * discover what's configured without reaching into agents_config()'s
+     * raw shape itself.
+     *
+     * @return string[]
+     */
+    public static function claude_profile_names(): array
+    {
+        $profiles = self::agents_config()['claude']['profiles'] ?? [];
+
+        return is_array($profiles) ? array_keys($profiles) : [];
+    }
+
+    /**
+     * Every Claude Code profile worth scanning for a transcript that could
+     * belong to ANY configured account, as TranscriptService-compatible
+     * $profile arguments - null (the default account) plus every named
+     * profile, DEDUPED by their actually-resolved config dir (two names
+     * resolving to the same dir would otherwise get scanned/listed twice -
+     * see claude_profile_names()'s own docblock for why that can happen).
+     * The bare default (null) always wins a dedup collision.
+     *
+     * Used both by ArchivedSessionService's dormant-session listing (which
+     * genuinely wants every account's transcripts) and by
+     * TranscriptRouter::find_transcript_path_any_profile() (which wants
+     * "try every account until one resolves" for a bare/untracked process
+     * with no sidecar to say which one it belongs to).
+     *
+     * @return array<int, ?string>
+     */
+    public static function claude_profiles_to_scan(): array
+    {
+        $profiles = [null];
+        $seenDirs = [self::claude_config_dir(null)];
+
+        foreach (self::claude_profile_names() as $name) {
+            $dir = self::claude_config_dir($name);
+
+            if (in_array($dir, $seenDirs, true)) {
+                continue;
+            }
+
+            $seenDirs[] = $dir;
+            $profiles[] = $name;
+        }
+
+        return $profiles;
+    }
+
+    /**
+     * The CLAUDE_CONFIG_DIR a given profile's session should run under -
+     * $profile's own 'config_dir' when set, else this process's own
+     * default (home_root() . '/.claude', i.e. today's single-account
+     * behavior unchanged). This is what gets injected as the spawned tmux
+     * pane's CLAUDE_CONFIG_DIR env (see SessionLifecycleService) and is
+     * the base every other Claude-account-scoped path below is now built
+     * from, instead of home_root() directly.
+     */
+    public static function claude_config_dir(?string $profile = null): string
+    {
+        $override = self::claude_profile_config($profile)['config_dir'] ?? null;
+
+        return is_string($override) && $override !== '' ? $override : self::home_root() . '/.claude';
+    }
+
+    /**
+     * Reverse of claude_config_dir() - given a CLAUDE_CONFIG_DIR value (as
+     * read from the environment a Claude-Code-spawned process, e.g. the
+     * statusLine script's own $CLAUDE_CONFIG_DIR, inherited straight from
+     * ClaudeCodeAdapter::build_spawn_argv()'s env override), resolves which
+     * configured profile it belongs to - null for "the default account",
+     * covering both a genuinely unset/empty value AND a dir that matches
+     * the default resolution explicitly (e.g. an explicit 'personal' pick,
+     * whose own config_dir override is null - same dedup-by-resolved-dir
+     * reasoning as claude_profiles_to_scan()'s own docblock, so 'personal'
+     * and null are never treated as two different accounts here).
+     */
+    public static function claude_profile_for_config_dir(string $configDir): ?string
+    {
+        if ($configDir === '' || $configDir === self::claude_config_dir(null)) {
+            return null;
+        }
+
+        foreach (self::claude_profile_names() as $name) {
+            if (self::claude_config_dir($name) === $configDir) {
+                return $name;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Host-agent-side counterpart to the web UI's App\Views\SessionRowView::
+     * profile_label() - duplicated, not shared, since HostAgent\ and App\
+     * are two genuinely separate runtimes (see CLAUDE.md's "Architecture:
+     * two runtimes" section) that never share a namespace/autoload root.
+     * Needed for QuotaService's JSON 'label' field.
+     */
+    public static function claude_profile_label(?string $profile): string
+    {
+        return match ($profile) {
+            null, '', 'personal' => 'Personal',
+            default => ucfirst($profile),
+        };
     }
 
     /**
@@ -205,10 +371,18 @@ class Config
      * source (see that class's own docblock - the tmux-pane-scraping
      * fallback and the external `claude-quota`-binary scrape behind it were
      * both deleted 2026-08-22 as dead code).
+     *
+     * $profile null (the default account) keeps the original bare key
+     * unchanged - an existing install's already-captured quota history
+     * stays readable under a profile-unaware key exactly as before. Any
+     * other profile (resolved via claude_profile_for_config_dir() from the
+     * writing statusLine script's own $CLAUDE_CONFIG_DIR) gets its own
+     * separate key/row, the same "own key per distinct account" pattern
+     * antigravity_quota_live_state_key() already uses for a different agent.
      */
-    public static function quota_live_state_key(): string
+    public static function quota_live_state_key(?string $profile = null): string
     {
-        return 'quota_live_state';
+        return $profile !== null ? "quota_live_state:{$profile}" : 'quota_live_state';
     }
 
     /**
@@ -310,9 +484,9 @@ class Config
         return self::sessioneer_config('SESSIONEER_REPO_ROOT', dirname(__DIR__, 3));
     }
 
-    public static function claude_settings_path(): string
+    public static function claude_settings_path(?string $profile = null): string
     {
-        return self::home_root() . '/.claude/settings.json';
+        return self::claude_config_dir($profile) . '/settings.json';
     }
 
     /**

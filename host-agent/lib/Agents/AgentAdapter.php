@@ -58,10 +58,15 @@ interface AgentAdapter
      * "CLI flags" section for why).
      *
      * @param array<string, mixed> $options adapter-specific spawn options
-     *   (e.g. Claude Code's enable_task_tools/starting_mode) - each
+     *   (e.g. Claude Code's enable_task_tools/starting_mode/profile) - each
      *   adapter documents and reads only the keys it understands, ignoring
      *   the rest, rather than a rigid shared shape every agent must fit.
-     * @return array{argv: string[], assigned_id: ?string}
+     * @return array{argv: string[], assigned_id: ?string, env?: array<string, string>}
+     *   env: extra env vars SessionLifecycleService should set on the
+     *   spawned tmux pane (via `-e`, same mechanism as its own
+     *   SESSIONEER_SESSION_NAME) - e.g. ClaudeCodeAdapter's CLAUDE_CONFIG_DIR
+     *   when $options['profile'] names a non-default account (see Dibs
+     *   plan #230). Omitted entirely by an adapter with nothing to add.
      */
     public function build_spawn_argv(array $options): array;
 

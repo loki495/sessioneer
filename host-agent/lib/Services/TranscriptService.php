@@ -76,9 +76,15 @@ class TranscriptService
     // client keep paging normally from there.
     public const UNTIL_USER_MESSAGE_MAX_ENTRIES = 300;
 
-    public static function claude_projects_dir(): string
+    /**
+     * $profile (see Config::claude_config_dir()) - null resolves to this
+     * process's own default account, same as every other call site before
+     * profile support existed. A profile's transcripts live under its own
+     * CLAUDE_CONFIG_DIR, not this app's own $HOME, once one is configured.
+     */
+    public static function claude_projects_dir(?string $profile = null): string
     {
-        return Config::home_root() . '/.claude/projects';
+        return Config::claude_config_dir($profile) . '/projects';
     }
 
     /**
@@ -107,13 +113,13 @@ class TranscriptService
      * since it ultimately traces back to a sidecar file, so it's validated as
      * UUID-shaped before touching the filesystem.
      */
-    public static function find_transcript_path(string $agentSessionId): ?string
+    public static function find_transcript_path(string $agentSessionId, ?string $profile = null): ?string
     {
         if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $agentSessionId) !== 1) {
             return null;
         }
 
-        $matches = glob(self::claude_projects_dir() . '/*/' . $agentSessionId . '.jsonl') ?: [];
+        $matches = glob(self::claude_projects_dir($profile) . '/*/' . $agentSessionId . '.jsonl') ?: [];
 
         return $matches[0] ?? null;
     }
@@ -217,11 +223,17 @@ class TranscriptService
      * reading one) so SessionService can apply the exact same title
      * cascade it already uses for live sessions.
      *
+     * $profile: same meaning as claude_projects_dir()'s own - null scans
+     * only the default account. Scanning every configured profile's
+     * transcripts in one archived-session listing is a known follow-up
+     * (Dibs plan #230's UI/verification tasks), not done here yet - no
+     * caller passes a non-null profile today.
+     *
      * @return array<int, array{agent_session_id:string, cwd:?string, ai_title:?string, last_activity:int, path:string}>
      */
-    public static function list_all_transcripts(): array
+    public static function list_all_transcripts(?string $profile = null): array
     {
-        $paths = glob(self::claude_projects_dir() . '/*/*.jsonl') ?: [];
+        $paths = glob(self::claude_projects_dir($profile) . '/*/*.jsonl') ?: [];
         $result = [];
 
         foreach ($paths as $path) {

@@ -355,6 +355,21 @@ class SessionController extends Controller
     }
 
     /**
+     * GET-only JSON endpoint backing the New Session form's Claude account
+     * picker (Dibs plan #230/#234) - profile names live in host-agent/
+     * config/agents.php, which this container has no direct filesystem
+     * access to (same reason listModels() above reaches through the
+     * socket rather than reading host-agent state directly) - see
+     * AgentClient::agent_call()'s own docblock.
+     */
+    public function listClaudeProfiles(): void
+    {
+        $this->start_readonly_json();
+
+        echo json_encode(AgentClient::agent_call(['action' => 'list_claude_profiles']));
+    }
+
+    /**
      * POST-only JSON endpoint for session.php's Antigravity "Select model"
      * dropdown (Andres's own ask, 2026-08-24) - same AJAX pattern as
      * setModel() above, but a DIFFERENT underlying action

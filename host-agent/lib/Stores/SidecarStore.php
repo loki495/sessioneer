@@ -32,6 +32,12 @@ class SidecarStore
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'agent', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'runtime', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'title', 'TEXT');
+        // Added for multi-account support (Dibs plan #230) - the Claude
+        // Code profile name (see Config::claude_profile_config()) this
+        // session was spawned under, or NULL for a pre-profile row/the
+        // default account. A profile name, not a resolved config_dir, so
+        // this stays correct if agents.php's own entry for it changes later.
+        SqliteDb::add_column_if_missing($pdo, 'sidecars', 'profile', 'TEXT');
         // Transitional: renamed from claude_session_id/spawned_by_csm (Sessioneer
         // rename, 2026-09-01) - CREATE TABLE IF NOT EXISTS alone never retroactively
         // renames a column on a table already created under the old schema. Same
@@ -45,11 +51,11 @@ class SidecarStore
     }
 
     /**
-     * @return array{workdir:?string, spawned_at:?int, agent_session_id?:?string, spawned_by_app?:bool, agent?:?string, runtime?:?string, title?:?string}|null
+     * @return array{workdir:?string, spawned_at:?int, agent_session_id?:?string, spawned_by_app?:bool, agent?:?string, runtime?:?string, title?:?string, profile?:?string}|null
      */
     public static function read_sidecar(string $sessionName): ?array
     {
-        $stmt = self::db()->prepare('SELECT workdir, spawned_at, agent_session_id, spawned_by_app, agent, runtime, title FROM sidecars WHERE session_name = ?');
+        $stmt = self::db()->prepare('SELECT workdir, spawned_at, agent_session_id, spawned_by_app, agent, runtime, title, profile FROM sidecars WHERE session_name = ?');
         $stmt->execute([$sessionName]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
 
@@ -85,6 +91,12 @@ class SidecarStore
                 // null for pre-headless rows, so callers fall back to a
                 // workdir basename.
                 'title' => $row['title'],
+                // Added for multi-account support (Dibs plan #230). NULL
+                // for any row written before this column existed, or for a
+                // session spawned under the default account - callers
+                // treat a null profile as "use Config's own defaults",
+                // same convention runtime/title already use.
+                'profile' => $row['profile'],
             ];
         }
 
@@ -106,8 +118,8 @@ class SidecarStore
     public static function write_sidecar(string $sessionName, array $data): void
     {
         $stmt = self::db()->prepare(
-            'INSERT INTO sidecars (session_name, workdir, spawned_at, agent_session_id, spawned_by_app, agent, runtime, title)
-             VALUES (:session_name, :workdir, :spawned_at, :agent_session_id, :spawned_by_app, :agent, :runtime, :title)
+            'INSERT INTO sidecars (session_name, workdir, spawned_at, agent_session_id, spawned_by_app, agent, runtime, title, profile)
+             VALUES (:session_name, :workdir, :spawned_at, :agent_session_id, :spawned_by_app, :agent, :runtime, :title, :profile)
              ON CONFLICT(session_name) DO UPDATE SET
                 workdir = excluded.workdir,
                 spawned_at = excluded.spawned_at,
@@ -115,7 +127,8 @@ class SidecarStore
                 spawned_by_app = excluded.spawned_by_app,
                 agent = excluded.agent,
                 runtime = excluded.runtime,
-                title = excluded.title'
+                title = excluded.title,
+                profile = excluded.profile'
         );
 
         $stmt->execute([
@@ -133,6 +146,7 @@ class SidecarStore
             // only runtime every pre-headless sidecar belongs to.
             ':runtime' => $data['runtime'] ?? null,
             ':title' => $data['title'] ?? null,
+            ':profile' => $data['profile'] ?? null,
         ]);
     }
 

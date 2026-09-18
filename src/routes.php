@@ -60,6 +60,7 @@ $router->post('/session_model.php', [SessionController::class, 'setModel']);
 $router->get('/session_antigravity_model.php', [SessionController::class, 'setAntigravityModel']);
 $router->post('/session_antigravity_model.php', [SessionController::class, 'setAntigravityModel']);
 $router->get('/session_list_models.php', [SessionController::class, 'listModels']);
+$router->get('/session_list_claude_profiles.php', [SessionController::class, 'listClaudeProfiles']);
 $router->get('/session_escape.php', [SessionController::class, 'escape']);
 $router->post('/session_escape.php', [SessionController::class, 'escape']);
 $router->get('/answer_prompt.php', [SessionController::class, 'answerPrompt']);

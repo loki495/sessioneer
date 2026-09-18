@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../../vendor/autoload.php';
 
+use HostAgent\Services\Config;
 use HostAgent\Services\SessionService;
 use HostAgent\Services\PromptInteractionService;
 use HostAgent\Services\PlanFileService;
@@ -67,7 +68,10 @@ function dispatch_action(array $request): array
             return SessionDetailService::session_detail($session);
 
         case 'archived_session_detail':
-            return SessionDetailService::archived_session_detail((string)($request['agent_session_id'] ?? ''));
+            return SessionDetailService::archived_session_detail(
+                (string)($request['agent_session_id'] ?? ''),
+                is_string($request['profile'] ?? null) && $request['profile'] !== '' ? $request['profile'] : null
+            );
 
         case 'session_history':
             $historySession = (string)($request['session'] ?? '');
@@ -92,7 +96,8 @@ function dispatch_action(array $request): array
                 (string)($request['agent_session_id'] ?? ''),
                 isset($request['before']) ? (int)$request['before'] : null,
                 isset($request['limit']) ? (int)$request['limit'] : 30,
-                isset($request['after']) ? (int)$request['after'] : null
+                isset($request['after']) ? (int)$request['after'] : null,
+                is_string($request['profile'] ?? null) && $request['profile'] !== '' ? $request['profile'] : null
             );
 
         case 'search_transcripts':
@@ -113,7 +118,8 @@ function dispatch_action(array $request): array
             return ArchivedSessionService::archived_session_transcript_search(
                 (string)($request['agent_session_id'] ?? ''),
                 (string)($request['query'] ?? ''),
-                isset($request['max_matches']) ? (int)$request['max_matches'] : 20
+                isset($request['max_matches']) ? (int)$request['max_matches'] : 20,
+                is_string($request['profile'] ?? null) && $request['profile'] !== '' ? $request['profile'] : null
             );
 
         case 'session_attachment':
@@ -127,7 +133,8 @@ function dispatch_action(array $request): array
             return SessionDetailService::archived_session_attachment(
                 (string)($request['agent_session_id'] ?? ''),
                 (int)($request['line'] ?? 0),
-                (string)($request['file_uuid'] ?? '')
+                (string)($request['file_uuid'] ?? ''),
+                is_string($request['profile'] ?? null) && $request['profile'] !== '' ? $request['profile'] : null
             );
 
         case 'create':
@@ -136,6 +143,12 @@ function dispatch_action(array $request): array
             $workdir = (string)($request['workdir'] ?? '');
             $modelId = is_string($request['model'] ?? null) ? $request['model'] : null;
             $modelProvider = is_string($request['model_provider'] ?? null) ? $request['model_provider'] : null;
+            // Which Claude Code account to spawn under (see Dibs plan #230) -
+            // ignored by every agent but 'claude' (AgentAdapter's own "reads
+            // only what it understands" contract). Not surfaced in the New
+            // Session UI yet, but wired through the protocol so it's ready
+            // once it is.
+            $profile = is_string($request['profile'] ?? null) && $request['profile'] !== '' ? $request['profile'] : null;
 
             // OpenCode's default runtime is headless (no tmux) - a New
             // Session for opencode goes through `opencode serve`, so it
@@ -194,12 +207,19 @@ function dispatch_action(array $request): array
                 (bool)($request['enable_task_tools'] ?? false),
                 is_string($startingMode) && $startingMode !== '' ? $startingMode : null,
                 $agentId,
-                $modelId
+                $modelId,
+                $profile
             );
 
         case 'resume':
             $resumeWorkdir = (string)($request['workdir'] ?? '');
             $resumeId = (string)($request['agent_session_id'] ?? '');
+            // Same meaning as 'create' above - not populated by any UI yet
+            // (an archived-list row doesn't carry a profile today, see Dibs
+            // plan #230's own open follow-up), but threaded through so a
+            // future caller that does know it works without another
+            // protocol change.
+            $resumeProfile = is_string($request['profile'] ?? null) && $request['profile'] !== '' ? $request['profile'] : null;
 
             // Headless sessions (opencode/codex) resume via their respective
             // runtimes - no tmux pane spawned. claude/antigravity keep the
@@ -208,12 +228,12 @@ function dispatch_action(array $request): array
                 return sessioneer_headless_resume($resumeWorkdir, $resumeId);
             }
 
-            $transcriptPath = TranscriptRouter::find_transcript_path($resumeId);
+            $transcriptPath = TranscriptRouter::find_transcript_path($resumeId, $resumeProfile);
             if ($transcriptPath !== null && TranscriptRouter::is_codex_path($transcriptPath)) {
                 return sessioneer_codex_resume($resumeWorkdir, $resumeId);
             }
 
-            return SessionLifecycleService::resume_agent_session($resumeWorkdir, $resumeId);
+            return SessionLifecycleService::resume_agent_session($resumeWorkdir, $resumeId, $resumeProfile);
 
         case 'kill':
             $killSession = (string)($request['session'] ?? '');
@@ -337,6 +357,14 @@ function dispatch_action(array $request): array
         case 'list_models':
             return sessioneer_list_models(is_string($request['agent'] ?? null) ? $request['agent'] : 'opencode');
 
+        // Backs the New Session form's Claude account picker (Dibs plan
+        // #230/#234) - profile NAMES only, live off agents.php
+        // (Config::claude_profile_names()), never a static/cached list, so
+        // an edit to that file is picked up on the very next page load
+        // with no app restart needed.
+        case 'list_claude_profiles':
+            return ['ok' => true, 'profiles' => Config::claude_profile_names()];
+
         case 'set_antigravity_model':
             return PromptInteractionService::set_antigravity_model((string)($request['session'] ?? ''), (string)($request['model'] ?? ''));
 
@@ -364,23 +392,28 @@ function dispatch_action(array $request): array
             return QuotaService::get_quota($quotaSession !== '' ? $quotaSession : null);
 
         case 'check_session_hook':
-            $claudeHooks = HookService::check_session_hook();
+            // Every configured Claude Code profile (not just the default
+            // account) - see HookService::check_all_claude_profiles()'s
+            // own docblock for why a work profile needs this too.
+            $claudeHooks = HookService::check_all_claude_profiles();
             $codexHooks = CodexHookService::check_session_hook();
 
             return [
                 'ok' => $claudeHooks['ok'] && $codexHooks['ok'],
                 'installed' => $claudeHooks['installed'] && $codexHooks['installed'],
                 'message' => $claudeHooks['message'] ?? $codexHooks['message'] ?? null,
+                'claude_by_profile' => $claudeHooks['by_profile'],
             ];
 
         case 'install_session_hook':
-            $claudeHooks = HookService::install_session_hook();
+            $claudeHooks = HookService::install_all_claude_profiles();
             $codexHooks = CodexHookService::install_session_hook();
 
             return [
                 'ok' => $claudeHooks['ok'] && $codexHooks['ok'],
                 'installed' => $claudeHooks['installed'] && $codexHooks['installed'],
                 'message' => $claudeHooks['message'] ?? $codexHooks['message'] ?? null,
+                'claude_by_profile' => $claudeHooks['by_profile'],
             ];
 
         case 'save_uploaded_file':
