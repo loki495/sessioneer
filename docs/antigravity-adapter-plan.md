@@ -96,10 +96,16 @@ queued behind.
   both via a direct PromptInteractionService call AND via a real browser
   screenshot of session.php's rendered Approve/Deny buttons, zero console
   errors). Covered by `tests/test_antigravity_prompt_parser.php` against a
-  real captured pane fixture. **Scope**: only this one prompt shape - the
-  initial per-folder trust dialog and any AskUserQuestion-equivalent
-  Antigravity might have are NOT covered (never seen live yet, so nothing
-  to build against without guessing).
+  real captured pane fixture. Updated 2026-09-11 for agy 1.2.1+: Antigravity
+  switched from a single fixed "Do you want to proceed?" with 4 options to
+  action-specific questions ("Run this command?", "Allow creation of this file?",
+  "Accept this file edit?", "Allow access to this URL?", etc.) with 2 options
+  ("Yes, run command" / "No, cancel"). AntigravityPromptParser now dynamically
+  matches recognized approval questions, parses option lists of any length, and
+  returns the actual question text.
+  **Scope**: tool-permission dialogs (both 1.1.x and 1.2.x+); the initial per-folder
+  trust dialog and any AskUserQuestion-equivalent Antigravity might have are
+  NOT covered (never seen live yet, so nothing to build against without guessing).
 - **"regular text messages from agy are not showing" - CONFIRMED FIXED,
   verified live 2026-08-24** (was previously flagged "status unverified"
   in this doc): checked a real session's `session_history()` output after

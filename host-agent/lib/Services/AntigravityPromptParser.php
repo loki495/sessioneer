@@ -22,25 +22,52 @@ namespace HostAgent\Services;
  * answer_prompt()/send_escape() that calls it instead of Claude's own for
  * an antigravity session.
  *
- * Scoped to the one real prompt shape confirmed live 2026-08-24 (a
- * run_command tool-permission request) - Antigravity's confirmation menu
- * for a shell command:
- *   Requesting permission for:
- *      agy models
- *
- *   Do you want to proceed?
- *   > 1. Yes
- *     2. Yes, and always allow in this conversation for commands that start with 'agy'
- *     3. Yes, and always allow for commands that start with 'agy' (Persist to settings.json)
- *     4. No
- * Other tool types may render their own confirmation text differently
- * (not yet seen live) - this returns null for anything that doesn't match
- * this specific numbered-list-under-"Do you want to proceed?" shape,
- * same "don't guess" discipline as PromptParser's own trust-dialog
- * detection.
+ * Supports both:
+ * - Legacy Antigravity 1.1.x: "Do you want to proceed?" with 4 numbered options
+ * - Modern Antigravity 1.2.x: Action-specific tool approval prompts ("Run this command?",
+ *   "Allow creation of this file?", "Accept this file edit?", "Allow access to this file?",
+ *   "Allow access to this URL?", "Allow calling this tool?", etc.) typically with 2 numbered options
+ *   ("1. Yes, run command", "2. No, cancel" / "1. Yes, allow creation", "2. No, deny creation", etc.).
  */
 class AntigravityPromptParser
 {
+    /**
+     * Known tool confirmation question strings from Antigravity CLI.
+     */
+    public const KNOWN_QUESTIONS = [
+        'Do you want to proceed?',
+        'Run this command?',
+        'Allow creation of this file?',
+        'Accept this file edit?',
+        'Allow access to this file?',
+        'Allow access to this URL?',
+        'Allow calling this tool?',
+        'Allow administrator elevation?',
+        'Allow remote debugging?',
+        'Allow sandbox bypass for command execution?',
+        'Send input to this task?',
+        'Overwrite settings.json?',
+    ];
+
+    /**
+     * Checks if a line matches a recognized Antigravity tool confirmation question.
+     */
+    public static function is_prompt_question(string $line): bool
+    {
+        $trimmed = trim($line);
+        if (!str_ends_with($trimmed, '?')) {
+            return false;
+        }
+
+        if (in_array($trimmed, self::KNOWN_QUESTIONS, true)) {
+            return true;
+        }
+
+        // Future action prompts may vary in their object text, but an
+        // arbitrary pane question is not evidence of a permission request.
+        return (bool)preg_match('/^(?:Run|Allow|Accept|Send|Overwrite|Execute|Delete|Create|Edit|Install|Enable|Disable|Approve)\b.+\?$/u', $trimmed);
+    }
+
     /**
      * @return array{question:string, context:string, options: array<int, array{number:int, label:string}>, multi_question:bool, is_folder_trust:bool}|null
      */
@@ -48,11 +75,16 @@ class AntigravityPromptParser
     {
         $lines = explode("\n", $paneContent);
         $questionIndex = null;
+        $options = [];
 
         for ($i = count($lines) - 1; $i >= 0; $i--) {
-            if (trim($lines[$i]) === 'Do you want to proceed?') {
-                $questionIndex = $i;
-                break;
+            if (self::is_prompt_question($lines[$i])) {
+                $parsedOptions = self::parse_options($lines, $i);
+                if ($parsedOptions !== []) {
+                    $questionIndex = $i;
+                    $options = $parsedOptions;
+                    break;
+                }
             }
         }
 
@@ -60,42 +92,9 @@ class AntigravityPromptParser
             return null;
         }
 
-        // A long option label (the command name is embedded in it, e.g.
-        // "Yes, and always allow in this conversation for commands that
-        // start with 'echo'") wraps across multiple printed lines -
-        // confirmed live 2026-08-24, and NOT something tmux_capture_pane()'s
-        // own -J line-rejoin flag can fix (that only rejoins a single
-        // logical line the TERMINAL soft-wrapped for width, this is
-        // Antigravity's own rendering choosing to print a label across
-        // several lines) - so a non-blank line that isn't itself the start
-        // of the NEXT numbered option is treated as a continuation of the
-        // option currently being built, not the end of the list.
-        $options = [];
-        $number = 1;
-
-        for ($i = $questionIndex + 1; $i < count($lines); $i++) {
-            $trimmed = trim(ltrim($lines[$i], "> \t"));
-
-            if (preg_match('/^' . $number . '\.\s*(.+)$/u', $trimmed, $matches)) {
-                $options[] = ['number' => $number, 'label' => trim($matches[1])];
-                $number++;
-            } elseif ($options !== [] && $trimmed !== '') {
-                $lastIndex = count($options) - 1;
-                $options[$lastIndex]['label'] = trim($options[$lastIndex]['label'] . ' ' . $trimmed);
-            } else {
-                break;
-            }
-        }
-
-        if ($options === []) {
-            return null;
-        }
-
-        // "Requesting permission for:" plus whatever command/tool summary
-        // follows, up to the blank line separating it from the question -
-        // same "nearest non-blank content above" fallback discipline as
-        // PromptParser::parse_blocking_prompt() uses for its own $context,
-        // just walking up from a known line instead of a cursor marker.
+        // "Requesting permission for:" or file/command context above the question,
+        // up to the blank line separating it from previous output, bounded by
+        // BLOCKING_PROMPT_CONTEXT_WINDOW.
         $contextLines = [];
 
         for ($i = $questionIndex - 1; $i >= 0 && count($contextLines) < PromptParser::BLOCKING_PROMPT_CONTEXT_WINDOW; $i--) {
@@ -113,11 +112,52 @@ class AntigravityPromptParser
         }
 
         return [
-            'question' => 'Do you want to proceed?',
+            'question' => trim($lines[$questionIndex]),
             'context' => implode("\n", $contextLines),
             'options' => $options,
             'multi_question' => false,
             'is_folder_trust' => false,
         ];
+    }
+
+    /**
+     * @param string[] $lines
+     * @return array<int, array{number:int, label:string}>
+     */
+    private static function parse_options(array $lines, int $questionIndex): array
+    {
+        $options = [];
+        $number = 1;
+
+        for ($i = $questionIndex + 1; $i < count($lines); $i++) {
+            $rawLine = $lines[$i];
+            $trimmed = trim(ltrim($rawLine, "> \t"));
+
+            // Skip leading blank lines between question and options if any
+            if ($options === [] && $trimmed === '') {
+                continue;
+            }
+
+            // Stop if we hit terminal footer navigation/escape lines or decorative rules
+            if (
+                str_starts_with($trimmed, '↑')
+                || str_starts_with($trimmed, 'esc to cancel')
+                || str_starts_with($trimmed, '─')
+            ) {
+                break;
+            }
+
+            if (preg_match('/^' . $number . '\.\s*(.+)$/u', $trimmed, $matches)) {
+                $options[] = ['number' => $number, 'label' => trim($matches[1])];
+                $number++;
+            } elseif ($options !== [] && $trimmed !== '') {
+                $lastIndex = count($options) - 1;
+                $options[$lastIndex]['label'] = trim($options[$lastIndex]['label'] . ' ' . $trimmed);
+            } else {
+                break;
+            }
+        }
+
+        return $options;
     }
 }

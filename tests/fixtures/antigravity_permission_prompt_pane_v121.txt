@@ -1,0 +1,12 @@
+Command
+────────────────────────────────────────────────────────────────────────────────
+
+Requesting permission for:
+   tmux capture-pane -t ag-20260911-150842 -p 2>/dev/null; echo "---"; tmux capture-pane -t ag-20260911-153209 -p 2>/dev/null
+
+Run this command?
+> 1. Yes, run command
+  2. No, cancel
+
+  ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command
+esc to cancel                                       Claude Sonnet 4.6 (Thinking)
