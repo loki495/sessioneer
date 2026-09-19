@@ -120,7 +120,12 @@ class DashboardController extends Controller
             case 'resume':
                 $workdir = trim((string)($_POST['workdir'] ?? ''));
                 $agentSessionId = trim((string)($_POST['agent_session_id'] ?? ''));
-                $result = AgentClient::agent_call(['action' => 'resume', 'workdir' => $workdir, 'agent_session_id' => $agentSessionId]);
+                $profile = trim((string)($_POST['profile'] ?? ''));
+                $resumeParams = ['action' => 'resume', 'workdir' => $workdir, 'agent_session_id' => $agentSessionId];
+                if ($profile !== '') {
+                    $resumeParams['profile'] = $profile;
+                }
+                $result = AgentClient::agent_call($resumeParams);
                 $ok = (bool)($result['ok'] ?? false);
                 $message = (string)($result['message'] ?? 'Unknown error');
 

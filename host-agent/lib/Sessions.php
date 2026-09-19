@@ -214,11 +214,12 @@ function dispatch_action(array $request): array
         case 'resume':
             $resumeWorkdir = (string)($request['workdir'] ?? '');
             $resumeId = (string)($request['agent_session_id'] ?? '');
-            // Same meaning as 'create' above - not populated by any UI yet
-            // (an archived-list row doesn't carry a profile today, see Dibs
-            // plan #230's own open follow-up), but threaded through so a
-            // future caller that does know it works without another
-            // protocol change.
+            // Same meaning as 'create' above - the archived-list row and the
+            // archived-session viewer's own Resume/Unarchive forms both send
+            // this as a hidden field now (found live 2026-09-19: neither did
+            // at first, so resuming a work-profile archived session silently
+            // resumed under the default account, or failed to resolve at all
+            // - see archived-row.php's own comment).
             $resumeProfile = is_string($request['profile'] ?? null) && $request['profile'] !== '' ? $request['profile'] : null;
 
             // Headless sessions (opencode/codex) resume via their respective

@@ -43,6 +43,10 @@ $this->layout('layout', [
         <input type="hidden" name="csrf_token" value="<?= $this->e($csrfToken) ?>">
         <input type="hidden" name="agent_session_id" value="<?= $this->e($agentSessionId) ?>">
         <input type="hidden" name="workdir" value="<?= $this->e((string)$detail['cwd']) ?>">
+        <?php // Same reasoning as archived-row.php's own Resume form - without
+              // this, unarchiving a work-profile session silently resumed
+              // under the default account instead. ?>
+        <?php if (!empty($detail['profile'])): ?><input type="hidden" name="profile" value="<?= $this->e((string)$detail['profile']) ?>"><?php endif ?>
         <button type="submit" class="select-none min-h-[2.75rem] rounded-lg border border-slate-700 bg-slate-800 active:bg-slate-700 text-slate-200 font-medium text-sm px-4 py-2">Unarchive</button>
       </form>
       <?php endif ?>

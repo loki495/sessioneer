@@ -34,6 +34,12 @@
     <input type="hidden" name="csrf_token" value="<?= $this->e($csrfToken) ?>">
     <input type="hidden" name="agent_session_id" value="<?= $this->e($agentSessionId) ?>">
     <input type="hidden" name="workdir" value="<?= $this->e((string)$cwd) ?>">
+    <?php // Which Claude account this archived session belongs to (see
+          // ArchivedSessionService::list_archived_sessions()) - without
+          // this, resuming a work-profile archived session silently
+          // resumed under the default account instead (Sessions.php's
+          // 'resume' case had no profile to read since nothing sent one). ?>
+    <?php if (!empty($profile)): ?><input type="hidden" name="profile" value="<?= $this->e($profile) ?>"><?php endif ?>
     <button type="submit" class="select-none min-h-[2.75rem] shrink-0 rounded-lg border border-slate-700 bg-slate-800 active:bg-slate-700 text-slate-200 font-medium text-sm px-4 py-2">Resume</button>
   </form>
   <?php endif ?>
