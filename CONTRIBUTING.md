@@ -18,6 +18,31 @@ host process table directly.** It only knows how to speak a tiny
 request/response protocol over a UNIX socket. A separate, host-native
 **agent** (`host-agent/`, installed directly on the host via
 `host-agent/install.sh` - not containerized) owns tmux, `/proc` scanning,
+and all host-specific concerns.
+
+For the full architecture overview and major implementation decisions, see
+[`docs/architecture.md`](docs/architecture.md).
+
+# Contributing
+
+Thanks for taking a look. This started as, and still primarily is, a
+personal tool - see the note at the top of [README.md](README.md) about
+scope. Issues and PRs are welcome; this doc is the architecture/workflow
+reference for working on the code itself. For "how do I install and run
+this," see the README instead.
+
+For the current four-agent runtime map, write paths, hook/plugin sources, and
+ownership caveats, use [`docs/features.md`](docs/features.md). Several deep
+dives below intentionally describe the original Claude Code backend; they are
+not claims that every agent uses the same transport or signal source.
+
+## Architecture: container + host-native agent
+
+The web UI runs in a Docker container, but **it never touches tmux or the
+host process table directly.** It only knows how to speak a tiny
+request/response protocol over a UNIX socket. A separate, host-native
+**agent** (`host-agent/`, installed directly on the host via
+`host-agent/install.sh` - not containerized) owns tmux, `/proc` scanning,
 and everything else that has to run in the host's own namespace.
 
 **Why the split exists:** tmux has a client/server model where the *first*
@@ -263,249 +288,12 @@ load with no rebuild or restart - only a `docker-compose.yml`/Dockerfile
 change itself (docroot, CMD, PHP extensions, ...) needs
 `docker compose up -d --build`.
 
-## Why the SessionStart hook exists
 
-Claude Code rotates to a brand-new session-id transcript file (a new UUID
-under `~/.claude/projects/<cwd>/`) on `/clear`, `/compact` (auto or
-manual), `--resume`, or `--fork-session` - all while staying in the same
-tmux pane/process. This app's sidecar (one JSON file per tracked session,
-under `SIDECAR_DIR`) records that session-id exactly once, at spawn
-(`create_agent_session()` in `host-agent/lib/Services/SessionLifecycleService.php`), and
-has no other way to learn it changed. Without the hook, any of those
-events leaves the sidecar pointing at an abandoned, no-longer-growing
-transcript file forever after - not a polling-speed problem, the file the
-app is reading has genuinely stopped receiving new lines.
+## Hooks: Claude Code Integration
 
-`host-agent/hooks/session_start.php`, registered as Claude Code's
-`SessionStart` hook (fires on every session start, matcher `*` so it
-covers `startup`/`resume`/`clear`/`compact`/`fork`), fixes this by
-rebinding the sidecar's `claude_session_id` live every time it fires.
-`create_agent_session()` passes `SESSIONEER_SESSION_NAME=<session name>` as a tmux
-pane environment variable (`tmux new-session -e ...`) specifically so the
-hook - inherited into that pane's `claude` process and anything it spawns
-- can tell which sidecar (if any) belongs to it; a plain `claude` session
-started by hand outside this app has no `SESSIONEER_SESSION_NAME` and the hook
-is a no-op for it.
-
-This only takes effect going forward: a session that already rotated
-before the hook was installed needs a one-time manual sidecar rebind (or
-its next natural `/clear`/`/compact`) to catch up.
-
-## Why the PreToolUse hook exists
-
-A blocked permission prompt's "preview" (the command being run, the file
-being written) is normally scraped straight from `tmux capture-pane` -
-just whatever's currently rendered in the pane. That has two independent
-size limits stacked on top of each other: the pane's own height/width (a
-headless tmux session has no attached client to inherit a real terminal
-size from, so it defaults to tmux's own 80x24 unless `TMUX_PANE_WIDTH`/
-`TMUX_PANE_HEIGHT` are configured larger - nowhere near enough for a large
-`Write` or a multi-line script to render in full), and
-`parse_blocking_prompt()`'s own context-window scan on top of whatever
-*did* render. Both are best-effort reconstructions of something that was
-never meant to be machine-read in the first place.
-
-`host-agent/hooks/pre_tool_use.php`, registered as Claude Code's
-`PreToolUse` hook (fires immediately before every tool call, including
-ones that never end up needing approval - before any permission prompt is
-shown), sidesteps both limits by recording the tool call's `tool_name`
-and full, untruncated `tool_input` JSON straight from the hook's own
-stdin, no terminal rendering involved. `build_session_entry()` prefers
-this recorded data over the pane-scraped context whenever a blocking
-prompt is currently detected *and* the recorded tool name matches the
-pane's own "● ToolName(...)" marker line (a cheap sanity check against
-showing a stale or mismatched previous tool call's data - see
-`augment_prompt_with_pending_tool()`). The hook writes nothing to stdout
-and always exits `0`, which Claude Code treats as "no opinion" - it never
-approves, denies, or otherwise affects the real permission decision, only
-observes it.
-
-Same `SESSIONEER_SESSION_NAME` mechanism as the `SessionStart` hook above: a
-plain `claude` session started by hand outside this app has no
-`SESSIONEER_SESSION_NAME` and the hook is a no-op for it. The recorded pending-
-tool file is cleared once this app itself submits an answer to the prompt
-or the session is killed; it's otherwise just overwritten by the next
-tool call, so a stale leftover from answering outside this app (e.g.
-attaching directly over tmux) only ever lingers until the *next* tool call
-fires the hook again.
-
-## Why the PermissionRequest/UserPromptSubmit/Stop hooks exist
-
-Beyond a blocked prompt's *content* (the `PreToolUse` hook above), three more
-things used to come only from scraping the rendered tmux pane: the current
-permission mode (matching Claude Code's own status-line text, e.g. "manual
-mode on"), whether the session is actively working (matching an animated
-spinner glyph on the pane title - a source of recurring bugs whenever Claude
-Code changed its spinner style), and whether a permission prompt is blocking
-at all. All three are now fed by hook SEQUENCE instead:
-
-- `host-agent/hooks/user_prompt_submit.php` (Claude Code's `UserPromptSubmit`
-  hook, fires whenever a message is actually submitted) marks the session
-  `working` and clears any previously-recorded blocked state.
-- `host-agent/hooks/permission_request.php` (Claude Code's `PermissionRequest`
-  hook, fires only when a decision is actually needed - not every tool call,
-  unlike `PreToolUse`) marks the session `blocked` and records the full
-  `tool_name`/`tool_input`/`permission_suggestions` straight from its own
-  payload - no correlation against the `PreToolUse`-fed pending-tool file
-  needed, this hook's own payload already carries everything.
-- `host-agent/hooks/stop.php` (Claude Code's `Stop` hook, fires once Claude
-  finishes responding) marks the session `idle`, clears any blocked state,
-  and records `last_assistant_message`.
-
-`host-agent/hooks/pre_tool_use.php` also clears blocked state, on top of its
-main pending-tool-content job (see above) - found live 2026-08-22: a session
-stuck showing a stale "waiting on input" prompt long after it was actually
-resolved. `permission_request.php` sets `status=blocked` for a tool that
-needs a decision, but once approved, nothing else in the sequence clears it
-unless the SAME turn also happens to fire `UserPromptSubmit` or `Stop` - a
-multi-tool-call turn where only the FIRST call needed approval left every
-later call's `PreToolUse` firing silently ignored, so the dashboard kept
-showing that first prompt as still-blocking indefinitely. Fix: since Claude
-Code never starts executing tool call N+1 while tool call N's own permission
-prompt is still genuinely unanswered, a LATER tool call's `PreToolUse` firing
-is itself proof any earlier blocking has already been resolved - it now
-marks the session `working` and clears `blocked` too, same as
-`user_prompt_submit.php` does. If THIS tool call also needs a decision,
-`permission_request.php` fires right after and sets `blocked` again, so the
-net effect is correct either way, just briefly optimistic between the two
-hook firings (invisible to a poll-based UI).
-
-Each hook writes only the fields its own event actually carries to a new
-per-session file (`SessionStatusStore`, `Config::sidecar_dir()`-based, same
-convention as the `PreToolUse` hook's pending-tool file above) via a
-read-modify-write merge, not a wholesale overwrite.
-
-**These three hooks are mandatory, not "preferred with a fallback"** (decided
-2026-08-22, after shipping them as an initially-optional upgrade path turned
-out to just be a second, half-supported code path with no real benefit - see
-the todo file's research entry). `build_session_entry()` reads
-mode/working-status/blocked-prompt content EXCLUSIVELY from this file for
-every tool except `AskUserQuestion` - there is no pane-scraping fallback for
-a session with no status file (hooks not installed yet, or a script error):
-it just reports mode as unknown, working as false, and no blocked prompt,
-even if the pane happens to be showing a real one. This is why the
-dashboard's health box (and its "Install hooks" banner) treats all five
-hooks as one all-or-nothing gate - see `HookService::app_hooks_status()`.
-The pane-scraping this replaced (`PromptParser::pane_title_is_working()`,
-matching an animated spinner glyph, and the working-status half of
-`TmuxService::tmux_session_panes()`) was deleted outright as dead code once
-the fallback was removed, not left around unused.
-
-Two cases still need the live pane regardless of hook installation status -
-these aren't a "fallback available if you skip installing the hooks", they're
-structural: no combination of hooks could ever cover them, since the
-information genuinely doesn't exist anywhere except the pane at that instant:
-
-- **The initial per-folder trust dialog** fires none of Claude Code's hooks
-  at all (confirmed live) - it's a separate, pre-hook-system startup safety
-  check, so there's no event to feed a status file with in the first place.
-- **A single-question `AskUserQuestion`** keeps using the existing
-  pane-scraped path unchanged for its CONTENT - it renders with no tab bar
-  at all, so there's no "which tab" ambiguity to begin with, but also
-  nothing to gain from reading `blocked.tool_input.questions[]` instead of
-  the pane. `build_session_entry()` still needs the hook-fed
-  `blocked.tool_name` to even KNOW a currently-showing prompt is an
-  `AskUserQuestion` in the first place, though - so this case is really
-  "hook tells us WHICH prompt shape it is, pane tells us the content", not
-  "no hook involvement at all". That `blocked.tool_name` doesn't come from
-  `PermissionRequest`, though: per the official tools reference,
-  `AskUserQuestion` prompts are a distinct mechanism from permission
-  prompts (they even have their own separate idle-timeout setting), and
-  confirmed live it never fires `PermissionRequest` at all - an earlier
-  version of this doc claimed otherwise ("confirmed live"), which was
-  wrong and caused a real bug (found live 2026-08-23): `pre_tool_use.php`
-  optimistically sets `status=working` for every tool call expecting
-  `PermissionRequest` to correct it to `blocked` right after, and with no
-  `PermissionRequest` ever coming for `AskUserQuestion`, sessions got stuck
-  showing "Thinking..." indefinitely on a real, answerable question.
-  `pre_tool_use.php` now special-cases `AskUserQuestion` and writes
-  `blocked` itself instead of `working`.
-
-A **multi-question** `AskUserQuestion` (2+ questions, the tab-bar shape)
-is different: it's answered entirely from the hook data now, not the pane,
-per Andres's own design 2026-08-22 - see "Answering a multi-question
-AskUserQuestion without reading the pane" below.
-
-None of this touches the OTHER, unrelated reasons `PromptParser::
-parse_blocking_prompt()`/`PermissionMode::parse_current_mode()` read the
-live pane - `PromptInteractionService::answer_prompt()`/
-`answer_prompt_with_text()`/`set_mode()` each re-validate a prompt/mode is
-still genuinely showing right before
-sending a real keystroke - live pre-flight safety checks, not related to
-SessionStatusStore at all, and would need the pane read regardless of how
-complete hook coverage ever got.
-
-Same `SESSIONEER_SESSION_NAME`-gated, pure-observe (never writes to stdout, always
-exits `0`) conventions as the `SessionStart`/`PreToolUse` hooks above -
-multiple hook commands already coexist per event in `~/.claude/settings.json`
-today, so installing these never disturbs any hooks you've already
-registered for the same events yourself.
-
-## Answering a multi-question AskUserQuestion without reading the pane
-
-A multi-question `AskUserQuestion` call (2+ questions) renders as a tab bar
-Claude Code itself navigates with the Left/Right arrow keys, one question per
-tab plus a final "Submit" review tab. The OLD design (still how a
-single-question `AskUserQuestion` and every other prompt shape works) only
-ever showed whichever tab the pane currently had up, needing Prev/Next
-buttons (`SessionService::navigate_prompt()`, the `nav-prompt-btn` UI,
-`/session_navigate.php`) to reach the others - all three deleted outright
-2026-08-22 once this new form made them unreachable, not left around unused.
-
-Andres pointed out 2026-08-22 that this doesn't need the pane at all:
-`PermissionRequest`'s own payload already carries the FULL `questions[]` set
-(every question, every option) the moment the call starts, not just whichever
-tab happens to be showing - `SessionService::build_session_entry()` exposes
-this as `prompt_questions` whenever `blocked.tool_name === 'AskUserQuestion'`
-and there are 2+ questions. `BlockedPromptView::blocked_multi_question_html()`
-renders every question as its own radio-group (single-select) or
-checkbox-group (multiSelect) up front, with a per-question free-text input
-for single-select questions' "Type something" option - all answerable in the
-app before anything is sent, no live tab-tracking needed.
-
-The exact tmux key sequence to reach that end state was confirmed live
-2026-08-22 (a real 3-question call: single-select, multiSelect, and
-single-select-with-free-text; a second real call confirming free-text
-specifically auto-advances the same way a real option does) and is computed
-by `PromptParser::build_multi_question_key_sequence()` (see its own docblock
-for the full confirmed mechanics and the one inferred, not independently
-verified, generalization). `PromptInteractionService::answer_multi_question()` sends
-it - after ONE live pane check up front (confirming the prompt is still
-genuinely sitting on the first question, unanswered - guarding against
-someone else having already interacted with it via a different client in the
-meantime), not a per-keystroke re-validation like `answer_prompt()`'s: this
-method is meant to run the WHOLE sequence as one atomic action right after
-the app first showed the question form, so there's nothing to re-check
-between its own steps.
-
-Deliberately out of scope for now (untested, not something live verification
-covered): a multiSelect question's own "Type something" checkbox option -
-`build_multi_question_key_sequence()` rejects free-text for a multiSelect
-question rather than guessing at how it'd combine with checked boxes.
-
-Found live 2026-08-23 (Andres: "the multi question send answer is not
-working"): both `BlockedPromptView::blocked_multi_question_html()` and its
-JS mirror (`session.js`'s `renderMultiQuestionFormHtml()`) put a
-`data-question-index` attribute on the "Type something…" radio AND its
-free-text `<input>`, not just the per-question wrapper `<div>` that
-attribute is actually meant to uniquely identify - never read off those two
-inner elements anywhere. That broke two separate lookups that both assume
-`[data-question-index]` matches only the wrapper: `submitMultiQuestionAnswers()`'s
-`wrapper.querySelectorAll('[data-question-index]')` picked up the inner
-elements too, so `.querySelector('p')` on a bare `<input>` returned `null`
-and `.textContent` threw - silently aborting the whole handler before it
-ever reached `fetch()`, no alert, no request. Separately, the change-listener's
-`e.target.closest('[data-question-index]')` matched the radio itself when
-clicked (since it now also carried the attribute) instead of its containing
-question `<div>`, so the free-text field never revealed. Fixed by dropping
-the attribute from both inner elements - nothing ever needed it there.
-Neither symptom was caught by this suite's own `test_session_replay_browser.php`
-click on `.multi-question-submit-btn` despite exercising this exact path,
-because a JS exception thrown inside a real DOM event listener never
-propagates back through `.click()`'s own return value - see
-`tests/lib/cdp.php`'s `cdp_drain_console_errors()` (added in response, along
-with a per-step `browser_assert()` in `test_session_replay_browser.php`) for
-the fix to that blind spot.
+Claude Code's hook system (SessionStart, PreToolUse, PermissionRequest, UserPromptSubmit, Stop) provides
+authoritative session state without relying on pane scraping. For detailed explanations of each hook and why
+they're necessary, see [`docs/hooks.md`](docs/hooks.md).
 
 ## Updating the host agent
 
@@ -537,11 +325,13 @@ under `host-agent/systemd/` themselves.
   `ls -la $XDG_RUNTIME_DIR/sessioneer-agent.sock` shows a real socket (reinstall
   via `install.sh` if not), then `docker compose up -d`.
 
-## Web Push delivery mechanism
 
-See the README's "Web Push notifications" section for setup. Mechanism:
-no client-side background mechanism exists on iOS to detect a session
-transitioning to blocked (no Periodic Background Sync support), so it's
+
+## Socket and Agent Communication
+
+The web container communicates with the host agent over a UNIX socket using a JSON request/response protocol.
+For details on the socket protocol and important caveats about machine locality, see [`docs/socket.md`](docs/socket.md).
+
 entirely server/host-triggered - the `sessioneer-push-check` timer runs
 `host-agent/push_trigger.php` on an interval (default 10s), which compares
 each live session's current blocked/working/idle state
@@ -651,7 +441,12 @@ concurrent read-modify-write) entirely - deleted outright, along with its
 dedicated test, once nothing referenced it any more, not left around
 unused.
 
-## Frontend CSS build (Tailwind)
+
+
+## Per-Session and Global State Storage
+
+Session metadata, sidecars, and UI preferences are stored in SQLite at `~/.sessioneer/data.db`.
+For details on the data model and state persistence strategy, see [`docs/state.md`](docs/state.md).
 
 ```
 npm install         # once
@@ -731,6 +526,14 @@ enclosing function scope via Annex B legacy compatibility semantics
 (verified live), but `tsc` doesn't model that, hence the two
 `@ts-expect-error` comments there instead of a "fix" that would just be
 restructuring already-correct code.
+
+
+
+## Frontend CSS Build (Tailwind)
+
+Frontend styling uses Tailwind CSS v4 with a native CSS engine. JavaScript is plain ES5 for mobile Safari
+compatibility. For details on CSS, JavaScript type-checking with JSDoc, and the type-checking setup,
+see [`docs/frontend.md`](docs/frontend.md).
 
 ## Static analysis (PHPStan)
 
@@ -851,3 +654,6 @@ above).
   so a new bare `<?= ?>` for a value that ISN'T provably one of the above
   needs `$this->e()`, not an assumption that the existing pattern makes it
   safe by association.
+
+## Running tests
+
