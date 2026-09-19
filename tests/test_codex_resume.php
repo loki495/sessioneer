@@ -19,9 +19,9 @@ use HostAgent\Services\TmuxService;
 use HostAgent\Stores\SidecarStore;
 
 // Ensure we're using the test fixture environment
-const REAL_TMUX_SOCKET = '/tmp/tmux-1000/default';
+$realTmuxSocket = '/tmp/tmux-' . getmyuid() . '/default';
 
-if (Config::tmux_socket() === REAL_TMUX_SOCKET) {
+if (Config::tmux_socket() === $realTmuxSocket) {
     fwrite(STDERR, "REFUSING TO RUN: TMUX_SOCKET resolves to the real host socket. Check tests/.env.testing.\n");
     exit(1);
 }

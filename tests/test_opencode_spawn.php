@@ -21,10 +21,10 @@ use HostAgent\Services\SessionService;
 use HostAgent\Services\TmuxService;
 use HostAgent\Stores\SidecarStore;
 
-const REAL_TMUX_SOCKET_OP = '/tmp/tmux-1000/default';
+$realTmuxSocket = '/tmp/tmux-' . getmyuid() . '/default';
 $realPushSqliteFile = Config::push_sqlite_path();
 
-if (Config::tmux_socket() === REAL_TMUX_SOCKET_OP) {
+if (Config::tmux_socket() === $realTmuxSocket) {
     fwrite(STDERR, "REFUSING TO RUN: TMUX_SOCKET resolves to the real host socket. Check tests/.env.testing.\n");
     exit(1);
 }

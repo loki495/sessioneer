@@ -98,6 +98,19 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Keep every ordinary test process away from the account's real HOME even if
+# a new code path consults HOME directly instead of Config::home_root(). The
+# live trust smoke test is the deliberate exception: it receives the original
+# home explicitly through SESSIONEER_LIVE_HOME and passes it only to the real
+# Claude subprocess it is exercising.
+ORIGINAL_HOME="${HOME:-}"
+TEST_HOME="$(mktemp -d /tmp/sessioneer-test-home.XXXXXX)" || {
+    echo "REFUSING TO RUN: could not create an isolated test HOME." >&2
+    exit 1
+}
+export HOME="$TEST_HOME"
+export SESSIONEER_LIVE_HOME="$ORIGINAL_HOME"
+
 # Keyed by SCRIPT_DIR (not a single global path) so this only ever blocks a
 # second run of THIS SAME checkout - a different worktree/clone (e.g.
 # claude-session-manager-refactor) has its own tests/.env.testing pointing
@@ -125,9 +138,10 @@ set +a
 # Cleanup below refuses to touch these no matter what .env.testing says, so
 # a typo in .env.testing can never make this script tear down the real
 # session.
-REAL_TMUX_SOCKET="/tmp/tmux-1000/default"
-REAL_SIDECAR_DIR="/run/user/1000/sessioneer-sessions"
-REAL_CACHE_DIR="/run/user/1000/sessioneer-cache"
+REAL_UID="$(id -u)"
+REAL_TMUX_SOCKET="/tmp/tmux-${REAL_UID}/default"
+REAL_SIDECAR_DIR="/run/user/${REAL_UID}/sessioneer-sessions"
+REAL_CACHE_DIR="/run/user/${REAL_UID}/sessioneer-cache"
 
 if [ "$TMUX_SOCKET" = "$REAL_TMUX_SOCKET" ] || [ -z "$TMUX_SOCKET" ]; then
     echo "REFUSING TO RUN: TMUX_SOCKET in tests/.env.testing resolves to the real host socket (or is empty). Aborting before touching tmux." >&2
@@ -183,6 +197,7 @@ if [ "$cleanup_only" -eq 1 ]; then
     fi
 
     rm -rf "$(dirname "$TMUX_SOCKET")"
+    rm -rf "$TEST_HOME"
     echo "Done."
     exit 0
 fi
@@ -205,6 +220,7 @@ cleanup() {
     fi
 
     rm -rf "$(dirname "$TMUX_SOCKET")"
+    rm -rf "$TEST_HOME"
 }
 
 # A trap that only runs cleanup does NOT stop the script on Ctrl-C - bash

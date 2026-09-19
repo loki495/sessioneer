@@ -52,9 +52,9 @@ use HostAgent\Services\PromptParser;
 use HostAgent\Services\TmuxService;
 use HostAgent\Stores\SidecarStore;
 
-const REAL_TMUX_SOCKET_LIVE_TRUST = '/tmp/tmux-1000/default';
+$realTmuxSocket = '/tmp/tmux-' . getmyuid() . '/default';
 
-if (Config::tmux_socket() === REAL_TMUX_SOCKET_LIVE_TRUST || Config::tmux_socket() === '') {
+if (Config::tmux_socket() === $realTmuxSocket || Config::tmux_socket() === '') {
     fwrite(STDERR, "REFUSING TO RUN: TMUX_SOCKET resolves to the real host socket (or is empty). Check tests/.env.testing.\n");
     exit(1);
 }
@@ -72,10 +72,10 @@ if ($foundPath === '') {
     exit(0);
 }
 
-$home = (string)getenv('HOME');
+$home = (string)getenv('SESSIONEER_LIVE_HOME');
 
 if ($home === '' || !is_dir($home)) {
-    echo "SKIP: \$HOME is not set or not a real directory - can't place a genuinely untrusted test folder.\n";
+    echo "SKIP: SESSIONEER_LIVE_HOME is not set or not a real directory - can't place a genuinely untrusted test folder.\n";
     exit(0);
 }
 
@@ -90,7 +90,7 @@ $sessionName = 'cc-live-trust-smoke-' . getmypid();
 try {
     $spawn = TmuxService::tmux_run([
         'new-session', '-d', '-s', $sessionName, '-c', $liveTestDir,
-        '-x', '200', '-y', '150', $realClaudeBin,
+        '-x', '200', '-y', '150', 'env', 'HOME=' . $home, $realClaudeBin,
     ]);
     assert_equal(0, $spawn['exit'], 'live trust smoke: spawned the real claude binary in a fresh, never-before-trusted directory');
 

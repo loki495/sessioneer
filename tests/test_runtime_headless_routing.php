@@ -23,15 +23,15 @@ use HostAgent\Runtimes\RuntimeType;
 use HostAgent\Services\Config;
 use HostAgent\Stores\SidecarStore;
 
-const REAL_TMUX_SOCKET = '/tmp/tmux-1000/default';
-const REAL_SIDECAR_DIR = '/run/user/' . '1000' . '/sessioneer-sessions';
+$realTmuxSocket = '/tmp/tmux-' . getmyuid() . '/default';
+$realSidecarDir = '/run/user/' . getmyuid() . '/sessioneer-sessions';
 
-if (Config::tmux_socket() === REAL_TMUX_SOCKET) {
+if (Config::tmux_socket() === $realTmuxSocket) {
     fwrite(STDERR, "REFUSING TO RUN: TMUX_SOCKET resolves to the real host socket. Check tests/.env.testing.\n");
     exit(1);
 }
 
-if (Config::sidecar_dir() === REAL_SIDECAR_DIR) {
+if (Config::sidecar_dir() === $realSidecarDir) {
     fwrite(STDERR, "REFUSING TO RUN: SIDECAR_DIR resolves to the real host sidecar dir. Check tests/.env.testing.\n");
     exit(1);
 }

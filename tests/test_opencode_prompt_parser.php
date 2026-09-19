@@ -22,12 +22,12 @@ require dirname(__DIR__) . '/host-agent/lib/Sessions.php';
 use HostAgent\Services\Config;
 use HostAgent\Services\OpenCodePromptParser;
 
-const REAL_TMUX_SOCKET_OCPP = '/tmp/tmux-1000/default';
+$realTmuxSocket = '/tmp/tmux-' . getmyuid() . '/default';
 
 $fixtureSidecarDir = sys_get_temp_dir() . '/sessioneer-test-ocpp-sidecars-' . bin2hex(random_bytes(4));
 putenv("SIDECAR_DIR={$fixtureSidecarDir}");
 
-if (Config::tmux_socket() === REAL_TMUX_SOCKET_OCPP) {
+if (Config::tmux_socket() === $realTmuxSocket) {
     fwrite(STDERR, "REFUSING TO RUN: TMUX_SOCKET resolves to the real host socket. Check tests/.env.testing.\n");
     exit(1);
 }
