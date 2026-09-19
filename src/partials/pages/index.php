@@ -136,6 +136,23 @@ $this->layout('layout', [
           <?php endforeach ?>
         </select>
       </label>
+      <!-- Claude account picker (Dibs plan #230/#234) - which
+           host-agent/config/agents.php profile (e.g. a separate work
+           account) this session spawns under. Claude-only (agent picker
+           above must be 'claude'); hidden entirely for every other agent
+           AND when fewer than 2 profiles are configured at all, same "an
+           untouched form behaves exactly as before this existed" rule the
+           other pickers already follow - see index.js's own
+           onAgentChange(). Options are populated client-side (live off
+           agents.php via /session_list_claude_profiles.php), never
+           server-rendered - this container has no direct filesystem
+           access to that host-agent-side config file. -->
+      <label id="new-session-profile-label" class="hidden items-center gap-2 text-sm text-slate-300">
+        Account
+        <select id="new-session-profile" name="profile" class="rounded-lg border border-slate-700 bg-slate-800 text-sm text-slate-200 px-2 py-1.5">
+          <option value="">Default</option>
+        </select>
+      </label>
       <label class="flex items-center gap-2 text-sm text-slate-300">
         Model
         <select id="new-session-model" name="model" class="rounded-lg border border-slate-700 bg-slate-800 text-sm text-slate-200 px-2 py-1.5">

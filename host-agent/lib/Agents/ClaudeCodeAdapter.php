@@ -49,11 +49,26 @@ class ClaudeCodeAdapter implements AgentAdapter
      * straight through rather than resolved to a full model id. 'default'/
      * empty/missing means "no --model flag at all", same "omit rather than
      * pass a sentinel" shape starting_mode already uses below.
+     *
+     * $options['profile'] (?string) names an entry under agents.php's
+     * 'claude.profiles' (see Config::claude_profile_config()) - e.g. a
+     * separate work account. null/empty/unrecognized all mean "this
+     * process's own default account", same fallback Config's own profile
+     * helpers already use, so every caller from before profiles existed
+     * keeps spawning byte-identical sessions. When set, the CLI binary
+     * comes from that profile's own 'bin' override if any (Config::
+     * claude_bin($profile)), and the returned env carries CLAUDE_CONFIG_DIR
+     * so the spawned tmux pane's `claude` process (and Claude Code's own
+     * transcript/settings storage under it) actually runs under that
+     * account - see Dibs plan #230.
      */
     public function build_spawn_argv(array $options): array
     {
+        $profile = $options['profile'] ?? null;
+        $profile = is_string($profile) && $profile !== '' ? $profile : null;
+
         $sessionId = SessionLifecycleService::generate_uuid_v4();
-        $argv = [Config::claude_bin(), '--session-id', $sessionId];
+        $argv = [Config::claude_bin($profile), '--session-id', $sessionId];
 
         if (!empty($options['enable_task_tools'])) {
             $argv[] = '--allowedTools';
@@ -77,7 +92,13 @@ class ClaudeCodeAdapter implements AgentAdapter
             $argv[] = $realStartingMode;
         }
 
-        return ['argv' => $argv, 'assigned_id' => $sessionId];
+        $result = ['argv' => $argv, 'assigned_id' => $sessionId];
+
+        if ($profile !== null) {
+            $result['env'] = ['CLAUDE_CONFIG_DIR' => Config::claude_config_dir($profile)];
+        }
+
+        return $result;
     }
 
     public function check_hooks(): array

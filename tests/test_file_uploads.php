@@ -15,9 +15,9 @@ use HostAgent\Services\Config;
 use HostAgent\Services\UploadService;
 use HostAgent\Stores\SidecarStore;
 
-const REAL_SIDECAR_DIR = '/run/user/1000/sessioneer-sessions';
+$realSidecarDir = '/run/user/' . getmyuid() . '/sessioneer-sessions';
 
-if (Config::sidecar_dir() === REAL_SIDECAR_DIR) {
+if (Config::sidecar_dir() === $realSidecarDir) {
     fwrite(STDERR, "REFUSING TO RUN: SIDECAR_DIR resolves to the real one. Check tests/.env.testing.\n");
     exit(1);
 }

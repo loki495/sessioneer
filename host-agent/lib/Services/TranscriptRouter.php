@@ -24,13 +24,60 @@ class TranscriptRouter
      * (a DB row check for ses_* shape) - the three id spaces are
      * distinct (UUID-with-dashes vs ses_* prefix) with no collision
      * risk, and only one will ever actually resolve for any given id.
+     *
+     * $profile (see Config::claude_profile_config()) only means anything
+     * for the Claude Code attempt - the other backends have no
+     * account/profile concept, so it's simply not passed to them.
      */
-    public static function find_transcript_path(string $sessionId): ?string
+    public static function find_transcript_path(string $sessionId, ?string $profile = null): ?string
     {
-        return TranscriptService::find_transcript_path($sessionId)
+        return TranscriptService::find_transcript_path($sessionId, $profile)
             ?? AntigravityTranscriptService::find_transcript_path($sessionId)
             ?? OpenCodeTranscriptService::find_transcript_path($sessionId)
             ?? CodexTranscriptService::find_transcript_path($sessionId);
+    }
+
+    /**
+     * Same resolution as find_transcript_path(), but for an id with NO
+     * sidecar to say which Claude Code profile it belongs to - a bare
+     * (untracked) process (see BareProcessService), which could genuinely
+     * be running under any configured account. Tries every configured
+     * profile (Config::claude_profiles_to_scan()) in turn before falling
+     * through to the other agents, same order find_transcript_path() uses.
+     * Cheap even with several profiles configured - each attempt is just
+     * one glob() against that profile's own projects dir.
+     */
+    public static function find_transcript_path_any_profile(string $sessionId): ?string
+    {
+        return self::find_claude_profile_for_session_id($sessionId)['path'];
+    }
+
+    /**
+     * Same resolution as find_transcript_path_any_profile(), but also
+     * reports WHICH Claude Code profile matched - needed by a caller that
+     * must re-spawn a tmux pane for this session (take_over_bare_process()),
+     * where CLAUDE_CONFIG_DIR has to be set correctly for the NEW pane, not
+     * just for reading the transcript once. `profile` is always null when
+     * `path` resolved via a non-Claude backend (Antigravity/OpenCode/Codex
+     * have no profile concept) or didn't resolve at all.
+     *
+     * @return array{path: ?string, profile: ?string}
+     */
+    public static function find_claude_profile_for_session_id(string $sessionId): array
+    {
+        foreach (Config::claude_profiles_to_scan() as $profile) {
+            $path = TranscriptService::find_transcript_path($sessionId, $profile);
+
+            if ($path !== null) {
+                return ['path' => $path, 'profile' => $profile];
+            }
+        }
+
+        $path = AntigravityTranscriptService::find_transcript_path($sessionId)
+            ?? OpenCodeTranscriptService::find_transcript_path($sessionId)
+            ?? CodexTranscriptService::find_transcript_path($sessionId);
+
+        return ['path' => $path, 'profile' => null];
     }
 
     public static function is_antigravity_path(string $path): bool

@@ -435,19 +435,31 @@ class PromptParser
     {
         switch ($toolName) {
             case 'Bash':
-                $command = is_string($toolInput['command'] ?? null) ? $toolInput['command'] : null;
+            case 'run_command':
+                $command = is_string($toolInput['command'] ?? null)
+                    ? $toolInput['command']
+                    : (is_string($toolInput['CommandLine'] ?? null) ? $toolInput['CommandLine'] : null);
 
                 if ($command === null) {
                     return null;
                 }
 
-                $description = is_string($toolInput['description'] ?? null) ? $toolInput['description'] : null;
+                $description = is_string($toolInput['description'] ?? null)
+                    ? $toolInput['description']
+                    : (is_string($toolInput['Description'] ?? null)
+                        ? $toolInput['Description']
+                        : (is_string($toolInput['toolSummary'] ?? null) ? $toolInput['toolSummary'] : null));
 
                 return ($description !== null ? "{$description}\n\n" : '') . $command;
 
             case 'Write':
-                $path = is_string($toolInput['file_path'] ?? null) ? $toolInput['file_path'] : null;
-                $content = is_string($toolInput['content'] ?? null) ? $toolInput['content'] : null;
+            case 'write_to_file':
+                $path = is_string($toolInput['file_path'] ?? null)
+                    ? $toolInput['file_path']
+                    : (is_string($toolInput['TargetFile'] ?? null) ? $toolInput['TargetFile'] : null);
+                $content = is_string($toolInput['content'] ?? null)
+                    ? $toolInput['content']
+                    : (is_string($toolInput['CodeContent'] ?? null) ? $toolInput['CodeContent'] : null);
 
                 if ($path === null || $content === null) {
                     return null;
@@ -456,14 +468,21 @@ class PromptParser
                 return "Write {$path}\n\n{$content}";
 
             case 'Edit':
-                $path = is_string($toolInput['file_path'] ?? null) ? $toolInput['file_path'] : null;
+            case 'replace_file_content':
+                $path = is_string($toolInput['file_path'] ?? null)
+                    ? $toolInput['file_path']
+                    : (is_string($toolInput['TargetFile'] ?? null) ? $toolInput['TargetFile'] : null);
 
                 if ($path === null) {
                     return null;
                 }
 
-                $oldString = is_string($toolInput['old_string'] ?? null) ? $toolInput['old_string'] : '';
-                $newString = is_string($toolInput['new_string'] ?? null) ? $toolInput['new_string'] : '';
+                $oldString = is_string($toolInput['old_string'] ?? null)
+                    ? $toolInput['old_string']
+                    : (is_string($toolInput['TargetContent'] ?? null) ? $toolInput['TargetContent'] : '');
+                $newString = is_string($toolInput['new_string'] ?? null)
+                    ? $toolInput['new_string']
+                    : (is_string($toolInput['ReplacementContent'] ?? null) ? $toolInput['ReplacementContent'] : '');
 
                 return "Edit {$path}\n\n--- old ---\n{$oldString}\n\n--- new ---\n{$newString}";
 

@@ -42,7 +42,7 @@ class SessionDetailService
         }
 
         $entry = SessionService::build_session_entry($tmuxSession, ProcessInspector::find_claude_processes(), ProcessInspector::build_ppid_map());
-        $transcriptPath = $entry['agent_session_id'] !== null ? TranscriptRouter::find_transcript_path($entry['agent_session_id']) : null;
+        $transcriptPath = $entry['agent_session_id'] !== null ? TranscriptRouter::find_transcript_path($entry['agent_session_id'], $entry['profile'] ?? null) : null;
 
         // Scoped to session_detail() (the sidebar's own poll), not
         // build_session_entry() itself - that function also backs the
@@ -94,6 +94,7 @@ class SessionDetailService
                     'agent_session_id' => $healed,
                     'spawned_by_app' => $sidecar['spawned_by_app'] ?? true,
                     'agent' => 'opencode',
+                    'profile' => $sidecar['profile'] ?? null,
                 ]);
                 $agentSessionId = $healed;
             }
@@ -103,7 +104,7 @@ class SessionDetailService
             return ['ok' => false, 'message' => 'No transcript recorded for this session'];
         }
 
-        return self::transcript_page_for_claude_session($agentSessionId, $before, $limit, $after, $untilRealUserMessage);
+        return self::transcript_page_for_claude_session($agentSessionId, $before, $limit, $after, $untilRealUserMessage, is_string($sidecar['profile'] ?? null) ? $sidecar['profile'] : null);
     }
 
     /**
@@ -123,15 +124,15 @@ class SessionDetailService
      *
      * @return array{ok:bool, entries?:array<int, array>, next_before?:?int, has_more?:bool, message?:string, cwd?:?string}
      */
-    public static function archived_session_history(string $agentSessionId, ?int $before, int $limit, ?int $after = null): array
+    public static function archived_session_history(string $agentSessionId, ?int $before, int $limit, ?int $after = null, ?string $profile = null): array
     {
-        $result = self::transcript_page_for_claude_session($agentSessionId, $before, $limit, $after);
+        $result = self::transcript_page_for_claude_session($agentSessionId, $before, $limit, $after, false, $profile);
 
         if (!($result['ok'] ?? false)) {
             return $result;
         }
 
-        $path = TranscriptRouter::find_transcript_path($agentSessionId);
+        $path = TranscriptRouter::find_transcript_path($agentSessionId, $profile);
         $cwd = null;
 
         if ($path !== null) {
@@ -155,9 +156,9 @@ class SessionDetailService
      *
      * @return array{ok:bool, entries?:array<int, array>, next_before?:?int, has_more?:bool, message?:string}
      */
-    private static function transcript_page_for_claude_session(string $agentSessionId, ?int $before, int $limit, ?int $after, bool $untilRealUserMessage = false): array
+    private static function transcript_page_for_claude_session(string $agentSessionId, ?int $before, int $limit, ?int $after, bool $untilRealUserMessage = false, ?string $profile = null): array
     {
-        $path = TranscriptRouter::find_transcript_path($agentSessionId);
+        $path = TranscriptRouter::find_transcript_path($agentSessionId, $profile);
 
         if ($path === null) {
             return ['ok' => false, 'message' => 'Transcript file not found'];
@@ -182,11 +183,29 @@ class SessionDetailService
      * one tracked" here would mean re-running list_all_sessions() on every
      * single archived-view page load for no real benefit.
      *
-     * @return array{ok:bool, message?:string, agent_session_id?:string, cwd?:?string, title?:string, last_activity?:?int}
+     * $profile null means "resolve it" - tries every configured Claude
+     * account (TranscriptRouter::find_claude_profile_for_session_id(), same
+     * multi-profile scan BareProcessService's take_over path already needs)
+     * rather than only ever checking the default account. Passing $profile
+     * a null single-profile find_transcript_path() call used to do was a
+     * real gap once a work-profile session gets archived: its transcript
+     * lives under a different CLAUDE_CONFIG_DIR entirely, so the old
+     * default-only lookup would report "Session not found" for it. An
+     * explicit non-null $profile (still supported - see Sessions.php's
+     * 'archived_session_detail' case) skips the scan and checks just that
+     * one account, same as before.
+     *
+     * @return array{ok:bool, message?:string, agent_session_id?:string, cwd?:?string, title?:string, last_activity?:?int, agent?:string, profile?:?string}
      */
-    public static function archived_session_detail(string $agentSessionId): array
+    public static function archived_session_detail(string $agentSessionId, ?string $profile = null): array
     {
-        $path = TranscriptRouter::find_transcript_path($agentSessionId);
+        if ($profile !== null) {
+            $path = TranscriptRouter::find_transcript_path($agentSessionId, $profile);
+        } else {
+            $resolved = TranscriptRouter::find_claude_profile_for_session_id($agentSessionId);
+            $path = $resolved['path'];
+            $profile = $resolved['profile'];
+        }
 
         if ($path === null) {
             return ['ok' => false, 'message' => 'Session not found'];
@@ -205,10 +224,13 @@ class SessionDetailService
                 'cwd' => $cwd,
                 'title' => SessionService::title_cascade($nativeTitle, null, $cwd, $agentSessionId),
                 'last_activity' => (int)($thread['updatedAt'] ?? $thread['createdAt'] ?? 0),
+                'agent' => 'codex',
+                'profile' => null,
             ];
         }
 
         $isOpenCodePath = TranscriptRouter::is_opencode_path($path);
+        $isAntigravityPath = !$isOpenCodePath && TranscriptRouter::is_antigravity_path($path);
         $cwd = $isOpenCodePath
             ? OpenCodeTranscriptService::find_session_cwd($agentSessionId)
             : TranscriptService::find_first_cwd($path);
@@ -223,6 +245,10 @@ class SessionDetailService
             'cwd' => $cwd,
             'title' => SessionService::title_cascade($aiTitle, null, $cwd, $agentSessionId),
             'last_activity' => $mtime !== false ? $mtime : null,
+            'agent' => $isOpenCodePath ? 'opencode' : ($isAntigravityPath ? 'antigravity' : 'claude'),
+            // Only meaningful for the Claude branch - find_claude_profile_for_session_id()
+            // already reports null for a non-Claude path (see its own docblock).
+            'profile' => $isOpenCodePath || $isAntigravityPath ? null : $profile,
         ];
     }
 
@@ -248,6 +274,7 @@ class SessionDetailService
                     'agent_session_id' => $healed,
                     'spawned_by_app' => $sidecar['spawned_by_app'] ?? true,
                     'agent' => 'opencode',
+                    'profile' => $sidecar['profile'] ?? null,
                 ]);
                 $agentSessionId = $healed;
             }
@@ -257,7 +284,7 @@ class SessionDetailService
             return ['ok' => false, 'message' => 'No transcript recorded for this session'];
         }
 
-        return self::read_attachment_for_claude_session($agentSessionId, $line, $fileUuid);
+        return self::read_attachment_for_claude_session($agentSessionId, $line, $fileUuid, is_string($sidecar['profile'] ?? null) ? $sidecar['profile'] : null);
     }
 
     /**
@@ -266,9 +293,9 @@ class SessionDetailService
      *
      * @return array{ok:bool, message?:string, data?:string, media_type?:string, filename?:string, size?:int}
      */
-    public static function archived_session_attachment(string $agentSessionId, int $line, string $fileUuid): array
+    public static function archived_session_attachment(string $agentSessionId, int $line, string $fileUuid, ?string $profile = null): array
     {
-        return self::read_attachment_for_claude_session($agentSessionId, $line, $fileUuid);
+        return self::read_attachment_for_claude_session($agentSessionId, $line, $fileUuid, $profile);
     }
 
     /**
@@ -278,9 +305,9 @@ class SessionDetailService
      *
      * @return array{ok:bool, message?:string, data?:string, media_type?:string, filename?:string, size?:int}
      */
-    private static function read_attachment_for_claude_session(string $agentSessionId, int $line, string $fileUuid): array
+    private static function read_attachment_for_claude_session(string $agentSessionId, int $line, string $fileUuid, ?string $profile = null): array
     {
-        $path = TranscriptRouter::find_transcript_path($agentSessionId);
+        $path = TranscriptRouter::find_transcript_path($agentSessionId, $profile);
 
         if ($path === null) {
             return ['ok' => false, 'message' => 'Transcript file not found'];

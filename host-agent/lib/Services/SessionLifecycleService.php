@@ -64,9 +64,16 @@ class SessionLifecycleService
      * AntigravityAdapter) just ignores the key, per AgentAdapter's own
      * "each adapter reads only what it understands" contract.
      *
+     * $profile is Claude Code-specific (see ClaudeCodeAdapter::
+     * build_spawn_argv()'s own docblock) - passed through the same
+     * "adapter reads only what it understands" contract, so this stays a
+     * no-op for every other agent. Persisted onto the sidecar row so later
+     * lookups (TranscriptService, hook install checks) know which account
+     * this session belongs to without re-deriving it.
+     *
      * @return array{ok:bool, message:string}
      */
-    public static function create_agent_session(string $workdir, bool $enableTaskTools = false, ?string $startingMode = null, ?string $agentId = null, ?string $model = null): array
+    public static function create_agent_session(string $workdir, bool $enableTaskTools = false, ?string $startingMode = null, ?string $agentId = null, ?string $model = null, ?string $profile = null): array
     {
         if ($workdir === '' || $workdir[0] !== '/') {
             return ['ok' => false, 'message' => 'Working directory must be an absolute path'];
@@ -81,9 +88,16 @@ class SessionLifecycleService
         $resolvedAgentId = $agentId !== null && in_array($agentId, AgentRegistry::known_agent_ids(), true) ? $agentId : AgentRegistry::default_agent_id();
         $agent = AgentRegistry::get($resolvedAgentId);
         $name = $agent->session_name_prefix() . '-' . date('Ymd-His');
-        $spawn = $agent->build_spawn_argv(['enable_task_tools' => $enableTaskTools, 'starting_mode' => $startingMode, 'model' => $model]);
+        $spawn = $agent->build_spawn_argv(['enable_task_tools' => $enableTaskTools, 'starting_mode' => $startingMode, 'model' => $model, 'profile' => $profile]);
         $agentArgv = $spawn['argv'];
         $agentSessionId = $spawn['assigned_id'];
+
+        $envFlags = [];
+
+        foreach ($spawn['env'] ?? [] as $envKey => $envValue) {
+            $envFlags[] = '-e';
+            $envFlags[] = "{$envKey}={$envValue}";
+        }
 
         $result = TmuxService::tmux_run(array_merge([
             // SESSIONEER_SESSION_NAME is how the SessionStart hook (see
@@ -95,6 +109,7 @@ class SessionLifecycleService
             'new-session', '-d', '-s', $name,
             '-c', $workdir,
             '-e', "SESSIONEER_SESSION_NAME={$name}",
+        ], $envFlags, [
             '-x', (string)Config::new_session_pane_width(),
             '-y', (string)Config::new_session_pane_height(),
         ], $agentArgv));
@@ -125,7 +140,7 @@ class SessionLifecycleService
         // fire moments later, and a dashboard poll landing in that gap would
         // otherwise see this brand-new, definitely-app-spawned session
         // reported as spawned_by_app=false.
-        SidecarStore::write_sidecar($name, ['workdir' => $workdir, 'spawned_at' => time(), 'agent_session_id' => $agentSessionId, 'spawned_by_app' => true, 'agent' => $agent->id()]);
+        SidecarStore::write_sidecar($name, ['workdir' => $workdir, 'spawned_at' => time(), 'agent_session_id' => $agentSessionId, 'spawned_by_app' => true, 'agent' => $agent->id(), 'profile' => $profile]);
 
         return ['ok' => true, 'message' => "Created session {$name} in {$workdir}"];
     }
@@ -216,9 +231,17 @@ class SessionLifecycleService
      * connection anyway (see agent.php), so there's no separate "release"
      * step needed beyond letting the function return.
      *
+     * $profile: same Claude Code account meaning as create_agent_session()'s
+     * own (see ClaudeCodeAdapter::build_spawn_argv()) - ignored entirely
+     * for an OpenCode resume. Callers resuming a session they don't
+     * already know the profile for (e.g. from an archived-list row) should
+     * pass whatever SidecarStore::read_sidecar() last recorded for it, if
+     * any; a resume with no profile info available falls back to the
+     * default account, same as before profiles existed.
+     *
      * @return array{ok:bool, message:string, name?:string}
      */
-    public static function resume_agent_session(string $workdir, string $agentSessionId): array
+    public static function resume_agent_session(string $workdir, string $agentSessionId, ?string $profile = null): array
     {
         if ($workdir === '' || $workdir[0] !== '/') {
             return ['ok' => false, 'message' => 'Working directory must be an absolute path'];
@@ -264,15 +287,23 @@ class SessionLifecycleService
             $resumeAgentId = $isOpencodeResume ? 'opencode' : 'claude';
             $resumeAgent = AgentRegistry::get($resumeAgentId);
             $name = $resumeAgent->session_name_prefix() . '-' . date('Ymd-His');
+            $resumeProfile = !$isOpencodeResume ? $profile : null;
 
             $resumeArgv = $isOpencodeResume
                 ? [Config::opencode_bin(), '--session', $agentSessionId]
-                : [Config::claude_bin(), '--resume', $agentSessionId];
+                : [Config::claude_bin($resumeProfile), '--resume', $agentSessionId];
+
+            $envFlags = [];
+
+            if ($resumeProfile !== null) {
+                $envFlags = ['-e', 'CLAUDE_CONFIG_DIR=' . Config::claude_config_dir($resumeProfile)];
+            }
 
             $result = TmuxService::tmux_run(array_merge([
                 'new-session', '-d', '-s', $name,
                 '-c', $workdir,
                 '-e', "SESSIONEER_SESSION_NAME={$name}",
+            ], $envFlags, [
                 '-x', (string)Config::new_session_pane_width(),
                 '-y', (string)Config::new_session_pane_height(),
             ], $resumeArgv));
@@ -292,7 +323,7 @@ class SessionLifecycleService
                 ];
             }
 
-            SidecarStore::write_sidecar($name, ['workdir' => $workdir, 'spawned_at' => time(), 'agent_session_id' => $agentSessionId, 'spawned_by_app' => true, 'agent' => $resumeAgentId]);
+            SidecarStore::write_sidecar($name, ['workdir' => $workdir, 'spawned_at' => time(), 'agent_session_id' => $agentSessionId, 'spawned_by_app' => true, 'agent' => $resumeAgentId, 'profile' => $resumeProfile]);
 
             return ['ok' => true, 'message' => "Resumed session {$name} in {$workdir}", 'name' => $name];
         } finally {

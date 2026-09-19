@@ -21,6 +21,7 @@ require __DIR__ . '/lib/http.php';
 const CANNED_TEST_IMAGE_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 const CANNED_VAPID_PUBLIC_KEY = 'BAhRdSrCIQS6QqCKKxkfmfSQ_DyQk63-8zoSMWlb2PXjhuTym7Lxyboe7HSFwi79IJN7-wqbUbZmYR1CkLvXZSc';
 const CANNED_ARCHIVED_CLAUDE_SESSION_ID = '99999999-8888-4777-a666-555555555555';
+const CANNED_ARCHIVED_CLAUDE_PROFILE = 'work';
 const CANNED_RESUMED_SESSION_NAME = 'cc-20260101-1400';
 const CANNED_TAKEN_OVER_SESSION_NAME = 'cc-20260101-1500';
 const CANNED_NEW_SESSION_NAME = 'cc-20260101-1600';
@@ -248,8 +249,8 @@ try {
     assert_contains('Refactor the old widget', $archivedFragmentBody['archived_html'] ?? '', 'GET /archived_sessions_fragment.php: archived_html carries the canned archived session\'s title');
     assert_contains('/home/user/www/old-project', $archivedFragmentBody['archived_html'] ?? '', 'GET /archived_sessions_fragment.php: archived_html carries the canned archived session\'s cwd');
     assert_true(
-        preg_match('#<form method="post" action="/"[^>]*>\s*<input type="hidden" name="action" value="resume">\s*<input type="hidden" name="csrf_token"[^>]*>\s*<input type="hidden" name="agent_session_id" value="' . CANNED_ARCHIVED_CLAUDE_SESSION_ID . '">\s*<input type="hidden" name="workdir" value="/home/user/www/old-project">\s*<button type="submit"[^>]*>\s*Resume#', $archivedFragmentBody['archived_html'] ?? '') === 1,
-        'GET /archived_sessions_fragment.php: archived_html carries a Resume form with the row\'s agent_session_id and cwd (phase 5, known-id resume)'
+        preg_match('#<form method="post" action="/"[^>]*>\s*<input type="hidden" name="action" value="resume">\s*<input type="hidden" name="csrf_token"[^>]*>\s*<input type="hidden" name="agent_session_id" value="' . CANNED_ARCHIVED_CLAUDE_SESSION_ID . '">\s*<input type="hidden" name="workdir" value="/home/user/www/old-project">\s*<input type="hidden" name="profile" value="' . CANNED_ARCHIVED_CLAUDE_PROFILE . '">\s*<button type="submit"[^>]*>\s*Resume#', $archivedFragmentBody['archived_html'] ?? '') === 1,
+        'GET /archived_sessions_fragment.php: archived_html carries a Resume form with the row\'s agent_session_id, cwd, AND profile (found live 2026-09-19: the profile field was missing entirely, so resuming a work-profile archived session silently resumed under the default account)'
     );
     assert_contains('id="archived-load-more-btn"', $archivedFragmentBody['archived_html'] ?? '', 'GET /archived_sessions_fragment.php: archived_html ships the Load-more button that paginates the (potentially long) row list client-side');
 
@@ -1299,6 +1300,10 @@ try {
     assert_true(!str_contains($archivedResult['body'], 'compose-bar'), 'GET /archived_session.php: no compose bar - nothing here is actionable');
     assert_contains('<html lang="en" class="">', $archivedResult['body'], 'GET /archived_session.php: not a fixed-shell page, so <html> gets no h-full/overflow-hidden - normal document scrolling is correct here (no compose bar, no keyboard interaction to guard against)');
     assert_contains('Load older messages', $archivedResult['body'], 'GET /archived_session.php: load-more button shown when has_more=true');
+    assert_true(
+        preg_match('#<input type="hidden" name="agent_session_id" value="' . CANNED_ARCHIVED_CLAUDE_SESSION_ID . '">\s*<input type="hidden" name="workdir" value="/home/user/www/old-project">\s*<input type="hidden" name="profile" value="' . CANNED_ARCHIVED_CLAUDE_PROFILE . '">#', $archivedResult['body']) === 1,
+        'GET /archived_session.php: the Unarchive form carries the session\'s profile too, same field the archived-row Resume form carries (found live 2026-09-19: this form was missing it entirely)'
+    );
 
     // --- archived_session.php: an unknown (but well-formed) agent_session_id
     // -> the page still renders (200), just with a "not found" state, same
@@ -1348,13 +1353,37 @@ try {
     $archivedResumeResult = curl_request('POST', "{$baseUrl}/", [
         '-d', 'action=resume&csrf_token=' . urlencode((string)$archivedResumeCsrfToken)
             . '&agent_session_id=' . urlencode(CANNED_ARCHIVED_CLAUDE_SESSION_ID)
-            . '&workdir=' . urlencode('/home/user/www/old-project'),
+            . '&workdir=' . urlencode('/home/user/www/old-project')
+            . '&profile=' . urlencode(CANNED_ARCHIVED_CLAUDE_PROFILE),
     ], $cookieJar);
     assert_equal(303, $archivedResumeResult['status'], 'POST resume: 303 redirect');
     assert_equal(
         '/session.php?session=' . CANNED_RESUMED_SESSION_NAME,
         $archivedResumeResult['headers']['location'] ?? '',
         'POST resume: redirects straight to the now-live session view, not back to / with a flash'
+    );
+
+    // --- POST resume: no profile sent at all - exactly the pre-fix shape
+    // of both the archived-row Resume form and the archived-session
+    // Unarchive form (found live 2026-09-19), and what DashboardController
+    // used to send regardless even after those forms were fixed to send
+    // it. Otherwise identical to the successful resume above (same real
+    // agent_session_id/workdir), so this only fails if DashboardController
+    // or the canned fixture's own profile check regresses - not a stand-in
+    // for "unrecognized session" (that's covered separately below). ---
+    $archivedResumeNoProfileFrontPage = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $archivedResumeNoProfileCsrfToken = extract_csrf_token($archivedResumeNoProfileFrontPage['body']);
+
+    $archivedResumeNoProfileResult = curl_request('POST', "{$baseUrl}/", [
+        '-d', 'action=resume&csrf_token=' . urlencode((string)$archivedResumeNoProfileCsrfToken)
+            . '&agent_session_id=' . urlencode(CANNED_ARCHIVED_CLAUDE_SESSION_ID)
+            . '&workdir=' . urlencode('/home/user/www/old-project'),
+    ], $cookieJar);
+    assert_equal(303, $archivedResumeNoProfileResult['status'], 'POST resume (no profile): 303 redirect');
+    assert_equal(
+        '/',
+        $archivedResumeNoProfileResult['headers']['location'] ?? '',
+        'POST resume (no profile): falls back to redirecting home, not to a session view - the account info needed to actually resume this session was never sent'
     );
 
     // --- POST resume: canned agent rejects an unrecognized agent_session_id

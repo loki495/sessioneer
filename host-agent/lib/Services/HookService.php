@@ -139,11 +139,16 @@ class HookService
      * installing on top of it risks Claude Code refusing to start (or
      * install_session_hook() below refusing to touch it at all).
      *
+     * $profile (see Config::claude_profile_config()) - checks that
+     * account's own settings.json instead of the default one. null means
+     * the default account, same as every caller from before profiles
+     * existed.
+     *
      * @return array{ok:bool, installed:bool, message?:string}
      */
-    public static function check_session_hook(): array
+    public static function check_session_hook(?string $profile = null): array
     {
-        $raw = @file_get_contents(Config::claude_settings_path());
+        $raw = @file_get_contents(Config::claude_settings_path($profile));
 
         if ($raw === false) {
             return ['ok' => true, 'installed' => false];
@@ -152,7 +157,7 @@ class HookService
         $settings = json_decode($raw, true);
 
         if (!is_array($settings)) {
-            return ['ok' => false, 'installed' => false, 'message' => '~/.claude/settings.json exists but is not valid JSON'];
+            return ['ok' => false, 'installed' => false, 'message' => Config::claude_settings_path($profile) . ' exists but is not valid JSON'];
         }
 
         $allPresent = true;
@@ -177,11 +182,13 @@ class HookService
      * button without a separate check first, and safe to re-run after only
      * some of them were ever installed.
      *
+     * $profile: same meaning as check_session_hook()'s own.
+     *
      * @return array{ok:bool, installed:bool, message?:string}
      */
-    public static function install_session_hook(): array
+    public static function install_session_hook(?string $profile = null): array
     {
-        $path = Config::claude_settings_path();
+        $path = Config::claude_settings_path($profile);
         $raw = @file_get_contents($path);
         $settings = [];
 
@@ -189,7 +196,7 @@ class HookService
             $settings = json_decode($raw, true);
 
             if (!is_array($settings)) {
-                return ['ok' => false, 'installed' => false, 'message' => '~/.claude/settings.json exists but is not valid JSON - fix or add the hooks manually, see README'];
+                return ['ok' => false, 'installed' => false, 'message' => $path . ' exists but is not valid JSON - fix or add the hooks manually, see README'];
             }
         }
 
@@ -222,9 +229,68 @@ class HookService
         }
 
         if (@file_put_contents($path, self::reindent_json_pretty($encoded) . "\n") === false) {
-            return ['ok' => false, 'installed' => false, 'message' => 'Could not write ~/.claude/settings.json'];
+            return ['ok' => false, 'installed' => false, 'message' => 'Could not write ' . $path];
         }
 
         return ['ok' => true, 'installed' => true];
+    }
+
+    /**
+     * check_session_hook() across every configured Claude Code profile
+     * (Config::claude_profiles_to_scan()) - a work profile with no hooks
+     * installed in its own settings.json is exactly the "reports
+     * permanently idle/unknown" failure mode Dibs plan #230 called out, so
+     * the dashboard's existing single health check needs to cover every
+     * account, not just the default one, for that to actually be visible.
+     * `ok`/`installed` are the AND of every profile's own (any one
+     * profile's hooks missing means "not fully installed" overall);
+     * `by_profile` carries the per-profile breakdown so a caller that
+     * wants to show WHICH account needs attention can.
+     *
+     * @return array{ok:bool, installed:bool, message?:string, by_profile:array<string, array{ok:bool, installed:bool, message?:string}>}
+     */
+    public static function check_all_claude_profiles(): array
+    {
+        $ok = true;
+        $installed = true;
+        $message = null;
+        $byProfile = [];
+
+        foreach (Config::claude_profiles_to_scan() as $profile) {
+            $result = self::check_session_hook($profile);
+            $byProfile[$profile ?? 'default'] = $result;
+            $ok = $ok && $result['ok'];
+            $installed = $installed && $result['installed'];
+            $message ??= $result['message'] ?? null;
+        }
+
+        return ['ok' => $ok, 'installed' => $installed, 'message' => $message, 'by_profile' => $byProfile];
+    }
+
+    /**
+     * install_session_hook() across every configured Claude Code profile -
+     * same reasoning as check_all_claude_profiles() above. Each profile is
+     * independently idempotent (install_session_hook()'s own contract), so
+     * this is safe to call repeatedly, same as the single-profile version
+     * was.
+     *
+     * @return array{ok:bool, installed:bool, message?:string, by_profile:array<string, array{ok:bool, installed:bool, message?:string}>}
+     */
+    public static function install_all_claude_profiles(): array
+    {
+        $ok = true;
+        $installed = true;
+        $message = null;
+        $byProfile = [];
+
+        foreach (Config::claude_profiles_to_scan() as $profile) {
+            $result = self::install_session_hook($profile);
+            $byProfile[$profile ?? 'default'] = $result;
+            $ok = $ok && $result['ok'];
+            $installed = $installed && $result['installed'];
+            $message ??= $result['message'] ?? null;
+        }
+
+        return ['ok' => $ok, 'installed' => $installed, 'message' => $message, 'by_profile' => $byProfile];
     }
 }

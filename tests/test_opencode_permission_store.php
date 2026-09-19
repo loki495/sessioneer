@@ -16,14 +16,14 @@ use HostAgent\Services\Config;
 use HostAgent\Services\PermissionStore;
 use HostAgent\Stores\SidecarStore;
 
-const REAL_SIDECAR_OCPS = '/run/user/1000/sessioneer-sessions';
+$realSidecarDir = '/run/user/' . getmyuid() . '/sessioneer-sessions';
 
 $fixtureSidecarDir = sys_get_temp_dir() . '/sessioneer-test-ocps-sidecars-' . bin2hex(random_bytes(4));
 $fixturePermDir = sys_get_temp_dir() . '/sessioneer-test-ocps-perms-' . bin2hex(random_bytes(4));
 putenv("SIDECAR_DIR={$fixtureSidecarDir}");
 putenv("OPENCODE_PERMISSION_DIR={$fixturePermDir}");
 
-if (Config::sidecar_dir() === REAL_SIDECAR_OCPS) {
+if (Config::sidecar_dir() === $realSidecarDir) {
     fwrite(STDERR, "REFUSING TO RUN: SIDECAR_DIR resolves to the real sidecar dir.\n");
     exit(1);
 }

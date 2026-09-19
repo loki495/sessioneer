@@ -29,13 +29,13 @@ use HostAgent\Services\TmuxService;
 use HostAgent\Stores\SessionStatusStore;
 use HostAgent\Stores\SidecarStore;
 
-const REAL_TMUX_SOCKET_AGMS = '/tmp/tmux-1000/default';
+$realTmuxSocket = '/tmp/tmux-' . getmyuid() . '/default';
 
 $fixtureSidecarDir = sys_get_temp_dir() . '/sessioneer-test-agy-model-switch-sidecars-' . bin2hex(random_bytes(4));
 
 putenv("SIDECAR_DIR={$fixtureSidecarDir}");
 
-if (Config::tmux_socket() === REAL_TMUX_SOCKET_AGMS) {
+if (Config::tmux_socket() === $realTmuxSocket) {
     fwrite(STDERR, "REFUSING TO RUN: TMUX_SOCKET resolves to the real host socket. Check tests/.env.testing.\n");
     exit(1);
 }

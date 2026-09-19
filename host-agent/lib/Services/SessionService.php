@@ -65,9 +65,9 @@ class SessionService
      * today's live-pane-title scrape as the next fallback - the one part of
      * the cascade that's only ever available for a currently-live session.
      */
-    public static function session_title(?string $agentSessionId, ?string $livePaneTitle, ?string $workdir, string $name): string
+    public static function session_title(?string $agentSessionId, ?string $livePaneTitle, ?string $workdir, string $name, ?string $profile = null): string
     {
-        $transcriptPath = $agentSessionId !== null ? TranscriptRouter::find_transcript_path($agentSessionId) : null;
+        $transcriptPath = $agentSessionId !== null ? TranscriptRouter::find_transcript_path($agentSessionId, $profile) : null;
         // find_latest_ai_title() is Claude-Code-specific (Antigravity and
         // OpenCode have no ai-title-equivalent transcript entry) - harmlessly
         // finds nothing for those paths, falling through the cascade below to
@@ -136,7 +136,7 @@ class SessionService
      * @param array{name:string, activity:int, attached:bool} $tmuxSession
      * @param array<int, array{pid:int, cwd:?string, started_at:?int}> $claudeProcs
      * @param array<int, int> $ppidMap
-     * @return array{name:string, activity:int, attached:bool, pid:?int, workdir:?string, spawned_by_app:bool, kind:string, parent_session_id:?string, title:string, working:bool, blocked_reason:?string, resume_hint:?string, prompt_context:?string, prompt_options:array<int, array{number:int, label:string}>, prompt_multi_question:bool, prompt_is_folder_trust:bool, prompt_tool_name:?string, prompt_tool_input:?array, prompt_questions:?array, current_mode:?string, current_model:?string, current_antigravity_model:?string, last_turn_error:?string, agent_session_id:?string, last_message:?array}
+     * @return array{name:string, activity:int, attached:bool, pid:?int, workdir:?string, spawned_by_app:bool, kind:string, parent_session_id:?string, agent:string, agent_label:string, title:string, working:bool, blocked_reason:?string, resume_hint:?string, prompt_context:?string, prompt_options:array<int, array{number:int, label:string}>, prompt_multi_question:bool, prompt_is_folder_trust:bool, prompt_tool_name:?string, prompt_tool_input:?array, prompt_questions:?array, current_mode:?string, current_model:?string, current_antigravity_model:?string, last_turn_error:?string, agent_session_id:?string, last_message:?array, profile:?string, context_used_percentage:?float, git_worktree:?string}
      */
     public static function build_session_entry(array $tmuxSession, array $claudeProcs, array $ppidMap): array
     {
@@ -154,6 +154,12 @@ class SessionService
 
         $sidecar = SidecarStore::read_sidecar($tmuxSession['name']);
         $agentId = is_string($sidecar['agent'] ?? null) ? $sidecar['agent'] : 'claude';
+        // Which Claude Code account this session was spawned under (see
+        // Dibs plan #230) - null for every non-Claude agent and every
+        // sidecar written before profiles existed, both of which mean
+        // "the default account", same fallback Config's own profile
+        // helpers already use.
+        $profile = is_string($sidecar['profile'] ?? null) ? $sidecar['profile'] : null;
 
         // Opencode creates no DB row at spawn time, only after the first
         // prompt (reactive binding, like Antigravity's pre_invocation.php
@@ -171,6 +177,7 @@ class SessionService
                     'agent_session_id' => $healedId,
                     'spawned_by_app' => $sidecar['spawned_by_app'] ?? true,
                     'agent' => $agentId,
+                    'profile' => $sidecar['profile'] ?? null,
                 ]);
                 $sidecar['agent_session_id'] = $healedId;
             }
@@ -247,6 +254,10 @@ class SessionService
             }
         } elseif ($agentId === 'antigravity') {
             $prompt = AntigravityPromptParser::parse_blocking_prompt($paneContent);
+
+            if ($prompt !== null) {
+                $prompt = PromptParser::augment_prompt_with_pending_tool($prompt, PendingToolStore::read_pending_tool($tmuxSession['name']));
+            }
         } elseif ($hookStatusValue === 'blocked' && $hookBlockedToolName === 'AskUserQuestion') {
             // AskUserQuestion renders as a tab bar Claude Code itself
             // navigates with the Left/Right arrow keys - a single
@@ -346,7 +357,7 @@ class SessionService
         // the session page doesn't work"). host-agent/hooks/stop.php clears
         // the override once that next turn finishes, so this can never
         // permanently shadow the real transcript-derived value.
-        $transcriptPathForModel = $agentSessionId !== null ? TranscriptService::find_transcript_path($agentSessionId) : null;
+        $transcriptPathForModel = $agentSessionId !== null ? TranscriptService::find_transcript_path($agentSessionId, $profile) : null;
         $rawModel = $transcriptPathForModel !== null ? TranscriptService::find_latest_model($transcriptPathForModel) : null;
         $modelOverride = is_string($hookStatus['model'] ?? null) ? $hookStatus['model'] : null;
         $currentModel = $modelOverride ?? ($rawModel !== null ? SelectableModel::family_from_raw_model($rawModel) : null);
@@ -388,7 +399,8 @@ class SessionService
             'parent_session_id' => null,
             'agent' => $agentId,
             'agent_label' => $agentLabel,
-            'title' => self::session_title($agentSessionId, $panes['title'], $workdir, $tmuxSession['name']),
+            'profile' => $profile,
+            'title' => self::session_title($agentSessionId, $panes['title'], $workdir, $tmuxSession['name'], $profile),
             'working' => $working,
             'blocked_reason' => $prompt['question'] ?? null,
             'resume_hint' => $prompt !== null ? TmuxService::tmux_attach_hint($tmuxSession['name']) : null,
@@ -404,7 +416,7 @@ class SessionService
             'current_antigravity_model' => $currentAntigravityModel,
             'last_turn_error' => $lastTurnError,
             'agent_session_id' => $agentSessionId,
-            'last_message' => self::session_last_message($agentSessionId),
+            'last_message' => self::session_last_message($agentSessionId, $profile),
             // Both sourced from StatuslineMarkerService's live-pane marker,
             // same mechanism as the self-heal cross-check above - null
             // whenever the marker isn't installed yet, the pane hasn't
@@ -443,7 +455,7 @@ class SessionService
             return $agentSessionId;
         }
 
-        if (TranscriptService::find_transcript_path($liveId) === null) {
+        if (TranscriptService::find_transcript_path($liveId, is_string($sidecar['profile'] ?? null) ? $sidecar['profile'] : null) === null) {
             return $agentSessionId;
         }
 
@@ -453,6 +465,7 @@ class SessionService
             'agent_session_id' => $liveId,
             'spawned_by_app' => $sidecar['spawned_by_app'] ?? false,
             'agent' => $sidecar['agent'] ?? 'claude',
+            'profile' => $sidecar['profile'] ?? null,
         ]);
 
         return $liveId;
@@ -470,13 +483,13 @@ class SessionService
      *
      * @return array{role:?string, timestamp:?string, blocks:array<int, array{kind:string, text:string}>}|null
      */
-    public static function session_last_message(?string $agentSessionId): ?array
+    public static function session_last_message(?string $agentSessionId, ?string $profile = null): ?array
     {
         if ($agentSessionId === null) {
             return null;
         }
 
-        $path = TranscriptRouter::find_transcript_path($agentSessionId);
+        $path = TranscriptRouter::find_transcript_path($agentSessionId, $profile);
 
         if ($path === null) {
             return null;

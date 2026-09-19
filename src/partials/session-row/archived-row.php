@@ -19,6 +19,9 @@
       ?>
       <div class="select-none mt-0.5 mb-1 flex items-center gap-1.5">
         <span class="inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border <?= $agentBadgeClass ?>"><?= $this->e($agentLabel) ?></span>
+        <?php if (($agentId ?? 'claude') === 'claude'): ?>
+          <span class="inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border <?= App\Views\SessionRowView::profile_badge_class($profile ?? null) ?>"><?= $this->e(App\Views\SessionRowView::profile_label($profile ?? null)) ?></span>
+        <?php endif ?>
         <?php if ($runtime === 'headless'): ?><span class="inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border bg-violet-900/30 text-violet-400 border-violet-700/40">Headless</span><?php endif ?>
       </div>
     <?php endif ?>
@@ -31,6 +34,12 @@
     <input type="hidden" name="csrf_token" value="<?= $this->e($csrfToken) ?>">
     <input type="hidden" name="agent_session_id" value="<?= $this->e($agentSessionId) ?>">
     <input type="hidden" name="workdir" value="<?= $this->e((string)$cwd) ?>">
+    <?php // Which Claude account this archived session belongs to (see
+          // ArchivedSessionService::list_archived_sessions()) - without
+          // this, resuming a work-profile archived session silently
+          // resumed under the default account instead (Sessions.php's
+          // 'resume' case had no profile to read since nothing sent one). ?>
+    <?php if (!empty($profile)): ?><input type="hidden" name="profile" value="<?= $this->e($profile) ?>"><?php endif ?>
     <button type="submit" class="select-none min-h-[2.75rem] shrink-0 rounded-lg border border-slate-700 bg-slate-800 active:bg-slate-700 text-slate-200 font-medium text-sm px-4 py-2">Resume</button>
   </form>
   <?php endif ?>

@@ -1,0 +1,13 @@
+Create file
+────────────────────────────────────────────────────────────────────────────────
+
+/home/andres/www/sessioneer/tests/fixtures/antigravity_permission_prompt_pane_v121.txt  +20
+   1 +  ────────────────────────────────────────────────────────────
+   2 +  > run this command: tmux capture-pane -t ag-20260911-150842 -p
+
+Allow creation of this file?
+> 1. Yes, allow creation
+  2. No, deny creation
+
+  ↑/↓ Navigate · tab Amend · f full diff
+esc to cancel                                       Claude Sonnet 4.6 (Thinking)

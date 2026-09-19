@@ -46,7 +46,8 @@ tmux, agent daemons, process tables, or user configuration directly.
 | Archived transcript / cwd / title | ✓ | ✓ | ✓ | ✓ |
 | Dashboard-wide content search | ✓ | ✗ | ✓ | ✗ |
 | Per-session content search | ✓ | ✗ | ✓ | ✗ |
-| Usage / quota display | ✓ | ✓ optional timer | ✓ | ✓ app-server rate limits |
+| Usage / quota display | ✓ per configured account | ✓ optional timer | ✓ | ✓ app-server rate limits |
+| Multiple accounts (profiles) | ✓ | ✗ | ✗ | ✗ |
 | File upload / attachment send | ✓ | ✓ | ✓ | ✓ |
 | Web Push on blocked / finished state | ✓ | ✓ | ✓ | ✓, including observe-only Remote blocks |
 
@@ -92,6 +93,21 @@ heuristic, clearly labeled as a guess. Model and permission-mode changes
 drive Claude's own pickers. Quota comes from the status-line JSON marker and
 will be unavailable until Claude renders that status line at least once.
 
+Claude Code alone also supports multiple accounts ("profiles") - a session can
+be spawned under a different `CLAUDE_CONFIG_DIR` (e.g. a separate work
+account) instead of always using this process's own default, named in
+`host-agent/config/agents.php`. A profile is picked from the New Session
+form's Account selector when more than one is configured, persists on the
+session's sidecar, and is threaded through spawn/resume, transcript lookup,
+archived-session listing, and hook install/health checks so a work-profile
+session behaves identically to the default account everywhere. A small
+"Personal"/"Work" badge shows which account a session belongs to on every
+session row, the session header, and the archived-session viewer, and the
+quota footer shows one row per configured account instead of a single global
+figure - each account's statusline write is tagged by its own
+`CLAUDE_CONFIG_DIR` so two accounts' quota readings never overwrite each
+other.
+
 Implementation entry points:
 
 - `host-agent/lib/Agents/ClaudeCodeAdapter.php`
@@ -99,6 +115,9 @@ Implementation entry points:
 - `host-agent/hooks/*.php`
 - `host-agent/lib/Services/PromptInteractionService.php`
 - `host-agent/lib/Services/TranscriptService.php`
+- `host-agent/config/agents.php` (profile definitions)
+- `host-agent/lib/Services/QuotaService.php` (per-account quota)
+- `src/lib/Views/SessionRowView.php` (account badge)
 
 ## Antigravity implementation
 
@@ -241,6 +260,11 @@ Implementation entry points:
 - The health panel is split into Global, Claude Code, OpenCode, and Codex
   checks. Antigravity hook installation and its optional quota timer currently
   use the manual commands in the README.
+- Every session row, the session header, and the archived-session viewer show
+  which account a session belongs to (currently meaningful for Claude Code
+  only - see its implementation section above); the sidebar's own "This
+  session" block shows the current session's id and working directory, each
+  with a copy button.
 
 ## Known parity gaps
 

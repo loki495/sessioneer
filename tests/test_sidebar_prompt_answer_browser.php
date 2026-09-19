@@ -84,9 +84,9 @@ require __DIR__ . '/lib/harness.php';
 require __DIR__ . '/lib/replay_fixture.php';
 require __DIR__ . '/lib/cdp.php';
 
-const REAL_TMUX_SOCKET_SIDEBAR_ANSWER_BROWSER = '/tmp/tmux-1000/default';
+$realTmuxSocket = '/tmp/tmux-' . getmyuid() . '/default';
 
-if (getenv('TMUX_SOCKET') === REAL_TMUX_SOCKET_SIDEBAR_ANSWER_BROWSER || getenv('TMUX_SOCKET') === false) {
+if (getenv('TMUX_SOCKET') === $realTmuxSocket || getenv('TMUX_SOCKET') === false) {
     fwrite(STDERR, "REFUSING TO RUN: TMUX_SOCKET resolves to the real host socket (or is unset). Check tests/.env.testing.\n");
     exit(1);
 }

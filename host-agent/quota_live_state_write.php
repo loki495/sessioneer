@@ -41,7 +41,13 @@ if (!is_array($new)) {
     exit(0);
 }
 
-$key = Config::quota_live_state_key();
+// $CLAUDE_CONFIG_DIR is inherited from whichever Claude Code process invoked
+// the statusLine script that shells out to this file - set per-profile by
+// ClaudeCodeAdapter::build_spawn_argv() at session spawn time, so this is
+// the same live signal that tells us which account's statusline just
+// rendered, with no extra plumbing needed to pass it explicitly.
+$profile = Config::claude_profile_for_config_dir((string)(getenv('CLAUDE_CONFIG_DIR') ?: ''));
+$key = Config::quota_live_state_key($profile);
 $prev = GlobalStateStore::read($key) ?? [];
 
 /**

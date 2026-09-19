@@ -101,10 +101,14 @@ class DashboardController extends Controller
                 $agent = trim((string)($_POST['agent'] ?? ''));
                 $model = trim((string)($_POST['model'] ?? ''));
                 $modelProvider = trim((string)($_POST['model_provider'] ?? ''));
+                $profile = trim((string)($_POST['profile'] ?? ''));
                 $createParams = ['action' => 'create', 'workdir' => $workdir, 'enable_task_tools' => $enableTaskTools, 'starting_mode' => $startingMode, 'agent' => $agent];
                 if ($model !== '') {
                     $createParams['model'] = $model;
                     $createParams['model_provider'] = $modelProvider;
+                }
+                if ($profile !== '') {
+                    $createParams['profile'] = $profile;
                 }
                 $result = AgentClient::agent_call($createParams);
                 $ok = (bool)($result['ok'] ?? false);
@@ -116,7 +120,12 @@ class DashboardController extends Controller
             case 'resume':
                 $workdir = trim((string)($_POST['workdir'] ?? ''));
                 $agentSessionId = trim((string)($_POST['agent_session_id'] ?? ''));
-                $result = AgentClient::agent_call(['action' => 'resume', 'workdir' => $workdir, 'agent_session_id' => $agentSessionId]);
+                $profile = trim((string)($_POST['profile'] ?? ''));
+                $resumeParams = ['action' => 'resume', 'workdir' => $workdir, 'agent_session_id' => $agentSessionId];
+                if ($profile !== '') {
+                    $resumeParams['profile'] = $profile;
+                }
+                $result = AgentClient::agent_call($resumeParams);
                 $ok = (bool)($result['ok'] ?? false);
                 $message = (string)($result['message'] ?? 'Unknown error');
 

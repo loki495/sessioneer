@@ -229,32 +229,45 @@ class PushHealthService
      */
     public static function health_check(): array
     {
-        $settings = [];
-        $settingsOk = true;
-        $settingsMessage = null;
-        $raw = @file_get_contents(Config::claude_settings_path());
-
-        if ($raw !== false) {
-            $decoded = json_decode($raw, true);
-
-            if (is_array($decoded)) {
-                $settings = $decoded;
-            } else {
-                $settingsOk = false;
-                $settingsMessage = '~/.claude/settings.json exists but is not valid JSON';
-            }
-        }
-
         $checks = [];
 
-        foreach (HookService::app_hooks_status($settings) as $hook) {
-            $checks[] = [
-                'key' => 'hook_' . strtolower($hook['event']),
-                'section' => 'Claude Code',
-                'label' => $hook['event'] . ' hook',
-                'ok' => $settingsOk && $hook['present'],
-                'detail' => $settingsOk ? null : $settingsMessage,
-            ];
+        // One "Claude Code" section per configured profile (Config::
+        // claude_profiles_to_scan()) - a work account with no hooks
+        // installed in its OWN settings.json would otherwise never show up
+        // here at all, and silently reports permanently idle/unknown (see
+        // Dibs plan #230). The default account keeps its plain "Claude
+        // Code" section label unchanged; a named profile gets its own
+        // "Claude Code (work)"-style section so this stays legible once
+        // more than one account is configured.
+        foreach (Config::claude_profiles_to_scan() as $profile) {
+            $settings = [];
+            $settingsOk = true;
+            $settingsMessage = null;
+            $path = Config::claude_settings_path($profile);
+            $raw = @file_get_contents($path);
+
+            if ($raw !== false) {
+                $decoded = json_decode($raw, true);
+
+                if (is_array($decoded)) {
+                    $settings = $decoded;
+                } else {
+                    $settingsOk = false;
+                    $settingsMessage = $path . ' exists but is not valid JSON';
+                }
+            }
+
+            $section = $profile === null ? 'Claude Code' : "Claude Code ({$profile})";
+
+            foreach (HookService::app_hooks_status($settings) as $hook) {
+                $checks[] = [
+                    'key' => 'hook_' . ($profile ?? 'default') . '_' . strtolower($hook['event']),
+                    'section' => $section,
+                    'label' => $hook['event'] . ' hook',
+                    'ok' => $settingsOk && $hook['present'],
+                    'detail' => $settingsOk ? null : $settingsMessage,
+                ];
+            }
         }
 
         $tmuxSocketDir = dirname(Config::tmux_socket());

@@ -93,6 +93,21 @@ try {
         StatuslineMarkerService::locate_statusline_script(['statusLine' => ['type' => 'command', 'command' => "bash {$scriptPath}"]]),
         'locate_statusline_script: finds the script file referenced by a real, writable command'
     );
+    // Found live 2026-09-18: a command written the normal way ("bash
+    // $HOME/...", never shell-evaluated here) used to never resolve at
+    // all - is_file() on the literal, unexpanded "$HOME/..." string can
+    // never match a real file, so check_statusline_marker() reported
+    // "not installed" against an already-fully-installed script forever.
+    assert_equal(
+        $scriptPath,
+        StatuslineMarkerService::locate_statusline_script(['statusLine' => ['type' => 'command', 'command' => 'bash $HOME/my-statusline.sh']]),
+        'locate_statusline_script: expands a literal $HOME reference to the real home directory'
+    );
+    assert_equal(
+        $scriptPath,
+        StatuslineMarkerService::locate_statusline_script(['statusLine' => ['type' => 'command', 'command' => 'bash ${HOME}/my-statusline.sh']]),
+        'locate_statusline_script: expands a ${HOME} (braced) reference too'
+    );
     assert_equal(null, StatuslineMarkerService::locate_statusline_script([]), 'locate_statusline_script: null when statusLine is not configured at all');
     assert_equal(null, StatuslineMarkerService::locate_statusline_script(['statusLine' => ['type' => 'other', 'command' => "bash {$scriptPath}"]]), 'locate_statusline_script: null when type is not "command"');
     assert_equal(null, StatuslineMarkerService::locate_statusline_script(['statusLine' => ['type' => 'command', 'command' => 'bash /does/not/exist.sh']]), 'locate_statusline_script: null when the referenced file does not exist');
@@ -193,6 +208,29 @@ try {
     $scriptContent = (string)file_get_contents($scriptPath);
     assert_equal(1, substr_count($scriptContent, '# >>> sessioneer: session-id marker (managed, safe to delete) >>>'), 'install_statusline_marker: calling twice does not duplicate the marker block');
     assert_equal(1, substr_count($scriptContent, '# >>> sessioneer: quota state capture (managed, safe to delete) >>>'), 'install_statusline_marker: calling twice does not duplicate the quota-capture block');
+
+    GlobalStateStore::delete(Config::quota_live_state_key());
+    unlink($settingsPath);
+    unlink($scriptPath);
+
+    // --- install_statusline_marker(): the full check/install/re-check
+    // cycle against a command written the normal way a real settings.json
+    // has it ("bash $HOME/...", never shell-evaluated here) - the exact
+    // shape that used to report "not installed" forever, see
+    // expand_home_token()'s own docblock. ---
+    file_put_contents($scriptPath, "#!/usr/bin/env bash\ninput=\$(cat)\nmodel=\$(echo \"\$input\" | jq -r '.model.display_name // \"\"')\nprintf '%s' \"\$model\"\necho \"\"\n");
+    chmod($scriptPath, 0700);
+    file_put_contents($settingsPath, json_encode(['statusLine' => ['type' => 'command', 'command' => 'bash $HOME/my-statusline.sh']]));
+
+    assert_equal(false, StatuslineMarkerService::check_statusline_marker()['installed'], 'check_statusline_marker: not installed yet, with a $HOME-style command');
+
+    $homeStyleInstall = StatuslineMarkerService::install_statusline_marker();
+    assert_equal(true, $homeStyleInstall['ok'], 'install_statusline_marker: succeeds against a $HOME-style command');
+    assert_equal(true, $homeStyleInstall['installed'], 'install_statusline_marker: installed=true against a $HOME-style command');
+    assert_equal(true, StatuslineMarkerService::check_statusline_marker()['installed'], 'check_statusline_marker: reports installed after installing into a $HOME-style command - the actual bug, now fixed');
+
+    $settingsAfterHomeStyle = json_decode((string)file_get_contents($settingsPath), true);
+    assert_equal('bash $HOME/my-statusline.sh', $settingsAfterHomeStyle['statusLine']['command'] ?? null, 'install_statusline_marker: leaves the $HOME-style command text itself untouched (only the script file is patched)');
 
     GlobalStateStore::delete(Config::quota_live_state_key());
     unlink($settingsPath);

@@ -31,6 +31,12 @@ const CANNED_ATTACHMENT_FILE_UUID = 'canned-file-uuid-1';
 const CANNED_ATTACHMENT_BYTES = 'canned attachment bytes';
 const CANNED_IMAGE_ATTACHMENT_FILE_UUID = 'canned-file-uuid-2';
 const CANNED_ARCHIVED_CLAUDE_SESSION_ID = '99999999-8888-4777-a666-555555555555';
+// A non-default account, so the archived-list row/detail/resume fixtures
+// below can prove profile actually flows end to end through the Resume/
+// Unarchive forms and DashboardController - found live 2026-09-19: neither
+// form sent it at all, so an archived work-profile session silently
+// resumed under the default account (or failed to resolve) instead.
+const CANNED_ARCHIVED_CLAUDE_PROFILE = 'work';
 const CANNED_RESUMED_SESSION_NAME = 'cc-20260101-1400';
 const CANNED_TAKEN_OVER_SESSION_NAME = 'cc-20260101-1500';
 const CANNED_NEW_SESSION_NAME = 'cc-20260101-1600';
@@ -191,6 +197,9 @@ $response = match ($action) {
             'cwd' => '/home/user/www/old-project',
             'title' => 'Refactor the old widget',
             'last_activity' => time() - 3 * 86400,
+            'agent' => 'claude',
+            'agent_label' => 'Claude Code',
+            'profile' => CANNED_ARCHIVED_CLAUDE_PROFILE,
         ]],
     ],
     'archived_session_detail' => ($request['agent_session_id'] ?? null) === CANNED_ARCHIVED_CLAUDE_SESSION_ID
@@ -200,6 +209,8 @@ $response = match ($action) {
             'cwd' => '/home/user/www/old-project',
             'title' => 'Refactor the old widget',
             'last_activity' => time() - 3 * 86400,
+            'agent' => 'claude',
+            'profile' => CANNED_ARCHIVED_CLAUDE_PROFILE,
         ]
         : ['ok' => false, 'message' => 'Session not found'],
     'archived_session_history' => ($request['agent_session_id'] ?? null) === CANNED_ARCHIVED_CLAUDE_SESSION_ID
@@ -294,9 +305,18 @@ $response = match ($action) {
         ? ['ok' => true, 'path' => '/home/user/www/new-folder', 'parent' => '/home/user/www', 'dirs' => []]
         : ['ok' => false, 'message' => 'Invalid folder name'],
     'create' => ['ok' => true, 'message' => 'Created session cc-20260101-1300 in /home/user/www/demo-project'],
-    'resume' => ($request['agent_session_id'] ?? null) === CANNED_ARCHIVED_CLAUDE_SESSION_ID && (string)($request['workdir'] ?? '') === '/home/user/www/old-project'
+    // Requires the matching profile too (not just id/workdir) - found live
+    // 2026-09-19: neither the archived-row Resume form nor the
+    // archived-session Unarchive form sent one, and DashboardController
+    // didn't forward it even when they did, so resuming a work-profile
+    // archived session silently resumed under the default account instead.
+    // A request with no profile at all - exactly the pre-fix shape - is
+    // rejected here, same as a wrong agent_session_id/workdir.
+    'resume' => ($request['agent_session_id'] ?? null) === CANNED_ARCHIVED_CLAUDE_SESSION_ID
+        && (string)($request['workdir'] ?? '') === '/home/user/www/old-project'
+        && ($request['profile'] ?? null) === CANNED_ARCHIVED_CLAUDE_PROFILE
         ? ['ok' => true, 'message' => 'Resumed session ' . CANNED_RESUMED_SESSION_NAME . ' in /home/user/www/old-project', 'name' => CANNED_RESUMED_SESSION_NAME]
-        : ['ok' => false, 'message' => 'Rejected: unknown agent_session_id or workdir'],
+        : ['ok' => false, 'message' => 'Rejected: unknown agent_session_id, workdir, or profile'],
     'kill' => ($request['session'] ?? null) === CANNED_SESSION_NAME
         ? ['ok' => true, 'message' => 'Killed ' . CANNED_SESSION_NAME]
         : ['ok' => false, 'message' => 'Rejected: not a currently active managed session'],

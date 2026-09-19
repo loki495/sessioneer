@@ -337,7 +337,11 @@ class BareProcessService
         $paneContent = TmuxService::tmux_capture_pane($owningPane['session']);
         $sessionId = StatuslineMarkerService::parse_marker_from_pane($paneContent)['session_id'];
 
-        if ($sessionId === null || TranscriptService::find_transcript_path($sessionId) === null) {
+        // Any configured account - a bare process has no sidecar to say
+        // which Claude Code profile it's running under (see
+        // TranscriptRouter::find_transcript_path_any_profile()'s own
+        // docblock).
+        if ($sessionId === null || TranscriptRouter::find_transcript_path_any_profile($sessionId) === null) {
             return null;
         }
 
@@ -409,7 +413,13 @@ class BareProcessService
         $closestDelta = null;
 
         foreach ($candidates as $c) {
-            $path = TranscriptService::find_transcript_path($c['agent_session_id']);
+            // list_archived_sessions() now scans every configured Claude
+            // Code profile and tags each candidate with the one its
+            // transcript actually lives under (see Dibs plan #230) - must
+            // be passed back here, or a work-profile candidate's own
+            // timestamp lookup would silently miss (glob against the
+            // wrong/default account's projects dir).
+            $path = TranscriptService::find_transcript_path($c['agent_session_id'], $c['profile'] ?? null);
             $created = $path !== null ? TranscriptService::find_first_timestamp($path) : null;
 
             if ($created === null) {
@@ -584,7 +594,7 @@ class BareProcessService
                 return $b;
             }
 
-            $path = TranscriptRouter::find_transcript_path($agentSessionId);
+            $path = TranscriptRouter::find_transcript_path_any_profile($agentSessionId);
             $cwd = is_string($b['cwd'] ?? null) ? $b['cwd'] : null;
             $title = $path !== null ? SessionService::title_cascade(TranscriptService::find_latest_ai_title($path), null, $cwd, $agentSessionId) : null;
 
@@ -740,7 +750,7 @@ class BareProcessService
             return ['ok' => true, 'agent_session_id' => null, 'confidence' => null, 'title' => null];
         }
 
-        $path = TranscriptRouter::find_transcript_path($agentSessionId);
+        $path = TranscriptRouter::find_transcript_path_any_profile($agentSessionId);
         $title = $path !== null ? SessionService::title_cascade(TranscriptService::find_latest_ai_title($path), null, $cwd, $agentSessionId) : null;
 
         return ['ok' => true, 'agent_session_id' => $agentSessionId, 'confidence' => $confidence, 'title' => $title];
@@ -836,7 +846,15 @@ class BareProcessService
             // process() had already returned ok=true.
             usleep(300000);
 
-            return SessionLifecycleService::resume_agent_session($workdir, $matchedId);
+            // Re-derive which Claude Code account $matchedId's own
+            // transcript actually lives under (a bare process's matched id
+            // came from argv/daemon-roster/pane-marker, none of which know
+            // the profile) - required so the fresh pane this resume spawns
+            // gets the right CLAUDE_CONFIG_DIR, not just so the transcript
+            // can be read.
+            $matchedProfile = TranscriptRouter::find_claude_profile_for_session_id($matchedId)['profile'];
+
+            return SessionLifecycleService::resume_agent_session($workdir, $matchedId, $matchedProfile);
         }
 
         $resolved = self::bare_process_take_over_candidates($workdir, $startedAt ?? time(), $pid);
@@ -887,6 +905,12 @@ class BareProcessService
             }
         }
 
-        return SessionLifecycleService::resume_agent_session($workdir, $agentSessionId);
+        // Same reasoning as take_over_bare_process() above - the caller
+        // only ever hands back the chosen candidate's agent_session_id,
+        // not its profile, so it's re-derived here rather than widening
+        // this method's own signature/protocol for it.
+        $profile = TranscriptRouter::find_claude_profile_for_session_id($agentSessionId)['profile'];
+
+        return SessionLifecycleService::resume_agent_session($workdir, $agentSessionId, $profile);
     }
 }

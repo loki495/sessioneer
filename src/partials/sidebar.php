@@ -6,6 +6,35 @@
     <button type="button" id="sidebar-close-btn" aria-label="Close" class="text-slate-400 active:text-slate-200 px-1 text-lg leading-none">&times;</button>
   </div>
   <?php if ($found): ?>
+    <div class="px-4 py-3 border-b border-slate-800 flex flex-col gap-2">
+      <span class="block text-xs font-medium text-slate-500">This session</span>
+      <?php // The AGENT's own session id (Claude Code's transcript/--resume
+            // UUID, SessionService::build_session_entry()'s 'agent_session_id')
+            // - not sessioneer's own tmux/app session name ($sessionName,
+            // already shown truncated in the header and used in the URL).
+            // Null until the agent's first turn assigns one (e.g. a brand
+            // new session with no reply yet). ?>
+      <?php if (!empty($detail['agent_session_id'])): ?>
+        <div class="copy-block flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <span class="block text-[11px] text-slate-500">Session ID</span>
+            <span class="copy-source block font-mono text-xs text-slate-300 truncate" title="<?= htmlspecialchars((string)$detail['agent_session_id'], ENT_QUOTES) ?>"><?= htmlspecialchars((string)$detail['agent_session_id'], ENT_QUOTES) ?></span>
+          </div>
+          <button type="button" class="copy-btn select-none shrink-0 text-[11px] text-slate-500 active:text-slate-300">Copy</button>
+        </div>
+      <?php endif ?>
+      <?php if (!empty($detail['workdir'])): ?>
+        <div class="copy-block flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <span class="block text-[11px] text-slate-500">Working directory</span>
+            <span class="copy-source block font-mono text-xs text-slate-300 truncate" title="<?= htmlspecialchars((string)$detail['workdir'], ENT_QUOTES) ?>"><?= htmlspecialchars((string)$detail['workdir'], ENT_QUOTES) ?></span>
+          </div>
+          <button type="button" class="copy-btn select-none shrink-0 text-[11px] text-slate-500 active:text-slate-300">Copy</button>
+        </div>
+      <?php endif ?>
+    </div>
+  <?php endif; ?>
+  <?php if ($found): ?>
     <div class="px-4 py-3 border-b border-slate-800">
       <span class="block text-xs font-medium text-slate-500 mb-2">Search</span>
       <!-- text-base (16px), not text-sm - iOS Safari auto-zooms the whole

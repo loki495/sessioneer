@@ -26,6 +26,14 @@ $this->layout('layout', [
     <div class="select-none mb-4 rounded-xl border border-slate-800 bg-slate-900/50 px-4 py-3 flex items-start justify-between gap-3">
       <div class="min-w-0 flex-1">
         <div class="text-sm text-slate-200"><?= $this->e((string)($detail['title'] ?? $agentSessionId)) ?></div>
+        <?php // Account/profile badge - same Claude-only gate as the live session
+              // header/list rows (see SessionRowView::profile_badge_class()'s own
+              // docblock). ?>
+        <?php if (($detail['agent'] ?? 'claude') === 'claude'): ?>
+          <div class="mt-0.5">
+            <span class="inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border <?= \App\Views\SessionRowView::profile_badge_class($detail['profile'] ?? null) ?>"><?= $this->e(\App\Views\SessionRowView::profile_label($detail['profile'] ?? null)) ?></span>
+          </div>
+        <?php endif ?>
         <?php if (!empty($detail['cwd'])): ?><div class="text-xs text-slate-500 truncate mt-0.5"><?= $this->e((string)$detail['cwd']) ?></div><?php endif ?>
         <div class="text-xs text-slate-400 mt-1">Last active <?= $this->e(\App\Views\SessionRowView::relative_time((int)($detail['last_activity'] ?? 0))) ?></div>
       </div>
@@ -35,6 +43,10 @@ $this->layout('layout', [
         <input type="hidden" name="csrf_token" value="<?= $this->e($csrfToken) ?>">
         <input type="hidden" name="agent_session_id" value="<?= $this->e($agentSessionId) ?>">
         <input type="hidden" name="workdir" value="<?= $this->e((string)$detail['cwd']) ?>">
+        <?php // Same reasoning as archived-row.php's own Resume form - without
+              // this, unarchiving a work-profile session silently resumed
+              // under the default account instead. ?>
+        <?php if (!empty($detail['profile'])): ?><input type="hidden" name="profile" value="<?= $this->e((string)$detail['profile']) ?>"><?php endif ?>
         <button type="submit" class="select-none min-h-[2.75rem] rounded-lg border border-slate-700 bg-slate-800 active:bg-slate-700 text-slate-200 font-medium text-sm px-4 py-2">Unarchive</button>
       </form>
       <?php endif ?>
@@ -76,6 +88,19 @@ $this->layout('layout', [
         Nothing recorded.
       </div>
     <?php else: ?>
+      <?php
+        // Found live 2026-09-18: this used to hardcode 'Claude Code' below
+        // regardless of the session's real agent - now that
+        // archived_session_detail() resolves 'agent' (see
+        // SessionDetailService.php), match it the same way session.php's
+        // own $agentLabel derivation does.
+        $agentLabel = match ($detail['agent'] ?? 'claude') {
+            'antigravity' => 'Antigravity',
+            'opencode' => 'OpenCode',
+            'codex' => 'Codex',
+            default => 'Claude Code',
+        };
+      ?>
       <button type="button" id="load-more-btn"
         data-claude-session-id="<?= $this->e($agentSessionId) ?>"
         data-before="<?= $nextBefore !== null ? (int)$nextBefore : '' ?>"
@@ -83,7 +108,7 @@ $this->layout('layout', [
         Load older messages
       </button>
       <div id="history-list" class="flex flex-col gap-2">
-        <?= \App\Views\TranscriptView::render_transcript_entries_html($entries, $agentSessionId, true, is_string($detail['cwd'] ?? null) ? $detail['cwd'] : null, 'Claude Code') ?>
+        <?= \App\Views\TranscriptView::render_transcript_entries_html($entries, $agentSessionId, true, is_string($detail['cwd'] ?? null) ? $detail['cwd'] : null, $agentLabel) ?>
       </div>
     <?php endif; ?>
   <?php endif; ?>
