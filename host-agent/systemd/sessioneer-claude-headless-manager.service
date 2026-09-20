@@ -1,0 +1,17 @@
+[Unit]
+Description=Sessioneer Claude headless session manager
+After=default.target
+
+[Service]
+Type=simple
+EnvironmentFile=-@REPO_ROOT@/host-agent/.env
+ExecStart=@PHP_BIN@ @REPO_ROOT@/host-agent/claude_headless_manager.php
+Restart=on-failure
+RestartSec=2
+RestartSteps=5
+RestartMaxDelaySec=30
+# A stop lets the manager interrupt and close every child gracefully first.
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

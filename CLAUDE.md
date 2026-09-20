@@ -129,6 +129,25 @@ Docker-spawned, makes that impossible by construction — not by convention.
    plus `OpenCodeServeClient`, `CodexBridgeClient`, `CodexHeadlessRuntime` —
    see `docs/headless-runtime-plan.md`). All PSR-4 autoloaded under
    `HostAgent\Services`/`Stores`/`Agents`/`Runtimes`.
+
+   Claude Code's headless runtime (no tmux pane) is a second persistent
+   host-native service in the Codex bridge's mould:
+   `sessioneer-claude-headless-manager.service` runs
+   `host-agent/claude_headless_manager.php` (`ClaudeHeadlessManager`, one
+   `ClaudeHeadlessChild` per active session, reached through
+   `ClaudeHeadlessManagerClient` over a UNIX socket). Each child is a
+   `claude -p` stream-json process on the user's own login (never
+   `--bare`; API-key env vars stripped, and a child reporting an API-key
+   credential source is killed). The process is a cache and the sidecar row
+   (`runtime = headless`) is the truth: a session with no process is
+   "dormant" and the next message respawns it with `--resume`. The manager
+   is the sole writer of `session_status` for these sessions - its children
+   get no `SESSIONEER_SESSION_NAME`, so the hooks below stay silent for
+   them. Protocol and design records live in Dibs (plan #269, research
+   #280, decision #282); `tests/fixtures/claude_stream_json_*_v2_1_278.ndjson`
+   are the captured stream-json events and `tests/fixtures/fake_claude_stream`
+   is the scripted stand-in the tests drive. The runtime wiring itself
+   (`ClaudeHeadlessRuntime`) is still in progress.
 5. `App\Views\*` (one render class per feature area — `TranscriptView`,
    `SessionRowView`, `BlockedPromptView`, `QuotaFooterView`,
    `HealthBoxView`, `PushNotifyView`, plus `PageView` for the two full-page

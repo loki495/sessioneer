@@ -150,6 +150,22 @@ else
     echo "WARNING: no 'codex' on PATH and CODEX_BIN is unset - Codex sessions are unavailable."
 fi
 
+# Claude Code headless sessions (no tmux pane): the manager owns one long-lived
+# `claude -p` stream-json process per active session and answers the request-
+# per-process host agent over a UNIX socket, like the Codex bridge above. It
+# needs CLAUDE_BIN and is an idle no-op until a headless session is created;
+# tmux Claude sessions are unaffected either way.
+if grep -qE '^CLAUDE_BIN=\S' "$SCRIPT_DIR/.env" 2>/dev/null; then
+    render_unit sessioneer-claude-headless-manager.service
+    systemctl --user daemon-reload
+    systemctl --user enable --now sessioneer-claude-headless-manager.service
+    echo
+    echo "sessioneer-claude-headless-manager.service installed and enabled (headless Claude sessions; no tmux)."
+else
+    echo
+    echo "sessioneer-claude-headless-manager.service NOT installed - set CLAUDE_BIN in $SCRIPT_DIR/.env and re-run this script."
+fi
+
 # OpenCode Sessioneer plugin: the authoritative pending-permission signal (see
 # host-agent/opencode-plugins/sessioneer-permissions.js). opencode 1.18.21 keeps
 # permission state in-memory in the `opencode serve` process and exposes it
