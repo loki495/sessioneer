@@ -587,6 +587,21 @@ function sessioneer_merge_headless_sessions(array $sessions): array
 }
 
 /**
+ * Every live session (tmux and headless, all agents) in the shape the
+ * dashboard's `list` action shows, for callers that only need the rows (the
+ * push-check timer). One function on purpose: push_trigger.php used to carry
+ * its own copy of the headless merge, which lacked the Claude case, so a
+ * blocked headless Claude session read as idle there and sent a "finished"
+ * notification instead of the prompt.
+ *
+ * @return array<int, array<string, mixed>>
+ */
+function sessioneer_sessions_for_push(): array
+{
+    return sessioneer_merge_headless_sessions(SessionService::list_all_sessions()['sessions']);
+}
+
+/**
  * The headless OpenCode sessions (those hosted by `opencode serve`, not a
  * tmux pane), as a `headless` key on the `list` action's payload - the
  * runtime-parallel counterpart to the tracked tmux `sessions` and the bare

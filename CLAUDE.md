@@ -183,6 +183,10 @@ Docker-spawned, makes that impossible by construction — not by convention.
    A headless process renders no status line, so the manager writes each
    `rate_limit_event` into the per-account quota state itself, through
    `QuotaLiveStateWriter` (the same merge rule the statusLine script uses).
+   The push-check timer builds its session list with
+   `sessioneer_sessions_for_push()` - the dashboard's own merge - so any
+   new headless agent's rows must be handled in
+   `sessioneer_merge_headless_sessions()` or push will misread them.
 5. `App\Views\*` (one render class per feature area — `TranscriptView`,
    `SessionRowView`, `BlockedPromptView`, `QuotaFooterView`,
    `HealthBoxView`, `PushNotifyView`, plus `PageView` for the two full-page

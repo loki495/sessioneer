@@ -110,6 +110,10 @@ figure - each account's statusline write is tagged by its own
 `CLAUDE_CONFIG_DIR` so two accounts' quota readings never overwrite each
 other.
 
+The push-check timer lists headless Claude sessions through the same code path
+as the dashboard, so a headless session waiting on a prompt notifies with the
+prompt itself.
+
 Implementation entry points:
 
 - `host-agent/lib/Agents/ClaudeCodeAdapter.php`

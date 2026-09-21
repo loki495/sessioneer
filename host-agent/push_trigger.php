@@ -48,7 +48,6 @@ require __DIR__ . '/lib/Sessions.php';
 use HostAgent\Services\Config;
 use HostAgent\Services\PushDeliveryService;
 use HostAgent\Services\QuotaService;
-use HostAgent\Services\SessionService;
 
 if (!PushDeliveryService::push_configured()) {
     exit(0);
@@ -64,44 +63,7 @@ if (!PushDeliveryService::push_configured()) {
 // actual incident was a \Error ("Call to undefined method ..."), which
 // \Exception alone would not have caught.
 try {
-    $sessions = SessionService::list_all_sessions()['sessions'] ?? [];
-
-    // Merge headless sessions - same transform the 'list' action does
-    // (unpack 'blocked' → 'blocked_reason', add 'working' from status).
-    foreach (sessioneer_headless_sessions()['headless'] as $h) {
-        $blocked = is_array($h['blocked'] ?? null) ? $h['blocked'] : null;
-        $sessions[] = [
-            'name' => $h['id'],
-            'activity' => (int)($h['activity'] ?? 0),
-            'attached' => false,
-            'pid' => null,
-            'workdir' => $h['workdir'],
-            'spawned_by_app' => true,
-            'agent' => 'opencode',
-            'agent_label' => 'OpenCode',
-            'title' => $h['title'],
-            'runtime' => $h['runtime'] ?? 'headless',
-            'status' => $h['status'],
-            'working' => ($h['status'] ?? null) === 'working',
-            'blocked_reason' => is_string($blocked['question'] ?? null) ? $blocked['question'] : null,
-            'prompt_context' => is_string($blocked['context'] ?? null) ? $blocked['context'] : null,
-            'prompt_options' => is_array($blocked['options'] ?? null) ? $blocked['options'] : [],
-            'prompt_multi_question' => (bool)($blocked['multi_question'] ?? false),
-            'prompt_is_folder_trust' => (bool)($blocked['is_folder_trust'] ?? false),
-            'prompt_tool_name' => is_string($blocked['tool_name'] ?? null) ? $blocked['tool_name'] : null,
-            'prompt_tool_input' => is_array($blocked['tool_input'] ?? null) ? $blocked['tool_input'] : null,
-            'prompt_questions' => null,
-            'current_mode' => null,
-            'current_model' => null,
-            'current_antigravity_model' => null,
-            'last_turn_error' => null,
-            'agent_session_id' => $h['id'],
-            'last_message' => null,
-            'context_used_percentage' => null,
-            'git_worktree' => null,
-            'resume_hint' => null,
-        ];
-    }
+    $sessions = sessioneer_sessions_for_push();
 
     PushDeliveryService::check_and_send_pushes($sessions);
 } catch (\Throwable $e) {
