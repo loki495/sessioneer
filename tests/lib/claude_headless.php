@@ -30,6 +30,8 @@ function start_manager(string $root, string $name, array $env = []): array
         'CLAUDE_HEADLESS_MAX_CHILDREN' => '6',
         'CLAUDE_HEADLESS_STOP_GRACE_SECONDS' => '3',
         'FAKE_CLAUDE_LOG' => $fake,
+        // The manager writes Claude's rate-limit windows to this store; never the real host state.
+        'PUSH_SQLITE_FILE' => $root . '/push.sqlite',
         // Deliberately present: the manager must strip all three from its children.
         'ANTHROPIC_API_KEY' => 'sk-leak-test',
         'ANTHROPIC_AUTH_TOKEN' => 'tok-leak-test',

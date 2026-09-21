@@ -65,7 +65,12 @@ only needed if `docker-compose.yml`'s inline Dockerfile itself changes
 (docroot, CMD, PHP extensions, etc.). The host agent (`host-agent/`) also
 runs directly off the checked-out repo path with no restart needed per
 edit — each connection gets a fresh PHP process, spawned by systemd
-socket activation.
+socket activation. The persistent services are the exception: they load
+their code once, so restart them after editing what they run
+(`systemctl --user restart sessioneer-claude-headless-manager.service`,
+`sessioneer-codex-bridge.service`, `sessioneer-opencode-events.service`).
+Restarting the Claude headless manager stops every live headless process:
+sessions resume on their next message and any open prompt is lost.
 
 ## Architecture: two runtimes, one repo
 
@@ -175,6 +180,9 @@ Docker-spawned, makes that impossible by construction — not by convention.
    process per transcript is enforced by
    `SessionLifecycleService::agent_session_id_already_live()`, which counts
    headless sessions as live, and by the per-conversation resume lock.
+   A headless process renders no status line, so the manager writes each
+   `rate_limit_event` into the per-account quota state itself, through
+   `QuotaLiveStateWriter` (the same merge rule the statusLine script uses).
 5. `App\Views\*` (one render class per feature area — `TranscriptView`,
    `SessionRowView`, `BlockedPromptView`, `QuotaFooterView`,
    `HealthBoxView`, `PushNotifyView`, plus `PageView` for the two full-page

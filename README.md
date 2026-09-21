@@ -118,8 +118,9 @@ an `AskUserQuestion` are the deliberate pane-based exceptions because Claude's
 hook payload does not contain enough UI state. Bare-process discovery and
 **Take over** are currently Claude-only.
 
-Claude quota data is captured when Claude renders its configured status line;
-it can show unavailable until at least one session has rendered that line.
+Claude quota data is captured when a tmux session renders its configured status
+line and, for headless sessions, from the rate-limit events the manager sees; it
+can show unavailable until either has run once.
 
 **Multiple accounts:** to run sessions under more than one Claude account
 (e.g. a separate work login), add named profiles to

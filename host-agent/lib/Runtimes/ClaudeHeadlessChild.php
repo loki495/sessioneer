@@ -65,6 +65,9 @@ final class ClaudeHeadlessChild
     /** @var array<string, array{client: resource, deadline: float}> control_request id => client awaiting the control_response */
     public array $controlWaiters = [];
 
+    /** The Claude account (agents.php profile name) this child runs under; null is the default account. */
+    public ?string $profile = null;
+
     /** Permission mode (Claude's own vocabulary) the manager asked for at spawn, to verify against init. */
     public ?string $requestedMode = null;
 

@@ -24,6 +24,8 @@ require_once __DIR__ . '/lib/claude_headless.php';
 
 use HostAgent\Agents\ClaudeCodeAdapter;
 use HostAgent\Runtimes\ClaudeHeadlessManagerClient;
+use HostAgent\Services\Config;
+use HostAgent\Stores\GlobalStateStore;
 use HostAgent\Stores\SessionStatusStore;
 use HostAgent\Stores\SidecarStore;
 
@@ -33,6 +35,14 @@ $root = sys_get_temp_dir() . '/sessioneer-test-claude-headless-' . getmypid();
 if ((string)getenv('SIDECAR_DIR') === '') {
     putenv('SIDECAR_DIR=' . $root . '/sidecars');
     @mkdir($root . '/sidecars', 0700, true);
+}
+
+$realPushSqliteFile = Config::push_sqlite_path();
+putenv('PUSH_SQLITE_FILE=' . $root . '/push.sqlite');
+
+if (Config::push_sqlite_path() === $realPushSqliteFile) {
+    fwrite(STDERR, "REFUSING TO RUN: PUSH_SQLITE_FILE resolves to the real host state file.\n");
+    exit(1);
 }
 
 /** @var array<int, array{proc: resource, sock: string, log: string, fake: string}> $managers */
@@ -180,6 +190,12 @@ assert_equal('claude-fake-1', $status['model'], 'the model from init is recorded
 assert_equal(null, $status['last_turn_error'], 'a successful turn leaves no error');
 assert_true(is_array($status['token_usage']), 'result usage is recorded');
 assert_equal('running', process_of($m1, $sn(1)), 'the process is now running');
+
+$quota = wait_until(static fn (): array|false => GlobalStateStore::read(Config::quota_live_state_key()) ?? false);
+assert_true(is_array($quota), 'the turn\'s rate_limit_event is written to the dashboard quota state (a headless child renders no status line)');
+assert_equal(['pct' => 25, 'resets_at' => 1], $quota['session'] ?? null, 'the five_hour window becomes the session bucket, utilization 0..1 as a percentage');
+assert_equal(['pct' => 10, 'resets_at' => 2], $quota['week_all'] ?? null, 'the seven_day window becomes the week_all bucket');
+assert_true(is_int($quota['captured_at'] ?? null) && abs(time() - $quota['captured_at']) < 60, 'stamped as captured just now');
 
 $sidecar = SidecarStore::read_sidecar($sn(1));
 assert_true(is_string($sidecar['agent_session_id']) && $sidecar['agent_session_id'] !== '', 'the assigned Claude session id is written to the sidecar');
@@ -444,6 +460,32 @@ call($m5, 'sessioneer/sendInput', ['session' => $sn(40), 'content' => 'OVERAGE h
 assert_true((bool)wait_until(static fn (): bool => call($m5, 'sessioneer/health')['spawn_blocked'] !== null), 'an overage-in-use rate-limit event blocks new spawns');
 assert_contains('overage', (string)call($m5, 'sessioneer/health')['spawn_blocked'], 'and says why');
 assert_contains('Spawning is disabled', (string)(call($m5, 'sessioneer/sendInput', ['session' => $sn(41), 'content' => 'hi'])['message'] ?? ''), 'a new session is refused');
+assert_equal(50, GlobalStateStore::read(Config::quota_live_state_key())['session']['pct'] ?? null, 'a higher reading within the same window replaces the stored one');
+
+echo "Quota: per-account keys, merge rule, unusable windows\n";
+$m8 = start_manager($root, 'm8');
+$capturedBefore = GlobalStateStore::read(Config::quota_live_state_key())['captured_at'] ?? null;
+make_session($root, $sn(70));
+call($m8, 'sessioneer/sendInput', ['session' => $sn(70), 'content' => 'lower reading']);
+assert_true((bool)wait_until(static fn (): bool => has_result($m8, 'echo: lower reading') && status_is($sn(70), 'idle')), 'a normal turn runs');
+$afterLower = GlobalStateStore::read(Config::quota_live_state_key());
+assert_equal(50, $afterLower['session']['pct'] ?? null, 'a LOWER reading within the same window (another session\'s stale view) does not move the figure backward');
+assert_true(($afterLower['captured_at'] ?? 0) >= $capturedBefore, 'while the capture time still advances');
+
+make_session($root, $sn(71), ['profile' => 'work']);
+call($m8, 'sessioneer/sendInput', ['session' => $sn(71), 'content' => 'work account turn']);
+$work = wait_until(static fn (): array|false => GlobalStateStore::read(Config::quota_live_state_key('work')) ?? false);
+assert_true(is_array($work), 'a session on another account writes that account\'s own quota key');
+assert_equal(25, $work['session']['pct'] ?? null, 'with its own reading');
+assert_equal(50, GlobalStateStore::read(Config::quota_live_state_key())['session']['pct'] ?? null, 'and leaves the default account\'s reading alone');
+
+$workBefore = GlobalStateStore::read(Config::quota_live_state_key('work'));
+usleep(1100000);
+wait_until(static fn (): bool => status_is($sn(71), 'idle'));
+call($m8, 'sessioneer/sendInput', ['session' => $sn(71), 'content' => 'QUOTAJUNK now']);
+assert_true((bool)wait_until(static fn (): bool => has_result($m8, 'echo: QUOTAJUNK now') && status_is($sn(71), 'idle')), 'a turn whose rate_limit_event has unusable windows still completes');
+assert_equal($workBefore, GlobalStateStore::read(Config::quota_live_state_key('work')), 'and writes nothing (no bogus bucket, no fresh capture time)');
+assert_true(!str_contains((string)file_get_contents($m8['log']), 'unexpected error'), 'without an unexpected error in the manager');
 
 // ============================================ stop escalation, real restart
 

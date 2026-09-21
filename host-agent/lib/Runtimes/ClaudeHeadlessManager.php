@@ -7,6 +7,7 @@ namespace HostAgent\Runtimes;
 use HostAgent\Agents\ClaudeCodeAdapter;
 use HostAgent\Services\Config;
 use HostAgent\Services\PermissionMode;
+use HostAgent\Services\QuotaLiveStateWriter;
 use HostAgent\Stores\SessionStatusStore;
 use HostAgent\Stores\SidecarStore;
 
@@ -757,6 +758,7 @@ final class ClaudeHeadlessManager
 
         $realMode = is_string($mode) ? (array_flip(PermissionMode::HOOK_PERMISSION_MODE_MAP)[$mode] ?? null) : null;
         $child->requestedMode = $realMode;
+        $child->profile = $profile;
         $this->children[$session] = $child;
 
         if ($spec['assigned_id'] !== null && $spec['assigned_id'] !== $existingId) {
@@ -923,7 +925,7 @@ final class ClaudeHeadlessManager
         } elseif ($type === 'result') {
             $this->on_result($child, $event);
         } elseif ($type === 'rate_limit_event') {
-            $this->on_rate_limit($event);
+            $this->on_rate_limit($child, $event);
         }
         // assistant / user / conversation_reset / unknown types: nothing to do
         // (the transcript file is the history; the next `init` carries any new id).
@@ -1103,7 +1105,7 @@ final class ClaudeHeadlessManager
     }
 
     /** @param array<string, mixed> $event */
-    private function on_rate_limit(array $event): void
+    private function on_rate_limit(ClaudeHeadlessChild $child, array $event): void
     {
         $info = is_array($event['rate_limit_info'] ?? null) ? $event['rate_limit_info'] : [];
         $windows = is_array($info['unifiedWindows'] ?? null) ? $info['unifiedWindows'] : [];
@@ -1119,6 +1121,32 @@ final class ClaudeHeadlessManager
             $this->spawnBlockedReason = 'Claude reports pay-as-you-go overage is in use; disable overage or wait for the limit window, then restart the manager';
             $this->log($this->spawnBlockedReason);
         }
+
+        // A headless child renders no status line, so the dashboard's quota
+        // footer (fed by the statusLine script for TUI sessions) would freeze
+        // without this. Same store, same merge rule, keyed by the child's own account.
+        $fiveHour = self::quota_bucket($windows['five_hour'] ?? null);
+        $sevenDay = self::quota_bucket($windows['seven_day'] ?? null);
+
+        if ($fiveHour !== null || $sevenDay !== null) {
+            QuotaLiveStateWriter::record($child->profile, $fiveHour, $sevenDay);
+        }
+    }
+
+    /**
+     * One `unifiedWindows` entry ({utilization: 0..1 fraction, resetsAt:
+     * epoch}, captured v2.1.278) as the {used_percentage, resets_at} bucket
+     * QuotaLiveStateWriter merges; null when either field is unusable.
+     *
+     * @return array{used_percentage: float, resets_at: int}|null
+     */
+    private static function quota_bucket(mixed $window): ?array
+    {
+        if (!is_array($window) || !is_numeric($window['utilization'] ?? null) || !is_int($window['resetsAt'] ?? null)) {
+            return null;
+        }
+
+        return ['used_percentage' => (float)$window['utilization'] * 100, 'resets_at' => $window['resetsAt']];
     }
 
     /**

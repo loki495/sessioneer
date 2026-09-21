@@ -90,8 +90,10 @@ a daemon-managed worker kills both halves of the pair (not just the one
 clicked) and resumes into the real project cwd. A row this can't identify
 with certainty still falls back to the pre-existing closest-start-time
 heuristic, clearly labeled as a guess. Model and permission-mode changes
-drive Claude's own pickers. Quota comes from the status-line JSON marker and
-will be unavailable until Claude renders that status line at least once.
+drive Claude's own pickers. Quota comes from the status-line JSON marker of
+tmux sessions and from the rate-limit events of headless sessions (a headless
+process renders no status line); both write the same per-account state through
+one merge rule, and it is unavailable until either has run once.
 
 Claude Code alone also supports multiple accounts ("profiles") - a session can
 be spawned under a different `CLAUDE_CONFIG_DIR` (e.g. a separate work
@@ -117,6 +119,7 @@ Implementation entry points:
 - `host-agent/lib/Services/TranscriptService.php`
 - `host-agent/config/agents.php` (profile definitions)
 - `host-agent/lib/Services/QuotaService.php` (per-account quota)
+- `host-agent/lib/Services/QuotaLiveStateWriter.php` (merges both quota writers' readings)
 - `src/lib/Views/SessionRowView.php` (account badge)
 
 ## Antigravity implementation

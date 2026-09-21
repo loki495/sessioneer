@@ -20,6 +20,7 @@ declare(strict_types=1);
  *   OVERAGE     emit a rate_limit_event that says overage is in use
  *   GARBAGE     write a non-JSON line, an event of an unknown type and a JSON
  *               line split across two writes, then finish the turn normally
+ *   QUOTAJUNK   emit a rate_limit_event whose windows are unusable, then echo
  *   AUTHFAIL    end the turn with an is_error result saying the login expired
  *               (SYNTHETIC: the real text was never captured; the manager must
  *               only depend on is_error/result/terminal_reason, per research #280)
@@ -241,6 +242,11 @@ while (true) {
         emit(['type' => 'rate_limit_event', 'rate_limit_info' => [
             'status' => 'allowed', 'rateLimitType' => 'five_hour', 'isUsingOverage' => true,
             'unifiedWindows' => ['five_hour' => ['utilization' => 0.5, 'resetsAt' => 1], 'seven_day' => ['utilization' => 0.1, 'resetsAt' => 2]],
+        ]]);
+    } elseif (str_contains($text, 'QUOTAJUNK')) {
+        emit(['type' => 'rate_limit_event', 'rate_limit_info' => [
+            'status' => 'allowed', 'rateLimitType' => 'five_hour', 'isUsingOverage' => false,
+            'unifiedWindows' => ['five_hour' => ['utilization' => 'lots', 'resetsAt' => 'soon'], 'seven_day' => null],
         ]]);
     } else {
         emit(['type' => 'rate_limit_event', 'rate_limit_info' => [
