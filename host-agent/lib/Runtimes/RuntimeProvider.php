@@ -133,4 +133,32 @@ interface RuntimeProvider
      * @return array{ok:bool, message?:string}
      */
     public function answer_prompt(string $sessionRef, array $answers): array;
+
+    /**
+     * Stops the session's current turn (tmux: Escape; headless: the agent's
+     * own interrupt). The session stays usable afterwards.
+     *
+     * @return array{ok:bool, message?:string}
+     */
+    public function interrupt(string $sessionRef): array;
+
+    /**
+     * Applies model settings to the session's NEXT turns. Every argument is
+     * optional because agents differ in what they accept: $provider only
+     * matters to OpenCode, $effort only to Codex; a runtime ignores what it
+     * has no use for, and answers with a handled failure when nothing it
+     * understands was supplied.
+     *
+     * @return array{ok:bool, message?:string}
+     */
+    public function update_settings(string $sessionRef, ?string $model = null, ?string $effort = null, ?string $provider = null): array;
+
+    /**
+     * Changes the session's permission mode, in Sessioneer's own vocabulary
+     * (manual / accept edits / plan / auto). A runtime with no live mode
+     * switch answers with a handled failure, never a throw.
+     *
+     * @return array{ok:bool, message?:string}
+     */
+    public function set_mode(string $sessionRef, string $mode): array;
 }
