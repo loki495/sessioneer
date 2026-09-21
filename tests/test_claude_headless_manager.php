@@ -20,6 +20,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/lib/assert.php';
+require_once __DIR__ . '/lib/claude_headless.php';
 
 use HostAgent\Agents\ClaudeCodeAdapter;
 use HostAgent\Runtimes\ClaudeHeadlessManagerClient;
@@ -59,105 +60,6 @@ register_shutdown_function(static function () use (&$managers, &$madeSessions, $
 });
 
 // ---------------------------------------------------------------- helpers
-
-/** @param array<string, string> $env @return array{proc: resource, sock: string, log: string, fake: string} */
-function start_manager(string $root, string $name, array $env = []): array
-{
-    global $managers;
-
-    $sock = "{$root}/{$name}.sock";
-    $log = "{$root}/{$name}.manager.log";
-    $fake = "{$root}/{$name}.fake.log";
-    $env = array_merge(getenv(), [
-        'CLAUDE_BIN' => __DIR__ . '/fixtures/fake_claude_stream',
-        'HOME_ROOT' => $root . '/home',
-        'CLAUDE_HEADLESS_SOCKET' => $sock,
-        'CLAUDE_HEADLESS_IDLE_SECONDS' => '0',
-        'CLAUDE_HEADLESS_MAX_CHILDREN' => '6',
-        'CLAUDE_HEADLESS_STOP_GRACE_SECONDS' => '3',
-        'FAKE_CLAUDE_LOG' => $fake,
-        // Deliberately present: the manager must strip all three from its children.
-        'ANTHROPIC_API_KEY' => 'sk-leak-test',
-        'ANTHROPIC_AUTH_TOKEN' => 'tok-leak-test',
-        'SESSIONEER_SESSION_NAME' => 'leak',
-    ], $env);
-
-    $proc = proc_open(
-        [PHP_BINARY, dirname(__DIR__) . '/host-agent/claude_headless_manager.php'],
-        [0 => ['pipe', 'r'], 1 => ['file', $log, 'a'], 2 => ['file', $log, 'a']],
-        $pipes,
-        null,
-        $env
-    );
-
-    if (!is_resource($proc)) {
-        fwrite(STDERR, "cannot start manager {$name}\n");
-        exit(1);
-    }
-
-    $m = ['proc' => $proc, 'sock' => $sock, 'log' => $log, 'fake' => $fake];
-    $managers[] = $m;
-    wait_until(static fn (): bool => file_exists($sock), 5.0);
-
-    return $m;
-}
-
-function pid_alive(int $pid): bool
-{
-    $status = @file_get_contents("/proc/{$pid}/status");
-
-    return $status !== false && preg_match('/^State:\s+Z/m', $status) !== 1;
-}
-
-/** @return mixed the first truthy return of $fn, or false on timeout */
-function wait_until(callable $fn, float $timeout = 8.0): mixed
-{
-    $deadline = microtime(true) + $timeout;
-
-    do {
-        $value = $fn();
-
-        if ($value) {
-            return $value;
-        }
-
-        usleep(40000);
-    } while (microtime(true) < $deadline);
-
-    return false;
-}
-
-/** @return array<int, array<string, mixed>> */
-function fake_log(array $m): array
-{
-    $rows = [];
-
-    foreach (@file($m['fake'], FILE_IGNORE_NEW_LINES) ?: [] as $line) {
-        $decoded = json_decode($line, true);
-
-        if (is_array($decoded)) {
-            $rows[] = $decoded;
-        }
-    }
-
-    return $rows;
-}
-
-function fake_results(array $m): array
-{
-    return array_values(array_map(static fn (array $r): string => (string)$r['result'], array_filter(fake_log($m), static fn (array $r): bool => isset($r['result']))));
-}
-
-function has_result(array $m, string $needle): bool
-{
-    foreach (fake_results($m) as $text) {
-        if (str_contains($text, $needle)) {
-            return true;
-        }
-    }
-
-    return false;
-}
 
 /** @param array<string, mixed> $over */
 function make_session(string $root, string $name, array $over = []): string
@@ -266,6 +168,20 @@ assert_true(status_is($sn(90), 'idle') && SessionStatusStore::read_status($sn(90
 assert_contains('restarted', (string)SessionStatusStore::read_status($sn(90))['last_turn_error'], 'the reset explains why');
 assert_true(status_is($sn(91), 'idle'), 'a headless session left working is reset to idle');
 assert_true(SessionStatusStore::read_status($tmuxName)['status'] === 'blocked', 'a same-agent TMUX session is left alone');
+
+// A brand-new install starts the service before anything has ever touched the
+// session database. Its stale-state reset must not depend on the schema having
+// been migrated already (regression: "no such column: runtime" crash loop).
+$freshDir = $root . '/fresh-db';
+@mkdir($freshDir, 0700, true);
+$fresh = start_manager($root, 'fresh', ['SIDECAR_DIR' => $freshDir]);
+$freshHealth = wait_until(static function () use ($fresh): array|false {
+    $reply = @stream_socket_client('unix://' . $fresh['sock'], $errno, $err, 0.5) ? call($fresh, 'sessioneer/health') : [];
+
+    return ($reply['ok'] ?? false) === true ? $reply : false;
+}, 5.0);
+assert_true(is_array($freshHealth), 'a manager starts and answers on a completely fresh session database');
+proc_terminate($fresh['proc'], SIGTERM);
 
 $second = start_manager($root, 'dup', ['CLAUDE_HEADLESS_SOCKET' => $m1['sock']]);
 $exitCode = null;

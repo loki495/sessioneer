@@ -231,6 +231,10 @@ class SessionStatusStore
      */
     public static function reset_stale_for_runtime(string $agent, string $runtime, string $message): int
     {
+        // The subquery below reads sidecars.agent/runtime, columns only
+        // SidecarStore migrates in; a fresh database would not have them yet.
+        SidecarStore::ensure_schema();
+
         $stmt = self::db()->prepare(
             "UPDATE session_status
              SET status = 'idle', blocked_json = NULL, last_turn_error = :message, updated_at = :updated_at

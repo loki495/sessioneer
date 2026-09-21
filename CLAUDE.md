@@ -146,8 +146,18 @@ Docker-spawned, makes that impossible by construction — not by convention.
    them. Protocol and design records live in Dibs (plan #269, research
    #280, decision #282); `tests/fixtures/claude_stream_json_*_v2_1_278.ndjson`
    are the captured stream-json events and `tests/fixtures/fake_claude_stream`
-   is the scripted stand-in the tests drive. The runtime wiring itself
-   (`ClaudeHeadlessRuntime`) is still in progress.
+   is the scripted stand-in the tests drive. `ClaudeHeadlessRuntime` is the
+   `RuntimeProvider` face of it: a `create` request with `runtime=headless`
+   selects it (tmux stays the default), its refs are
+   `claude-headless-<timestamp>` (`HeadlessSessionName` - the pattern for any
+   agent's headless sessions is `<agent>-headless-*`), and it derives the
+   dashboard row, prompts and answers from the sidecar, the status store and
+   the transcript file, never a pane (`ClaudeHeadlessPromptProtocol` reuses
+   the same `PromptParser` option builders/classifier as the hook-fed tmux
+   path). `RuntimeProvider` also carries `interrupt()`, `update_settings()`
+   and `set_mode()`, so `Sessions.php` routes those through the interface
+   instead of per-agent branches. The New Session runtime picker and
+   resume-as-headless are still to do.
 5. `App\Views\*` (one render class per feature area — `TranscriptView`,
    `SessionRowView`, `BlockedPromptView`, `QuotaFooterView`,
    `HealthBoxView`, `PushNotifyView`, plus `PageView` for the two full-page

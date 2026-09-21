@@ -51,6 +51,18 @@ class SidecarStore
     }
 
     /**
+     * Makes sure the `sidecars` table exists WITH every migrated column.
+     * Another store that queries `sidecars` directly (a join, a subquery) must
+     * call this first: on a fresh database only this store adds the columns
+     * beyond the base schema, so such a query can otherwise hit "no such
+     * column" whenever it happens to run before any SidecarStore method.
+     */
+    public static function ensure_schema(): void
+    {
+        self::db();
+    }
+
+    /**
      * @return array{workdir:?string, spawned_at:?int, agent_session_id?:?string, spawned_by_app?:bool, agent?:?string, runtime?:?string, title?:?string, profile?:?string}|null
      */
     public static function read_sidecar(string $sessionName): ?array

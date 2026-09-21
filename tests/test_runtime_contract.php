@@ -20,7 +20,7 @@ use HostAgent\Runtimes\CodexHeadlessRuntime;
 
 // --- supported runtimes per agent ---
 $cases = [
-    'claude' => [RuntimeType::TMUX],
+    'claude' => [RuntimeType::TMUX, RuntimeType::HEADLESS],
     'antigravity' => [RuntimeType::TMUX],
     'opencode' => [RuntimeType::HEADLESS, RuntimeType::TMUX],
     'codex' => [RuntimeType::HEADLESS],
@@ -68,10 +68,9 @@ assert_true(
 );
 
 // --- runtime_for returns null for an agent+runtime it doesn't support ---
-assert_equal(
-    null,
-    RuntimeRegistry::runtime_for('claude', RuntimeType::HEADLESS),
-    'claude+headless resolves to null (claude has no headless session runtime)'
+assert_true(
+    RuntimeRegistry::runtime_for('claude', RuntimeType::HEADLESS) instanceof \HostAgent\Runtimes\ClaudeHeadlessRuntime,
+    'claude+headless resolves to ClaudeHeadlessRuntime'
 );
 assert_equal(
     null,
