@@ -187,6 +187,9 @@ Docker-spawned, makes that impossible by construction — not by convention.
    `sessioneer_sessions_for_push()` - the dashboard's own merge - so any
    new headless agent's rows must be handled in
    `sessioneer_merge_headless_sessions()` or push will misread them.
+   `ClaudeHeadlessHealthService` is the "Claude Code headless" health-box
+   section (service, spawn guard, credential, version, capacity, quota
+   freshness).
 5. `App\Views\*` (one render class per feature area — `TranscriptView`,
    `SessionRowView`, `BlockedPromptView`, `QuotaFooterView`,
    `HealthBoxView`, `PushNotifyView`, plus `PageView` for the two full-page

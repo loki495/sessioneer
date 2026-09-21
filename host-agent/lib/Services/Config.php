@@ -243,6 +243,12 @@ class Config
         return self::sessioneer_config('CLAUDE_HEADLESS_SOCKET', '/run/user/' . getmyuid() . '/sessioneer-claude-headless.sock');
     }
 
+    /** systemd user unit that runs the headless manager (overridable so tests never query the real one). */
+    public static function claude_headless_unit_name(): string
+    {
+        return self::sessioneer_config('CLAUDE_HEADLESS_UNIT_NAME', 'sessioneer-claude-headless-manager.service');
+    }
+
     /** Seconds a headless Claude child may sit idle before it is stopped (0 = never). */
     public static function claude_headless_idle_seconds(): int
     {

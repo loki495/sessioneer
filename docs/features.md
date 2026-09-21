@@ -114,6 +114,15 @@ The push-check timer lists headless Claude sessions through the same code path
 as the dashboard, so a headless session waiting on a prompt notifies with the
 prompt itself.
 
+The dashboard health box has a "Claude Code headless" section: the CLI path,
+the manager service and its socket, whether the billing guardrail has stopped new
+sessions and why, that the credential in use is the claude.ai login (never an
+API key), the Claude Code version against the one the handling was verified on
+(older is a problem, newer is noted), how many of the allowed processes are
+running, and whether the quota footer is keeping up with what the manager sees.
+The per-account hook checks in the "Claude Code" sections apply to tmux and
+hand-started sessions only.
+
 Implementation entry points:
 
 - `host-agent/lib/Agents/ClaudeCodeAdapter.php`
@@ -124,6 +133,7 @@ Implementation entry points:
 - `host-agent/config/agents.php` (profile definitions)
 - `host-agent/lib/Services/QuotaService.php` (per-account quota)
 - `host-agent/lib/Services/QuotaLiveStateWriter.php` (merges both quota writers' readings)
+- `host-agent/lib/Services/ClaudeHeadlessHealthService.php` (headless health-box checks)
 - `src/lib/Views/SessionRowView.php` (account badge)
 
 ## Antigravity implementation

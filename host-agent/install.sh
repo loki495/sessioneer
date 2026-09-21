@@ -21,15 +21,24 @@ if [ ! -f "$SCRIPT_DIR/.env" ]; then
     echo "least - see below) before this actually works."
 fi
 
-# CLAUDE_BIN has no safe default (see Config::claude_bin()) - it's the one
-# thing install.sh genuinely can't infer, so check it explicitly rather
-# than letting a fresh install silently fail later with a confusing "no
-# such file" the first time a session is actually created.
+# CLAUDE_BIN has no safe default (see Config::claude_bin()), but PATH is a
+# reasonable place to find it: record what `command -v claude` resolves to
+# (the same way CODEX_BIN is recorded below), so the headless manager gets
+# installed on a fresh setup instead of silently staying off. Only warn when
+# there is genuinely nothing to record.
 if ! grep -qE '^CLAUDE_BIN=\S' "$SCRIPT_DIR/.env" 2>/dev/null; then
-    echo
-    echo "WARNING: CLAUDE_BIN is not set in $SCRIPT_DIR/.env - New Session"
-    echo "will fail until it is. Run \`which claude\` and set it, e.g.:"
-    echo "  CLAUDE_BIN=$(command -v claude 2>/dev/null || echo '/path/to/claude')"
+    DETECTED_CLAUDE_BIN="$(command -v claude 2>/dev/null || true)"
+
+    if [ -n "$DETECTED_CLAUDE_BIN" ]; then
+        printf '\nCLAUDE_BIN=%s\n' "$DETECTED_CLAUDE_BIN" >> "$SCRIPT_DIR/.env"
+        echo
+        echo "CLAUDE_BIN not set in $SCRIPT_DIR/.env - recorded $DETECTED_CLAUDE_BIN (from PATH)."
+    else
+        echo
+        echo "WARNING: CLAUDE_BIN is not set in $SCRIPT_DIR/.env and no 'claude' is on PATH -"
+        echo "New Session will fail until it is. Run \`which claude\` and set it, e.g.:"
+        echo "  CLAUDE_BIN=/path/to/claude"
+    fi
 fi
 
 # The systemd unit files are checked in as templates (@REPO_ROOT@/
@@ -155,6 +164,14 @@ fi
 # per-process host agent over a UNIX socket, like the Codex bridge above. It
 # needs CLAUDE_BIN and is an idle no-op until a headless session is created;
 # tmux Claude sessions are unaffected either way.
+# Without pcntl the manager cannot catch SIGTERM, so a `systemctl stop` would
+# kill it before it could close its children gracefully.
+if ! "$PHP_BIN" -r 'exit(function_exists("pcntl_async_signals") ? 0 : 1);'; then
+    echo
+    echo "WARNING: $PHP_BIN has no pcntl extension - the Claude headless manager will run,"
+    echo "but cannot stop its sessions gracefully on shutdown. Enable pcntl for this PHP."
+fi
+
 if grep -qE '^CLAUDE_BIN=\S' "$SCRIPT_DIR/.env" 2>/dev/null; then
     render_unit sessioneer-claude-headless-manager.service
     systemctl --user daemon-reload

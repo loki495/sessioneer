@@ -229,7 +229,9 @@ class PushHealthService
      */
     public static function health_check(): array
     {
-        $checks = [];
+        // The Claude sections stay together, the headless one first: the box
+        // shows sections in the order their first check appears here.
+        $checks = ClaudeHeadlessHealthService::checks();
 
         // One "Claude Code" section per configured profile (Config::
         // claude_profiles_to_scan()) - a work account with no hooks
@@ -265,7 +267,8 @@ class PushHealthService
                     'section' => $section,
                     'label' => $hook['event'] . ' hook',
                     'ok' => $settingsOk && $hook['present'],
-                    'detail' => $settingsOk ? null : $settingsMessage,
+                    // Headless sessions get their state in-band from the manager, not from these.
+                    'detail' => $settingsOk ? 'used by tmux and hand-started sessions' : $settingsMessage,
                 ];
             }
         }
