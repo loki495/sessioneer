@@ -18,6 +18,13 @@ declare(strict_types=1);
  *   CLEAR       emit conversation_reset and continue under a NEW session id
  *   APIKEY      report an API key as the credential source
  *   OVERAGE     emit a rate_limit_event that says overage is in use
+ *   GARBAGE     write a non-JSON line, an event of an unknown type and a JSON
+ *               line split across two writes, then finish the turn normally
+ *   AUTHFAIL    end the turn with an is_error result saying the login expired
+ *               (SYNTHETIC: the real text was never captured; the manager must
+ *               only depend on is_error/result/terminal_reason, per research #280)
+ *   STUBBORN    ignore stdin EOF and interrupts, and log (not obey) SIGTERM,
+ *               so only SIGKILL ends it
  *   (anything else) echo the text back
  *
  * Env: FAKE_CLAUDE_LOG=<file> appends one JSON line per process start with
@@ -63,6 +70,16 @@ if (is_string($log) && $log !== '') {
         ],
         'cwd' => getcwd(),
     ]) . "\n", FILE_APPEND);
+}
+
+/** Appends one JSON line to FAKE_CLAUDE_LOG (the tests' view into this process). */
+function log_line(array $row): void
+{
+    $log = getenv('FAKE_CLAUDE_LOG');
+
+    if (is_string($log) && $log !== '') {
+        file_put_contents($log, json_encode($row) . "\n", FILE_APPEND);
+    }
 }
 
 function emit(array $event): void
@@ -119,10 +136,7 @@ function init(): void
 function result(string $text, bool $error = false, string $reason = 'completed'): void
 {
     global $sid;
-    $log = getenv('FAKE_CLAUDE_LOG');
-    if (is_string($log) && $log !== '') {
-        file_put_contents($log, json_encode(['result' => $text]) . "\n", FILE_APPEND);
-    }
+    log_line(['result' => $text]);
     emit([
         'type' => 'result', 'subtype' => $error ? 'error_during_execution' : 'success', 'is_error' => $error,
         'result' => $text, 'terminal_reason' => $reason, 'session_id' => $sid, 'num_turns' => 1,
@@ -233,6 +247,36 @@ while (true) {
             'status' => 'allowed', 'rateLimitType' => 'five_hour', 'isUsingOverage' => false,
             'unifiedWindows' => ['five_hour' => ['utilization' => 0.25, 'resetsAt' => 1], 'seven_day' => ['utilization' => 0.1, 'resetsAt' => 2]],
         ]]);
+    }
+
+    if (str_contains($text, 'GARBAGE')) {
+        echo "this is not json\n";
+        flush();
+        emit(['type' => 'brand_new_event_type', 'payload' => ['x' => 1]]);
+        echo '{"type":"assistant","message":{"role":"assis';
+        flush();
+        usleep(300000);
+        echo "tant\",\"content\":[]}}\n";
+        flush();
+        result('garbage survived');
+        continue;
+    }
+
+    if (str_contains($text, 'AUTHFAIL')) {
+        result('OAuth token has expired - please run /login', true, 'authentication_failed');
+        continue;
+    }
+
+    if (str_contains($text, 'STUBBORN')) {
+        pcntl_async_signals(true);
+        pcntl_signal(SIGTERM, static function (): void {
+            log_line(['signal' => 'SIGTERM']);
+        });
+        emit(['type' => 'assistant', 'message' => ['role' => 'assistant', 'content' => [['type' => 'text', 'text' => 'not stopping']]]]);
+
+        while (true) {
+            usleep(100000);
+        }
     }
 
     if (str_contains($text, 'CLEAR')) {

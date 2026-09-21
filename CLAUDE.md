@@ -38,6 +38,15 @@ happens), but it's genuinely slower and needs the real binary installed,
 so it only ever runs via `--live` — every other flag, including the plain
 default run, always excludes it. See its own header comment for the full
 reasoning.
+`test_claude_headless_live.php` is the second live file: a real
+`ClaudeHeadlessManager` driving the real `claude` (haiku, two short turns, a
+few cents of subscription usage) to prove the stream-json handling and the
+`apiKeySource == 'none'` guarantee still hold on the installed CLI. The
+default suite covers the same manager two other ways with no real process:
+`test_claude_headless_manager.php` against the scripted `fake_claude_stream`,
+and `test_claude_headless_replay.php`, which plays every recorded
+`tests/fixtures/claude_stream_json_*.ndjson` capture back through the manager
+via `fake_claude_replay`.
 
 To exercise a single area, run that one `tests/test_*.php` file directly
 with `php` rather than the whole suite (check its own header comment for

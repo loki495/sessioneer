@@ -1,0 +1,112 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+
+/**
+ * Replays a captured Claude Code stream-json stdout (tests/fixtures/
+ * claude_stream_json_*_v2_1_278.ndjson) to ClaudeHeadlessManager, so the
+ * manager's event handling is exercised against what the real CLI actually
+ * emitted rather than only against hand-scripted events. Never touches the
+ * network, never costs anything.
+ *
+ * Env: FAKE_CLAUDE_REPLAY=<fixture file> (required)
+ *      FAKE_CLAUDE_LOG=<file>  one JSON line per answer received, and a
+ *                              {"replay_done": true} line after the last fixture line
+ *
+ * On the FIRST user message it writes the fixture's lines in order. After each
+ * can_use_tool control_request it stops and waits for the manager's
+ * control_response (like the real CLI, which stalls the turn until answered),
+ * logs it as {"replay_answer": <response>} and carries on. Every other stdin
+ * message is ignored: the fixture already contains the whole conversation.
+ * EOF on stdin ends the process, like the real CLI.
+ */
+
+$fixture = getenv('FAKE_CLAUDE_REPLAY');
+
+if (!is_string($fixture) || !is_file($fixture)) {
+    fwrite(STDERR, "fake_claude_replay: FAKE_CLAUDE_REPLAY does not name a fixture file\n");
+    exit(2);
+}
+
+$log = getenv('FAKE_CLAUDE_LOG');
+
+function log_row(array $row): void
+{
+    global $log;
+
+    if (is_string($log) && $log !== '') {
+        file_put_contents($log, json_encode($row) . "\n", FILE_APPEND);
+    }
+}
+
+/** Next decoded stdin line; null on timeout; exits on EOF. */
+function next_message(float $timeout): ?array
+{
+    static $buffer = '';
+
+    while (true) {
+        if (($nl = strpos($buffer, "\n")) !== false) {
+            $line = substr($buffer, 0, $nl);
+            $buffer = substr($buffer, $nl + 1);
+            $decoded = json_decode($line, true);
+
+            return is_array($decoded) ? $decoded : null;
+        }
+
+        $read = [STDIN];
+        $write = $except = null;
+        $sec = (int)$timeout;
+        $ready = @stream_select($read, $write, $except, $sec, (int)(($timeout - $sec) * 1e6));
+
+        if ($ready === 0 || $ready === false) {
+            return null;
+        }
+
+        $chunk = fread(STDIN, 65536);
+
+        if ($chunk === '' || $chunk === false) {
+            exit(0);
+        }
+
+        $buffer .= $chunk;
+    }
+}
+
+$started = false;
+
+while (true) {
+    $msg = next_message(1.0);
+
+    if ($msg === null || $started || ($msg['type'] ?? '') !== 'user') {
+        continue;
+    }
+
+    $started = true;
+
+    foreach (file($fixture, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+        echo $line, "\n";
+        flush();
+
+        $event = json_decode($line, true);
+
+        if (!is_array($event) || ($event['type'] ?? '') !== 'control_request' || ($event['request']['subtype'] ?? '') !== 'can_use_tool') {
+            continue;
+        }
+
+        $deadline = microtime(true) + 30;
+
+        while (microtime(true) < $deadline) {
+            $answer = next_message(0.2);
+
+            if ($answer !== null && ($answer['type'] ?? '') === 'control_response') {
+                log_row(['replay_answer' => $answer['response'] ?? null]);
+                continue 2;
+            }
+        }
+
+        log_row(['replay_timeout' => $event['request_id'] ?? null]);
+        exit(4);
+    }
+
+    log_row(['replay_done' => true]);
+}

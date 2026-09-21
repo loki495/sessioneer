@@ -59,61 +59,6 @@ register_shutdown_function(static function () use (&$managers, &$madeSessions, $
     exec('rm -rf ' . escapeshellarg($root));
 });
 
-// ---------------------------------------------------------------- helpers
-
-/** @param array<string, mixed> $over */
-function make_session(string $root, string $name, array $over = []): string
-{
-    global $madeSessions;
-    $madeSessions[] = $name;
-
-    $workdir = $over['workdir'] ?? "{$root}/work/{$name}";
-
-    if (!isset($over['workdir'])) {
-        @mkdir($workdir, 0700, true);
-    }
-
-    SidecarStore::write_sidecar($name, array_merge([
-        'workdir' => $workdir, 'spawned_at' => time(), 'agent_session_id' => null,
-        'spawned_by_app' => true, 'agent' => 'claude', 'runtime' => 'headless', 'title' => null, 'profile' => null,
-    ], $over));
-
-    return (string)$workdir;
-}
-
-function client(array $m): ClaudeHeadlessManagerClient
-{
-    return new ClaudeHeadlessManagerClient($m['sock'], 30);
-}
-
-/** @return array<string, mixed> */
-function call(array $m, string $method, array $params = []): array
-{
-    return client($m)->request($method, $params);
-}
-
-function status_is(string $name, string $status): bool
-{
-    return (SessionStatusStore::read_status($name)['status'] ?? null) === $status;
-}
-
-function process_of(array $m, string $name): string
-{
-    return (string)(call($m, 'sessioneer/status', ['session' => $name])['process'] ?? '?');
-}
-
-/** Sends raw bytes as one request line and returns the decoded reply. @return array<string, mixed> */
-function raw_request(array $m, string $line): array
-{
-    $sock = stream_socket_client('unix://' . $m['sock'], $errno, $err, 2.0);
-    fwrite($sock, $line . "\n");
-    stream_set_timeout($sock, 5);
-    $reply = json_decode((string)fgets($sock), true);
-    fclose($sock);
-
-    return is_array($reply) ? $reply : [];
-}
-
 // Unique per run: the sidecar/status DB can be a fixture path shared between
 // runs, and the manager deliberately re-applies a session's last known mode,
 // so reused names would leak state from one run into the next.
@@ -122,6 +67,7 @@ $sn = static fn (int $i): string => sprintf('claude-headless-t%s-%06d', $runTag,
 $tmuxName = 'cc-tmux-t' . $runTag;
 $codexName = 'codex-headless-t' . $runTag;
 $missingName = 'claude-headless-t' . $runTag . '-missing';
+$restartMessage = 'Claude headless manager restarted while this session was busy; retry the interrupted turn.';
 
 // ============================================================ adapter argv
 
@@ -165,7 +111,7 @@ SessionStatusStore::update_status($tmuxName, ['status' => 'blocked', 'blocked' =
 $m1 = start_manager($root, 'm1');
 assert_true(file_exists($m1['sock']), 'manager binds its socket');
 assert_true(status_is($sn(90), 'idle') && SessionStatusStore::read_status($sn(90))['blocked'] === null, 'a headless session left blocked by a dead manager is reset to idle');
-assert_contains('restarted', (string)SessionStatusStore::read_status($sn(90))['last_turn_error'], 'the reset explains why');
+assert_equal($restartMessage, SessionStatusStore::read_status($sn(90))['last_turn_error'], 'the reset explains why, in the documented wording');
 assert_true(status_is($sn(91), 'idle'), 'a headless session left working is reset to idle');
 assert_true(SessionStatusStore::read_status($tmuxName)['status'] === 'blocked', 'a same-agent TMUX session is left alone');
 
@@ -377,6 +323,46 @@ call($m1, 'sessioneer/sendInput', ['session' => $sn(5), 'content' => 'hi again']
 wait_until(static fn (): bool => has_result($m1, 'echo: hi again') && status_is($sn(5), 'idle'));
 assert_equal(null, SessionStatusStore::read_status($sn(5))['last_turn_error'], 'once the mode is changed on purpose the warning is gone');
 
+echo "Failure: stdout noise, auth failure, death with a prompt open\n";
+make_session($root, $sn(6));
+call($m1, 'sessioneer/sendInput', ['session' => $sn(6), 'content' => 'GARBAGE please']);
+assert_true((bool)wait_until(static fn (): bool => has_result($m1, 'garbage survived') && status_is($sn(6), 'idle')), 'a turn with non-JSON, unknown-type and split-across-writes stdout lines still completes');
+$managerLog = (string)file_get_contents($m1['log']);
+assert_contains("{$sn(6)}: ignored 1 non-JSON stdout line(s)", $managerLog, 'the one non-JSON line is logged and skipped');
+assert_true(!str_contains($managerLog, 'ignored 2 non-JSON'), 'a JSON line split across two writes is reassembled, not counted as garbage');
+assert_true(!str_contains($managerLog, 'unexpected error'), 'and the unknown event type is ignored without an exception');
+assert_equal(null, SessionStatusStore::read_status($sn(6))['last_turn_error'], 'the session shows no error');
+assert_equal('running', process_of($m1, $sn(6)), 'and the process was not killed over it');
+call($m1, 'sessioneer/sendInput', ['session' => $sn(6), 'content' => 'still fine']);
+assert_true((bool)wait_until(static fn (): bool => has_result($m1, 'echo: still fine')), 'the session keeps working afterwards');
+call($m1, 'sessioneer/stop', ['session' => $sn(6)]);
+
+make_session($root, $sn(7));
+call($m1, 'sessioneer/sendInput', ['session' => $sn(7), 'content' => 'AUTHFAIL now']);
+assert_true((bool)wait_until(static fn (): bool => status_is($sn(7), 'idle') && SessionStatusStore::read_status($sn(7))['last_turn_error'] !== null), 'an is_error result ends the turn as idle');
+assert_contains('OAuth token has expired', (string)SessionStatusStore::read_status($sn(7))['last_turn_error'], 'and the login problem reaches the session as its error');
+usleep(700000);
+assert_equal(1, count(array_filter(fake_results($m1), static fn (string $r): bool => str_contains($r, 'OAuth token has expired'))), 'nothing retried the failed turn');
+assert_equal('running', process_of($m1, $sn(7)), 'the process is left alone so the user can log in and retry');
+call($m1, 'sessioneer/sendInput', ['session' => $sn(7), 'content' => 'after login']);
+assert_true((bool)wait_until(static fn (): bool => has_result($m1, 'echo: after login') && SessionStatusStore::read_status($sn(7))['last_turn_error'] === null), 'the next successful turn clears the error');
+call($m1, 'sessioneer/stop', ['session' => $sn(7)]);
+
+make_session($root, $sn(8));
+call($m1, 'sessioneer/sendInput', ['session' => $sn(8), 'content' => 'PERMISSION then die']);
+assert_true((bool)wait_until(static fn (): bool => status_is($sn(8), 'blocked')), 'a prompt is open');
+$deadPrompt = call($m1, 'sessioneer/pendingPrompt', ['session' => $sn(8)])['prompt'];
+kill_hard((int)call($m1, 'sessioneer/status', ['session' => $sn(8)])['pid']);
+assert_true((bool)wait_until(static fn (): bool => process_of($m1, $sn(8)) === 'dormant'), 'a child killed while a prompt is open is forgotten');
+$died = SessionStatusStore::read_status($sn(8));
+assert_equal('idle', $died['status'], 'the session is idle, not stuck blocked');
+assert_equal(null, $died['blocked'], 'the dead prompt is cleared from the dashboard state');
+assert_contains('exited unexpectedly', (string)$died['last_turn_error'], 'the session says the process died');
+assert_equal(null, call($m1, 'sessioneer/pendingPrompt', ['session' => $sn(8)])['prompt'], 'no prompt is offered any more');
+assert_contains('no prompt is currently pending', (string)(call($m1, 'sessioneer/answerPrompt', ['session' => $sn(8), 'request_id' => $deadPrompt['request_id'], 'response' => ['behavior' => 'allow']])['message'] ?? ''), 'answering the dead prompt is a handled rejection');
+call($m1, 'sessioneer/sendInput', ['session' => $sn(8), 'content' => 'back again']);
+assert_true((bool)wait_until(static fn (): bool => has_result($m1, 'echo: back again') && status_is($sn(8), 'idle')), 'the next message respawns the session');
+
 // ============================================================ health/list
 
 $health = call($m1, 'sessioneer/health');
@@ -458,6 +444,48 @@ call($m5, 'sessioneer/sendInput', ['session' => $sn(40), 'content' => 'OVERAGE h
 assert_true((bool)wait_until(static fn (): bool => call($m5, 'sessioneer/health')['spawn_blocked'] !== null), 'an overage-in-use rate-limit event blocks new spawns');
 assert_contains('overage', (string)call($m5, 'sessioneer/health')['spawn_blocked'], 'and says why');
 assert_contains('Spawning is disabled', (string)(call($m5, 'sessioneer/sendInput', ['session' => $sn(41), 'content' => 'hi'])['message'] ?? ''), 'a new session is refused');
+
+// ============================================ stop escalation, real restart
+
+echo "Stop: a child that ignores stdin EOF and SIGTERM is SIGKILLed\n";
+$m6 = start_manager($root, 'm6', ['CLAUDE_HEADLESS_STOP_GRACE_SECONDS' => '1']);
+make_session($root, $sn(50));
+call($m6, 'sessioneer/sendInput', ['session' => $sn(50), 'content' => 'STUBBORN child']);
+assert_true((bool)wait_until(static fn (): bool => status_is($sn(50), 'working')), 'the stubborn child is mid-turn');
+$stubbornPid = (int)call($m6, 'sessioneer/status', ['session' => $sn(50)])['pid'];
+$started = microtime(true);
+$stoppedHard = call($m6, 'sessioneer/stop', ['session' => $sn(50)]);
+$elapsed = microtime(true) - $started;
+assert_true(($stoppedHard['ok'] ?? false) === true, 'stop still succeeds');
+assert_true(!pid_alive($stubbornPid), 'the process is gone when the reply arrives');
+assert_true($elapsed >= 2.5, 'it waited out the grace period and the SIGTERM window before escalating (took ' . round($elapsed, 1) . 's)');
+assert_true(in_array(['signal' => 'SIGTERM'], fake_log($m6), true), 'SIGTERM was tried first (the child saw it and ignored it)');
+assert_equal('dormant', process_of($m6, $sn(50)), 'the session is dormant');
+assert_true(status_is($sn(50), 'idle') && SessionStatusStore::read_status($sn(50))['last_turn_error'] === null, 'a requested stop is not reported as a crash');
+
+echo "Restart: manager killed with a prompt open\n";
+$m7 = start_manager($root, 'm7');
+make_session($root, $sn(60));
+call($m7, 'sessioneer/sendInput', ['session' => $sn(60), 'content' => 'PERMISSION across restart']);
+assert_true((bool)wait_until(static fn (): bool => status_is($sn(60), 'blocked')), 'a prompt is open');
+$oldPrompt = call($m7, 'sessioneer/pendingPrompt', ['session' => $sn(60)])['prompt'];
+$orphanPid = (int)call($m7, 'sessioneer/status', ['session' => $sn(60)])['pid'];
+kill_hard((int)proc_get_status($m7['proc'])['pid']);
+assert_true((bool)wait_until(static fn (): bool => !proc_get_status($m7['proc'])['running']), 'the manager dies without any cleanup');
+assert_true((bool)wait_until(static fn (): bool => !pid_alive($orphanPid)), 'its child exits when the pipe closes');
+assert_true(status_is($sn(60), 'blocked') && file_exists($m7['sock']), 'the dead manager left the prompt and its socket file behind');
+
+$m7b = start_manager($root, 'm7b', ['CLAUDE_HEADLESS_SOCKET' => $m7['sock']]);
+$m7b['sock'] = $m7['sock'];
+assert_true((bool)wait_until(static fn (): bool => (call($m7b, 'sessioneer/health')['ok'] ?? false) === true), 'a new manager replaces the stale socket file and answers');
+$reset = SessionStatusStore::read_status($sn(60));
+assert_equal('idle', $reset['status'], 'the abandoned prompt no longer shows the session as blocked');
+assert_equal(null, $reset['blocked'], 'the blocked state is cleared');
+assert_equal($restartMessage, $reset['last_turn_error'], 'the session says the prompt was lost and to retry the turn');
+assert_equal(null, call($m7b, 'sessioneer/pendingPrompt', ['session' => $sn(60)])['prompt'], 'no prompt is offered');
+assert_contains('no prompt is currently pending', (string)(call($m7b, 'sessioneer/answerPrompt', ['session' => $sn(60), 'request_id' => $oldPrompt['request_id'], 'response' => ['behavior' => 'allow']])['message'] ?? ''), 'answering the lost prompt is a handled rejection');
+call($m7b, 'sessioneer/sendInput', ['session' => $sn(60), 'content' => 'retry the turn']);
+assert_true((bool)wait_until(static fn (): bool => has_result($m7b, 'echo: retry the turn') && status_is($sn(60), 'idle')), 'the retried turn runs and the session recovers');
 
 // ============================================================== done
 

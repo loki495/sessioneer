@@ -9,7 +9,8 @@
 #              tests/lib/cdp.php, or tests/fixtures/replay/* without paying
 #              for the other 10 unrelated test files every time
 #   --live     the ONLY way to run a *_live.php test file (matched by filename,
-#              currently just test_claude_trust_prompt_live.php) - every other
+#              currently test_claude_trust_prompt_live.php and
+#              test_claude_headless_live.php) - every other
 #              flag combination, including the plain default run, always
 #              excludes them. Unlike every other test file here, a *_live.php
 #              file spawns a REAL agent binary (never fake_claude), so it

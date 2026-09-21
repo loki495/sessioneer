@@ -2,11 +2,16 @@
 
 declare(strict_types=1);
 
+use HostAgent\Runtimes\ClaudeHeadlessManagerClient;
+use HostAgent\Stores\SessionStatusStore;
+use HostAgent\Stores\SidecarStore;
+
 /**
  * Shared helpers for the tests that drive a REAL ClaudeHeadlessManager process
  * (host-agent/claude_headless_manager.php) against the scripted stand-in
  * tests/fixtures/fake_claude_stream. Requires the including test to define
- * `$managers` (the started-process registry its shutdown handler cleans up).
+ * `$managers` (the started-process registry its shutdown handler cleans up) and
+ * `$madeSessions` (the sessions it wrote, which the handler deletes again).
  */
 
 /** @param array<string, string> $env @return array{proc: resource, sock: string, log: string, fake: string} */
@@ -49,6 +54,17 @@ function start_manager(string $root, string $name, array $env = []): array
     wait_until(static fn (): bool => file_exists($sock), 5.0);
 
     return $m;
+}
+
+/** SIGKILLs one process; refuses pid 0/1, where `kill -9` would hit a whole process group or init. */
+function kill_hard(int $pid): void
+{
+    if ($pid <= 1) {
+        fwrite(STDERR, "refusing to SIGKILL pid {$pid}\n");
+        exit(1);
+    }
+
+    posix_kill($pid, SIGKILL);
 }
 
 function pid_alive(int $pid): bool
@@ -106,4 +122,57 @@ function has_result(array $m, string $needle): bool
     }
 
     return false;
+}
+
+/** @param array<string, mixed> $over */
+function make_session(string $root, string $name, array $over = []): string
+{
+    global $madeSessions;
+    $madeSessions[] = $name;
+
+    $workdir = $over['workdir'] ?? "{$root}/work/{$name}";
+
+    if (!isset($over['workdir'])) {
+        @mkdir($workdir, 0700, true);
+    }
+
+    SidecarStore::write_sidecar($name, array_merge([
+        'workdir' => $workdir, 'spawned_at' => time(), 'agent_session_id' => null,
+        'spawned_by_app' => true, 'agent' => 'claude', 'runtime' => 'headless', 'title' => null, 'profile' => null,
+    ], $over));
+
+    return (string)$workdir;
+}
+
+function client(array $m): ClaudeHeadlessManagerClient
+{
+    return new ClaudeHeadlessManagerClient($m['sock'], 30);
+}
+
+/** @return array<string, mixed> */
+function call(array $m, string $method, array $params = []): array
+{
+    return client($m)->request($method, $params);
+}
+
+function status_is(string $name, string $status): bool
+{
+    return (SessionStatusStore::read_status($name)['status'] ?? null) === $status;
+}
+
+function process_of(array $m, string $name): string
+{
+    return (string)(call($m, 'sessioneer/status', ['session' => $name])['process'] ?? '?');
+}
+
+/** Sends raw bytes as one request line and returns the decoded reply. @return array<string, mixed> */
+function raw_request(array $m, string $line): array
+{
+    $sock = stream_socket_client('unix://' . $m['sock'], $errno, $err, 2.0);
+    fwrite($sock, $line . "\n");
+    stream_set_timeout($sock, 5);
+    $reply = json_decode((string)fgets($sock), true);
+    fclose($sock);
+
+    return is_array($reply) ? $reply : [];
 }
