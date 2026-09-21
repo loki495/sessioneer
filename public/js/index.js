@@ -814,10 +814,23 @@ document.addEventListener('keydown', function (e) {
       });
   }
 
+  var runtimeLabel = document.getElementById('new-session-runtime-label');
+
   function onAgentChange() {
     var agent = agentSelect.value;
     clearModels();
     loadClaudeProfiles();
+
+    // The runtime choice (terminal vs headless) only exists for Claude.
+    if (runtimeLabel) {
+      if (agent === 'claude') {
+        runtimeLabel.classList.remove('hidden');
+        runtimeLabel.classList.add('flex');
+      } else {
+        runtimeLabel.classList.add('hidden');
+        runtimeLabel.classList.remove('flex');
+      }
+    }
 
     if (agent === 'opencode') {
       loadOpenCodeModels();

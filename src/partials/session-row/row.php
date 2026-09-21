@@ -71,10 +71,26 @@
     </div>
     <div class="relative"><?= $blockedHtml ?></div>
   </div>
-  <form method="post" action="/" class="relative" onsubmit="return confirm('Kill session <?= $this->e($name) ?>?');">
-    <input type="hidden" name="action" value="kill">
-    <input type="hidden" name="csrf_token" value="<?= $this->e($csrfToken) ?>">
-    <input type="hidden" name="session" value="<?= $this->e($name) ?>">
-    <button type="submit" class="select-none min-h-[2.75rem] shrink-0 rounded-lg bg-red-900/70 active:bg-red-800 text-red-100 font-medium text-sm px-4 py-2">Kill</button>
-  </form>
+  <div class="relative flex flex-col gap-2 shrink-0">
+    <?php // Claude conversations can move between a tmux pane and a headless
+          // session (same conversation, different process); offer the runtime
+          // the session is NOT on. The host agent refuses while it is busy. ?>
+    <?php if (($agentId ?? 'claude') === 'claude'): ?>
+      <?php $switchTo = $runtime === 'headless' ? 'tmux' : 'headless';
+            $switchLabel = $switchTo === 'headless' ? 'Headless' : 'Terminal'; ?>
+      <form method="post" action="/" onsubmit="return confirm('Switch <?= $this->e($name) ?> to <?= $switchTo === 'headless' ? 'a headless session (no terminal)' : 'a terminal (tmux) session' ?>? The conversation continues; the current process is stopped.');">
+        <input type="hidden" name="action" value="switch_runtime">
+        <input type="hidden" name="csrf_token" value="<?= $this->e($csrfToken) ?>">
+        <input type="hidden" name="session" value="<?= $this->e($name) ?>">
+        <input type="hidden" name="runtime" value="<?= $this->e($switchTo) ?>">
+        <button type="submit" title="Switch this conversation to <?= $this->e($switchLabel) ?>" class="select-none w-full min-h-[2.25rem] rounded-lg border border-slate-700 bg-slate-800 active:bg-slate-700 text-slate-300 text-xs px-3 py-1.5">&rarr; <?= $this->e($switchLabel) ?></button>
+      </form>
+    <?php endif ?>
+    <form method="post" action="/" class="relative" onsubmit="return confirm('Kill session <?= $this->e($name) ?>?');">
+      <input type="hidden" name="action" value="kill">
+      <input type="hidden" name="csrf_token" value="<?= $this->e($csrfToken) ?>">
+      <input type="hidden" name="session" value="<?= $this->e($name) ?>">
+      <button type="submit" class="select-none min-h-[2.75rem] shrink-0 rounded-lg bg-red-900/70 active:bg-red-800 text-red-100 font-medium text-sm px-4 py-2">Kill</button>
+    </form>
+  </div>
 </li>

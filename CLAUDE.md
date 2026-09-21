@@ -156,8 +156,16 @@ Docker-spawned, makes that impossible by construction — not by convention.
    the same `PromptParser` option builders/classifier as the hook-fed tmux
    path). `RuntimeProvider` also carries `interrupt()`, `update_settings()`
    and `set_mode()`, so `Sessions.php` routes those through the interface
-   instead of per-agent branches. The New Session runtime picker and
-   resume-as-headless are still to do.
+   instead of per-agent branches. The UI reaches it three ways: the New
+   Session form's "Runs in" picker (Claude only), a "Headless" button on
+   archived Claude rows (`resume` with `runtime=headless`), and a per-row
+   switch button backed by the `switch_runtime` action
+   (`SessionRuntimeSwitchService`: the old process is stopped completely
+   before the new one starts, it refuses a busy session or one with no
+   transcript yet, and the conversation id is what carries over). One
+   process per transcript is enforced by
+   `SessionLifecycleService::agent_session_id_already_live()`, which counts
+   headless sessions as live, and by the per-conversation resume lock.
 5. `App\Views\*` (one render class per feature area — `TranscriptView`,
    `SessionRowView`, `BlockedPromptView`, `QuotaFooterView`,
    `HealthBoxView`, `PushNotifyView`, plus `PageView` for the two full-page

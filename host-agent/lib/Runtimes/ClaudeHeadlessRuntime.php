@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace HostAgent\Runtimes;
 
 use HostAgent\Agents\AgentRegistry;
+use HostAgent\Services\BareProcessService;
+use HostAgent\Services\Config;
 use HostAgent\Services\PermissionMode;
 use HostAgent\Services\SelectableModel;
+use HostAgent\Services\SessionLifecycleService;
 use HostAgent\Services\SessionService;
 use HostAgent\Services\TranscriptRouter;
 use HostAgent\Services\TranscriptService;
@@ -98,6 +101,74 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
         }
 
         return ['ok' => true, 'id' => $name, 'name' => $name, 'session' => $this->session_entry($name) ?? []];
+    }
+
+    /**
+     * Continues an existing (archived) Claude conversation as a headless
+     * session: a new claude-headless-<timestamp> ref bound to that
+     * conversation id. Same safeguards as the tmux resume - one process per
+     * transcript, whoever holds it (a pane, another headless session, or a
+     * bare `claude` typed in a terminal).
+     *
+     * @return array{ok:bool, name?:string, id?:string, session?:array<string,mixed>, message?:string}
+     */
+    public function resume(string $workdir, string $agentSessionId, ?string $profile = null): array
+    {
+        if ($workdir === '' || $workdir[0] !== '/' || !is_dir($workdir)) {
+            return ['ok' => false, 'message' => 'Working directory must be an existing absolute path'];
+        }
+
+        if ($agentSessionId === '') {
+            return ['ok' => false, 'message' => 'Missing agent_session_id'];
+        }
+
+        if (!is_dir(Config::sidecar_dir())) {
+            @mkdir(Config::sidecar_dir(), 0700, true);
+        }
+
+        $busy = ['ok' => false, 'message' => 'This conversation already has a live process - refusing to open a second one on the same transcript'];
+        $lock = @fopen(SessionLifecycleService::resume_lock_path($agentSessionId), 'c');
+
+        if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
+            return $busy;
+        }
+
+        try {
+            if (SessionLifecycleService::agent_session_id_already_live($agentSessionId)
+                || in_array($agentSessionId, BareProcessService::live_bare_agent_session_ids(), true)) {
+                return $busy;
+            }
+
+            if (TranscriptRouter::find_transcript_path($agentSessionId, $profile) === null) {
+                return ['ok' => false, 'message' => 'No transcript was found for that conversation'];
+            }
+
+            $name = HeadlessSessionName::generate(self::AGENT_ID);
+            SidecarStore::write_sidecar($name, [
+                'workdir' => $workdir,
+                'spawned_at' => time(),
+                'agent_session_id' => $agentSessionId,
+                'spawned_by_app' => true,
+                'agent' => self::AGENT_ID,
+                'runtime' => RuntimeType::HEADLESS,
+                'title' => null,
+                'profile' => $profile,
+            ]);
+
+            $reply = $this->client->request('sessioneer/spawn', ['session' => $name]);
+
+            if (($reply['ok'] ?? false) !== true) {
+                SidecarStore::delete_sidecar($name);
+                SessionStatusStore::delete_status($name);
+
+                return ['ok' => false, 'message' => self::message($reply, 'Could not resume the Claude session')];
+            }
+
+            return ['ok' => true, 'id' => $name, 'name' => $name, 'message' => "Resumed session {$name} in {$workdir}", 'session' => $this->session_entry($name) ?? []];
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
     }
 
     public function list(): array

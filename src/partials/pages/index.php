@@ -153,6 +153,18 @@ $this->layout('layout', [
           <option value="">Default</option>
         </select>
       </label>
+      <!-- Claude runtime picker: a terminal (tmux pane, the default) or
+           headless (a claude -p process the headless manager owns, no
+           terminal). Claude-only, revealed by index.js's onAgentChange()
+           like the account picker above; an untouched form behaves exactly
+           as before this existed. -->
+      <label id="new-session-runtime-label" class="hidden items-center gap-2 text-sm text-slate-300">
+        Runs in
+        <select id="new-session-runtime" name="runtime" class="rounded-lg border border-slate-700 bg-slate-800 text-sm text-slate-200 px-2 py-1.5">
+          <option value="" selected>Terminal (tmux)</option>
+          <option value="headless">Headless (no terminal)</option>
+        </select>
+      </label>
       <label class="flex items-center gap-2 text-sm text-slate-300">
         Model
         <select id="new-session-model" name="model" class="rounded-lg border border-slate-700 bg-slate-800 text-sm text-slate-200 px-2 py-1.5">

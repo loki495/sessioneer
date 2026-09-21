@@ -19,6 +19,7 @@ use HostAgent\Services\SessionService;
 use HostAgent\Services\PromptInteractionService;
 use HostAgent\Services\PlanFileService;
 use HostAgent\Services\SessionLifecycleService;
+use HostAgent\Services\SessionRuntimeSwitchService;
 use HostAgent\Services\ArchivedSessionService;
 use HostAgent\Services\SessionDetailService;
 use HostAgent\Services\OpenCodeTranscriptService;
@@ -272,7 +273,19 @@ function dispatch_action(array $request): array
                 return sessioneer_codex_resume($resumeWorkdir, $resumeId);
             }
 
+            // A Claude conversation can also be resumed headless (no pane).
+            if (($request['runtime'] ?? null) === RuntimeType::HEADLESS) {
+                $claudeHeadless = RuntimeRegistry::runtime_for('claude', RuntimeType::HEADLESS);
+
+                return $claudeHeadless instanceof ClaudeHeadlessRuntime
+                    ? $claudeHeadless->resume($resumeWorkdir, $resumeId, $resumeProfile)
+                    : ['ok' => false, 'message' => 'Headless runtime unavailable for claude'];
+            }
+
             return SessionLifecycleService::resume_agent_session($resumeWorkdir, $resumeId, $resumeProfile);
+
+        case 'switch_runtime':
+            return SessionRuntimeSwitchService::switch_runtime((string)($request['session'] ?? ''), (string)($request['runtime'] ?? ''));
 
         case 'kill':
             $killSession = (string)($request['session'] ?? '');

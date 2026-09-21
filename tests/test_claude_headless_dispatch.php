@@ -28,6 +28,7 @@ $root = sys_get_temp_dir() . '/sessioneer-test-claude-headless-dispatch-' . getm
 // direct `php tests/...` run gets safe defaults, a tests/run.sh run keeps its own.
 foreach ([
     'TMUX_SOCKET' => $root . '/tmux/socket',
+    'CLAUDE_BIN' => __DIR__ . '/fixtures/fake_claude',
     'CACHE_DIR' => $root . '/cache',
     'SIDECAR_DIR' => $root . '/sidecars',
     'SESSION_LIST_CACHE_TTL_SECONDS' => '0',
@@ -70,6 +71,14 @@ register_shutdown_function(static function () use (&$managers, &$made, $root): v
     foreach ($made as $name) {
         SidecarStore::delete_sidecar($name);
         SessionStatusStore::delete_status($name);
+    }
+
+    // Only ever stop a tmux server this test started itself (its own socket);
+    // a run.sh run cleans up its own isolated server.
+    $socket = (string)getenv('TMUX_SOCKET');
+
+    if (str_starts_with($socket, $root . '/')) {
+        exec('tmux -S ' . escapeshellarg($socket) . ' kill-server 2>/dev/null');
     }
 
     exec('rm -rf ' . escapeshellarg($root));
@@ -231,6 +240,74 @@ assert_equal([], array_values(array_filter(act(['action' => 'list'])['sessions']
 $archivedIds = array_column(act(['action' => 'list_archived'])['archived'] ?? [], 'agent_session_id');
 assert_true(in_array($agentSessionId, $archivedIds, true), 'its conversation is now archived and can be resumed');
 
+// ================================================ resume as headless, and switch
+
+echo "Resume as headless\n";
+$noTranscript = act(['action' => 'resume', 'runtime' => 'headless', 'workdir' => $workdir, 'agent_session_id' => 'no-such-conversation']);
+assert_true(($noTranscript['ok'] ?? true) === false, 'resuming a conversation with no transcript fails');
+assert_contains('No transcript was found', (string)$noTranscript['message'], 'with a clear message');
+assert_contains('existing absolute path', (string)(act(['action' => 'resume', 'runtime' => 'headless', 'workdir' => 'relative', 'agent_session_id' => $agentSessionId])['message'] ?? ''), 'a relative workdir is rejected');
+assert_contains('Missing agent_session_id', (string)(act(['action' => 'resume', 'runtime' => 'headless', 'workdir' => $workdir, 'agent_session_id' => ''])['message'] ?? ''), 'so is a missing conversation id');
+
+$resumed = act(['action' => 'resume', 'runtime' => 'headless', 'workdir' => $workdir, 'agent_session_id' => $agentSessionId]);
+assert_true(($resumed['ok'] ?? false) === true, 'an archived conversation can be resumed headless' . (($resumed['ok'] ?? false) === true ? '' : ' - got ' . json_encode($resumed)));
+$resumedName = (string)($resumed['name'] ?? '');
+$made[] = $resumedName;
+assert_true(preg_match('/^claude-headless-\d{8}-\d{6}(-\d+)?$/', $resumedName) === 1, 'as a claude-headless-<timestamp> session');
+assert_equal($agentSessionId, SidecarStore::read_sidecar($resumedName)['agent_session_id'], 'bound to that same conversation');
+act(['action' => 'send_message', 'session' => $resumedName, 'text' => 'back again']);
+assert_true((bool)wait_until(static fn (): bool => has_result($m, "echo: back again [spawn=resume id={$agentSessionId}")), 'the process continues the SAME conversation (--resume)');
+wait_until(static fn (): bool => status_of($resumedName) === 'idle');
+
+$again = act(['action' => 'resume', 'runtime' => 'headless', 'workdir' => $workdir, 'agent_session_id' => $agentSessionId]);
+assert_true(($again['ok'] ?? true) === false, 'a conversation that is already live cannot be resumed a second time');
+assert_contains('already has a live process', (string)$again['message'], 'with a clear message');
+$asPane = act(['action' => 'resume', 'workdir' => $workdir, 'agent_session_id' => $agentSessionId]);
+assert_true(($asPane['ok'] ?? true) === false, 'nor can it be resumed in a tmux pane (two writers on one transcript)');
+assert_contains('already has a live pane', (string)$asPane['message'], 'the existing guard now sees headless sessions too');
+
+echo "Switch runtime\n";
+assert_contains('Unknown runtime', (string)(act(['action' => 'switch_runtime', 'session' => $resumedName, 'runtime' => 'bogus'])['message'] ?? ''), 'an unknown target runtime is rejected');
+assert_contains('already running that way', (string)(act(['action' => 'switch_runtime', 'session' => $resumedName, 'runtime' => 'headless'])['message'] ?? ''), 'switching to the runtime it already has is rejected');
+assert_equal('Session not found', act(['action' => 'switch_runtime', 'session' => 'claude-headless-nope', 'runtime' => 'tmux'])['message'] ?? '', 'an unknown session is rejected');
+$codexName = 'codex-headless-t' . getmypid();
+$made[] = $codexName;
+SidecarStore::write_sidecar($codexName, ['workdir' => $workdir, 'spawned_at' => time(), 'agent_session_id' => 'codex-thread', 'agent' => 'codex', 'runtime' => 'headless']);
+assert_contains('Only Claude Code', (string)(act(['action' => 'switch_runtime', 'session' => $codexName, 'runtime' => 'tmux'])['message'] ?? ''), 'another agent\'s session is rejected');
+
+$fresh = act(['action' => 'create', 'agent' => 'claude', 'runtime' => 'headless', 'workdir' => $workdir]);
+$freshName = (string)($fresh['name'] ?? '');
+$made[] = $freshName;
+assert_contains('nothing to carry over', (string)(act(['action' => 'switch_runtime', 'session' => $freshName, 'runtime' => 'tmux'])['message'] ?? ''), 'a session with no messages yet has no conversation to carry over');
+act(['action' => 'kill', 'session' => $freshName]);
+
+act(['action' => 'send_message', 'session' => $resumedName, 'text' => 'SLOW work']);
+wait_until(static fn (): bool => status_of($resumedName) === 'working');
+assert_contains('busy', (string)(act(['action' => 'switch_runtime', 'session' => $resumedName, 'runtime' => 'tmux'])['message'] ?? ''), 'a session that is mid-turn is not switched');
+assert_true(SidecarStore::read_sidecar($resumedName) !== null, 'and nothing was stopped');
+act(['action' => 'send_escape', 'session' => $resumedName]);
+wait_until(static fn (): bool => status_of($resumedName) === 'idle');
+
+$pid = (int)(call_manager($m, $resumedName)['pid'] ?? 0);
+$toTmux = act(['action' => 'switch_runtime', 'session' => $resumedName, 'runtime' => 'tmux']);
+assert_true(($toTmux['ok'] ?? false) === true, 'a headless session can move into a tmux pane' . (($toTmux['ok'] ?? false) === true ? '' : ' - got ' . json_encode($toTmux)));
+$tmuxName = (string)($toTmux['name'] ?? '');
+$made[] = $tmuxName;
+assert_true(str_starts_with($tmuxName, 'cc-'), 'as an ordinary cc-* tmux session');
+assert_true(!pid_alive($pid), 'the headless process is gone');
+assert_equal(null, SidecarStore::read_sidecar($resumedName), 'and its session removed');
+assert_equal($agentSessionId, SidecarStore::read_sidecar($tmuxName)['agent_session_id'], 'while the conversation carries over to the pane');
+assert_true(($tmuxRow = array_values(array_filter(act(['action' => 'list'])['sessions'], static fn (array $s): bool => $s['name'] === $tmuxName))) !== [] && $tmuxRow[0]['runtime'] === 'tmux', 'and it lists as a tmux session');
+
+$toHeadless = act(['action' => 'switch_runtime', 'session' => $tmuxName, 'runtime' => 'headless']);
+assert_true(($toHeadless['ok'] ?? false) === true, 'and back out of the pane' . (($toHeadless['ok'] ?? false) === true ? '' : ' - got ' . json_encode($toHeadless)));
+$backName = (string)($toHeadless['name'] ?? '');
+$made[] = $backName;
+assert_true(str_starts_with($backName, 'claude-headless-'), 'into a headless session');
+assert_equal(null, SidecarStore::read_sidecar($tmuxName), 'with the pane session gone');
+assert_equal($agentSessionId, SidecarStore::read_sidecar($backName)['agent_session_id'], 'and the same conversation');
+act(['action' => 'kill', 'session' => $backName]);
+
 // ============================================================ manager down
 
 echo "Failure: manager down\n";
@@ -248,6 +325,6 @@ assert_equal(null, SidecarStore::read_sidecar($name2), 'and removes the session'
 $createDown = act(['action' => 'create', 'agent' => 'claude', 'runtime' => 'headless', 'workdir' => $workdir]);
 assert_true(($createDown['ok'] ?? true) === false, 'creating with the manager down fails');
 assert_contains('Cannot reach Claude headless manager', (string)$createDown['message'], 'with the same named error');
-assert_equal(0, count(array_filter(SidecarStore::list_runtime_sidecars('headless'), static fn (array $r): bool => ($r['workdir'] ?? null) === $workdir)), 'and leaves no half-created session behind');
+assert_equal(0, count(array_filter(SidecarStore::list_runtime_sidecars('headless'), static fn (array $r): bool => ($r['agent'] ?? null) === 'claude' && ($r['workdir'] ?? null) === $workdir)), 'and leaves no half-created Claude session behind');
 
 test_exit();
