@@ -355,6 +355,17 @@ class Config
         return self::sessioneer_config('OPENCODE_PERMISSION_DIR', self::sidecar_dir() . '/opencode-permissions');
     }
 
+    /**
+     * How long Take over waits for the process it just stopped to actually
+     * exit before resuming its conversation. A real Claude flushes state on
+     * SIGTERM/SIGHUP and can take several seconds; resuming earlier is refused
+     * (two writers on one transcript), which used to strand the conversation.
+     */
+    public static function take_over_exit_wait_seconds(): float
+    {
+        return max(0.0, (float)self::sessioneer_config('TAKE_OVER_EXIT_WAIT_SECONDS', '15'));
+    }
+
     public static function cleanup_threshold_seconds(): int
     {
         return (int)self::sessioneer_config('CLEANUP_THRESHOLD_SECONDS', '43200'); // 12h

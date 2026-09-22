@@ -190,6 +190,10 @@ Docker-spawned, makes that impossible by construction — not by convention.
    The manager's own processes are not bare ones: `BareProcessService::
    managed_headless_pids()` (a no-retry probe of the manager) keeps them out of
    the "other Claude processes" list, and Kill/Take over refuse them.
+   Take over waits for the process it stopped to actually exit (bounded by
+   `TAKE_OVER_EXIT_WAIT_SECONDS`) before resuming: `resume_agent_session()`
+   refuses a conversation whose process is still running, and a real Claude can
+   take seconds to exit.
    `ClaudeHeadlessHealthService` is the "Claude Code headless" health-box
    section (service, spawn guard, credential, version, capacity, quota
    freshness).
