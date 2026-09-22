@@ -16,7 +16,7 @@ class ProcessInspector
     public const CLK_TCK = 100; // USER_HZ has been 100 on Linux/x86_64 since the 2.6 era
 
     /**
-     * @return array{pid:int,ppid:int}[] keyed by pid
+     * @return array<int, int> Parent pid keyed by pid
      */
     public static function build_ppid_map(): array
     {
@@ -96,6 +96,23 @@ class ProcessInspector
             }
 
             $current = $ppidMap[$current];
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether $pid is one of $rootPids or runs somewhere beneath one.
+     *
+     * @param int[] $rootPids
+     * @param array<int, mixed> $ppidMap pid => parent pid, as build_ppid_map() returns it
+     */
+    public static function is_within_any(int $pid, array $rootPids, array $ppidMap): bool
+    {
+        foreach ($rootPids as $root) {
+            if (self::is_descendant($pid, $root, $ppidMap)) {
+                return true;
+            }
         }
 
         return false;

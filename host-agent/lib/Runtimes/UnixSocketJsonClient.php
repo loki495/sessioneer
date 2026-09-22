@@ -21,6 +21,7 @@ class UnixSocketJsonClient
         private string $socketPath,
         private string $label,
         private int $timeoutSeconds = 30,
+        private bool $retryConnect = true,
     ) {
     }
 
@@ -37,8 +38,10 @@ class UnixSocketJsonClient
         // been written, replaying automatically could duplicate a turn or
         // an approval. The bounded delay bridges systemd's ordinary short
         // restart window without making a permanently-down service hang the
-        // web request indefinitely.
-        foreach (self::CONNECT_RETRY_DELAYS_USEC as $delayUsec) {
+        // web request indefinitely. A caller that only wants to know whether
+        // the service is there (a listing, a health probe) turns retrying off
+        // so an absent service costs one instant refusal, not seconds.
+        foreach ($this->retryConnect ? self::CONNECT_RETRY_DELAYS_USEC : [0] as $delayUsec) {
             if ($delayUsec > 0) {
                 usleep($delayUsec);
             }

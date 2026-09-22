@@ -87,7 +87,9 @@ processes (the pty-host wrapper, whose own cwd never leaves the daemon's
 internal pool path, plus its REPL child, whose cwd is the real project
 folder) into one row rather than showing both separately. **Take over** on
 a daemon-managed worker kills both halves of the pair (not just the one
-clicked) and resumes into the real project cwd. A row this can't identify
+clicked) and resumes into the real project cwd. A headless session's own
+process is not a bare one: it is left out of the discovery list, and Kill and
+Take over refuse it (stop it, or switch it to a terminal, from its own row). A row this can't identify
 with certainty still falls back to the pre-existing closest-start-time
 heuristic, clearly labeled as a guess. Model and permission-mode changes
 drive Claude's own pickers. Quota comes from the status-line JSON marker of

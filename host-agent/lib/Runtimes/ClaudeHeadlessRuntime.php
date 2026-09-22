@@ -40,11 +40,45 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
 
     private const IMAGE_TYPES = ['png' => 'image/png', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'gif' => 'image/gif', 'webp' => 'image/webp'];
 
+    /** Seconds a read-only probe (which processes the manager owns) may take: a listing must never wait on a wedged manager. */
+    private const PROBE_TIMEOUT_SECONDS = 2;
+
     private ClaudeHeadlessManagerClient $client;
 
-    public function __construct(?ClaudeHeadlessManagerClient $client = null)
+    private ClaudeHeadlessManagerClient $probeClient;
+
+    public function __construct(?ClaudeHeadlessManagerClient $client = null, ?ClaudeHeadlessManagerClient $probeClient = null)
     {
         $this->client = $client ?? new ClaudeHeadlessManagerClient();
+        $this->probeClient = $probeClient ?? new ClaudeHeadlessManagerClient(null, self::PROBE_TIMEOUT_SECONDS, false);
+    }
+
+    /**
+     * Pids of the `claude` processes the manager currently owns. Empty when
+     * the manager cannot be reached: its children die with it, so an
+     * unreachable manager owns none.
+     *
+     * @return int[]
+     */
+    public function live_child_pids(): array
+    {
+        $reply = $this->probeClient->request('sessioneer/list');
+
+        if (($reply['ok'] ?? false) !== true || !is_array($reply['children'] ?? null)) {
+            return [];
+        }
+
+        $pids = [];
+
+        foreach ($reply['children'] as $child) {
+            $pid = is_array($child) ? ($child['pid'] ?? null) : null;
+
+            if (is_int($pid) && $pid > 1) {
+                $pids[] = $pid;
+            }
+        }
+
+        return $pids;
     }
 
     public function id(): string

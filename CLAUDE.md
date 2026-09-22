@@ -187,6 +187,9 @@ Docker-spawned, makes that impossible by construction — not by convention.
    `sessioneer_sessions_for_push()` - the dashboard's own merge - so any
    new headless agent's rows must be handled in
    `sessioneer_merge_headless_sessions()` or push will misread them.
+   The manager's own processes are not bare ones: `BareProcessService::
+   managed_headless_pids()` (a no-retry probe of the manager) keeps them out of
+   the "other Claude processes" list, and Kill/Take over refuse them.
    `ClaudeHeadlessHealthService` is the "Claude Code headless" health-box
    section (service, spawn guard, credential, version, capacity, quota
    freshness).

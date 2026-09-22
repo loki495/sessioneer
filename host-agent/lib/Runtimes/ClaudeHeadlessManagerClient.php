@@ -17,12 +17,13 @@ use HostAgent\Services\Config;
  */
 class ClaudeHeadlessManagerClient extends UnixSocketJsonClient
 {
-    public function __construct(?string $socketPath = null, ?int $timeoutSeconds = null)
+    public function __construct(?string $socketPath = null, ?int $timeoutSeconds = null, bool $retryConnect = true)
     {
         parent::__construct(
             $socketPath ?? Config::claude_headless_socket(),
             'Claude headless manager',
             $timeoutSeconds ?? (Config::claude_headless_stop_grace_seconds() + 20),
+            $retryConnect,
         );
     }
 }

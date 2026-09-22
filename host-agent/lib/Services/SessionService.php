@@ -569,8 +569,13 @@ class SessionService
 
         $bare = [];
 
+        // A headless session's process is the manager's child, not a bare one:
+        // it already has its own row, and Kill/Take over on it would only
+        // strand its conversation.
+        $managedRoots = BareProcessService::managed_headless_pids();
+
         foreach ($claudeProcs as $proc) {
-            if (isset($trackedPids[$proc['pid']])) {
+            if (isset($trackedPids[$proc['pid']]) || ProcessInspector::is_within_any($proc['pid'], $managedRoots, $ppidMap)) {
                 continue;
             }
 

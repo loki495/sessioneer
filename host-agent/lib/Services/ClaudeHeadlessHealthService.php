@@ -48,7 +48,7 @@ class ClaudeHeadlessHealthService
         $reply = null;
 
         if ($active === 'active') {
-            $reply = (new ClaudeHeadlessManagerClient(null, self::PROBE_TIMEOUT_SECONDS))->request('sessioneer/health');
+            $reply = (new ClaudeHeadlessManagerClient(null, self::PROBE_TIMEOUT_SECONDS, false))->request('sessioneer/health');
         }
 
         $capturedAt = null;

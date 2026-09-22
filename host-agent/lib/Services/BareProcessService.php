@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace HostAgent\Services;
 
+use HostAgent\Runtimes\ClaudeHeadlessRuntime;
+use HostAgent\Runtimes\RuntimeRegistry;
+use HostAgent\Runtimes\RuntimeType;
+use HostAgent\Stores\SessionListCacheStore;
+
 /**
  * Untracked ("bare") claude process discovery and take-over. Split out of
  * SessionService.php (2026-08-24 readability audit - see the plan this
@@ -19,6 +24,38 @@ namespace HostAgent\Services;
 class BareProcessService
 {
     /**
+     * Pids of the processes owned by the Claude headless manager; empty when
+     * the manager is not reachable (see ClaudeHeadlessRuntime::live_child_pids()).
+     *
+     * @return int[]
+     */
+    public static function managed_headless_pids(): array
+    {
+        $runtime = RuntimeRegistry::runtime_for('claude', RuntimeType::HEADLESS);
+
+        return $runtime instanceof ClaudeHeadlessRuntime ? $runtime->live_child_pids() : [];
+    }
+
+    /**
+     * The refusal for a pid that belongs to a Sessioneer headless session, or
+     * null for anything else. Such a process is not a bare one: killing it (or
+     * "taking it over") would stop the process while its session row stays
+     * behind, and the tmux resume then refuses the conversation as still live.
+     *
+     * @return array{ok:false, message:string}|null
+     */
+    private static function refuse_managed_headless(int $pid): ?array
+    {
+        $roots = self::managed_headless_pids();
+
+        if ($roots === [] || !ProcessInspector::is_within_any($pid, $roots, ProcessInspector::build_ppid_map())) {
+            return null;
+        }
+
+        return ['ok' => false, 'message' => 'Rejected: this process belongs to a Sessioneer headless session. Stop it, or switch it to a terminal, from its own row.'];
+    }
+
+    /**
      * Kills a "bare" claude process (one ProcessInspector::find_claude_processes() found running
      * on the host that isn't inside a tracked - i.e. sidecar-having, see
      * TmuxService::list_tracked_tmux_sessions() - session) by pid.
@@ -33,6 +70,12 @@ class BareProcessService
      */
     public static function kill_bare_process(int $pid): array
     {
+        $managed = self::refuse_managed_headless($pid);
+
+        if ($managed !== null) {
+            return $managed;
+        }
+
         $stillRunning = false;
 
         foreach (ProcessInspector::find_claude_processes() as $proc) {
@@ -178,6 +221,52 @@ class BareProcessService
         $state = trim(substr($stat, $afterComm + 1))[0] ?? '';
 
         return $state !== 'Z';
+    }
+
+    /**
+     * Waits until none of $pids is running any more, at most $timeoutSeconds.
+     * A zombie counts as gone (see pid_is_alive()).
+     *
+     * @param int[] $pids
+     */
+    private static function wait_for_exit(array $pids, float $timeoutSeconds): bool
+    {
+        $deadline = microtime(true) + $timeoutSeconds;
+
+        do {
+            if (array_filter($pids, static fn (int $pid): bool => self::pid_is_alive($pid)) === []) {
+                return true;
+            }
+
+            usleep(50000);
+        } while (microtime(true) < $deadline);
+
+        return false;
+    }
+
+    /**
+     * What Take over does between stopping a process and resuming its
+     * conversation: wait for the stopped process(es) to really exit, then drop
+     * the cached listing so the resume's "is this conversation live" check sees
+     * the picture as it is now. Returns a refusal when a process is still
+     * there at the deadline; the conversation is then not resumed (a second
+     * writer on its transcript is never opened), and the process is already
+     * on its way out, so the message says to resume it from Archived.
+     *
+     * @param int[] $pids
+     * @return array{ok:false, message:string}|null
+     */
+    private static function settle_after_stop(array $pids): ?array
+    {
+        $wait = Config::take_over_exit_wait_seconds();
+
+        if (!self::wait_for_exit($pids, $wait)) {
+            return ['ok' => false, 'message' => 'The Claude process was asked to stop but had not exited after ' . round($wait) . 's, so its conversation was not resumed. Once it has exited, resume it from the Archived list.'];
+        }
+
+        SessionListCacheStore::clear();
+
+        return null;
     }
 
     /**
@@ -784,6 +873,12 @@ class BareProcessService
      */
     public static function take_over_bare_process(int $pid): array
     {
+        $managed = self::refuse_managed_headless($pid);
+
+        if ($managed !== null) {
+            return $managed;
+        }
+
         $workdir = null;
         $startedAt = null;
         $resumeArg = null;
@@ -830,21 +925,19 @@ class BareProcessService
                 self::kill_bare_process($siblingPid);
             }
 
-            // A tmux-hosted bare process's kill_bare_process() call is
-            // synchronous (it tears down the whole tmux session, which
-            // tmux itself doesn't report done until the pane's process is
-            // actually gone) - but a daemon-managed worker runs on a raw
-            // pty, no tmux pane at all, so this instead sends a plain
-            // SIGTERM (self::kill_bare_process() -> ProcessRunner::
-            // run_process(['kill', '-TERM', ...])), which only delivers
-            // the signal and returns immediately, before the kernel has
-            // necessarily reaped the target. Found live 2026-09-12
-            // writing this exact test: resume_agent_session() right below
-            // was rejecting its OWN just-killed pid as "already live",
-            // since live_bare_agent_session_ids()'s daemon-roster check
-            // still saw it in /proc for a brief window after kill_bare_
-            // process() had already returned ok=true.
-            usleep(300000);
+            // kill_bare_process() only delivers the signal (SIGTERM, or SIGHUP
+            // via tmux kill-session); the process exits on its own schedule,
+            // and a real Claude can take seconds. resume_agent_session() below
+            // refuses a conversation whose process is still running, so wait
+            // for the exit itself instead of guessing a delay - a fixed
+            // 300ms left the conversation stranded whenever the old process
+            // was slower (found live 2026-09-21; a daemon worker was the
+            // first case, 2026-09-12).
+            $unsettled = self::settle_after_stop(array_merge([$pid], $siblingPids));
+
+            if ($unsettled !== null) {
+                return $unsettled;
+            }
 
             // Re-derive which Claude Code account $matchedId's own
             // transcript actually lives under (a bare process's matched id
@@ -884,6 +977,12 @@ class BareProcessService
      */
     public static function take_over_bare_process_with_id(int $pid, string $workdir, string $agentSessionId): array
     {
+        $managed = self::refuse_managed_headless($pid);
+
+        if ($managed !== null) {
+            return $managed;
+        }
+
         foreach (ProcessInspector::find_claude_processes() as $proc) {
             if ($proc['pid'] === $pid) {
                 $killResult = self::kill_bare_process($pid);
@@ -892,14 +991,17 @@ class BareProcessService
                     return $killResult;
                 }
 
-                foreach (self::daemon_roster_sibling_pids($pid) as $siblingPid) {
+                $siblingPids = self::daemon_roster_sibling_pids($pid);
+
+                foreach ($siblingPids as $siblingPid) {
                     self::kill_bare_process($siblingPid);
                 }
 
-                // Same settle-delay as take_over_bare_process()'s own -
-                // see its docblock for why a bare (non-tmux) SIGTERM needs
-                // this but a tmux-hosted kill doesn't.
-                usleep(300000);
+                $unsettled = self::settle_after_stop(array_merge([$pid], $siblingPids));
+
+                if ($unsettled !== null) {
+                    return $unsettled;
+                }
 
                 break;
             }
