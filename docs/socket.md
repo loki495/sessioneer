@@ -42,3 +42,11 @@ If the container can't reach the agent:
 4. Check logs: `docker logs sessioneer-container-name`
 
 If the container and agent are running but still disconnected, the socket file itself may have been corrupted. Delete it and restart the host agent: `rm ~/.sessioneer/agent.sock && systemctl --user restart sessioneer-agent`
+
+## Claude Headless Manager Socket
+
+Headless Claude sessions add a second, separate socket. The persistent `sessioneer-claude-headless-manager.service` listens on `/run/user/<uid>/sessioneer-claude-headless.sock` (override with `CLAUDE_HEADLESS_SOCKET`). Only the host agent talks to it — never the web container — so this socket is not bind-mounted anywhere.
+
+The protocol is one request and one reply per connection, newline-delimited JSON: `{"method": "sessioneer/sendInput", "params": {...}}` answered by `{"ok": true|false, ...}`. Methods: `spawn`, `stop`, `sendInput`, `interrupt`, `pendingPrompt`, `answerPrompt`, `setMode`, `setModel`, `status`, `list`, `health`, all under the `sessioneer/` prefix. Every request re-validates its session against the sidecar store, and a prompt answer must name the request id of the prompt that is pending right now.
+
+If the manager is not running the host agent returns a handled "Cannot reach Claude headless manager" message and tmux sessions are unaffected. The client retries only the connection itself, never a request whose bytes were already written, and read-only probes (the process listing, the health box) do not retry at all so an absent manager costs nothing. Check it with `systemctl --user status sessioneer-claude-headless-manager.service`.

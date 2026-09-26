@@ -4,11 +4,11 @@ Claude Code's hook system is how Sessioneer learns authoritative session state w
 
 ## SessionStart Hook
 
-Claude Code rotates to a brand-new session-id transcript file (a new UUID under `~/.claude/projects/<cwd>/`) on `/clear`, `/compact` (auto or manual), `--resume`, or `--fork-session` — all while staying in the same tmux pane/process.
+Claude Code can move a session to a different session-id transcript file (a new UUID under `~/.claude/projects/<cwd>/`) while staying in the same tmux pane/process: `/clear` and `--fork-session` do, and `SessionStart` also fires on `/compact` and `--resume`. Whether `/compact` and `--resume` change the id was only checked for a headless stream-json process on 2.1.278, where they kept the same id; the TUI has not been re-checked, and the hook does not depend on the answer because it simply rebinds to whatever id it reports.
 
-Sessioneer's sidecar (one JSON file per tracked session, under `SIDECAR_DIR`) records that session-id exactly once, at spawn, and has no other way to learn it changed. Without the hook, any of those events leaves the sidecar pointing at an abandoned, no-longer-growing transcript file forever after.
+Sessioneer's sidecar (one row per tracked session, under `SIDECAR_DIR`) records that session-id at spawn and has no other way to learn it changed. Without the hook, a change leaves the sidecar pointing at an abandoned, no-longer-growing transcript file forever after.
 
-**The fix:** `host-agent/hooks/session_start.php`, registered as Claude Code's `SessionStart` hook (fires on every session start, matcher `*` so it covers `startup`/`resume`/`clear`/`compact`/`fork`), rebinds the sidecar's `claude_session_id` live every time it fires.
+**The fix:** `host-agent/hooks/session_start.php`, registered as Claude Code's `SessionStart` hook (fires on every session start, matcher `*` so it covers `startup`/`resume`/`clear`/`compact`/`fork`), rebinds the sidecar's `agent_session_id` live every time it fires.
 
 `create_agent_session()` passes `SESSIONEER_SESSION_NAME=<session name>` as a tmux pane environment variable (`tmux new-session -e ...`) specifically so the hook — inherited into that pane's `claude` process and anything it spawns — can tell which sidecar (if any) belongs to it. A plain `claude` session started by hand outside this app has no `SESSIONEER_SESSION_NAME` and the hook is a no-op for it.
 
@@ -49,6 +49,16 @@ Together, these three hooks own the full `blocked` / `working` / `idle` state ma
 
 ## Hook Installation and Scope
 
-All hooks are installed at `host-agent/install.sh` time into `~/.claude/hooks/`. They're registered in Claude Code's per-project `.claude.yaml` or global `~/.claude/commands.yaml`.
+The dashboard's **Install hooks** action merges Sessioneer's five entries into each configured Claude account's `settings.json` (`~/.claude/settings.json` for the default account), leaving every other entry alone and refusing to overwrite malformed JSON. The health box shows, per account, which of the five are present.
 
-Hook scope: a plain `claude` session started by hand (no `SESSIONEER_SESSION_NAME` env var) has the hooks installed but is a no-op for all of them. Only Sessioneer-tracked sessions participate.
+Hook scope: a plain `claude` session started by hand (no `SESSIONEER_SESSION_NAME` env var) has the hooks installed but is a no-op for all of them. Only Sessioneer-tracked tmux sessions participate.
+
+## Headless Sessions Do Not Use These Hooks
+
+A headless Claude session (see [features](features.md#headless-runtime)) has no pane and no `SESSIONEER_SESSION_NAME`: the manager starts its process without that variable, so all five hooks exit immediately for it even though Claude runs them. This is deliberate. The manager is the single writer of that session's status, derived from the process's own structured events, so two writers never race over one row:
+
+- a message written to the process is `working`; its `result` event is `idle` (with the error text when the turn failed)
+- a `can_use_tool` request is a blocked prompt with the exact, untruncated tool input (the job `PreToolUse` and `PermissionRequest` do for tmux sessions)
+- the session id is taken from each `init` event, so a `/clear` or fork is followed without `SessionStart`
+
+The hooks stay installed and fully in use for tmux and hand-started sessions.

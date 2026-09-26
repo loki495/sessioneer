@@ -152,7 +152,9 @@ Docker-spawned, makes that impossible by construction — not by convention.
    `ClaudeHeadlessManagerClient` over a UNIX socket). Each child is a
    `claude -p` stream-json process on the user's own login (never
    `--bare`; API-key env vars stripped, and a child reporting an API-key
-   credential source is killed). The process is a cache and the sidecar row
+   credential source is killed) - the real CLI, not the Agent SDK library
+   (which authenticates with an API key and bills pay-as-you-go). The
+   process is a cache and the sidecar row
    (`runtime = headless`) is the truth: a session with no process is
    "dormant" and the next message respawns it with `--resume`. The manager
    is the sole writer of `session_status` for these sessions - its children
@@ -187,6 +189,11 @@ Docker-spawned, makes that impossible by construction — not by convention.
    `sessioneer_sessions_for_push()` - the dashboard's own merge - so any
    new headless agent's rows must be handled in
    `sessioneer_merge_headless_sessions()` or push will misread them.
+   A slash command sent to a headless session is an ordinary user message:
+   local ones (`/context`, `/usage`) answer without a model call, TUI-only ones
+   (`/add-dir`, `/theme`) reply "isn't available in this environment", and an
+   unrecognised `/name` is NOT rejected - it goes to the model and spends a
+   turn (verified live, 2.1.278; docs/features.md, "Headless runtime").
    The manager's own processes are not bare ones: `BareProcessService::
    managed_headless_pids()` (a no-retry probe of the manager) keeps them out of
    the "other Claude processes" list, and Kill/Take over refuse them.

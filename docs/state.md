@@ -29,7 +29,7 @@ One sidecar file per session, tracking state that Sessioneer maintains (independ
 
 - `session_id` (foreign key to `sessions.id`)
 - `sidecar_path` — filesystem path to the sidecar JSON file (`~/.sessioneer/sidecars/<session-id>.json`)
-- `claude_session_id` — current Claude Code session ID (changes on `/clear`, `/compact`, etc.; `SessionStart` hook updates this)
+- `agent_session_id` — the agent's current conversation id (a Claude id changes on `/clear` and fork; the `SessionStart` hook updates it for tmux sessions, the headless manager from each `init` event)
 - `last_synced` — when this was last read/verified
 
 ### `ui_preferences` Table
@@ -62,3 +62,11 @@ Old sessions are archived automatically. The threshold and archive behavior are 
 - `SESSION_RETENTION_DAYS` — how many days to keep archived sessions (default: 30)
 
 Archived sessions can still be queried and resumed if needed.
+
+## Headless Claude Sessions
+
+A headless Claude session is a sidecar row with `agent = claude` and `runtime = headless`, named `claude-headless-<timestamp>` (the same `<agent>-headless-*` pattern any agent's headless sessions follow) rather than after the Claude UUID, because the UUID changes on `/clear` while the name must stay stable for URLs, status rows and push state. The row carries the account `profile` and the current `agent_session_id`.
+
+The row is the truth and the process is a cache: a session with no running process is "dormant" and the next message starts one with `--resume`. The manager is the only writer of that session's `session_status` row (status, mode, model, blocked prompt, last error, token usage); the hooks never write it. The transcript is still read from Claude's own `~/.claude/projects/<cwd>/<id>.jsonl`.
+
+Claude's account-wide rate-limit windows are kept in the persistent state database (`host-agent/state/push.sqlite`, key `quota_live_state`, plus `quota_live_state:<profile>` per extra account). Two writers feed it through one merge rule: the statusLine script of a tmux session, and the headless manager from its processes' rate-limit events (a headless process renders no status line).

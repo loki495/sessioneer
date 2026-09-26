@@ -23,13 +23,19 @@ version and probing capabilities at startup are therefore part of the design.
   not a global mode. If an agent has no usable headless session mode, it
   stays tmux-driven and we don't pretend otherwise.
 - **opencode is the first headless runtime** (via `opencode serve`).
-- **claude is excluded for now.** The Claude Agent SDK does not run on a
-  Pro subscription without separate pay-per-API: the June-15, 2026 monthly
-  Agent SDK subscription credit was cancelled ("The previously announced
-  monthly credit... isn't available" - Anthropic support); the SDK is
-  built around API-key/Claude-Platform auth (pay-as-you-go), and the
-  subscription-replay workarounds are explicitly forbidden by the SDK's
-  own terms. Not worth it under the no-pay-per-API constraint.
+- **claude runs headless through the real `claude` CLI, not the Agent SDK.**
+  The Claude Agent SDK library is built around API-key/Claude-Platform
+  authentication and pay-as-you-go billing. Sessioneer's Claude headless
+  runtime is a different thing: it drives the installed `claude` binary as
+  a child process (`claude -p` with stream-json input and output) on the
+  user's own logged-in claude.ai account, so usage counts against the plan's
+  own windows (five_hour / seven_day) and no API key is involved. The
+  manager enforces that: it strips `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN`
+  from the process, never passes `--bare`, kills a process whose `init`
+  reports an `apiKeySource` other than `none`, and refuses new starts while
+  overage is in use. tmux remains a supported runtime for Claude and for
+  sessions started by hand. Design and protocol records: Dibs decision #298
+  and research #280.
 - **antigravity has no headless session mode** (only one-shot
   `agy -p`). Stays tmux-driven.
 - **codex uses `codex app-server` as its primary runtime.** `codex exec
@@ -253,7 +259,7 @@ no workspace plumbing required. This was the last risk for Sessioneer's
   needs the request stream drained or outputs a reconnectable SSE shape.
 - **Phase 1 — runtime capability contract.** Define the runtime interface
   (lifecycle/status/drive/read) and an agent→runtime registry
-  (opencode→serve; claude→tmux; antigravity→tmux). Existing services
+  (opencode→serve; claude→tmux or the headless manager; antigravity→tmux). Existing services
   start to read from a runtime rather than hardcoding tmux.
   **DONE (2026-08-26):** `host-agent/lib/Runtimes/` - `RuntimeType`,
   `RuntimeProvider` (the contract), `RuntimeRegistry`, `OpenCodeServeClient`,
@@ -325,8 +331,8 @@ no workspace plumbing required. This was the last risk for Sessioneer's
    not a working SSE source in the original probes.
 - **Phase 5 — parity check + deferred.** Sweep every tmux capability for
   opencode headless and confirm an equivalent (or document the gap).
-  claude/antigravity stay tmux unless a headless mode with the right
-  billing appears later.
+  antigravity stays tmux (it has no headless session mode); Claude's
+  counterpart is the headless manager described above.
 
 ### Codex work
 

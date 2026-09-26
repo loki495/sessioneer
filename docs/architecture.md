@@ -4,9 +4,9 @@
 
 The web UI runs in a Docker container that **never touches tmux, the host process table, or any other host-local process directly** — it only speaks a small JSON request/response protocol over a UNIX socket to a separate, host-native **agent** (`host-agent/`, installed directly on the host, not containerized).
 
-For tmux-backed agents (Claude Code, Antigravity, and OpenCode's tmux fallback), this split exists so the container can never accidentally become the process that spawns tmux's own server (which would put it inside the container's filesystem namespace, unreachable from the host).
+For tmux-backed sessions (Claude Code by default, Antigravity, and OpenCode's tmux fallback), this split exists so the container can never accidentally become the process that spawns tmux's own server (which would put it inside the container's filesystem namespace, unreachable from the host).
 
-For headless agents (Codex always, OpenCode by default), the host agent instead proxies to that agent's own local server process (`codex app-server`, `opencode serve`). Either way, everything that has to run in the host's own namespace stays in one place.
+For headless runtimes (Codex always, OpenCode by default, Claude Code when a session runs headless), the host agent instead proxies to a local server process: `codex app-server`, `opencode serve`, or, for Claude Code, a persistent host-native manager that owns one `claude -p` stream-json process per active session. Either way, everything that has to run in the host's own namespace stays in one place.
 
 **Practically, this means setup has two independent parts:**
 - The host agent (native, via systemd `--user`)
@@ -27,7 +27,7 @@ Keeping all tmux/`/proc` access in a process that's always host-native makes tha
 ### Session State Detection
 
 Session state (blocked/working/idle) comes exclusively from each agent's own structured signal wherever the agent exposes one:
-- **Claude Code** uses hooks
+- **Claude Code** uses hooks (tmux runtime) or, for a headless session, the structured events of its own process, written to the session status store by the manager
 - **Antigravity** uses hooks for lifecycle/identity and its pane for the actual approval dialog
 - **OpenCode** uses its serve API, SQLite, permissions plugin, and (for TUI permissions) its pane
 - **Codex** uses the private bridge for Sessioneer-owned turns and hooks for Remote-owned activity

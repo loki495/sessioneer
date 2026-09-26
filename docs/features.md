@@ -12,7 +12,7 @@ Legend: **✓** supported · **◐** supported with a caveat · **✗** unavaila
 
 | Agent | Session prefix | Runtime | Conversation source | Activity / blocked source | Write path |
 |---|---:|---|---|---|---|
-| Claude Code | `cc-*` | tmux | Claude JSONL | Five Claude hooks; narrow pane fallbacks | tmux key input |
+| Claude Code | `cc-*` tmux / `claude-headless-*` headless | tmux or headless (`claude -p` owned by the headless manager) | Claude JSONL | tmux: five Claude hooks, narrow pane fallbacks; headless: the process's own event stream | tmux key input, or the manager's stdin |
 | Antigravity | `ag-*` | tmux | `transcript_full.jsonl` | Four Antigravity hooks plus the pane for approval visibility | tmux key input |
 | OpenCode | `ses_*` headless / `oc-*` tmux | `opencode serve` by default, tmux fallback | `opencode.db` | Serve API, SQLite, permissions plugin, and TUI pane where necessary | serve API or tmux key input |
 | Codex | native thread UUID | headless only | Codex rollout JSONL and app-server | Private bridge for Sessioneer-owned turns; Codex hooks for Remote-owned activity | Persistent queue after materialization; private bridge for a new thread's first turn and owned prompt replies |
@@ -27,9 +27,10 @@ tmux, agent daemons, process tables, or user configuration directly.
 | List / open / kill | ✓ | ✓ | ✓ | ✓ (kill archives the thread) |
 | Create in selected workdir | ✓ | ✓ | ✓ | ✓ |
 | Resume archived session | ✓ | ✓ | ✓ | ✓ |
-| tmux attach command | ✓ | ✓ | ◐ TUI runtime only | — |
+| tmux attach command | ◐ tmux runtime only | ✓ | ◐ TUI runtime only | — |
+| Runs without a terminal (headless) | ✓ chosen per session | ✗ | ✓ default | ✓ always |
 | Discover / take over a bare process | ✓ | ✗ | ✗ | ✗ |
-| Working / idle state | ✓ hooks | ✓ hooks | ✓ serve/DB | ✓ bridge + hooks |
+| Working / idle state | ✓ hooks (tmux) / process events (headless) | ✓ hooks | ✓ serve/DB | ✓ bridge + hooks |
 | Detect a pending permission | ✓ | ✓ pane | ✓ | ◐ owned prompts are answerable; Remote prompts are observe-only |
 | Display exact tool details | ✓ hook | ◐ hook metadata + pane | ◐ depends on plugin/API shape | ◐ hook context for Remote; full bridge payload when owned |
 | Approve / deny in Sessioneer | ✓ | ✓ | ✓ | ◐ Sessioneer-owned prompts only |
@@ -53,10 +54,11 @@ tmux, agent daemons, process tables, or user configuration directly.
 
 ## Claude Code implementation
 
-`ClaudeCodeAdapter` supports only `RuntimeType::TMUX`. New sessions receive an
-explicit UUID through `claude --session-id`; the `SessionStart` hook repairs
-the sidecar if Claude rotates that ID after `/clear`, `/compact`, resume, or a
-fork.
+`ClaudeCodeAdapter` supports `RuntimeType::TMUX` and `RuntimeType::HEADLESS`
+(see "Headless runtime" below). New sessions receive an explicit UUID through
+`claude --session-id`; in tmux the `SessionStart` hook repairs the sidecar if
+Claude rotates that ID after `/clear`, resume, or a fork (a headless session
+follows the id from its process's own `init` events instead).
 
 Sessioneer installs these entries in `~/.claude/settings.json`:
 
@@ -121,16 +123,66 @@ The push-check timer lists headless Claude sessions through the same code path
 as the dashboard, so a headless session waiting on a prompt notifies with the
 prompt itself.
 
-The dashboard health box has a "Claude Code headless" section: the CLI path,
-the manager service and its socket, whether the billing guardrail has stopped new
-sessions and why, that the credential in use is the claude.ai login (never an
-API key), the Claude Code version against the one the handling was verified on
-(older is a problem, newer is noted), how many of the allowed processes are
-running, and whether the quota footer is keeping up with what the manager sees.
-The per-account hook checks in the "Claude Code" sections apply to tmux and
-hand-started sessions only.
+### Headless runtime
 
-Implementation entry points:
+A Claude session can also run without a terminal. Sessioneer's headless runtime
+drives the installed `claude` binary as a child process (`claude -p` with
+stream-json input and output) on your own logged-in claude.ai account: usage
+counts against the plan's own windows (the five-hour and seven-day limits the
+quota footer shows) and no API key is involved. That is a different thing from
+the Claude Agent SDK library, which authenticates with an API key or a Claude
+Platform account and bills pay-as-you-go. Sessioneer enforces the difference: it
+removes `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` from the process, never passes
+`--bare` (which ignores the login), kills a process whose `init` event reports an
+`apiKeySource` other than `none` and refuses further starts until that is fixed,
+and refuses new starts while Claude reports pay-as-you-go overage in use; the
+health box shows both conditions. tmux remains a fully supported runtime for
+Claude, and the runtime is chosen per session.
+
+One persistent host-native service, `sessioneer-claude-headless-manager.service`
+(installed by `host-agent/install.sh` once `CLAUDE_BIN` is set), owns one process
+per active session, and the socket-activated host agent talks to it over a UNIX
+socket. The process is a cache and the session's sidecar row is the truth: a
+session with no process ("dormant") is resumed with `--resume` by its next
+message, a process idle for `CLAUDE_HEADLESS_IDLE_SECONDS` (default 1800) is
+stopped, and at most `CLAUDE_HEADLESS_MAX_CHILDREN` (default 8) run at once. The
+service loads its code once, so restart it after editing it; restarting it stops
+every process, sessions resume on their next message, and any open prompt is
+lost.
+
+Choose it per session from the New Session form's "Runs in" list, the
+**Headless** button on an archived Claude row, or the per-row switch between
+runtimes (the old process is stopped completely first, and a busy session or one
+with no transcript yet is refused). Permission approvals, `AskUserQuestion`
+(single and multi-question), plan approval, interrupt, queued messages, image
+attachments and model and permission-mode changes all work through the process's
+own structured events, and the transcript view still reads the same transcript
+file. A permission mode that Claude does not apply (`auto` was silently ignored on
+2.1.278) is flagged on the session instead of trusted. There is no terminal to
+attach to; to continue a conversation in one, switch the session to the terminal
+runtime. A headless session's own process never appears under "other Claude
+processes", and Kill and Take over refuse it.
+
+Slash commands are ordinary messages that start with `/` (checked against Claude
+Code 2.1.278):
+
+- Commands that run locally (`/context`, `/usage`, `/model <name>`, `/mcp`) answer
+  without a model call, so they use no plan quota; the model does see their
+  output on later turns. Prefer the model and mode pickers over `/model`, which
+  report their result in a structured way.
+- Terminal-only commands (`/theme`, `/add-dir`) reply "isn't available in this
+  environment" and change nothing. In particular `/add-dir` cannot grant access to
+  another directory mid-session; extra directories must be given when the process
+  starts (`--add-dir`), which Sessioneer does not offer yet.
+- A `/name` that Claude Code does not recognise is not rejected: it is sent to the
+  model as an ordinary message and spends a turn, so a typo costs plan quota.
+- A command sent while a turn is running is queued like any message.
+
+The health box's "Claude Code headless" section reports the manager, the credential
+in use, the CLI version against the one this handling was verified on, capacity and
+whether the quota footer is current.
+
+### Claude Code implementation entry points
 
 - `host-agent/lib/Agents/ClaudeCodeAdapter.php`
 - `host-agent/lib/Services/HookService.php`
@@ -138,6 +190,9 @@ Implementation entry points:
 - `host-agent/lib/Services/PromptInteractionService.php`
 - `host-agent/lib/Services/TranscriptService.php`
 - `host-agent/config/agents.php` (profile definitions)
+- `host-agent/claude_headless_manager.php`, `host-agent/lib/Runtimes/ClaudeHeadlessManager.php` and `ClaudeHeadlessChild.php` (the persistent manager and its processes)
+- `host-agent/lib/Runtimes/ClaudeHeadlessRuntime.php`, `ClaudeHeadlessManagerClient.php`, `ClaudeHeadlessPromptProtocol.php` (the runtime the host agent uses)
+- `host-agent/lib/Services/SessionRuntimeSwitchService.php` (switching a session between runtimes)
 - `host-agent/lib/Services/QuotaService.php` (per-account quota)
 - `host-agent/lib/Services/QuotaLiveStateWriter.php` (merges both quota writers' readings)
 - `host-agent/lib/Services/ClaudeHeadlessHealthService.php` (headless health-box checks)

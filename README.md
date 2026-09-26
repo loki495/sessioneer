@@ -3,7 +3,8 @@
 [![CI](https://github.com/loki495/sessioneer/actions/workflows/ci.yml/badge.svg)](https://github.com/loki495/sessioneer/actions/workflows/ci.yml)
 
 A self-hosted, LAN-only web UI for managing coding-agent sessions - Claude
-Code and Antigravity (`cc-*`/`ag-*`, tmux-driven), OpenCode (native `ses_*`
+Code (`cc-*` in tmux, or headless with no terminal at all), Antigravity
+(`ag-*`, tmux-driven), OpenCode (native `ses_*`
 IDs through its headless server by default, `oc-*` tmux as a fallback), and
 Codex (native thread UUIDs, headless only, no tmux at all) - on your own dev
 box. See blocked prompts, answer
@@ -96,14 +97,14 @@ answered in Sessioneer.
 
 | Agent | Runtime | Status / prompts | Extra setup |
 |---|---|---|---|
-| Claude Code | tmux only | Claude hooks, with narrow pane fallbacks for folder trust and `AskUserQuestion` UI state | Click **Install hooks** |
+| Claude Code | tmux by default; headless optional | tmux: Claude hooks, with narrow pane fallbacks for folder trust and `AskUserQuestion` UI state. Headless: the session process's own event stream, no hooks or pane | Click **Install hooks**; `host-agent/install.sh` installs the headless manager once `CLAUDE_BIN` is set |
 | Antigravity | tmux only | Hooks provide lifecycle and conversation identity; the live pane identifies approval dialogs | Install its global hooks; optionally enable its quota timer |
 | OpenCode | `opencode serve` by default; tmux fallback | Serve API + SQLite + global permissions plugin; tmux permissions also consult the live pane | Re-run `host-agent/install.sh` after setting `OPENCODE_BIN` |
 | Codex | headless only | Private app-server bridge for locally-owned startup; persistent queue + Codex hooks for shared/Remote-owned threads | Click **Install hooks**, trust them in Codex, and bootstrap Remote control when sharing with Codex Remote |
 
 ### Claude Code
 
-Sessioneer starts `cc-*` sessions in tmux. Five hooks in
+Sessioneer starts `cc-*` sessions in tmux by default. Five hooks in
 `~/.claude/settings.json` (`SessionStart`, `PreToolUse`,
 `PermissionRequest`, `UserPromptSubmit`, and `Stop`) maintain transcript
 identity, flow state, permission details, mode, and the last response. The
@@ -117,6 +118,19 @@ Permission approvals, free-text questions, multi-question
 an `AskUserQuestion` are the deliberate pane-based exceptions because Claude's
 hook payload does not contain enough UI state. Bare-process discovery and
 **Take over** are currently Claude-only.
+
+A Claude session can instead run **headless**, with no terminal: pick it in the
+New Session form's "Runs in" list, use the **Headless** button on an archived
+Claude session, or switch a running session between runtimes from its row.
+Sessioneer then runs the installed `claude` binary (`claude -p`, stream-json)
+on your own logged-in claude.ai account, through the
+`sessioneer-claude-headless-manager.service` that `host-agent/install.sh`
+installs. This is not the Claude Agent SDK library, which uses an API key or
+Claude Platform account and bills pay-as-you-go: Sessioneer keeps API-key
+variables out of the process and stops it if Claude reports an API-key
+credential. Details and limits are in [docs/features.md](docs/features.md#headless-runtime);
+after editing the manager's code, restart it with
+`systemctl --user restart sessioneer-claude-headless-manager.service`.
 
 Claude quota data is captured when a tmux session renders its configured status
 line and, for headless sessions, from the rate-limit events the manager sees; it
