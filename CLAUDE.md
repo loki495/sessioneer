@@ -18,8 +18,11 @@ bash tests/run.sh --bail   # stop at the first failing test file
 bash tests/run.sh --live   # run ONLY the live smoke test (see below) - never part of the default run
 ```
 
-No Composer test runner, no Pest, no build step for JS/CSS (plain files,
-no bundler/npm — there is no `package.json`). `tests/run.sh` runs each
+No Composer test runner, no Pest, and nothing to build to run the app: the JS is
+plain files and `public/css/tailwind.css` is a committed, precompiled file. A
+dev-only `package.json` exists for regenerating it (`npm run build:css`, after
+editing classes in a template) and for the JSDoc type-check (`npm run
+typecheck`) - see CONTRIBUTING.md. `tests/run.sh` runs each
 `tests/test_*.php` directly via the `php` CLI. The default suite is
 self-isolating: it points `TMUX_SOCKET`/`CLAUDE_BIN`/sidecar paths at
 fixtures (`tests/.env.testing`), so it never touches the real tmux server
