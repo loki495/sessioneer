@@ -307,9 +307,9 @@ $response = match ($action) {
         : ['ok' => false, 'message' => 'Invalid folder name'],
     // Echoes the runtime it was asked for, so the UI smoke test can prove the
     // New Session form's runtime choice actually reaches the agent (and that
-    // an untouched form sends none).
+    // an absent or invalid one sends none).
     'create' => ['ok' => true, 'message' => 'Created session cc-20260101-1300 in /home/user/www/demo-project'
-        . (($request['runtime'] ?? null) === 'headless' ? ' [runtime=headless]' : '')],
+        . (is_string($request['runtime'] ?? null) ? ' [runtime=' . $request['runtime'] . ']' : '')],
     // Requires the matching profile too (not just id/workdir) - found live
     // 2026-09-19: neither the archived-row Resume form nor the
     // archived-session Unarchive form sent one, and DashboardController

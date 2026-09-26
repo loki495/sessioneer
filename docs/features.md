@@ -12,7 +12,7 @@ Legend: **✓** supported · **◐** supported with a caveat · **✗** unavaila
 
 | Agent | Session prefix | Runtime | Conversation source | Activity / blocked source | Write path |
 |---|---:|---|---|---|---|
-| Claude Code | `cc-*` tmux / `claude-headless-*` headless | tmux or headless (`claude -p` owned by the headless manager) | Claude JSONL | tmux: five Claude hooks, narrow pane fallbacks; headless: the process's own event stream | tmux key input, or the manager's stdin |
+| Claude Code | `claude-headless-*` headless (default) / `cc-*` tmux | headless (`claude -p` owned by the headless manager) by default, or tmux | Claude JSONL | tmux: five Claude hooks, narrow pane fallbacks; headless: the process's own event stream | tmux key input, or the manager's stdin |
 | Antigravity | `ag-*` | tmux | `transcript_full.jsonl` | Four Antigravity hooks plus the pane for approval visibility | tmux key input |
 | OpenCode | `ses_*` headless / `oc-*` tmux | `opencode serve` by default, tmux fallback | `opencode.db` | Serve API, SQLite, permissions plugin, and TUI pane where necessary | serve API or tmux key input |
 | Codex | native thread UUID | headless only | Codex rollout JSONL and app-server | Private bridge for Sessioneer-owned turns; Codex hooks for Remote-owned activity | Persistent queue after materialization; private bridge for a new thread's first turn and owned prompt replies |
@@ -28,7 +28,7 @@ tmux, agent daemons, process tables, or user configuration directly.
 | Create in selected workdir | ✓ | ✓ | ✓ | ✓ |
 | Resume archived session | ✓ | ✓ | ✓ | ✓ |
 | tmux attach command | ◐ tmux runtime only | ✓ | ◐ TUI runtime only | — |
-| Runs without a terminal (headless) | ✓ chosen per session | ✗ | ✓ default | ✓ always |
+| Runs without a terminal (headless) | ✓ default, chosen per session | ✗ | ✓ default | ✓ always |
 | Discover / take over a bare process | ✓ | ✗ | ✗ | ✗ |
 | Working / idle state | ✓ hooks (tmux) / process events (headless) | ✓ hooks | ✓ serve/DB | ✓ bridge + hooks |
 | Detect a pending permission | ✓ | ✓ pane | ✓ | ◐ owned prompts are answerable; Remote prompts are observe-only |
@@ -136,8 +136,8 @@ removes `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` from the process, never passe
 `--bare` (which ignores the login), kills a process whose `init` event reports an
 `apiKeySource` other than `none` and refuses further starts until that is fixed,
 and refuses new starts while Claude reports pay-as-you-go overage in use; the
-health box shows both conditions. tmux remains a fully supported runtime for
-Claude, and the runtime is chosen per session.
+health box shows both conditions. Headless is the default runtime for new
+Claude sessions; tmux remains a fully supported runtime, chosen per session.
 
 One persistent host-native service, `sessioneer-claude-headless-manager.service`
 (installed by `host-agent/install.sh` once `CLAUDE_BIN` is set), owns one process
@@ -150,10 +150,13 @@ service loads its code once, so restart it after editing it; restarting it stops
 every process, sessions resume on their next message, and any open prompt is
 lost.
 
-Choose it per session from the New Session form's "Runs in" list, the
-**Headless** button on an archived Claude row, or the per-row switch between
-runtimes (the old process is stopped completely first, and a busy session or one
-with no transcript yet is refused). Permission approvals, `AskUserQuestion`
+The New Session form's "Runs in" list preselects Headless, with Terminal (tmux)
+as the alternative; a new session started while the manager is down fails with a
+"Cannot reach Claude headless manager" message rather than quietly opening a
+terminal. Existing conversations move with the **Headless** button on an
+archived Claude row or the per-row switch between runtimes (the old process is
+stopped completely first, and a busy session or one with no transcript yet is
+refused); plain Resume and Take over still open a terminal session. Permission approvals, `AskUserQuestion`
 (single and multi-question), plan approval, interrupt, queued messages, image
 attachments and model and permission-mode changes all work through the process's
 own structured events, and the transcript view still reads the same transcript

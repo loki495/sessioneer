@@ -164,7 +164,9 @@ Docker-spawned, makes that impossible by construction — not by convention.
    are the captured stream-json events and `tests/fixtures/fake_claude_stream`
    is the scripted stand-in the tests drive. `ClaudeHeadlessRuntime` is the
    `RuntimeProvider` face of it: a `create` request with `runtime=headless`
-   selects it (tmux stays the default), its refs are
+   selects it (headless is the default when `runtime` is absent, chosen by
+   `ClaudeCodeAdapter::supported_runtimes()`' first entry; `runtime=tmux`
+   selects a pane, anything else is rejected), its refs are
    `claude-headless-<timestamp>` (`HeadlessSessionName` - the pattern for any
    agent's headless sessions is `<agent>-headless-*`), and it derives the
    dashboard row, prompts and answers from the sidecar, the status store and

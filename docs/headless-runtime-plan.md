@@ -259,7 +259,7 @@ no workspace plumbing required. This was the last risk for Sessioneer's
   needs the request stream drained or outputs a reconnectable SSE shape.
 - **Phase 1 — runtime capability contract.** Define the runtime interface
   (lifecycle/status/drive/read) and an agent→runtime registry
-  (opencode→serve; claude→tmux or the headless manager; antigravity→tmux). Existing services
+  (opencode→serve; claude→the headless manager (default) or tmux; antigravity→tmux). Existing services
   start to read from a runtime rather than hardcoding tmux.
   **DONE (2026-08-26):** `host-agent/lib/Runtimes/` - `RuntimeType`,
   `RuntimeProvider` (the contract), `RuntimeRegistry`, `OpenCodeServeClient`,

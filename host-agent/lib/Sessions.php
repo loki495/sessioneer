@@ -165,8 +165,8 @@ function dispatch_action(array $request): array
             // OpenCode's default runtime is headless (no tmux) - a New
             // Session for opencode goes through `opencode serve`, so it
             // lands in the headless pool the dashboard already merges in.
-            // Other agents (claude/antigravity) have no headless session
-            // mode and stay on the tmux path.
+            // Antigravity has no headless session mode and stays on the tmux
+            // path; Claude chooses its runtime below.
             if ($agentId === 'opencode' || $agentId === 'codex') {
                 $headless = RuntimeRegistry::runtime_for($agentId, RuntimeType::HEADLESS);
 
@@ -214,10 +214,23 @@ function dispatch_action(array $request): array
                 return $result;
             }
 
-            // Claude Code runs in a tmux pane unless the caller asks for the
-            // headless runtime (a `claude -p` process owned by the headless
-            // manager, no pane). tmux stays the default.
-            if (($agentId ?? 'claude') === 'claude' && ($request['runtime'] ?? null) === RuntimeType::HEADLESS) {
+            // Claude Code's runtime is the caller's choice (headless: a
+            // `claude -p` process owned by the headless manager, no pane; or
+            // tmux), defaulting to the adapter's first supported runtime.
+            $claudeRuntime = null;
+
+            if (($agentId ?? 'claude') === 'claude') {
+                $requestedRuntime = $request['runtime'] ?? null;
+                $claudeRuntime = is_string($requestedRuntime) && $requestedRuntime !== ''
+                    ? $requestedRuntime
+                    : (RuntimeRegistry::supported('claude')[0] ?? RuntimeType::TMUX);
+
+                if (!in_array($claudeRuntime, RuntimeRegistry::supported('claude'), true)) {
+                    return ['ok' => false, 'message' => "Unknown runtime '{$claudeRuntime}' for Claude Code"];
+                }
+            }
+
+            if ($claudeRuntime === RuntimeType::HEADLESS) {
                 $headless = RuntimeRegistry::runtime_for('claude', RuntimeType::HEADLESS);
 
                 if ($headless === null) {

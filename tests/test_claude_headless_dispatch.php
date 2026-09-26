@@ -132,6 +132,45 @@ assert_equal($name, $created['session'], 'the create reply carries the name the 
 $sidecar = SidecarStore::read_sidecar($name);
 assert_equal('headless', $sidecar['runtime'], 'the sidecar says headless');
 assert_equal($workdir, $sidecar['workdir'], 'with its working directory');
+
+// ============================================================ default runtime
+
+echo "Default runtime\n";
+$tmuxNamesBefore = array_column(HostAgent\Services\TmuxService::list_tracked_tmux_sessions(), 'name');
+
+foreach (['no runtime given' => [], 'an empty runtime' => ['runtime' => '']] as $label => $extra) {
+    $byDefault = act(['action' => 'create', 'agent' => 'claude', 'workdir' => $workdir] + $extra);
+    assert_true(($byDefault['ok'] ?? false) === true, "creating with {$label} succeeds" . (($byDefault['ok'] ?? false) === true ? '' : ' - got ' . json_encode($byDefault)));
+    $defaultName = (string)($byDefault['name'] ?? '');
+    $made[] = $defaultName;
+    assert_true(str_starts_with($defaultName, 'claude-headless-'), "with {$label} a Claude session is headless (named claude-headless-*)");
+    assert_equal('headless', SidecarStore::read_sidecar($defaultName)['runtime'] ?? null, "and its sidecar says headless ({$label})");
+    act(['action' => 'kill', 'session' => $defaultName]);
+}
+
+assert_equal($tmuxNamesBefore, array_column(HostAgent\Services\TmuxService::list_tracked_tmux_sessions(), 'name'), 'and no tmux session was created by either');
+
+$asTmux = act(['action' => 'create', 'agent' => 'claude', 'runtime' => 'tmux', 'workdir' => $workdir]);
+assert_true(($asTmux['ok'] ?? false) === true, 'runtime=tmux still creates a terminal session' . (($asTmux['ok'] ?? false) === true ? '' : ' - got ' . json_encode($asTmux)));
+// A tmux create names the session only inside its message, so find it by what is new.
+$newTmux = array_values(array_diff(array_column(HostAgent\Services\TmuxService::list_tracked_tmux_sessions(), 'name'), $tmuxNamesBefore));
+assert_equal(1, count($newTmux), 'exactly one new tmux session appeared');
+$tmuxName = (string)($newTmux[0] ?? '');
+$made[] = $tmuxName;
+assert_true(str_starts_with($tmuxName, 'cc-'), 'named cc-*');
+assert_contains($tmuxName, (string)($asTmux['message'] ?? ''), 'and the reply names it');
+assert_true(in_array($tmuxName, array_column(HostAgent\Services\TmuxService::list_tracked_tmux_sessions(), 'name'), true), 'and it really is a tracked tmux session');
+assert_true((SidecarStore::read_sidecar($tmuxName)['runtime'] ?? 'tmux') !== 'headless', 'whose sidecar is not headless');
+assert_true((act(['action' => 'kill', 'session' => $tmuxName])['ok'] ?? false) === true, 'and it can be killed like any tmux session');
+
+$before = count(SidecarStore::list_runtime_sidecars('headless'));
+$bogus = act(['action' => 'create', 'agent' => 'claude', 'runtime' => 'docker', 'workdir' => $workdir]);
+assert_equal(false, $bogus['ok'] ?? null, 'an unknown runtime is rejected');
+assert_equal("Unknown runtime 'docker' for Claude Code", $bogus['message'] ?? null, 'with a message naming it');
+assert_equal($before, count(SidecarStore::list_runtime_sidecars('headless')), 'and nothing was created for it');
+assert_equal($tmuxNamesBefore, array_column(HostAgent\Services\TmuxService::list_tracked_tmux_sessions(), 'name'), 'in tmux either');
+$wrongCase = act(['action' => 'create', 'agent' => 'claude', 'runtime' => 'HEADLESS', 'workdir' => $workdir]);
+assert_equal(false, $wrongCase['ok'] ?? null, 'runtime names are matched exactly, not guessed');
 $launch = fake_log($m)[0];
 assert_true(in_array('haiku', $launch['argv'], true) && in_array('plan', $launch['argv'], true), 'the requested model and starting mode reach Claude');
 
@@ -325,6 +364,17 @@ assert_equal(null, SidecarStore::read_sidecar($name2), 'and removes the session'
 $createDown = act(['action' => 'create', 'agent' => 'claude', 'runtime' => 'headless', 'workdir' => $workdir]);
 assert_true(($createDown['ok'] ?? true) === false, 'creating with the manager down fails');
 assert_contains('Cannot reach Claude headless manager', (string)$createDown['message'], 'with the same named error');
+$tmuxBeforeDown = array_column(HostAgent\Services\TmuxService::list_tracked_tmux_sessions(), 'name');
+$createDownDefault = act(['action' => 'create', 'agent' => 'claude', 'workdir' => $workdir]);
+assert_equal(false, $createDownDefault['ok'] ?? null, 'the DEFAULT create (no runtime given) also fails with the manager down');
+assert_contains('Cannot reach Claude headless manager', (string)$createDownDefault['message'], 'with the named error - a broken manager is shown, not hidden');
+assert_equal($tmuxBeforeDown, array_column(HostAgent\Services\TmuxService::list_tracked_tmux_sessions(), 'name'), 'and does not quietly fall back to a tmux session');
+$tmuxDown = act(['action' => 'create', 'agent' => 'claude', 'runtime' => 'tmux', 'workdir' => $workdir]);
+assert_true(($tmuxDown['ok'] ?? false) === true, 'while runtime=tmux still works with the manager down');
+foreach (array_diff(array_column(HostAgent\Services\TmuxService::list_tracked_tmux_sessions(), 'name'), $tmuxBeforeDown) as $leftover) {
+    $made[] = $leftover;
+    act(['action' => 'kill', 'session' => $leftover]);
+}
 assert_equal(0, count(array_filter(SidecarStore::list_runtime_sidecars('headless'), static fn (array $r): bool => ($r['agent'] ?? null) === 'claude' && ($r['workdir'] ?? null) === $workdir)), 'and leaves no half-created Claude session behind');
 
 test_exit();

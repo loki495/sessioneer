@@ -183,16 +183,16 @@ class ClaudeCodeAdapter implements AgentAdapter
     }
 
     /**
-     * Claude Code runs in a tmux pane (the default, listed first) or
-     * headless: the real `claude` binary as a `claude -p` stream-json child
-     * of ClaudeHeadlessManager, authenticated by the user's own logged-in
-     * subscription and never an API key. That is a different thing from the
-     * Agent SDK library, which authenticates with an API key and bills
-     * pay-as-you-go; the manager enforces the difference (see
-     * ClaudeHeadlessManager's credential guardrails).
+     * Claude Code runs headless (the default, listed first): the real `claude`
+     * binary as a `claude -p` stream-json child of ClaudeHeadlessManager,
+     * authenticated by the user's own logged-in subscription and never an API
+     * key. That is a different thing from the Agent SDK library, which
+     * authenticates with an API key and bills pay-as-you-go; the manager
+     * enforces the difference (see ClaudeHeadlessManager's credential
+     * guardrails). A tmux pane remains a supported runtime, chosen per session.
      */
     public function supported_runtimes(): array
     {
-        return [RuntimeType::TMUX, RuntimeType::HEADLESS];
+        return [RuntimeType::HEADLESS, RuntimeType::TMUX];
     }
 }

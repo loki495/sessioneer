@@ -21,7 +21,7 @@ about it.
 
 ## Inventory
 
-The Claude Code rows below apply to **tmux-runtime** sessions only. A headless Claude session (see `docs/features.md`, "Headless runtime") has no pane and none of these sites is on its path: its state, prompts and session ids come from its process's own structured events, so a Claude Code rendering change cannot break it. Choosing the headless runtime is the structural mitigation for the Claude sites; the sites stay in the code for the tmux runtime and for hand-started sessions.
+The Claude Code rows below apply to **tmux-runtime** sessions only. A headless Claude session (see `docs/features.md`, "Headless runtime") has no pane and none of these sites is on its path: its state, prompts and session ids come from its process's own structured events, so a Claude Code rendering change cannot break it. Headless is the default runtime for new Claude sessions and is the structural mitigation for the Claude sites; the sites stay in the code for the tmux runtime and for hand-started sessions.
 
 Every place that parses text out of a live `tmux capture-pane` (as opposed
 to a documented, versioned hook/API payload this app doesn't have to guess

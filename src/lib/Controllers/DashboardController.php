@@ -110,10 +110,12 @@ class DashboardController extends Controller
                 if ($profile !== '') {
                     $createParams['profile'] = $profile;
                 }
-                // Only ever 'headless' or absent (tmux, the default); the host
-                // agent ignores it for every agent but Claude.
-                if (($_POST['runtime'] ?? '') === 'headless') {
-                    $createParams['runtime'] = 'headless';
+                // 'headless' or 'tmux'; anything else (including empty) is dropped
+                // so the agent applies its own default runtime. The host agent
+                // ignores it for every agent but Claude.
+                $runtime = (string)($_POST['runtime'] ?? '');
+                if (in_array($runtime, ['headless', 'tmux'], true)) {
+                    $createParams['runtime'] = $runtime;
                 }
                 $result = AgentClient::agent_call($createParams);
                 $ok = (bool)($result['ok'] ?? false);

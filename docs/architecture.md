@@ -4,9 +4,9 @@
 
 The web UI runs in a Docker container that **never touches tmux, the host process table, or any other host-local process directly** — it only speaks a small JSON request/response protocol over a UNIX socket to a separate, host-native **agent** (`host-agent/`, installed directly on the host, not containerized).
 
-For tmux-backed sessions (Claude Code by default, Antigravity, and OpenCode's tmux fallback), this split exists so the container can never accidentally become the process that spawns tmux's own server (which would put it inside the container's filesystem namespace, unreachable from the host).
+For tmux-backed sessions (Claude Code's tmux runtime, Antigravity, and OpenCode's tmux fallback), this split exists so the container can never accidentally become the process that spawns tmux's own server (which would put it inside the container's filesystem namespace, unreachable from the host).
 
-For headless runtimes (Codex always, OpenCode by default, Claude Code when a session runs headless), the host agent instead proxies to a local server process: `codex app-server`, `opencode serve`, or, for Claude Code, a persistent host-native manager that owns one `claude -p` stream-json process per active session. Either way, everything that has to run in the host's own namespace stays in one place.
+For headless runtimes (Codex always, OpenCode and Claude Code by default), the host agent instead proxies to a local server process: `codex app-server`, `opencode serve`, or, for Claude Code, a persistent host-native manager that owns one `claude -p` stream-json process per active session. Either way, everything that has to run in the host's own namespace stays in one place.
 
 **Practically, this means setup has two independent parts:**
 - The host agent (native, via systemd `--user`)

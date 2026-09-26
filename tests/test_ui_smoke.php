@@ -1412,7 +1412,7 @@ try {
     $runtimeCsrf = extract_csrf_token($runtimeFrontPage['body']);
     assert_contains('name="runtime"', $runtimeFrontPage['body'], 'GET /: the New Session form has a runtime picker');
     assert_true(preg_match('#<label id="new-session-runtime-label" class="hidden #', $runtimeFrontPage['body']) === 1, 'GET /: the runtime picker starts hidden (index.js reveals it for Claude only)');
-    assert_true(preg_match('#<select id="new-session-runtime" name="runtime"[^>]*>\s*<option value="" selected>Terminal \(tmux\)</option>\s*<option value="headless">Headless#', $runtimeFrontPage['body']) === 1, 'GET /: it offers Terminal (the untouched default, no value) and Headless');
+    assert_true(preg_match('#<select id="new-session-runtime" name="runtime"[^>]*>\s*<option value="headless" selected>Headless[^<]*</option>\s*<option value="tmux">Terminal \(tmux\)</option>#', $runtimeFrontPage['body']) === 1, 'GET /: it preselects Headless (the default) and offers Terminal (tmux), each with an explicit value');
     assert_contains("new-session-runtime-label", (string)$indexJs['body'], 'GET /js/index.js: the runtime picker is toggled per agent');
     assert_true(preg_match('#<form method="post" action="/"[^>]*>\s*<input type="hidden" name="action" value="switch_runtime">\s*<input type="hidden" name="csrf_token"[^>]*>\s*<input type="hidden" name="session" value="cc-20260101-1200">\s*<input type="hidden" name="runtime" value="headless">#', $runtimeFrontPage['body']) === 1, 'GET /: a tmux Claude row offers switching to headless');
 
@@ -1424,12 +1424,17 @@ try {
     curl_request('POST', "{$baseUrl}/", ['-d', 'action=new&csrf_token=' . urlencode((string)$runtimeCsrf) . '&workdir=' . urlencode('/home/user/www/demo-project') . '&agent=claude&runtime='], $cookieJar);
     $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
     assert_contains('Created session', $runtimeFollow['body'], 'POST new (empty runtime): still creates');
-    assert_true(!str_contains($runtimeFollow['body'], '[runtime=headless]'), 'POST new (empty runtime): no runtime is sent - an untouched form stays tmux');
+    assert_true(!str_contains($runtimeFollow['body'], '[runtime='), 'POST new (empty runtime): no runtime is sent - the agent applies its own default');
     $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
 
     curl_request('POST', "{$baseUrl}/", ['-d', 'action=new&csrf_token=' . urlencode((string)$runtimeCsrf) . '&workdir=' . urlencode('/home/user/www/demo-project') . '&agent=claude&runtime=' . urlencode('tmux; rm -rf /')], $cookieJar);
     $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
-    assert_true(!str_contains($runtimeFollow['body'], '[runtime=headless]'), 'POST new (garbage runtime): anything but "headless" is dropped, never forwarded');
+    assert_true(!str_contains($runtimeFollow['body'], '[runtime='), 'POST new (garbage runtime): anything but "headless" or "tmux" is dropped, never forwarded');
+    $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
+
+    curl_request('POST', "{$baseUrl}/", ['-d', 'action=new&csrf_token=' . urlencode((string)$runtimeCsrf) . '&workdir=' . urlencode('/home/user/www/demo-project') . '&agent=claude&runtime=tmux'], $cookieJar);
+    $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    assert_contains('[runtime=tmux]', $runtimeFollow['body'], 'POST new (runtime=tmux): the terminal choice reaches the agent');
     $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
 
     $runtimeResume = curl_request('POST', "{$baseUrl}/", [
