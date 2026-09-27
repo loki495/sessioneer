@@ -202,6 +202,11 @@ $this->layout('layout', [
       <p class="mt-1"><?= $this->e((string)($detail['message'] ?? 'Unknown error')) ?></p>
     </div>
   <?php else: ?>
+    <?php
+    $agentLabel = is_string($detail['agent_label'] ?? null) && $detail['agent_label'] !== ''
+        ? $detail['agent_label']
+        : (isset($detail['agent']) && $detail['agent'] === 'antigravity' ? 'Antigravity' : (isset($detail['agent']) && $detail['agent'] === 'codex' ? 'Codex' : 'Claude Code'));
+    ?>
     <?php if ($jumpLine !== null): ?>
       <!-- Landed here from a search result (see sidebar.php's search box/
            session.js) - the page above this loads a window ENDING at
@@ -262,11 +267,6 @@ $this->layout('layout', [
           Nothing recorded yet.
         </p>
       <?php else: ?>
-        <?php
-        $agentLabel = is_string($detail['agent_label'] ?? null) && $detail['agent_label'] !== ''
-            ? $detail['agent_label']
-            : (isset($detail['agent']) && $detail['agent'] === 'antigravity' ? 'Antigravity' : (isset($detail['agent']) && $detail['agent'] === 'codex' ? 'Codex' : 'Claude Code'));
-        ?>
         <?= \App\Views\TranscriptView::render_transcript_entries_html($entries, $sessionName, false, is_string($detail['workdir'] ?? null) ? $detail['workdir'] : null, $agentLabel, $csrfToken) ?>
       <?php endif; ?>
     </div>
@@ -276,7 +276,7 @@ $this->layout('layout', [
     </div>
 
     <div id="turn-error" class="mt-4">
-      <?= \App\Views\TranscriptView::render_turn_error_html($detail) ?>
+      <?= \App\Views\TranscriptView::render_turn_error_html($detail, $agentLabel) ?>
     </div>
 
     <!-- The live, actionable prompt state sits after history, not pinned

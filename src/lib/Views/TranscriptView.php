@@ -303,8 +303,9 @@ class TranscriptView extends View
     }
 
     /**
-     * Antigravity-only: a turn that failed without producing any reply at
-     * all (e.g. account quota exhausted) writes NOTHING to Antigravity's
+     * A turn that failed without producing any reply at
+     * all (e.g. account quota exhausted; a Claude headless process that
+     * died or was restarted mid-turn) - for Antigravity, that writes NOTHING to Antigravity's
      * own transcript file - see host-agent/hooks/antigravity/stop.php's
      * own docblock for the live-verified finding behind this (grepped a
      * real transcript after three separate quota-exhausted questions: only
@@ -318,7 +319,7 @@ class TranscriptView extends View
      * turn reads the same way a real reply would: something appears where
      * one was expected.
      */
-    public static function render_turn_error_html(array $detail): string
+    public static function render_turn_error_html(array $detail, string $agentLabel = 'Claude Code'): string
     {
         $errorText = is_string($detail['last_turn_error'] ?? null) ? $detail['last_turn_error'] : null;
 
@@ -328,6 +329,7 @@ class TranscriptView extends View
 
         return self::render('transcript/turn-error', [
             'errorText' => $errorText,
+            'agentLabel' => $agentLabel,
         ]);
     }
 
