@@ -274,6 +274,22 @@ final class ClaudeHeadlessChild
         return (bool)$status['running'];
     }
 
+    /** Waits up to $seconds for the process to be reaped; true once it has exited. */
+    public function wait_for_exit(float $seconds): bool
+    {
+        $deadline = microtime(true) + $seconds;
+
+        while ($this->is_running()) {
+            if (microtime(true) >= $deadline) {
+                return false;
+            }
+
+            usleep(10000);
+        }
+
+        return true;
+    }
+
     public function exit_code(): ?int
     {
         return $this->exitCode;

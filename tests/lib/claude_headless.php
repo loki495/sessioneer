@@ -53,7 +53,12 @@ function start_manager(string $root, string $name, array $env = []): array
 
     $m = ['proc' => $proc, 'sock' => $sock, 'log' => $log, 'fake' => $fake];
     $managers[] = $m;
-    wait_until(static fn (): bool => file_exists($sock), 5.0);
+    // The socket appears before the manager's startup cleanup runs; its own
+    // "listening" line is written only after that.
+    wait_until(
+        static fn (): bool => str_contains((string)@file_get_contents($log), 'listening on') || !proc_get_status($proc)['running'],
+        10.0
+    );
 
     return $m;
 }

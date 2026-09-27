@@ -51,6 +51,8 @@ final class ClaudeHeadlessManager
 
     private const SELECT_TIMEOUT_SECONDS = 1;
 
+    private const EXIT_REAP_WAIT_SECONDS = 0.5;
+
     private const RESTART_MESSAGE = 'Claude headless manager restarted while this session was busy; retry the interrupted turn.';
 
     /** Environment variables that would silently switch a child from the subscription login to an API key. */
@@ -1171,7 +1173,10 @@ final class ClaudeHeadlessManager
             }
         }
 
-        if ($child->is_running()) {
+        // The kernel closes a dying process's pipes before it can be reaped, so
+        // an EOF is often seen a moment before the exit status is available;
+        // killing it in that window would replace the real exit code.
+        if ($child->is_running() && !$child->wait_for_exit(self::EXIT_REAP_WAIT_SECONDS)) {
             // Pipe broke but the process lingers (or a write failed): make sure it is gone.
             $child->close_stdin();
             $child->signal(SIGKILL);
