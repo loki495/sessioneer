@@ -48,6 +48,7 @@ tmux, agent daemons, process tables, or user configuration directly.
 | Dashboard-wide content search | ✓ | ✗ | ✓ | ✗ |
 | Per-session content search | ✓ | ✗ | ✓ | ✗ |
 | Usage / quota display | ✓ per configured account | ✓ optional timer | ✓ | ✓ app-server rate limits |
+| Context-window % and git worktree on the session page | ◐ tmux runtime only | ✗ | ✗ | ✗ |
 | Multiple accounts (profiles) | ✓ | ✗ | ✗ | ✗ |
 | File upload / attachment send | ✓ | ✓ | ✓ | ✓ |
 | Web Push on blocked / finished state | ✓ | ✓ | ✓ | ✓, including observe-only Remote blocks |
@@ -138,6 +139,11 @@ removes `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` from the process, never passe
 and refuses new starts while Claude reports pay-as-you-go overage in use; the
 health box shows both conditions. Headless is the default runtime for new
 Claude sessions; tmux remains a fully supported runtime, chosen per session.
+
+This is for one person running their own installed CLI on their own login. It
+is not meant to be hosted for other people: Anthropic's terms do not let a third
+party offer claude.ai login or its rate limits in their own product (README,
+"Intended use").
 
 One persistent host-native service, `sessioneer-claude-headless-manager.service`
 (installed by `host-agent/install.sh` once `CLAUDE_BIN` is set), owns one process
@@ -363,3 +369,14 @@ Implementation entry points:
 6. The dashboard **Install hooks** action covers Claude Code and Codex.
    Antigravity hooks remain an explicit manual install, and OpenCode's plugin is
    installed by `host-agent/install.sh`.
+7. Claude headless sessions show no context-window percentage and no git
+   worktree: both come from the statusLine output a terminal renders and a
+   headless process never does.
+8. Claude headless sessions have no session-page control to switch runtime and
+   no copyable `claude --resume <id>` command to continue in a terminal; the
+   switch is on the dashboard row and archived row only. The New Session form
+   still offers Headless when the manager is down and fails with a message
+   rather than disabling the choice.
+9. Plain Resume and Take over always open a terminal session, whatever the
+   default runtime is, and Sessioneer cannot pass `--add-dir` to a headless
+   process at start, so `/add-dir` has no way to grant another directory.

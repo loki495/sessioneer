@@ -84,6 +84,18 @@ internet - it can create and kill agent sessions on your machine.
 - Consider a host firewall rule (`iptables`/`ufw`/`nftables`) restricting
   inbound `APP_PORT` to your LAN subnet as defense in depth.
 
+## Intended use
+
+Sessioneer is meant to be run by an individual, on their own machine, driving
+agents signed in with their own account, API key or token. It is not built to be
+hosted for other people or offered to third parties as a service, and it has no
+user accounts to do that with. The Claude headless runtime runs your own
+installed `claude` on your own login (see "Headless runtime" in
+[`docs/features.md`](docs/features.md)); Anthropic's Agent SDK terms do not let
+a third party offer claude.ai login or its rate limits in their own product, so
+check each provider's current terms before running Sessioneer for anyone but
+yourself.
+
 ## Architecture
 
 For technical details on the container/host-agent split and major implementation decisions, see [`docs/architecture.md`](docs/architecture.md).
