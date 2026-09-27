@@ -140,7 +140,10 @@ Docker-spawned, makes that impossible by construction — not by convention.
    agent/runtime work belongs — keep per-agent branching out of the services:
    `host-agent/lib/Agents/*` is WHICH agent (`AgentAdapter` + `AgentRegistry`,
    with `ClaudeCodeAdapter`/`CodexAdapter`/`OpenCodeAdapter`/
-   `AntigravityAdapter` behind it), and `host-agent/lib/Runtimes/*` is HOW it
+   `AntigravityAdapter` behind it; what a new agent must answer is the interface,
+   including `model_catalog()`, which feeds every model dropdown through
+   `list_models`, and `tests/test_agent_adapter_contract.php` runs the same
+   assertions against every registered adapter), and `host-agent/lib/Runtimes/*` is HOW it
    runs, independently of which agent it is (`TmuxRuntime` vs
    `HeadlessRuntime` behind `RuntimeProvider`/`RuntimeRegistry`/`RuntimeType`,
    plus `OpenCodeServeClient`, `CodexBridgeClient`, `CodexHeadlessRuntime` —

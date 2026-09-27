@@ -119,4 +119,17 @@ interface AgentAdapter
      * @return array<int, string> a subset of RuntimeType::all()
      */
     public function supported_runtimes(): array;
+
+    /**
+     * The models a new session (and the model dropdowns) can choose from, as
+     * rows of at least {id, name}: `id` is what create/set_model receives,
+     * `name` is the label to show. Never includes a "default" row, the forms
+     * supply their own. Agents whose models come from a running server
+     * (Codex, OpenCode) ask it here, so an unreachable one is a handled
+     * `ok => false` with a message, never an exception. Extra keys
+     * (providerID, isDefault, efforts, ...) pass through to the client.
+     *
+     * @return array{ok:bool, models?:array<int, array<string, mixed>>, message?:string}
+     */
+    public function model_catalog(): array;
 }

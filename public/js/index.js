@@ -729,9 +729,6 @@ document.addEventListener('keydown', function (e) {
     { id: 'haiku', label: 'Haiku' }
   ];
 
-  var ocModelsCache = null;
-  var codexModelsCache = null;
-
   function clearModels() {
     while (modelSelect.options.length > 1) {
       modelSelect.remove(1);
@@ -753,90 +750,65 @@ document.addEventListener('keydown', function (e) {
     });
   }
 
-  // The plain family names show at once; the host agent's full names
-  // ("Opus 5.5", learned from the sessions it has seen) replace them when
-  // they arrive, and a failed fetch just leaves the family names.
-  var claudeModelsCache = null;
+  // One loader for every agent: the host agent answers /session_list_models.php
+  // from that agent's own catalog (AgentAdapter::model_catalog()), rows of
+  // {id, name} plus whatever the agent adds (OpenCode's providerID). An agent
+  // with a `fallback` list shows it at once and swaps in the real names when
+  // they arrive; the others show "Loading models..." and keep the plain
+  // "Default" row if the fetch fails.
+  var MODEL_FALLBACKS = { claude: CLAUDE_MODELS.slice(1) };
+  var modelsCache = {};
 
-  function loadClaudeModels() {
-    populateModels(claudeModelsCache || CLAUDE_MODELS.slice(1));
+  // Agents whose create request takes a model.
+  var MODEL_PICKER_AGENTS = { claude: true, opencode: true, codex: true };
 
-    if (claudeModelsCache) {
+  function modelRow(m) {
+    return {
+      id: m.id,
+      label: m.providerID ? m.providerID + '/' + (m.id || m.name || '') : (m.name || m.id),
+      providerID: m.providerID
+    };
+  }
+
+  function loadModels(agent) {
+    if (modelsCache[agent]) {
+      populateModels(modelsCache[agent]);
       return;
     }
 
-    fetch('/session_list_models.php?agent=claude', { credentials: 'same-origin' })
+    var fallback = MODEL_FALLBACKS[agent] || null;
+
+    if (fallback) {
+      populateModels(fallback);
+    } else {
+      clearModels();
+      modelSelect.options[0].textContent = 'Loading models…';
+      modelSelect.disabled = true;
+    }
+
+    function done() {
+      if (!fallback) {
+        modelSelect.disabled = false;
+        modelSelect.options[0].textContent = 'Default';
+      }
+    }
+
+    fetch('/session_list_models.php?agent=' + encodeURIComponent(agent), { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (data) {
+        done();
+
         if (!data || !data.ok || !data.models) { return; }
 
-        claudeModelsCache = data.models.map(function (m) {
-          return { id: m.id, label: m.name || m.id };
-        });
+        modelsCache[agent] = data.models.map(modelRow);
 
-        if (agentSelect.value === 'claude') {
+        if (agentSelect.value === agent) {
           var chosen = modelSelect.value;
-          populateModels(claudeModelsCache);
+          populateModels(modelsCache[agent]);
           modelSelect.value = chosen;
         }
-      });
-  }
-
-  function loadOpenCodeModels() {
-    if (ocModelsCache) {
-      populateModels(ocModelsCache);
-      return;
-    }
-    clearModels();
-    modelSelect.options[0].textContent = 'Loading models…';
-    modelSelect.disabled = true;
-
-    fetch('/session_list_models.php', { credentials: 'same-origin' })
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        modelSelect.disabled = false;
-        modelSelect.options[0].textContent = 'Default';
-
-        if (!data || !data.ok || !data.models) { return; }
-
-        ocModelsCache = data.models.map(function (m) {
-          return {
-            id: m.id,
-            label: (m.providerID ? m.providerID + '/' : '') + (m.id || m.name || ''),
-            providerID: m.providerID
-          };
-        });
-        populateModels(ocModelsCache);
       })
-      .catch(function () {
-        modelSelect.disabled = false;
-        modelSelect.options[0].textContent = 'Default';
-      });
-  }
-
-  function loadCodexModels() {
-    if (codexModelsCache) {
-      populateModels(codexModelsCache);
-      return;
-    }
-    clearModels();
-    modelSelect.options[0].textContent = 'Loading models…';
-    modelSelect.disabled = true;
-    fetch('/session_list_models.php?agent=codex', { credentials: 'same-origin' })
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        modelSelect.disabled = false;
-        modelSelect.options[0].textContent = 'Default';
-        if (!data || !data.ok || !data.models) { return; }
-        codexModelsCache = data.models.map(function (m) {
-          return { id: m.id, label: m.name || m.id };
-        });
-        populateModels(codexModelsCache);
-      })
-      .catch(function () {
-        modelSelect.disabled = false;
-        modelSelect.options[0].textContent = 'Default';
-      });
+      .catch(done);
   }
 
   var runtimeLabel = document.getElementById('new-session-runtime-label');
@@ -857,14 +829,10 @@ document.addEventListener('keydown', function (e) {
       }
     }
 
-    if (agent === 'opencode') {
-      loadOpenCodeModels();
-    } else if (agent === 'codex') {
-      loadCodexModels();
-    } else if (agent === 'claude') {
-      loadClaudeModels();
+    if (MODEL_PICKER_AGENTS[agent]) {
+      loadModels(agent);
     } else {
-      // Antigravity: no model selection available
+      // Antigravity: create doesn't take a model yet (Dibs 98)
       modelSelect.options[0].textContent = 'Default';
     }
   }

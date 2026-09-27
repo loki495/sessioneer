@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace HostAgent\Agents;
 
 use HostAgent\Runtimes\RuntimeType;
+use HostAgent\Services\ClaudeModelCatalog;
 use HostAgent\Services\Config;
 use HostAgent\Services\HookService;
 use HostAgent\Services\PermissionMode;
@@ -194,5 +195,18 @@ class ClaudeCodeAdapter implements AgentAdapter
     public function supported_runtimes(): array
     {
         return [RuntimeType::HEADLESS, RuntimeType::TMUX];
+    }
+
+    public function model_catalog(): array
+    {
+        $models = [];
+
+        foreach (ClaudeModelCatalog::labels() as $key => $label) {
+            if ($key !== 'default') {
+                $models[] = ['id' => $key, 'name' => $label];
+            }
+        }
+
+        return ['ok' => true, 'models' => $models];
     }
 }

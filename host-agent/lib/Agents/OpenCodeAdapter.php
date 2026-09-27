@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace HostAgent\Agents;
 
 use HostAgent\Services\Config;
+use HostAgent\Runtimes\OpenCodeServeClient;
 use HostAgent\Runtimes\RuntimeType;
+use HostAgent\Stores\GlobalStateStore;
 
 /**
  * Third AgentAdapter implementation, for the OpenCode TUI CLI
@@ -118,5 +120,16 @@ class OpenCodeAdapter implements AgentAdapter
     public function supported_runtimes(): array
     {
         return [RuntimeType::HEADLESS, RuntimeType::TMUX];
+    }
+
+    public function model_catalog(): array
+    {
+        $models = (new OpenCodeServeClient())->available_models();
+
+        if ($models !== []) {
+            GlobalStateStore::write('opencode_models', ['models' => $models, 'updated_at' => time()]);
+        }
+
+        return ['ok' => true, 'models' => array_values($models)];
     }
 }
