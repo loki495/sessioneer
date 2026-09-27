@@ -1,0 +1,357 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+
+/**
+ * Stand-in for `claude -p --input-format stream-json --output-format
+ * stream-json --permission-prompt-tool stdio`, for tests of
+ * ClaudeHeadlessManager. Speaks the protocol captured live from Claude Code
+ * 2.1.278 (see tests/fixtures/claude_stream_json_*_v2_1_278.ndjson and Dibs
+ * research #280), never touches the network, never costs anything.
+ *
+ * Behaviour is driven by keywords in the user message text:
+ *   PERMISSION  ask to use Write (can_use_tool) and wait for the answer
+ *   QUESTION    ask an AskUserQuestion (requires_user_interaction)
+ *   UNSUPPORTED send a control_request the manager does not implement
+ *   SLOW        run until interrupted (or 20s)
+ *   CRASH       exit 3 mid-turn with a stderr message, no result
+ *   CLEAR       emit conversation_reset and continue under a NEW session id
+ *   APIKEY      report an API key as the credential source
+ *   OVERAGE     emit a rate_limit_event that says overage is in use
+ *   GARBAGE     write a non-JSON line, an event of an unknown type and a JSON
+ *               line split across two writes, then finish the turn normally
+ *   QUOTAJUNK   emit a rate_limit_event whose windows are unusable, then echo
+ *   AUTHFAIL    end the turn with an is_error result saying the login expired
+ *               (SYNTHETIC: the real text was never captured; the manager must
+ *               only depend on is_error/result/terminal_reason, per research #280)
+ *   STUBBORN    ignore stdin EOF and interrupts, and log (not obey) SIGTERM,
+ *               so only SIGKILL ends it
+ *   (anything else) echo the text back
+ *
+ * Env: FAKE_CLAUDE_LOG=<file> appends one JSON line per process start with
+ * the argv and the credential/hook-relevant environment it was given.
+ */
+
+$sid = null;
+$mode = 'default';
+$model = 'claude-fake-1';
+$spawn = 'fresh';
+$args = array_slice($argv, 1);
+
+for ($i = 0; $i < count($args); $i++) {
+    switch ($args[$i]) {
+        case '--session-id':
+            $sid = $args[++$i] ?? null;
+            break;
+        case '--resume':
+            $sid = $args[++$i] ?? null;
+            $spawn = 'resume';
+            break;
+        case '--permission-mode':
+            $mode = $args[++$i] ?? 'default';
+            break;
+        case '--model':
+            $model = $args[++$i] ?? $model;
+            break;
+    }
+}
+
+$sid ??= 'fake-' . bin2hex(random_bytes(6));
+$requestedMode = $mode;
+
+$log = getenv('FAKE_CLAUDE_LOG');
+if (is_string($log) && $log !== '') {
+    file_put_contents($log, json_encode([
+        'argv' => $args,
+        'env' => [
+            'ANTHROPIC_API_KEY' => getenv('ANTHROPIC_API_KEY'),
+            'ANTHROPIC_AUTH_TOKEN' => getenv('ANTHROPIC_AUTH_TOKEN'),
+            'SESSIONEER_SESSION_NAME' => getenv('SESSIONEER_SESSION_NAME'),
+            'CLAUDE_CONFIG_DIR' => getenv('CLAUDE_CONFIG_DIR'),
+        ],
+        'cwd' => getcwd(),
+    ]) . "\n", FILE_APPEND);
+}
+
+/** Appends one JSON line to FAKE_CLAUDE_LOG (the tests' view into this process). */
+function log_line(array $row): void
+{
+    $log = getenv('FAKE_CLAUDE_LOG');
+
+    if (is_string($log) && $log !== '') {
+        file_put_contents($log, json_encode($row) . "\n", FILE_APPEND);
+    }
+}
+
+function emit(array $event): void
+{
+    echo json_encode($event, JSON_UNESCAPED_SLASHES), "\n";
+    flush();
+}
+
+/** Reads one decoded stdin line; null on timeout; exits cleanly on EOF (like the real CLI). */
+function read_message(float $timeout): ?array
+{
+    static $buffer = '';
+
+    while (true) {
+        if (($nl = strpos($buffer, "\n")) !== false) {
+            $line = substr($buffer, 0, $nl);
+            $buffer = substr($buffer, $nl + 1);
+            $decoded = json_decode($line, true);
+
+            return is_array($decoded) ? $decoded : null;
+        }
+
+        $read = [STDIN];
+        $write = $except = null;
+        $sec = (int)$timeout;
+        $ready = @stream_select($read, $write, $except, $sec, (int)(($timeout - $sec) * 1e6));
+
+        if ($ready === 0 || $ready === false) {
+            return null;
+        }
+
+        $chunk = fread(STDIN, 65536);
+
+        if ($chunk === '' || $chunk === false) {
+            exit(0);
+        }
+
+        $buffer .= $chunk;
+    }
+}
+
+function init(): void
+{
+    global $sid, $mode, $model, $requestedMode, $forceApiKey;
+    // Live-observed: `--permission-mode auto` is silently not applied.
+    $reported = $mode === 'auto' && $requestedMode === 'auto' ? 'default' : $mode;
+    emit([
+        'type' => 'system', 'subtype' => 'init', 'session_id' => $sid, 'model' => $model,
+        'permissionMode' => $reported, 'apiKeySource' => $forceApiKey ? 'ANTHROPIC_API_KEY' : 'none',
+        'claude_code_version' => '0.0.0-fake',
+    ]);
+}
+
+function result(string $text, bool $error = false, string $reason = 'completed'): void
+{
+    global $sid;
+    log_line(['result' => $text]);
+    emit([
+        'type' => 'result', 'subtype' => $error ? 'error_during_execution' : 'success', 'is_error' => $error,
+        'result' => $text, 'terminal_reason' => $reason, 'session_id' => $sid, 'num_turns' => 1,
+        'queued_turn_count' => 0, 'usage' => ['input_tokens' => 3, 'output_tokens' => 5],
+    ]);
+}
+
+function control_reply(array $msg, array $body = []): void
+{
+    global $mode, $model;
+    $request = $msg['request'] ?? [];
+    $id = $msg['request_id'] ?? '';
+
+    switch ($request['subtype'] ?? '') {
+        case 'interrupt':
+            emit(['type' => 'control_response', 'response' => ['subtype' => 'success', 'request_id' => $id, 'response' => ['still_queued' => []]]]);
+            break;
+        case 'set_permission_mode':
+            $mode = (string)($request['mode'] ?? 'default');
+            emit(['type' => 'control_response', 'response' => ['subtype' => 'success', 'request_id' => $id, 'response' => ['mode' => $mode]]]);
+            emit(['type' => 'system', 'subtype' => 'status', 'status' => null, 'permissionMode' => $mode]);
+            break;
+        case 'set_model':
+            $model = (string)($request['model'] ?? $model);
+            emit(['type' => 'control_response', 'response' => ['subtype' => 'success', 'request_id' => $id]]);
+            break;
+        default:
+            emit(['type' => 'control_response', 'response' => ['subtype' => 'error', 'request_id' => $id, 'error' => 'unsupported']]);
+    }
+}
+
+/** Waits for the control_response to $requestId, queueing user messages and serving other controls meanwhile. */
+function await_answer(string $requestId, array &$queue): ?array
+{
+    $deadline = microtime(true) + 30;
+
+    while (microtime(true) < $deadline) {
+        $msg = read_message(0.2);
+
+        if ($msg === null) {
+            continue;
+        }
+
+        if (($msg['type'] ?? '') === 'user') {
+            $queue[] = $msg;
+        } elseif (($msg['type'] ?? '') === 'control_request') {
+            control_reply($msg);
+        } elseif (($msg['type'] ?? '') === 'control_response' && ($msg['response']['request_id'] ?? '') === $requestId) {
+            return $msg['response'];
+        }
+    }
+
+    return null;
+}
+
+function text_of(array $msg): string
+{
+    $content = $msg['message']['content'] ?? '';
+
+    if (is_string($content)) {
+        return $content;
+    }
+
+    foreach ((array)$content as $block) {
+        if (is_array($block) && ($block['type'] ?? '') === 'text') {
+            return (string)$block['text'];
+        }
+    }
+
+    return '';
+}
+
+$forceApiKey = false;
+$queue = [];
+
+while (true) {
+    $msg = $queue !== [] ? array_shift($queue) : read_message(1.0);
+
+    if ($msg === null) {
+        continue;
+    }
+
+    if (($msg['type'] ?? '') === 'control_request') {
+        control_reply($msg);
+        continue;
+    }
+
+    if (($msg['type'] ?? '') !== 'user') {
+        continue;
+    }
+
+    $text = text_of($msg);
+    $forceApiKey = str_contains($text, 'APIKEY');
+    init();
+
+    if (str_contains($text, 'CRASH')) {
+        fwrite(STDERR, "fake claude: simulated crash\n");
+        exit(3);
+    }
+
+    if (str_contains($text, 'OVERAGE')) {
+        emit(['type' => 'rate_limit_event', 'rate_limit_info' => [
+            'status' => 'allowed', 'rateLimitType' => 'five_hour', 'isUsingOverage' => true,
+            'unifiedWindows' => ['five_hour' => ['utilization' => 0.5, 'resetsAt' => 1], 'seven_day' => ['utilization' => 0.1, 'resetsAt' => 2]],
+        ]]);
+    } elseif (str_contains($text, 'QUOTAJUNK')) {
+        emit(['type' => 'rate_limit_event', 'rate_limit_info' => [
+            'status' => 'allowed', 'rateLimitType' => 'five_hour', 'isUsingOverage' => false,
+            'unifiedWindows' => ['five_hour' => ['utilization' => 'lots', 'resetsAt' => 'soon'], 'seven_day' => null],
+        ]]);
+    } else {
+        emit(['type' => 'rate_limit_event', 'rate_limit_info' => [
+            'status' => 'allowed', 'rateLimitType' => 'five_hour', 'isUsingOverage' => false,
+            'unifiedWindows' => ['five_hour' => ['utilization' => 0.25, 'resetsAt' => 1], 'seven_day' => ['utilization' => 0.1, 'resetsAt' => 2]],
+        ]]);
+    }
+
+    if (str_contains($text, 'GARBAGE')) {
+        echo "this is not json\n";
+        flush();
+        emit(['type' => 'brand_new_event_type', 'payload' => ['x' => 1]]);
+        echo '{"type":"assistant","message":{"role":"assis';
+        flush();
+        usleep(300000);
+        echo "tant\",\"content\":[]}}\n";
+        flush();
+        result('garbage survived');
+        continue;
+    }
+
+    if (str_contains($text, 'AUTHFAIL')) {
+        result('OAuth token has expired - please run /login', true, 'authentication_failed');
+        continue;
+    }
+
+    if (str_contains($text, 'STUBBORN')) {
+        pcntl_async_signals(true);
+        pcntl_signal(SIGTERM, static function (): void {
+            log_line(['signal' => 'SIGTERM']);
+        });
+        emit(['type' => 'assistant', 'message' => ['role' => 'assistant', 'content' => [['type' => 'text', 'text' => 'not stopping']]]]);
+
+        while (true) {
+            usleep(100000);
+        }
+    }
+
+    if (str_contains($text, 'CLEAR')) {
+        $old = $sid;
+        $sid = 'fake-' . bin2hex(random_bytes(6));
+        emit(['type' => 'conversation_reset', 'new_conversation_id' => $sid, 'session_id' => $old]);
+        init();
+        result("cleared (session {$sid})");
+        continue;
+    }
+
+    if (str_contains($text, 'SLOW')) {
+        emit(['type' => 'assistant', 'message' => ['role' => 'assistant', 'content' => [['type' => 'text', 'text' => 'thinking...']]]]);
+        $deadline = microtime(true) + 20;
+        $interrupted = false;
+
+        while (microtime(true) < $deadline && !$interrupted) {
+            $next = read_message(0.2);
+
+            if ($next === null) {
+                continue;
+            }
+
+            if (($next['type'] ?? '') === 'control_request' && ($next['request']['subtype'] ?? '') === 'interrupt') {
+                control_reply($next);
+                result('', true, 'aborted_streaming');
+                $interrupted = true;
+            } elseif (($next['type'] ?? '') === 'control_request') {
+                control_reply($next);
+            } elseif (($next['type'] ?? '') === 'user') {
+                $queue[] = $next;
+            }
+        }
+
+        if (!$interrupted) {
+            result('slow done');
+        }
+        continue;
+    }
+
+    $tool = null;
+    if (str_contains($text, 'PERMISSION')) {
+        $tool = ['name' => 'Write', 'input' => ['file_path' => '/tmp/fake.txt', 'content' => 'hi'], 'interactive' => false];
+    } elseif (str_contains($text, 'QUESTION')) {
+        $tool = ['name' => 'AskUserQuestion', 'input' => ['questions' => [['question' => 'Which color?', 'header' => 'Color', 'options' => [['label' => 'Red', 'description' => 'r'], ['label' => 'Blue', 'description' => 'b']], 'multiSelect' => false]]], 'interactive' => true];
+    }
+
+    if (str_contains($text, 'UNSUPPORTED')) {
+        $rid = 'fake-req-' . bin2hex(random_bytes(3));
+        emit(['type' => 'control_request', 'request_id' => $rid, 'request' => ['subtype' => 'mcp_message', 'server_name' => 'x']]);
+        $answer = await_answer($rid, $queue);
+        result('unsupported request answered: ' . ($answer['subtype'] ?? 'no answer'));
+        continue;
+    }
+
+    if ($tool !== null) {
+        $rid = 'fake-req-' . bin2hex(random_bytes(3));
+        $request = ['subtype' => 'can_use_tool', 'tool_name' => $tool['name'], 'display_name' => $tool['name'], 'input' => $tool['input'],
+            'description' => 'fake', 'permission_suggestions' => [['type' => 'setMode', 'mode' => 'acceptEdits', 'destination' => 'session']], 'tool_use_id' => 'toolu_fake'];
+        if ($tool['interactive']) {
+            $request['requires_user_interaction'] = true;
+        }
+        emit(['type' => 'control_request', 'request_id' => $rid, 'request' => $request]);
+        $answer = await_answer($rid, $queue);
+        $behavior = $answer['response']['behavior'] ?? ($answer['subtype'] ?? 'none');
+        result("tool {$tool['name']} answered: {$behavior}");
+        continue;
+    }
+
+    emit(['type' => 'assistant', 'message' => ['role' => 'assistant', 'content' => [['type' => 'text', 'text' => 'echo']]]]);
+    result("echo: {$text} [spawn={$spawn} id={$sid} mode={$mode}]");
+}

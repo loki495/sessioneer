@@ -3,7 +3,8 @@
 [![CI](https://github.com/loki495/sessioneer/actions/workflows/ci.yml/badge.svg)](https://github.com/loki495/sessioneer/actions/workflows/ci.yml)
 
 A self-hosted, LAN-only web UI for managing coding-agent sessions - Claude
-Code and Antigravity (`cc-*`/`ag-*`, tmux-driven), OpenCode (native `ses_*`
+Code (headless with no terminal by default, or `cc-*` in tmux), Antigravity
+(`ag-*`, tmux-driven), OpenCode (native `ses_*`
 IDs through its headless server by default, `oc-*` tmux as a fallback), and
 Codex (native thread UUIDs, headless only, no tmux at all) - on your own dev
 box. See blocked prompts, answer
@@ -48,173 +49,56 @@ an installable PWA, meant to be added to an iOS/Android home screen):
   percentage, and flow state (`idle` / `working` / `blocked`).
 - **Blocked-on-input warning**: if a session needs a human decision (folder
   trust on first launch in a new directory, a tool-permission approval, a
-  question, ...), the row shows what it's waiting on, with real
-  Approve/Deny-style buttons to answer it right from the browser - or a
-  copy-pasteable `tmux attach` command if you'd rather answer by hand
-  (tmux-backed agents only). Detection is per-agent: Claude Code primarily
-  uses hooks, Antigravity combines lifecycle hooks with its live pane,
-  OpenCode combines its serve API/plugin with its live pane when using the
-  TUI, and Codex combines its private bridge with Codex hooks. A prompt owned
-  by Codex Remote is visible here, but must be answered in Codex Remote; see
-  [Codex: shared threads and ownership](#codex-shared-threads-and-ownership).
-- **Session transcript view**: scroll a session's real conversation history
-  - user/assistant messages, tool calls and their outputs (grouped into
-  collapsible "N tool calls" runs so a long tool-heavy stretch doesn't
-  spam the page), subagent calls/reports, plan presentations - with live
-  polling for new messages while you watch, and a compose box to send a
-  new message or answer a prompt without attaching to tmux at all. Every
-  message and tool call/output has a Copy button.
-- **Search**: a dashboard-wide search box finds a session by anything
-  actually said inside it (not just its title), across live and archived
-  transcripts alike; a per-session search box does the same within just
-  that conversation, including older history you haven't scrolled to yet.
-  Either one jumps straight to the matching point in the transcript.
-  Dashboard-wide search currently covers Claude Code and OpenCode. See
-  `docs/features.md` for the remaining per-agent gaps.
-- Also lists any other real `claude` process found on the host that isn't
-  inside a session this tool already tracks (started by hand in a plain
-  terminal, for example) - killable, and adoptable into a tracked session
-  via "Take over." (Claude Code specifically - not yet extended to the
-  other three agents.)
-- **New Session**: pick an agent, a working directory (a browsable folder
-  picker rooted at your configured project directory), plus a model and
-  starting mode where that agent supports them, and it starts a new tracked
-  session there - tmux-backed or headless, whichever that agent uses.
-- **Archived sessions**: browse and resume past, no-longer-running sessions
-  an agent still has a transcript for, read-only until resumed. Transcript,
-  working-directory, title, and resume routing support all four agents.
-- No required auto-refresh - polls while a tab is visible, pauses in the
-  background; a manual Refresh button always works too.
-- **Usage quota footer**: per-agent session/weekly usage percentages and
-  reset countdowns - read from whatever each agent already exposes (Claude
-  Code's statusLine JSON via a small marker this app appends to your
-  statusLine script, Antigravity's `/usage` endpoint, OpenCode's own local
-  SQLite/usage endpoint, and Codex app-server rate limits) - no external
-  screen scraper needed.
-- **Web Push notifications**: get notified on your phone when a session
-  needs input or finishes a long task, even with the tab closed - see "Web
-  Push notifications" below.
-- **Worker-session tagging**: subagent/worker sessions spawned by another
-  session are tagged with their lineage and hidden from the main list by
-  default (a "Show worker sessions" toggle reveals them).
+  user input prompt), it shows in the UI with a count and link to jump
+  directly to the blocked session.
+- **Approve/deny tool permissions**: tool-use requires explicit approval in
+  some agents (Claude Code, Antigravity); Sessioneer shows the blocked
+  prompt in full (command, arguments, what's being written) and lets you
+  approve or deny without touching the terminal.
+- **Answer `AskUserQuestion` / `UserPrompt` prompts**: some agents ask
+  follow-up questions during a run (`"which one: A or B?"`); Sessioneer
+  shows them and collects answers.
+- **Kill sessions**: stop a running session without killing the whole
+  terminal/tmux.
+- **View transcripts**: read the full conversation history for a session,
+  including all tool calls and results.
+- **Mobile-first PWA**: responsive design, works as an installed home-screen
+  icon on iOS/Android, with Web Push notifications for blocked/stopped
+  sessions (see "Web Push notifications" below).
 
-## Architecture, in short
+## Network binding (read this)
 
-The web UI runs in a Docker container that **never touches tmux, the host
-process table, or any other host-local process directly** - it only speaks
-a small JSON request/response protocol over a UNIX socket to a separate,
-host-native **agent** (`host-agent/`, installed directly on the host, not
-containerized). For tmux-backed agents (Claude Code, Antigravity, and
-OpenCode's tmux fallback), this split exists so the container can never
-accidentally become the process that spawns tmux's own server (which would
-put it inside the container's filesystem namespace, unreachable from the
-host). For headless agents (Codex always, OpenCode by default), the host
-agent instead proxies to that agent's own local server process
-(`codex app-server`, `opencode serve`) - either way, everything that has to
-run in the host's own namespace stays in one place. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for the full story and the rest of the
-architecture.
+There is **no login** - the network binding *is* the access control. This
+app is intentionally **not** meant to be reachable from the public
+internet - it can create and kill agent sessions on your machine.
 
-Practically, this means **setup has two independent parts**: the host
-agent (native, via systemd `--user`) and the container (Docker). The host
-agent must be installed and running *before* the container starts.
+- `docker-compose.yml` publishes the port as
+  `"${BIND_ADDR}:${APP_PORT}:80"`. Set `BIND_ADDR` in `.env` to your
+  machine's actual **LAN IP** (e.g. `192.168.1.50`), never `0.0.0.0`. Leave
+  it at the default `127.0.0.1` if you only want to reach it from the host
+  itself (e.g. via an SSH tunnel).
+- If you put a reverse proxy in front of it, make sure **that proxy** is
+  also LAN-only - it's easy to have this app's own bind address correctly
+  restricted while an existing shared reverse proxy in front of it is
+  bound more broadly, silently exposing this app anyway.
+- Consider a host firewall rule (`iptables`/`ufw`/`nftables`) restricting
+  inbound `APP_PORT` to your LAN subnet as defense in depth.
 
-## Major implementation decisions
+## Intended use
 
-- **Container/host-agent split exists for one specific reason**: tmux auto-spawns its
-  server as a child of whichever process first talks to an unstarted socket. If the
-  container were that first process, the tmux server (and every session in it) would be
-  born inside the container's own filesystem namespace — unreachable from the host, and
-  pointing at paths that don't exist there. Keeping all tmux/`/proc` access in a process
-  that's always host-native makes that impossible by construction, not by convention.
-- **Session state (blocked/working/idle) comes exclusively from each agent's own
-  structured signal wherever the agent exposes one** — Claude Code uses hooks;
-  Antigravity uses hooks for lifecycle/identity and its pane for the actual approval
-  dialog; OpenCode uses its serve API, SQLite, permissions plugin, and (for TUI
-  permissions) its pane; Codex uses the private bridge for Sessioneer-owned turns and
-  hooks for Remote-owned activity. Pane parsing is therefore limited to prompt shapes
-  whose owning agent exposes no authoritative structured equivalent, rather than being
-  a generic activity detector.
-- **Every command runs via `proc_open()` with the command as an array, never a shell
-  string** — this isn't a hardening pass bolted on after the fact, it's the only way any
-  command in this codebase is ever invoked, which rules out shell metacharacter injection
-  by construction rather than by escaping.
-- **`public/js/*.js` is deliberately plain ES5** (no `const`/`let`/arrow functions/template
-  literals) — mobile Safari compatibility issues were the repeated reason, since this is a
-  PWA meant to be added to an iOS/Android home screen.
+Sessioneer is meant to be run by an individual, on their own machine, driving
+agents signed in with their own account, API key or token. It is not built to be
+hosted for other people or offered to third parties as a service, and it has no
+user accounts to do that with. The Claude headless runtime runs your own
+installed `claude` on your own login (see "Headless runtime" in
+[`docs/features.md`](docs/features.md)); Anthropic's Agent SDK terms do not let
+a third party offer claude.ai login or its rate limits in their own product, so
+check each provider's current terms before running Sessioneer for anyone but
+yourself.
 
-## Requirements
+## Architecture
 
-- Linux, PHP 8.1+ (with the `pdo_sqlite` extension enabled - `php -m | grep
-  sqlite`), Composer, and Docker/Docker Compose.
-- `tmux`, if you're using Claude Code and/or Antigravity (both are always
-  tmux-driven), or want OpenCode's tmux fallback. Not needed for a
-  Codex-only, or OpenCode-headless-only, setup.
-- systemd with user services (`systemd --user`) for the host agent.
-- At least one of the CLIs you actually plan to manage: [Claude
-  Code](https://claude.com/claude-code), [Codex](https://github.com/openai/codex),
-  [OpenCode](https://opencode.ai), or Antigravity's `agy`. This tool manages
-  sessions for whichever of these you have installed - it does not install the
-  agent CLIs themselves.
-
-## Setup
-
-**Order matters: install and start the host agent *before* starting the
-container.** Docker bind-mounts a source path that doesn't exist yet as an
-empty directory, so if the container starts first, the agent socket path
-inside the container will silently be a directory instead of the real
-socket, and everything will fail with "Cannot reach host agent."
-
-1. Install the host agent (runs natively via systemd `--user`, needs no
-   containers):
-   ```
-   ./host-agent/install.sh
-   ```
-   This installs Composer dependencies if needed, copies `host-agent/
-   .env.example` to `host-agent/.env` if you don't already have one, and
-   installs + enables the systemd socket unit (the push-notification timer
-   is also installed here but deliberately left disabled - see "Web Push
-   notifications" below). Run `which <cli>` for whichever agent(s) you want
-   to manage and put the result(s) in
-   `host-agent/.env` (see `host-agent/.env.example` for the full list and
-   which are required vs. opt-in per agent).
-
-   Verify the socket exists and is a socket (`s` in `ls -la`), not a
-   directory:
-   ```
-   ls -la $XDG_RUNTIME_DIR/sessioneer-agent.sock
-   ```
-   Lingering must be enabled for the socket to survive logout/reboot
-   without an active login session - `install.sh` checks this and prints
-   the fix if not.
-
-2. `cp .env.example .env` and fill in:
-   - `APP_GID` - must match the group the installer set on the agent
-     socket (`install.sh` prints the exact gid to use at the end of its
-     output). `APP_UID` doesn't need to match a specific host user - the
-     container never touches the host filesystem or tmux directly, only
-     the agent socket.
-   - `SESSIONEER_AGENT_SOCKET_HOST` - path to the real socket from step 1,
-     normally `/run/user/<your-uid>/sessioneer-agent.sock`.
-   - `BIND_ADDR` / `APP_PORT` - see "Network binding" below.
-
-3. Build and start the container:
-   ```
-   docker compose up -d --build
-   ```
-   Leave it running. Only re-run this if you change `docker-compose.yml`
-   itself; plain PHP/JS edits under `src/`/`public/` never need a rebuild
-   (see [CONTRIBUTING.md](CONTRIBUTING.md)).
-
-4. Visit `http://<BIND_ADDR>:<APP_PORT>/`.
-
-5. The dashboard's health box reports common prerequisites plus detailed
-   Claude Code, OpenCode, and Codex integration checks. Its **Install hooks**
-   button safely merges Sessioneer's Claude Code and Codex hooks into the
-   existing files; unrelated hooks remain in place. Codex requires one extra
-   trust step described below. OpenCode's plugin and both headless services
-   are installed by `host-agent/install.sh`. Antigravity's global hooks are a
-   separate opt-in because they apply to every `agy` invocation on the account.
+For technical details on the container/host-agent split and major implementation decisions, see [`docs/architecture.md`](docs/architecture.md).
 
 ## Agent-specific setup and behavior
 
@@ -225,14 +109,15 @@ answered in Sessioneer.
 
 | Agent | Runtime | Status / prompts | Extra setup |
 |---|---|---|---|
-| Claude Code | tmux only | Claude hooks, with narrow pane fallbacks for folder trust and `AskUserQuestion` UI state | Click **Install hooks** |
+| Claude Code | headless by default; tmux optional | tmux: Claude hooks, with narrow pane fallbacks for folder trust and `AskUserQuestion` UI state. Headless: the session process's own event stream, no hooks or pane | Click **Install hooks**; `host-agent/install.sh` installs the headless manager once `CLAUDE_BIN` is set |
 | Antigravity | tmux only | Hooks provide lifecycle and conversation identity; the live pane identifies approval dialogs | Install its global hooks; optionally enable its quota timer |
 | OpenCode | `opencode serve` by default; tmux fallback | Serve API + SQLite + global permissions plugin; tmux permissions also consult the live pane | Re-run `host-agent/install.sh` after setting `OPENCODE_BIN` |
 | Codex | headless only | Private app-server bridge for locally-owned startup; persistent queue + Codex hooks for shared/Remote-owned threads | Click **Install hooks**, trust them in Codex, and bootstrap Remote control when sharing with Codex Remote |
 
 ### Claude Code
 
-Sessioneer starts `cc-*` sessions in tmux. Five hooks in
+New Claude sessions run headless by default (below); the tmux runtime
+(`cc-*` sessions) is the alternative. In tmux, five hooks in
 `~/.claude/settings.json` (`SessionStart`, `PreToolUse`,
 `PermissionRequest`, `UserPromptSubmit`, and `Stop`) maintain transcript
 identity, flow state, permission details, mode, and the last response. The
@@ -247,8 +132,23 @@ an `AskUserQuestion` are the deliberate pane-based exceptions because Claude's
 hook payload does not contain enough UI state. Bare-process discovery and
 **Take over** are currently Claude-only.
 
-Claude quota data is captured when Claude renders its configured status line;
-it can show unavailable until at least one session has rendered that line.
+New Claude sessions run **headless**, with no terminal, unless you pick
+Terminal (tmux) in the New Session form's "Runs in" list; the **Headless**
+button on an archived Claude session, or the switch on a running session's
+row, moves an existing conversation (plain Resume and Take over open a terminal
+session). For a headless session Sessioneer runs the installed `claude` binary (`claude -p`, stream-json)
+on your own logged-in claude.ai account, through the
+`sessioneer-claude-headless-manager.service` that `host-agent/install.sh`
+installs. This is not the Claude Agent SDK library, which uses an API key or
+Claude Platform account and bills pay-as-you-go: Sessioneer keeps API-key
+variables out of the process and stops it if Claude reports an API-key
+credential. Details and limits are in [docs/features.md](docs/features.md#headless-runtime);
+after editing the manager's code, restart it with
+`systemctl --user restart sessioneer-claude-headless-manager.service`.
+
+Claude quota data is captured when a tmux session renders its configured status
+line and, for headless sessions, from the rate-limit events the manager sees; it
+can show unavailable until either has run once.
 
 **Multiple accounts:** to run sessions under more than one Claude account
 (e.g. a separate work login), add named profiles to
@@ -321,6 +221,9 @@ SQLite usage with the OpenCode Go usage endpoint when configured.
 
 ### Codex: shared threads and ownership
 
+For detailed agent version compatibility and known quirks, see [`docs/agent-compatibility.md`](docs/agent-compatibility.md).
+
+
 Sessioneer never puts Codex in tmux. `host-agent/install.sh` installs and
 enables `sessioneer-codex-bridge.service`, which owns a private, persistent
 `codex app-server --stdio` connection for thread creation, the first turn of
@@ -385,63 +288,8 @@ location / {
 }
 ```
 
-## Configuration (host agent)
-
-`host-agent/lib/Services/Config.php` reads these from the environment (via
-`host-agent/.env`, loaded by the systemd unit). None has a universal
-default - set the `*_BIN` var(s) for whichever agent(s) you actually use
-(see `host-agent/.env.example` for the complete list, including Web
-Push-related variables covered below):
-
-| Variable                    | Default                                       | Meaning                                    |
-|------------------------------|-----------------------------------------------|---------------------------------------------|
-| `CLAUDE_BIN`                 | *(none - required to manage Claude Code)*     | Real `claude` CLI path (`argv[0]` must match) |
-| `CODEX_BIN`                  | *(none - required to manage Codex)*           | Real `codex` CLI path                      |
-| `CODEX_BRIDGE_SOCKET`        | `/run/user/<uid>/sessioneer-codex-bridge.sock` | Private Sessioneer-to-Codex bridge socket |
-| `OPENCODE_BIN`               | *(none - required to manage OpenCode)*        | Real `opencode` CLI path                   |
-| `ANTIGRAVITY_BIN`            | *(none - required to manage Antigravity)*     | Real `agy` CLI path                        |
-| `WWW_ROOT`                   | `HOME_ROOT`                                   | Starting folder for the New Session browser |
-| `HOME_ROOT`                  | your real `$HOME`                             | Upper bound the folder browser can't escape |
-| `TMUX_SOCKET`                | `/tmp/tmux-<uid>/default`                     | tmux socket this agent drives (`-S`)        |
-| `SIDECAR_DIR`                | `/run/user/<uid>/sessioneer-sessions`         | Per-session workdir/spawned_at metadata, and the local SQLite state (session status, push subscriptions) |
-| `CACHE_DIR`                  | `/run/user/<uid>/sessioneer-cache`            | Session-list cache (see below)              |
-| `SESSION_LIST_CACHE_TTL_SECONDS` | `0.9`                                     | How long a session-list scan is reused across near-simultaneous callers |
-| `HEADLESS_SYNC_SECONDS`      | `15`                                          | Minimum interval between headless-agent syncs |
-| `CLEANUP_THRESHOLD_SECONDS`  | `43200` (12h)                                 | Inactivity threshold for "Kill inactive"    |
-| `TMUX_PANE_WIDTH` / `_HEIGHT` | `200` / `150`                                | Fixed pane size tmux sessions are created at |
-| `SESSIONEER_REPO_ROOT`       | this repo's own checkout path                 | Root the agent resolves its own paths from  |
-| `SESSIONS_SQLITE_FILE`       | `<SIDECAR_DIR>/sessions.sqlite`               | Per-session status/state (see below)        |
-| `PUSH_SQLITE_FILE`           | `host-agent/state/push.sqlite`                | Web Push subscriptions/state (see below)    |
-| `OPENCODE_SERVE_URL`         | `http://localhost:4096`                       | OpenCode server this agent talks to         |
-| `OPENCODE_DB_PATH`           | `~/.local/share/opencode/opencode.db`         | OpenCode's own session database             |
-| `OPENCODE_AUTH_PATH`         | `~/.local/share/opencode/auth.json`           | OpenCode's own auth file                    |
-| `OPENCODE_PERMISSION_DIR`    | `<SIDECAR_DIR>/opencode-permissions`          | Where OpenCode permission-request state is written |
-
-## Network binding (read this)
-
-There is **no login** - the network binding *is* the access control. This
-app is intentionally **not** meant to be reachable from the public
-internet - it can create and kill agent sessions on your machine.
-
-- `docker-compose.yml` publishes the port as
-  `"${BIND_ADDR}:${APP_PORT}:80"`. Set `BIND_ADDR` in `.env` to your
-  machine's actual **LAN IP** (e.g. `192.168.1.50`), never `0.0.0.0`. Leave
-  it at the default `127.0.0.1` if you only want to reach it from the host
-  itself (e.g. via an SSH tunnel).
-- If you put a reverse proxy in front of it, make sure **that proxy** is
-  also LAN-only - it's easy to have this app's own bind address correctly
-  restricted while an existing shared reverse proxy in front of it is
-  bound more broadly, silently exposing this app anyway.
-- Consider a host firewall rule (`iptables`/`ufw`/`nftables`) restricting
-  inbound `APP_PORT` to your LAN subnet as defense in depth.
 
 ## Home screen bookmark
-
-On a phone on the same LAN, open `http://<BIND_ADDR>:<APP_PORT>/` (or your
-own HTTPS URL if you've set one up - required for Web Push, see below) and
-use "Add to Home Screen" (Safari: Share → Add to Home Screen; Chrome: ⋮
-menu → Add to Home Screen).
-
 ## Web Push notifications
 
 Lets a session's newly-blocked prompt reach your phone without the tab
@@ -501,50 +349,8 @@ self-heals a subscription that's started to go stale.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full push-delivery
 mechanism, notification-content details, and the quota-push variant.
 
-## Running tests
+# Current limitations
 
-```
-bash tests/run.sh          # run every test file
-bash tests/run.sh --bail   # stop at the first failing test file
-bash tests/run.sh --no-browser  # skip Chrome-dependent tests
-```
-
-No Composer test runner needed - plain PHP scripts driven by a bash
-entrypoint. The suite is fully isolated from your real tmux
-sessions/processes (a separate tmux server, a fixture `claude` binary,
-never the real billable CLI). The normal run includes headless-browser tests
-when Chrome/Chromium is available; use `--no-browser` on a host without one.
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the isolation mechanism and what
-each test file covers.
-
-## Security summary
-
-- No login, no accounts - the network binding is the access control (see
-  "Network binding" above).
-- No free-text fields except the optional custom working-directory path
-  for New Session, which is passed as a `proc_open()` array argument
-  (never through a shell) and only ever used as a spawn-target directory -
-  it can change *where* a session starts, not *what* command runs.
-- Every state-changing POST is guarded twice: a same-origin check
-  (`Origin`/`Referer` vs `Host`) and a session-bound CSRF token, checked
-  with `hash_equals()`.
-- Every session name/pid the app can act on is re-validated against a
-  fresh listing computed in the same request, never trusted from the
-  client.
-- The container has no access to the host filesystem, tmux, or the
-  process table - only a single UNIX socket to the host agent, gated
-  further by UNIX socket permissions.
-- No user database, no multi-tenant data - SQLite is used only for local
-  host-agent state (session status, push subscriptions, quota cache; see
-  the Configuration table above), plus a PHP session (a CSRF token and the
-  next flash message) and small JSON sidecar files recording which working
-  directory a session was started with.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for how commands are actually
-built/run (the `proc_open()` array-form convention that rules out shell
-injection entirely) and the full architecture.
-
-## Current limitations
 
 - No accounts, no multi-user support — this is a single-operator tool for one person's
   own dev box, gated by network binding, not a login (see "Network binding" above).
@@ -565,5 +371,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the architecture deep-dive, file
 structure, hook rationale, development workflow, and testing details.
 
 ## License
-
-[MIT](LICENSE)

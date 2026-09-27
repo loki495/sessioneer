@@ -220,4 +220,34 @@ class SessionStatusStore
 
         return $stmt->rowCount();
     }
+
+    /**
+     * Same idea as clear_stale_blocked_for_agent(), but scoped to one
+     * agent's sessions under ONE runtime, and also resets a session that
+     * was mid-turn. A headless manager's child processes die with it, so
+     * any working/blocked headless session it owned is now idle and its
+     * prompt can no longer be answered; the same agent's tmux sessions
+     * (hook-owned) must stay untouched.
+     */
+    public static function reset_stale_for_runtime(string $agent, string $runtime, string $message): int
+    {
+        // The subquery below reads sidecars.agent/runtime, columns only
+        // SidecarStore migrates in; a fresh database would not have them yet.
+        SidecarStore::ensure_schema();
+
+        $stmt = self::db()->prepare(
+            "UPDATE session_status
+             SET status = 'idle', blocked_json = NULL, last_turn_error = :message, updated_at = :updated_at
+             WHERE (blocked_json IS NOT NULL OR status IN ('working', 'blocked'))
+               AND session_name IN (SELECT session_name FROM sidecars WHERE agent = :agent AND runtime = :runtime)"
+        );
+        $stmt->execute([
+            ':message' => $message,
+            ':updated_at' => time(),
+            ':agent' => $agent,
+            ':runtime' => $runtime,
+        ]);
+
+        return $stmt->rowCount();
+    }
 }

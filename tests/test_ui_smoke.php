@@ -23,6 +23,7 @@ const CANNED_VAPID_PUBLIC_KEY = 'BAhRdSrCIQS6QqCKKxkfmfSQ_DyQk63-8zoSMWlb2PXjhuT
 const CANNED_ARCHIVED_CLAUDE_SESSION_ID = '99999999-8888-4777-a666-555555555555';
 const CANNED_ARCHIVED_CLAUDE_PROFILE = 'work';
 const CANNED_RESUMED_SESSION_NAME = 'cc-20260101-1400';
+const CANNED_HEADLESS_RESUMED_SESSION_NAME = 'claude-headless-20260101-1700';
 const CANNED_TAKEN_OVER_SESSION_NAME = 'cc-20260101-1500';
 const CANNED_NEW_SESSION_NAME = 'cc-20260101-1600';
 
@@ -1402,6 +1403,66 @@ try {
 
     $archivedResumeRejectFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
     assert_contains('Rejected', $archivedResumeRejectFollow['body'], 'POST resume (unrecognized id): flash shows the rejection message');
+
+    // --- Claude runtime choice (terminal vs headless): the New Session
+    // form's picker, resume-as-headless, and switching a live session. Own
+    // $runtime*-prefixed variables, same end-of-curl-only-tier reasoning as
+    // the blocks around it. ---
+    $runtimeFrontPage = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $runtimeCsrf = extract_csrf_token($runtimeFrontPage['body']);
+    assert_contains('name="runtime"', $runtimeFrontPage['body'], 'GET /: the New Session form has a runtime picker');
+    assert_true(preg_match('#<label id="new-session-runtime-label" class="hidden #', $runtimeFrontPage['body']) === 1, 'GET /: the runtime picker starts hidden (index.js reveals it for Claude only)');
+    assert_true(preg_match('#<select id="new-session-runtime" name="runtime"[^>]*>\s*<option value="headless" selected>Headless[^<]*</option>\s*<option value="tmux">Terminal \(tmux\)</option>#', $runtimeFrontPage['body']) === 1, 'GET /: it preselects Headless (the default) and offers Terminal (tmux), each with an explicit value');
+    assert_contains("new-session-runtime-label", (string)$indexJs['body'], 'GET /js/index.js: the runtime picker is toggled per agent');
+    assert_true(preg_match('#<form method="post" action="/"[^>]*>\s*<input type="hidden" name="action" value="switch_runtime">\s*<input type="hidden" name="csrf_token"[^>]*>\s*<input type="hidden" name="session" value="cc-20260101-1200">\s*<input type="hidden" name="runtime" value="headless">#', $runtimeFrontPage['body']) === 1, 'GET /: a tmux Claude row offers switching to headless');
+
+    curl_request('POST', "{$baseUrl}/", ['-d', 'action=new&csrf_token=' . urlencode((string)$runtimeCsrf) . '&workdir=' . urlencode('/home/user/www/demo-project') . '&agent=claude&runtime=headless'], $cookieJar);
+    $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    assert_contains('[runtime=headless]', $runtimeFollow['body'], 'POST new (runtime=headless): the choice reaches the agent');
+    $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
+
+    curl_request('POST', "{$baseUrl}/", ['-d', 'action=new&csrf_token=' . urlencode((string)$runtimeCsrf) . '&workdir=' . urlencode('/home/user/www/demo-project') . '&agent=claude&runtime='], $cookieJar);
+    $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    assert_contains('Created session', $runtimeFollow['body'], 'POST new (empty runtime): still creates');
+    assert_true(!str_contains($runtimeFollow['body'], '[runtime='), 'POST new (empty runtime): no runtime is sent - the agent applies its own default');
+    $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
+
+    curl_request('POST', "{$baseUrl}/", ['-d', 'action=new&csrf_token=' . urlencode((string)$runtimeCsrf) . '&workdir=' . urlencode('/home/user/www/demo-project') . '&agent=claude&runtime=' . urlencode('tmux; rm -rf /')], $cookieJar);
+    $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    assert_true(!str_contains($runtimeFollow['body'], '[runtime='), 'POST new (garbage runtime): anything but "headless" or "tmux" is dropped, never forwarded');
+    $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
+
+    curl_request('POST', "{$baseUrl}/", ['-d', 'action=new&csrf_token=' . urlencode((string)$runtimeCsrf) . '&workdir=' . urlencode('/home/user/www/demo-project') . '&agent=claude&runtime=tmux'], $cookieJar);
+    $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    assert_contains('[runtime=tmux]', $runtimeFollow['body'], 'POST new (runtime=tmux): the terminal choice reaches the agent');
+    $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
+
+    $runtimeResume = curl_request('POST', "{$baseUrl}/", [
+        '-d', 'action=resume&csrf_token=' . urlencode((string)$runtimeCsrf)
+            . '&agent_session_id=' . urlencode(CANNED_ARCHIVED_CLAUDE_SESSION_ID)
+            . '&workdir=' . urlencode('/home/user/www/old-project')
+            . '&profile=' . urlencode(CANNED_ARCHIVED_CLAUDE_PROFILE)
+            . '&runtime=headless',
+    ], $cookieJar);
+    assert_equal(303, $runtimeResume['status'], 'POST resume (runtime=headless): 303 redirect');
+    assert_equal('/session.php?session=' . CANNED_HEADLESS_RESUMED_SESSION_NAME, $runtimeResume['headers']['location'] ?? '', 'POST resume (runtime=headless): redirects to the headless session');
+    $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
+
+    $runtimeSwitch = curl_request('POST', "{$baseUrl}/", ['-d', 'action=switch_runtime&csrf_token=' . urlencode((string)$runtimeCsrf) . '&session=cc-20260101-1200&runtime=headless'], $cookieJar);
+    assert_equal(303, $runtimeSwitch['status'], 'POST switch_runtime: 303 redirect');
+    assert_equal('/session.php?session=' . CANNED_HEADLESS_RESUMED_SESSION_NAME, $runtimeSwitch['headers']['location'] ?? '', 'POST switch_runtime: redirects to the session that now carries the conversation');
+    $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
+
+    $runtimeSwitchBad = curl_request('POST', "{$baseUrl}/", ['-d', 'action=switch_runtime&csrf_token=' . urlencode((string)$runtimeCsrf) . '&session=cc-20260101-1200&runtime=tmux'], $cookieJar);
+    assert_equal('/', $runtimeSwitchBad['headers']['location'] ?? '', 'POST switch_runtime (rejected): falls back to home with a flash, not a session view');
+    $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    assert_contains('Rejected', $runtimeFollow['body'], 'POST switch_runtime (rejected): the agent\'s reason is shown');
+    $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
+
+    $runtimeNoCsrf = curl_request('POST', "{$baseUrl}/", ['-d', 'action=switch_runtime&csrf_token=nope&session=cc-20260101-1200&runtime=headless'], $cookieJar);
+    assert_equal(403, $runtimeNoCsrf['status'], 'POST switch_runtime without a valid CSRF token: 403');
 
     // --- take_over_bare.php/take_over_bare_confirm.php: AJAX JSON
     // endpoints (unlike resume above) - a bare-process row's "Take over"

@@ -70,9 +70,11 @@ class RuntimeRegistry
 
         return match ($runtimeType) {
             RuntimeType::TMUX => new TmuxRuntime($agentId),
-            RuntimeType::HEADLESS => $agentId === 'codex'
-                ? new CodexHeadlessRuntime()
-                : new HeadlessRuntime(),
+            RuntimeType::HEADLESS => match ($agentId) {
+                'codex' => new CodexHeadlessRuntime(),
+                'claude' => new ClaudeHeadlessRuntime(),
+                default => new HeadlessRuntime(),
+            },
             default => null,
         };
     }

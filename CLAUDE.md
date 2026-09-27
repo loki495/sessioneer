@@ -18,8 +18,11 @@ bash tests/run.sh --bail   # stop at the first failing test file
 bash tests/run.sh --live   # run ONLY the live smoke test (see below) - never part of the default run
 ```
 
-No Composer test runner, no Pest, no build step for JS/CSS (plain files,
-no bundler/npm — there is no `package.json`). `tests/run.sh` runs each
+No Composer test runner, no Pest, and nothing to build to run the app: the JS is
+plain files and `public/css/tailwind.css` is a committed, precompiled file. A
+dev-only `package.json` exists for regenerating it (`npm run build:css`, after
+editing classes in a template) and for the JSDoc type-check (`npm run
+typecheck`) - see CONTRIBUTING.md. `tests/run.sh` runs each
 `tests/test_*.php` directly via the `php` CLI. The default suite is
 self-isolating: it points `TMUX_SOCKET`/`CLAUDE_BIN`/sidecar paths at
 fixtures (`tests/.env.testing`), so it never touches the real tmux server
@@ -38,6 +41,15 @@ happens), but it's genuinely slower and needs the real binary installed,
 so it only ever runs via `--live` — every other flag, including the plain
 default run, always excludes it. See its own header comment for the full
 reasoning.
+`test_claude_headless_live.php` is the second live file: a real
+`ClaudeHeadlessManager` driving the real `claude` (haiku, two short turns, a
+few cents of subscription usage) to prove the stream-json handling and the
+`apiKeySource == 'none'` guarantee still hold on the installed CLI. The
+default suite covers the same manager two other ways with no real process:
+`test_claude_headless_manager.php` against the scripted `fake_claude_stream`,
+and `test_claude_headless_replay.php`, which plays every recorded
+`tests/fixtures/claude_stream_json_*.ndjson` capture back through the manager
+via `fake_claude_replay`.
 
 To exercise a single area, run that one `tests/test_*.php` file directly
 with `php` rather than the whole suite (check its own header comment for
@@ -56,7 +68,12 @@ only needed if `docker-compose.yml`'s inline Dockerfile itself changes
 (docroot, CMD, PHP extensions, etc.). The host agent (`host-agent/`) also
 runs directly off the checked-out repo path with no restart needed per
 edit — each connection gets a fresh PHP process, spawned by systemd
-socket activation.
+socket activation. The persistent services are the exception: they load
+their code once, so restart them after editing what they run
+(`systemctl --user restart sessioneer-claude-headless-manager.service`,
+`sessioneer-codex-bridge.service`, `sessioneer-opencode-events.service`).
+Restarting the Claude headless manager stops every live headless process:
+sessions resume on their next message and any open prompt is lost.
 
 ## Architecture: two runtimes, one repo
 
@@ -129,6 +146,69 @@ Docker-spawned, makes that impossible by construction — not by convention.
    plus `OpenCodeServeClient`, `CodexBridgeClient`, `CodexHeadlessRuntime` —
    see `docs/headless-runtime-plan.md`). All PSR-4 autoloaded under
    `HostAgent\Services`/`Stores`/`Agents`/`Runtimes`.
+
+   Claude Code's headless runtime (no tmux pane) is a second persistent
+   host-native service in the Codex bridge's mould:
+   `sessioneer-claude-headless-manager.service` runs
+   `host-agent/claude_headless_manager.php` (`ClaudeHeadlessManager`, one
+   `ClaudeHeadlessChild` per active session, reached through
+   `ClaudeHeadlessManagerClient` over a UNIX socket). Each child is a
+   `claude -p` stream-json process on the user's own login (never
+   `--bare`; API-key env vars stripped, and a child reporting an API-key
+   credential source is killed) - the real CLI, not the Agent SDK library
+   (which authenticates with an API key and bills pay-as-you-go). The
+   process is a cache and the sidecar row
+   (`runtime = headless`) is the truth: a session with no process is
+   "dormant" and the next message respawns it with `--resume`. The manager
+   is the sole writer of `session_status` for these sessions - its children
+   get no `SESSIONEER_SESSION_NAME`, so the hooks below stay silent for
+   them. Protocol and design records live in Dibs (plan #269, research
+   #280, decision #282); `tests/fixtures/claude_stream_json_*_v2_1_278.ndjson`
+   are the captured stream-json events and `tests/fixtures/fake_claude_stream`
+   is the scripted stand-in the tests drive. `ClaudeHeadlessRuntime` is the
+   `RuntimeProvider` face of it: a `create` request with `runtime=headless`
+   selects it (headless is the default when `runtime` is absent, chosen by
+   `ClaudeCodeAdapter::supported_runtimes()`' first entry; `runtime=tmux`
+   selects a pane, anything else is rejected), its refs are
+   `claude-headless-<timestamp>` (`HeadlessSessionName` - the pattern for any
+   agent's headless sessions is `<agent>-headless-*`), and it derives the
+   dashboard row, prompts and answers from the sidecar, the status store and
+   the transcript file, never a pane (`ClaudeHeadlessPromptProtocol` reuses
+   the same `PromptParser` option builders/classifier as the hook-fed tmux
+   path). `RuntimeProvider` also carries `interrupt()`, `update_settings()`
+   and `set_mode()`, so `Sessions.php` routes those through the interface
+   instead of per-agent branches. The UI reaches it three ways: the New
+   Session form's "Runs in" picker (Claude only), a "Headless" button on
+   archived Claude rows (`resume` with `runtime=headless`), and a per-row
+   switch button backed by the `switch_runtime` action
+   (`SessionRuntimeSwitchService`: the old process is stopped completely
+   before the new one starts, it refuses a busy session or one with no
+   transcript yet, and the conversation id is what carries over). One
+   process per transcript is enforced by
+   `SessionLifecycleService::agent_session_id_already_live()`, which counts
+   headless sessions as live, and by the per-conversation resume lock.
+   A headless process renders no status line, so the manager writes each
+   `rate_limit_event` into the per-account quota state itself, through
+   `QuotaLiveStateWriter` (the same merge rule the statusLine script uses).
+   The push-check timer builds its session list with
+   `sessioneer_sessions_for_push()` - the dashboard's own merge - so any
+   new headless agent's rows must be handled in
+   `sessioneer_merge_headless_sessions()` or push will misread them.
+   A slash command sent to a headless session is an ordinary user message:
+   local ones (`/context`, `/usage`) answer without a model call, TUI-only ones
+   (`/add-dir`, `/theme`) reply "isn't available in this environment", and an
+   unrecognised `/name` is NOT rejected - it goes to the model and spends a
+   turn (verified live, 2.1.278; docs/features.md, "Headless runtime").
+   The manager's own processes are not bare ones: `BareProcessService::
+   managed_headless_pids()` (a no-retry probe of the manager) keeps them out of
+   the "other Claude processes" list, and Kill/Take over refuse them.
+   Take over waits for the process it stopped to actually exit (bounded by
+   `TAKE_OVER_EXIT_WAIT_SECONDS`) before resuming: `resume_agent_session()`
+   refuses a conversation whose process is still running, and a real Claude can
+   take seconds to exit.
+   `ClaudeHeadlessHealthService` is the "Claude Code headless" health-box
+   section (service, spawn guard, credential, version, capacity, quota
+   freshness).
 5. `App\Views\*` (one render class per feature area — `TranscriptView`,
    `SessionRowView`, `BlockedPromptView`, `QuotaFooterView`,
    `HealthBoxView`, `PushNotifyView`, plus `PageView` for the two full-page

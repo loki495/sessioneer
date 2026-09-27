@@ -181,6 +181,22 @@ class HeadlessRuntime implements RuntimeProvider
         return ['ok' => false, 'message' => 'Rejected: no valid answer supplied'];
     }
 
+    public function interrupt(string $sessionRef): array
+    {
+        return $this->client->interrupt($sessionRef);
+    }
+
+    public function update_settings(string $sessionRef, ?string $model = null, ?string $effort = null, ?string $provider = null): array
+    {
+        // OpenCode picks a model by provider + model id; effort has no counterpart here.
+        return $this->client->set_model($sessionRef, (string)$provider, (string)$model);
+    }
+
+    public function set_mode(string $sessionRef, string $mode): array
+    {
+        return ['ok' => false, 'message' => 'Mode switching is not supported for headless sessions'];
+    }
+
     /**
      * The shared multi-question card predates OpenCode and submits option
      * positions (or {text: ...}); OpenCode requires labels. A label-shaped

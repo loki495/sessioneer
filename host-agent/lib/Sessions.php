@@ -19,6 +19,7 @@ use HostAgent\Services\SessionService;
 use HostAgent\Services\PromptInteractionService;
 use HostAgent\Services\PlanFileService;
 use HostAgent\Services\SessionLifecycleService;
+use HostAgent\Services\SessionRuntimeSwitchService;
 use HostAgent\Services\ArchivedSessionService;
 use HostAgent\Services\SessionDetailService;
 use HostAgent\Services\OpenCodeTranscriptService;
@@ -33,6 +34,7 @@ use HostAgent\Stores\SessionStatusStore;
 use HostAgent\Stores\GlobalStateStore;
 use HostAgent\Runtimes\RuntimeRegistry;
 use HostAgent\Runtimes\RuntimeType;
+use HostAgent\Runtimes\ClaudeHeadlessRuntime;
 use HostAgent\Runtimes\OpenCodeServeClient;
 use HostAgent\Agents\AgentRegistry;
 
@@ -59,6 +61,13 @@ function dispatch_action(array $request): array
                 $headless = $agent !== null ? RuntimeRegistry::runtime_for($agent, RuntimeType::HEADLESS) : null;
                 $serveDetail = $headless?->detail($session) ?? ['ok' => false, 'message' => 'Headless runtime unavailable'];
 
+                // A headless Claude session's detail is already a full session
+                // entry (same shape a tmux session's detail has), not a
+                // server object that needs reshaping.
+                if ($agent === 'claude' && $serveDetail['ok'] === true && is_array($serveDetail['session'] ?? null)) {
+                    return ['ok' => true] + $serveDetail['session'];
+                }
+
                 if (($serveDetail['ok'] === true) && is_array($serveDetail['session'] ?? null)) {
                     return sessioneer_headless_detail_shape($serveDetail['session'], $agent ?? 'opencode');
                 }
@@ -75,7 +84,10 @@ function dispatch_action(array $request): array
 
         case 'session_history':
             $historySession = (string)($request['session'] ?? '');
-            if (sessioneer_is_headless_session($historySession)) {
+            // OpenCode/Codex refs ARE their conversation ids; a headless Claude
+            // ref is not (it is resolved through the sidecar, exactly like a
+            // tmux session's), so it takes the tracked-session path below.
+            if (sessioneer_is_headless_session($historySession) && sessioneer_headless_agent($historySession) !== 'claude') {
                 return SessionDetailService::archived_session_history(
                     $historySession,
                     isset($request['before']) ? (int)$request['before'] : null,
@@ -153,8 +165,8 @@ function dispatch_action(array $request): array
             // OpenCode's default runtime is headless (no tmux) - a New
             // Session for opencode goes through `opencode serve`, so it
             // lands in the headless pool the dashboard already merges in.
-            // Other agents (claude/antigravity) have no headless session
-            // mode and stay on the tmux path.
+            // Antigravity has no headless session mode and stays on the tmux
+            // path; Claude chooses its runtime below.
             if ($agentId === 'opencode' || $agentId === 'codex') {
                 $headless = RuntimeRegistry::runtime_for($agentId, RuntimeType::HEADLESS);
 
@@ -202,6 +214,46 @@ function dispatch_action(array $request): array
                 return $result;
             }
 
+            // Claude Code's runtime is the caller's choice (headless: a
+            // `claude -p` process owned by the headless manager, no pane; or
+            // tmux), defaulting to the adapter's first supported runtime.
+            $claudeRuntime = null;
+
+            if (($agentId ?? 'claude') === 'claude') {
+                $requestedRuntime = $request['runtime'] ?? null;
+                $claudeRuntime = is_string($requestedRuntime) && $requestedRuntime !== ''
+                    ? $requestedRuntime
+                    : (RuntimeRegistry::supported('claude')[0] ?? RuntimeType::TMUX);
+
+                if (!in_array($claudeRuntime, RuntimeRegistry::supported('claude'), true)) {
+                    return ['ok' => false, 'message' => "Unknown runtime '{$claudeRuntime}' for Claude Code"];
+                }
+            }
+
+            if ($claudeRuntime === RuntimeType::HEADLESS) {
+                $headless = RuntimeRegistry::runtime_for('claude', RuntimeType::HEADLESS);
+
+                if ($headless === null) {
+                    return ['ok' => false, 'message' => 'Headless runtime unavailable for claude'];
+                }
+
+                $result = $headless->create([
+                    'workdir' => $workdir,
+                    'model' => $modelId,
+                    'starting_mode' => is_string($startingMode) && $startingMode !== '' ? $startingMode : null,
+                    'enable_task_tools' => (bool)($request['enable_task_tools'] ?? false),
+                    'profile' => $profile,
+                ]);
+
+                // Same create_agent_session() shape callers expect: a `name`
+                // for the redirect to session.php?session=name.
+                if ($result['ok'] === true && is_string($result['name'] ?? null)) {
+                    $result['session'] = $result['name'];
+                }
+
+                return $result;
+            }
+
             return SessionLifecycleService::create_agent_session(
                 $workdir,
                 (bool)($request['enable_task_tools'] ?? false),
@@ -234,7 +286,19 @@ function dispatch_action(array $request): array
                 return sessioneer_codex_resume($resumeWorkdir, $resumeId);
             }
 
+            // A Claude conversation can also be resumed headless (no pane).
+            if (($request['runtime'] ?? null) === RuntimeType::HEADLESS) {
+                $claudeHeadless = RuntimeRegistry::runtime_for('claude', RuntimeType::HEADLESS);
+
+                return $claudeHeadless instanceof ClaudeHeadlessRuntime
+                    ? $claudeHeadless->resume($resumeWorkdir, $resumeId, $resumeProfile)
+                    : ['ok' => false, 'message' => 'Headless runtime unavailable for claude'];
+            }
+
             return SessionLifecycleService::resume_agent_session($resumeWorkdir, $resumeId, $resumeProfile);
+
+        case 'switch_runtime':
+            return SessionRuntimeSwitchService::switch_runtime((string)($request['session'] ?? ''), (string)($request['runtime'] ?? ''));
 
         case 'kill':
             $killSession = (string)($request['session'] ?? '');
@@ -307,13 +371,8 @@ function dispatch_action(array $request): array
             $escapeSession = (string)($request['session'] ?? '');
 
             if (sessioneer_is_headless_session($escapeSession)) {
-                if (sessioneer_headless_agent($escapeSession) === 'codex') {
-                    $runtime = RuntimeRegistry::runtime_for('codex', RuntimeType::HEADLESS);
-                    return $runtime instanceof \HostAgent\Runtimes\CodexHeadlessRuntime
-                        ? $runtime->interrupt($escapeSession)
-                        : ['ok' => false, 'message' => 'Codex runtime unavailable'];
-                }
-                return (new OpenCodeServeClient())->interrupt($escapeSession);
+                return sessioneer_headless_runtime($escapeSession)?->interrupt($escapeSession)
+                    ?? ['ok' => false, 'message' => 'Headless runtime unavailable'];
             }
             return PromptInteractionService::send_escape($escapeSession);
 
@@ -334,24 +393,20 @@ function dispatch_action(array $request): array
             $modeSession = (string)($request['session'] ?? '');
 
             if (sessioneer_is_headless_session($modeSession)) {
-                return ['ok' => false, 'message' => 'Mode switching is not supported for headless sessions'];
+                return sessioneer_headless_runtime($modeSession)?->set_mode($modeSession, (string)($request['mode'] ?? ''))
+                    ?? ['ok' => false, 'message' => 'Headless runtime unavailable'];
             }
             return PromptInteractionService::set_mode($modeSession, (string)($request['mode'] ?? ''));
 
         case 'set_model':
             $modelSession = (string)($request['session'] ?? '');
             if (sessioneer_is_headless_session($modelSession)) {
-                if (sessioneer_headless_agent($modelSession) === 'codex') {
-                    $runtime = RuntimeRegistry::runtime_for('codex', RuntimeType::HEADLESS);
-                    return $runtime instanceof \HostAgent\Runtimes\CodexHeadlessRuntime
-                        ? $runtime->update_settings($modelSession, (string)($request['model'] ?? ''), (string)($request['effort'] ?? ''))
-                        : ['ok' => false, 'message' => 'Codex runtime unavailable'];
-                }
-                return (new OpenCodeServeClient())->set_model(
+                return sessioneer_headless_runtime($modelSession)?->update_settings(
                     $modelSession,
-                    (string)($request['model_provider'] ?? ''),
-                    (string)($request['model'] ?? '')
-                );
+                    (string)($request['model'] ?? ''),
+                    (string)($request['effort'] ?? ''),
+                    (string)($request['model_provider'] ?? '')
+                ) ?? ['ok' => false, 'message' => 'Headless runtime unavailable'];
             }
             return PromptInteractionService::set_model($modelSession, (string)($request['model'] ?? ''));
 
@@ -468,9 +523,25 @@ function sessioneer_merge_headless_sessions(array $sessions): array
     }
     unset($s);
 
+    $claudeHeadless = RuntimeRegistry::runtime_for('claude', RuntimeType::HEADLESS);
+
     foreach (sessioneer_headless_sessions()['headless'] as $h) {
         $blocked = is_array($h['blocked'] ?? null) ? $h['blocked'] : null;
         $agentId = is_string($h['agent'] ?? null) ? $h['agent'] : 'opencode';
+
+        // A headless Claude session already knows how to describe itself in
+        // full (mode, model, last message, structured prompts), unlike the
+        // server-hosted agents' thin rows below.
+        if ($agentId === 'claude') {
+            $entry = $claudeHeadless instanceof ClaudeHeadlessRuntime ? $claudeHeadless->session_entry((string)$h['id']) : null;
+
+            if ($entry !== null) {
+                $sessions[] = $entry;
+            }
+
+            continue;
+        }
+
         $agentLabel = AgentRegistry::get($agentId)->label();
 
         $sessions[] = [
@@ -526,6 +597,21 @@ function sessioneer_merge_headless_sessions(array $sessions): array
     }
 
     return $sessions;
+}
+
+/**
+ * Every live session (tmux and headless, all agents) in the shape the
+ * dashboard's `list` action shows, for callers that only need the rows (the
+ * push-check timer). One function on purpose: push_trigger.php used to carry
+ * its own copy of the headless merge, which lacked the Claude case, so a
+ * blocked headless Claude session read as idle there and sent a "finished"
+ * notification instead of the prompt.
+ *
+ * @return array<int, array<string, mixed>>
+ */
+function sessioneer_sessions_for_push(): array
+{
+    return sessioneer_merge_headless_sessions(SessionService::list_all_sessions()['sessions']);
 }
 
 /**
@@ -828,6 +914,18 @@ function sessioneer_headless_agent(string $ref): ?string
 {
     $sidecar = SidecarStore::read_sidecar($ref);
     return is_string($sidecar['agent'] ?? null) ? $sidecar['agent'] : null;
+}
+
+/**
+ * The headless RuntimeProvider a session's own sidecar says it belongs to,
+ * or null when the agent has none. Callers reply "Headless runtime
+ * unavailable" for null rather than guessing a fallback.
+ */
+function sessioneer_headless_runtime(string $ref): ?\HostAgent\Runtimes\RuntimeProvider
+{
+    $agent = sessioneer_headless_agent($ref);
+
+    return $agent !== null ? RuntimeRegistry::runtime_for($agent, RuntimeType::HEADLESS) : null;
 }
 
 /**

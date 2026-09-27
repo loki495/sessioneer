@@ -238,6 +238,43 @@ class Config
         return self::sessioneer_config('CODEX_BRIDGE_SOCKET', '/run/user/' . getmyuid() . '/sessioneer-codex-bridge.sock');
     }
 
+    public static function claude_headless_socket(): string
+    {
+        return self::sessioneer_config('CLAUDE_HEADLESS_SOCKET', '/run/user/' . getmyuid() . '/sessioneer-claude-headless.sock');
+    }
+
+    /** systemd user unit that runs the headless manager (overridable so tests never query the real one). */
+    public static function claude_headless_unit_name(): string
+    {
+        return self::sessioneer_config('CLAUDE_HEADLESS_UNIT_NAME', 'sessioneer-claude-headless-manager.service');
+    }
+
+    /** Seconds a headless Claude child may sit idle before it is stopped (0 = never). */
+    public static function claude_headless_idle_seconds(): int
+    {
+        return max(0, (int)self::sessioneer_config('CLAUDE_HEADLESS_IDLE_SECONDS', '1800'));
+    }
+
+    public static function claude_headless_max_children(): int
+    {
+        return max(1, (int)self::sessioneer_config('CLAUDE_HEADLESS_MAX_CHILDREN', '8'));
+    }
+
+    /** Seconds a stopping child gets to exit on its own before SIGTERM (then SIGKILL two seconds later). */
+    public static function claude_headless_stop_grace_seconds(): int
+    {
+        return max(1, (int)self::sessioneer_config('CLAUDE_HEADLESS_STOP_GRACE_SECONDS', '10'));
+    }
+
+    /**
+     * Debug mode: unexpected exceptions in long-lived services are logged
+     * and re-thrown instead of being handled into a generic failure.
+     */
+    public static function debug(): bool
+    {
+        return in_array(strtolower(self::sessioneer_config('SESSIONEER_DEBUG', '')), ['1', 'true', 'yes', 'on'], true);
+    }
+
     /** Global user hook configuration read by local Codex clients. */
     public static function codex_hooks_path(): string
     {
@@ -316,6 +353,17 @@ class Config
     public static function opencode_permission_dir(): string
     {
         return self::sessioneer_config('OPENCODE_PERMISSION_DIR', self::sidecar_dir() . '/opencode-permissions');
+    }
+
+    /**
+     * How long Take over waits for the process it just stopped to actually
+     * exit before resuming its conversation. A real Claude flushes state on
+     * SIGTERM/SIGHUP and can take several seconds; resuming earlier is refused
+     * (two writers on one transcript), which used to strand the conversation.
+     */
+    public static function take_over_exit_wait_seconds(): float
+    {
+        return max(0.0, (float)self::sessioneer_config('TAKE_OVER_EXIT_WAIT_SECONDS', '15'));
     }
 
     public static function cleanup_threshold_seconds(): int

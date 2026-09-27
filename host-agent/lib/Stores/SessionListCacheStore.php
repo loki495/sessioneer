@@ -57,6 +57,12 @@ class SessionListCacheStore
         return is_array($decoded['data']) ? $decoded['data'] : null;
     }
 
+    /** Drops the cached listing, for callers that just changed what is running and must not see the old picture. */
+    public static function clear(): void
+    {
+        @unlink(self::cache_path());
+    }
+
     /**
      * @param array{sessions:array, bare:array} $data
      */

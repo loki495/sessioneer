@@ -110,6 +110,13 @@ class DashboardController extends Controller
                 if ($profile !== '') {
                     $createParams['profile'] = $profile;
                 }
+                // 'headless' or 'tmux'; anything else (including empty) is dropped
+                // so the agent applies its own default runtime. The host agent
+                // ignores it for every agent but Claude.
+                $runtime = (string)($_POST['runtime'] ?? '');
+                if (in_array($runtime, ['headless', 'tmux'], true)) {
+                    $createParams['runtime'] = $runtime;
+                }
                 $result = AgentClient::agent_call($createParams);
                 $ok = (bool)($result['ok'] ?? false);
                 $message = $ok
@@ -125,6 +132,9 @@ class DashboardController extends Controller
                 if ($profile !== '') {
                     $resumeParams['profile'] = $profile;
                 }
+                if (($_POST['runtime'] ?? '') === 'headless') {
+                    $resumeParams['runtime'] = 'headless';
+                }
                 $result = AgentClient::agent_call($resumeParams);
                 $ok = (bool)($result['ok'] ?? false);
                 $message = (string)($result['message'] ?? 'Unknown error');
@@ -133,6 +143,24 @@ class DashboardController extends Controller
                 // straight to the now-live session view rather than back to the
                 // dashboard with a flash - decided explicitly with Andres
                 // 2026-08-08, see the unify-claude-sessions plan's phase 5.
+                if ($ok && is_string($result['name'] ?? null) && $result['name'] !== '') {
+                    header('Location: /session.php?session=' . urlencode((string)$result['name']), true, 303);
+
+                    return;
+                }
+                break;
+
+            case 'switch_runtime':
+                $result = AgentClient::agent_call([
+                    'action' => 'switch_runtime',
+                    'session' => (string)($_POST['session'] ?? ''),
+                    'runtime' => (string)($_POST['runtime'] ?? ''),
+                ]);
+                $ok = (bool)($result['ok'] ?? false);
+                $message = (string)($result['message'] ?? 'Unknown error');
+
+                // Same as a successful resume: straight to the session that
+                // now carries the conversation.
                 if ($ok && is_string($result['name'] ?? null) && $result['name'] !== '') {
                     header('Location: /session.php?session=' . urlencode((string)$result['name']), true, 303);
 

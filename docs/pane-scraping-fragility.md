@@ -21,6 +21,8 @@ about it.
 
 ## Inventory
 
+The Claude Code rows below apply to **tmux-runtime** sessions only. A headless Claude session (see `docs/features.md`, "Headless runtime") has no pane and none of these sites is on its path: its state, prompts and session ids come from its process's own structured events, so a Claude Code rendering change cannot break it. Headless is the default runtime for new Claude sessions and is the structural mitigation for the Claude sites; the sites stay in the code for the tmux runtime and for hand-started sessions.
+
 Every place that parses text out of a live `tmux capture-pane` (as opposed
 to a documented, versioned hook/API payload this app doesn't have to guess
 the shape of).
@@ -31,7 +33,7 @@ the shape of).
 | `PromptInteractionService::answer_multi_question()`'s pane pre-flight (line ~347) | Claude Code: confirming a multi-question prompt hasn't moved on before sending the whole keystroke sequence | **Exact string equality** between hook-fed `questions[0]['question']` and freshly pane-scraped `question` | The **exact** bug just fixed - any rendering delta at all (not just this one) fails closed |
 | `PromptParser::build_multi_question_key_sequence()` | Claude Code: the confirmed digit/Right/text/Enter sequence to drive the tab bar | Not pane-derived at all (drives blind from hook `questions[]`), but the *sequence itself* (free-text slot = option-count+1, multiSelect toggles vs. auto-advance, final Review tab = option 1) is empirically reverse-engineered from one live capture, 2026-08-22 | Claude Code changes tab-bar keybindings, free-text slot position, or Review-tab shape |
 | `PermissionMode::parse_current_mode()` | Claude Code: current manual/accept-edits/plan/auto mode, for `set_mode()`'s pre-flight and `SessionLifecycleService::create_agent_session()` | Substring match against 4 fixed status-line phrases (`"accept edits on"`, etc.) | Claude Code reworks its bottom status-line phrasing (already inconsistent once - "accept edits on" has no "mode" - so it's clearly not a stable contract on Anthropic's end either) |
-| `StatuslineMarkerService::parse_marker_from_pane()` | Claude Code: self-healing `claude_session_id`, context-used %, git worktree | Regex for **this app's own** injected `sessioneer-data:{...}` JSON marker | Low risk - this is Sessioneer's own output format inside the statusline script, not Claude Code's UI. Real risk is narrower: Claude Code changing the statusLine JSON schema it feeds the script, or dropping/renaming `TMUX_PANE_HEIGHT` behavior |
+| `StatuslineMarkerService::parse_marker_from_pane()` | Claude Code: self-healing `agent_session_id`, context-used %, git worktree | Regex for **this app's own** injected `sessioneer-data:{...}` JSON marker | Low risk - this is Sessioneer's own output format inside the statusline script, not Claude Code's UI. Real risk is narrower: Claude Code changing the statusLine JSON schema it feeds the script, or dropping/renaming `TMUX_PANE_HEIGHT` behavior |
 | `AntigravityPromptParser::parse_blocking_prompt()` | Antigravity: the *only* way to detect a blocked prompt at all - no `PermissionRequest`-equivalent hook exists | Scoped narrowly to one confirmed live shape ("Requesting permission for: ... Do you want to proceed?") - returns `null` (safe) for anything else, deliberately not generalized | Any other Antigravity tool-confirmation shape, or the confirmed shape's own wording, changes - and since there's no hook fallback, an unrecognized shape means Sessioneer shows nothing rather than a stale prompt |
 | `AntigravitySelectableModel::parse_current_model()` / `move_antigravity_picker_cursor()` | Antigravity: which model is active, driving `/model` picker | Substring match on cursor + label (`"> {$targetLabel}"`) | Antigravity changes its picker's cursor glyph from `> ` or reorders/renames the fixed 7-row `PICKER_OPTIONS` vocabulary (already hardcoded, dated, verified-live) |
 | `OpenCodePromptParser` | OpenCode: legacy tmux-TUI fallback path (headless `serve` API is preferred now per CLAUDE.md's own convention note; this is what's left for old tmux-spawned OpenCode sessions) | Two-stage structural (bottom-anchored footer marker, then region above it) - deliberately avoids whole-pane keyword scanning after a real false-positive (a pasted git diff read as a nonsense question) | OpenCode changes its footer hint text (`"enter confirm"` etc.) or modal anchoring. Lower ongoing risk than the Claude Code/Antigravity paths since new work goes through the headless API instead |
@@ -60,13 +62,17 @@ changed their API" risk, not this doc's risk.
   containment is good and should stay the design default for any new
   parsing site - but it still means a real feature silently stops working
   with no error surfaced anywhere except the one rejected user action.
-- **No CLI version pinning/probing exists for Claude Code**, unlike Codex
+- **No CLI version pinning/probing exists for the tmux-runtime Claude Code parsing**, unlike Codex
   (`docs/headless-runtime-plan.md`'s "pinning a tested minimum CLI version
   and probing capabilities at startup") or the dated, "verified live
   YYYY-MM-DD against version X" comments scattered through this file. There
   is no single place that records "this pane-scraping code was last
   verified against Claude Code CLI version N," and no code path that
-  detects a version bump and flags stale assumptions.
+  detects a version bump and flags stale assumptions. The headless
+  runtime does have one: its health-box section compares the installed
+  `claude --version` with `ClaudeHeadlessHealthService::TESTED_CLAUDE_VERSION`
+  (the version its protocol handling was captured and live-verified on) and
+  `bash tests/run.sh --live` re-checks it against the installed CLI.
 
 ## Mitigation options (not yet decided/implemented - for discussion)
 

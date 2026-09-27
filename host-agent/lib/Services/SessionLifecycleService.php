@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace HostAgent\Services;
 
 use HostAgent\Agents\AgentRegistry;
+use HostAgent\Runtimes\RuntimeType;
 use HostAgent\Stores\SidecarStore;
 use HostAgent\Stores\PendingToolStore;
 use HostAgent\Stores\SessionStatusStore;
@@ -176,6 +177,14 @@ class SessionLifecycleService
             }
         }
 
+        // A headless session is just as live as a pane: its process owns the
+        // same transcript file, so a second writer must be refused here too.
+        foreach (SidecarStore::list_runtime_sidecars(RuntimeType::HEADLESS) as $row) {
+            if ($row['session_name'] !== $excludeSessionName && $row['agent_session_id'] === $agentSessionId) {
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -196,7 +205,7 @@ class SessionLifecycleService
      * lock into two independent ones that never actually conflict. Always
      * flock()ing the same persistent path avoids that entirely.
      */
-    private static function resume_lock_path(string $agentSessionId): string
+    public static function resume_lock_path(string $agentSessionId): string
     {
         return Config::sidecar_dir() . '/' . sha1($agentSessionId) . '.resume-lock';
     }

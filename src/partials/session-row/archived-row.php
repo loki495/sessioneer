@@ -41,6 +41,12 @@
           // 'resume' case had no profile to read since nothing sent one). ?>
     <?php if (!empty($profile)): ?><input type="hidden" name="profile" value="<?= $this->e($profile) ?>"><?php endif ?>
     <button type="submit" class="select-none min-h-[2.75rem] shrink-0 rounded-lg border border-slate-700 bg-slate-800 active:bg-slate-700 text-slate-200 font-medium text-sm px-4 py-2">Resume</button>
+    <?php // Claude conversations only: resume with no terminal (a headless
+          // session). The button's own name/value is what selects it - the
+          // plain Resume button above submits no runtime and stays tmux. ?>
+    <?php if (($agentId ?? 'claude') === 'claude'): ?>
+      <button type="submit" name="runtime" value="headless" title="Resume without a terminal (headless)" class="select-none min-h-[2.75rem] shrink-0 rounded-lg border border-slate-700 bg-slate-800 active:bg-slate-700 text-slate-300 text-xs px-3 py-2">Headless</button>
+    <?php endif ?>
   </form>
   <?php endif ?>
 </li>

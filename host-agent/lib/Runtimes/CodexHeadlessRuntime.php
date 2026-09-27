@@ -194,7 +194,12 @@ class CodexHeadlessRuntime implements RuntimeProvider
      * Applies sticky model/effort settings to subsequent turns.
      * @return array<string,mixed>
      */
-    public function update_settings(string $sessionRef, ?string $model = null, ?string $effort = null): array
+    public function set_mode(string $sessionRef, string $mode): array
+    {
+        return ['ok' => false, 'message' => 'Mode switching is not supported for headless sessions'];
+    }
+
+    public function update_settings(string $sessionRef, ?string $model = null, ?string $effort = null, ?string $provider = null): array
     {
         $params = ['threadId' => $sessionRef];
         if ($model !== null && $model !== '') $params['model'] = $model;

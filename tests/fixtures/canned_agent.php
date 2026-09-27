@@ -38,6 +38,7 @@ const CANNED_ARCHIVED_CLAUDE_SESSION_ID = '99999999-8888-4777-a666-555555555555'
 // resumed under the default account (or failed to resolve) instead.
 const CANNED_ARCHIVED_CLAUDE_PROFILE = 'work';
 const CANNED_RESUMED_SESSION_NAME = 'cc-20260101-1400';
+const CANNED_HEADLESS_RESUMED_SESSION_NAME = 'claude-headless-20260101-1700';
 const CANNED_TAKEN_OVER_SESSION_NAME = 'cc-20260101-1500';
 const CANNED_NEW_SESSION_NAME = 'cc-20260101-1600';
 
@@ -304,7 +305,11 @@ $response = match ($action) {
     'create_dir' => (string)($request['name'] ?? '') === 'new-folder'
         ? ['ok' => true, 'path' => '/home/user/www/new-folder', 'parent' => '/home/user/www', 'dirs' => []]
         : ['ok' => false, 'message' => 'Invalid folder name'],
-    'create' => ['ok' => true, 'message' => 'Created session cc-20260101-1300 in /home/user/www/demo-project'],
+    // Echoes the runtime it was asked for, so the UI smoke test can prove the
+    // New Session form's runtime choice actually reaches the agent (and that
+    // an absent or invalid one sends none).
+    'create' => ['ok' => true, 'message' => 'Created session cc-20260101-1300 in /home/user/www/demo-project'
+        . (is_string($request['runtime'] ?? null) ? ' [runtime=' . $request['runtime'] . ']' : '')],
     // Requires the matching profile too (not just id/workdir) - found live
     // 2026-09-19: neither the archived-row Resume form nor the
     // archived-session Unarchive form sent one, and DashboardController
@@ -315,8 +320,14 @@ $response = match ($action) {
     'resume' => ($request['agent_session_id'] ?? null) === CANNED_ARCHIVED_CLAUDE_SESSION_ID
         && (string)($request['workdir'] ?? '') === '/home/user/www/old-project'
         && ($request['profile'] ?? null) === CANNED_ARCHIVED_CLAUDE_PROFILE
-        ? ['ok' => true, 'message' => 'Resumed session ' . CANNED_RESUMED_SESSION_NAME . ' in /home/user/www/old-project', 'name' => CANNED_RESUMED_SESSION_NAME]
+        ? (($request['runtime'] ?? null) === 'headless'
+            ? ['ok' => true, 'message' => 'Resumed session ' . CANNED_HEADLESS_RESUMED_SESSION_NAME . ' in /home/user/www/old-project', 'name' => CANNED_HEADLESS_RESUMED_SESSION_NAME]
+            : ['ok' => true, 'message' => 'Resumed session ' . CANNED_RESUMED_SESSION_NAME . ' in /home/user/www/old-project', 'name' => CANNED_RESUMED_SESSION_NAME])
         : ['ok' => false, 'message' => 'Rejected: unknown agent_session_id, workdir, or profile'],
+    // Only the canned tmux session can be switched, and only to headless.
+    'switch_runtime' => ($request['session'] ?? null) === CANNED_SESSION_NAME && ($request['runtime'] ?? null) === 'headless'
+        ? ['ok' => true, 'message' => 'Now running headless (no terminal)', 'name' => CANNED_HEADLESS_RESUMED_SESSION_NAME]
+        : ['ok' => false, 'message' => 'Rejected: the session is busy or already running that way'],
     'kill' => ($request['session'] ?? null) === CANNED_SESSION_NAME
         ? ['ok' => true, 'message' => 'Killed ' . CANNED_SESSION_NAME]
         : ['ok' => false, 'message' => 'Rejected: not a currently active managed session'],

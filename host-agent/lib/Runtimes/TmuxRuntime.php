@@ -129,4 +129,24 @@ class TmuxRuntime implements RuntimeProvider
             ? PromptInteractionService::answer_prompt_with_text($sessionRef, $option, $text)
             : PromptInteractionService::answer_prompt($sessionRef, $option);
     }
+
+    public function interrupt(string $sessionRef): array
+    {
+        return PromptInteractionService::send_escape($sessionRef);
+    }
+
+    public function update_settings(string $sessionRef, ?string $model = null, ?string $effort = null, ?string $provider = null): array
+    {
+        // A tmux pane only has a model switch; effort and provider don't exist there.
+        if ($model === null || $model === '') {
+            return ['ok' => false, 'message' => 'No model supplied'];
+        }
+
+        return PromptInteractionService::set_model($sessionRef, $model);
+    }
+
+    public function set_mode(string $sessionRef, string $mode): array
+    {
+        return PromptInteractionService::set_mode($sessionRef, $mode);
+    }
 }

@@ -162,11 +162,6 @@ parameters:
 			count: 1
 			path: host-agent/lib/Services/PermissionStore.php
 
-		-
-			message: '#^Method HostAgent\\Services\\ProcessInspector\:\:build_ppid_map\(\) should return array\<array\{pid\: int, ppid\: int\}\> but returns array\<int, int\>\.$#'
-			identifier: return.type
-			count: 1
-			path: host-agent/lib/Services/ProcessInspector.php
 
 		-
 			message: '#^Method HostAgent\\Services\\ProcessInspector\:\:find_owning_pane\(\) has parameter \$ppidMap with no value type specified in iterable type array\.$#'
@@ -342,11 +337,6 @@ parameters:
 			count: 1
 			path: host-agent/lib/Services/SessionDetailService.php
 
-		-
-			message: '#^Parameter \#3 \$ppidMap of static method HostAgent\\Services\\SessionService\:\:build_session_entry\(\) expects array\<int, int\>, array\<array\<string, int\>\> given\.$#'
-			identifier: argument.type
-			count: 1
-			path: host-agent/lib/Services/SessionDetailService.php
 
 		-
 			message: '#^Right side of && is always true\.$#'
@@ -402,11 +392,6 @@ parameters:
 			count: 1
 			path: host-agent/lib/Services/SessionService.php
 
-		-
-			message: '#^Parameter \#3 \$ppidMap of static method HostAgent\\Services\\SessionService\:\:build_session_entry\(\) expects array\<int, int\>, array\<array\<string, int\>\> given\.$#'
-			identifier: argument.type
-			count: 1
-			path: host-agent/lib/Services/SessionService.php
 
 		-
 			message: '#^Right side of && is always true\.$#'

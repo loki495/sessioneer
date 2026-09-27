@@ -192,6 +192,15 @@ class ArchivedSessionService
         // ids()'s own docblock for the full incident and reasoning.
         $trackedIds = array_merge($trackedIds, BareProcessService::live_bare_agent_session_ids());
 
+        // A headless session's conversation is just as live as a tracked tmux
+        // one. For OpenCode/Codex the sidecar's id is the session ref itself;
+        // for headless Claude it is the CURRENT conversation id, which is not.
+        foreach (SidecarStore::list_runtime_sidecars(RuntimeType::HEADLESS) as $row) {
+            if (is_string($row['agent_session_id'] ?? null) && $row['agent_session_id'] !== '') {
+                $trackedIds[] = $row['agent_session_id'];
+            }
+        }
+
         return ['archived' => self::list_archived_sessions($trackedIds)];
     }
 
@@ -231,6 +240,12 @@ class ArchivedSessionService
         foreach (SidecarStore::list_runtime_sidecars(RuntimeType::HEADLESS) as $row) {
             if (is_string($row['session_name'] ?? null)) {
                 $liveNamesByClaudeId[$row['session_name']] = $row['session_name'];
+
+                // Headless Claude: the transcript is keyed by the conversation
+                // id, not the session ref.
+                if (is_string($row['agent_session_id'] ?? null) && $row['agent_session_id'] !== '') {
+                    $liveNamesByClaudeId[$row['agent_session_id']] = $row['session_name'];
+                }
             }
         }
 
