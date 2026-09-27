@@ -1120,10 +1120,10 @@
       + '</div>';
   }
 
-  // Mirrors TranscriptView::render_turn_error_html() - Antigravity-only,
-  // see that method's own docblock for why this exists (a quota-exhausted
-  // turn writes nothing at all to Antigravity's own transcript file, so
-  // without this a failed reply looks identical to one that's just slow).
+  // Mirrors TranscriptView::render_turn_error_html(), see that method's own
+  // docblock for why this exists (e.g. a quota-exhausted Antigravity turn
+  // writes nothing at all to its own transcript file, so without this a
+  // failed reply looks identical to one that's just slow).
   // Same dedup-by-last-rendered-value pattern as renderThinkingIndicator()
   // above, keyed on the error text itself rather than a boolean, since the
   // shown/hidden state alone isn't enough here - two DIFFERENT errors in a
@@ -1148,7 +1148,7 @@
     }
 
     turnError.innerHTML = '<div class="select-none rounded-lg border border-amber-800/60 bg-amber-950/40 px-3 py-2 text-xs text-amber-300">'
-      + '<div class="font-medium mb-1">Antigravity did not reply</div>'
+      + '<div class="font-medium mb-1">' + escapeHtml(sessionAgentLabel) + ' reported a problem</div>'
       + '<div class="text-amber-300/80">' + escapeHtml(errorText) + '</div>'
       + '</div>';
   }
