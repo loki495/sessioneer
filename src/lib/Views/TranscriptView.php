@@ -392,13 +392,33 @@ class TranscriptView extends View
      * reflected immediately, same as any other choice, until the next real
      * turn's transcript-derived value takes back over.
      */
+    /**
+     * The dropdown's rows: the host agent's labels (full names such as
+     * "Opus 5.5", see ClaudeModelCatalog) for exactly the MODEL_OPTIONS keys,
+     * or the plain family names when the detail carries none.
+     *
+     * @param array<string, mixed> $detail
+     * @return array<string, string>
+     */
+    public static function model_options(array $detail): array
+    {
+        $labels = is_array($detail['model_labels'] ?? null) ? $detail['model_labels'] : [];
+        $options = [];
+
+        foreach (self::MODEL_OPTIONS as $key => $plain) {
+            $options[$key] = is_string($labels[$key] ?? null) && $labels[$key] !== '' ? $labels[$key] : $plain;
+        }
+
+        return $options;
+    }
+
     public static function render_model_toggle_html(array $detail): string
     {
         $model = is_string($detail['current_model'] ?? null) ? $detail['current_model'] : null;
 
         return self::render('transcript/model-toggle', [
             'model' => $model,
-            'options' => self::MODEL_OPTIONS,
+            'options' => self::model_options($detail),
         ]);
     }
 

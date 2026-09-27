@@ -100,7 +100,10 @@ the deadline the conversation is left for the Archived list and the message
 says so. A row this can't identify
 with certainty still falls back to the pre-existing closest-start-time
 heuristic, clearly labeled as a guess. Model and permission-mode changes
-drive Claude's own pickers. Quota comes from the status-line JSON marker of
+drive Claude's own pickers. The model dropdowns (session page and New Session
+form) list Claude's families and label each with the newest full name Sessioneer
+has read for it ("Opus 5.5"), parsed from the raw model ids in transcripts and
+headless status; a family not seen yet keeps its plain name. Quota comes from the status-line JSON marker of
 tmux sessions and from the rate-limit events of headless sessions (a headless
 process renders no status line); both write the same per-account state through
 one merge rule, and it is unavailable until either has run once.
