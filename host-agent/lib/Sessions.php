@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../../vendor/autoload.php';
 
+use HostAgent\Services\ClaudeModelCatalog;
 use HostAgent\Services\Config;
 use HostAgent\Services\SessionService;
 use HostAgent\Services\PromptInteractionService;
@@ -997,6 +998,19 @@ function sessioneer_headless_question_prompt(array $q): array
  */
 function sessioneer_list_models(string $agent = 'opencode'): array
 {
+    if ($agent === 'claude') {
+        // The form's own "Default" row is its first option; these are the rest.
+        $models = [];
+
+        foreach (ClaudeModelCatalog::labels() as $key => $label) {
+            if ($key !== 'default') {
+                $models[] = ['id' => $key, 'name' => $label];
+            }
+        }
+
+        return ['ok' => true, 'models' => $models];
+    }
+
     if ($agent === 'codex') {
         $reply = (new \HostAgent\Runtimes\CodexBridgeClient())->request('model/list', ['limit' => 100, 'includeHidden' => false]);
         if ($reply['ok'] !== true) return $reply;

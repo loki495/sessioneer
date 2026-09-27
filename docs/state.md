@@ -32,7 +32,7 @@ Both are opened with WAL mode by one connection per request; the schemas live in
 ## `push.sqlite`
 
 - `push_subscriptions`, `push_session_state` (each session's last `idle`/`working`/`blocked` state and since when, for the "finished" and "needs input" notifications) and `push_quota_state` (which quota notifications already fired for each bucket).
-- `global_state` - a key/JSON store for single-blob state: `quota_live_state` and `quota_live_state:<profile>` (Claude's rate-limit windows), `antigravity_quota_live_state`, `push_check_status`, `push_quota_check_status`, `headless_sessions_sync`, `codex_headless_sessions_sync`, `opencode_models`, and `tui_layout_mismatch`.
+- `global_state` - a key/JSON store for single-blob state: `quota_live_state` and `quota_live_state:<profile>` (Claude's rate-limit windows), `antigravity_quota_live_state`, `push_check_status`, `push_quota_check_status`, `headless_sessions_sync`, `codex_headless_sessions_sync`, `opencode_models`, `claude_models_seen` (the newest raw model id read per Claude family, which labels the model dropdown), and `tui_layout_mismatch`.
 
 ## Who writes the status
 

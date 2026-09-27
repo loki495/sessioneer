@@ -362,6 +362,10 @@ class SessionService
         $modelOverride = is_string($hookStatus['model'] ?? null) ? $hookStatus['model'] : null;
         $currentModel = $modelOverride ?? ($rawModel !== null ? SelectableModel::family_from_raw_model($rawModel) : null);
 
+        if ($rawModel !== null) {
+            ClaudeModelCatalog::record($rawModel);
+        }
+
         // Antigravity has no transcript-derived model signal (see
         // AntigravitySelectableModel::parse_current_model()'s own
         // docblock) - only ever readable from the live pane's own footer,
@@ -413,6 +417,7 @@ class SessionService
             'prompt_questions' => $promptQuestions,
             'current_mode' => $currentMode,
             'current_model' => $currentModel,
+            'model_labels' => ClaudeModelCatalog::labels(),
             'current_antigravity_model' => $currentAntigravityModel,
             'last_turn_error' => $lastTurnError,
             'agent_session_id' => $agentSessionId,

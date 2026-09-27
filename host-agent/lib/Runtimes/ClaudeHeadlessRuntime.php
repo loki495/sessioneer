@@ -6,6 +6,7 @@ namespace HostAgent\Runtimes;
 
 use HostAgent\Agents\AgentRegistry;
 use HostAgent\Services\BareProcessService;
+use HostAgent\Services\ClaudeModelCatalog;
 use HostAgent\Services\Config;
 use HostAgent\Services\PermissionMode;
 use HostAgent\Services\SelectableModel;
@@ -400,6 +401,10 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
         $workdir = is_string($sidecar['workdir'] ?? null) ? $sidecar['workdir'] : null;
         $profile = is_string($sidecar['profile'] ?? null) ? $sidecar['profile'] : null;
         $rawModel = is_string($status['model'] ?? null) ? $status['model'] : null;
+        if ($rawModel !== null) {
+            ClaudeModelCatalog::record($rawModel);
+        }
+
         $model = $rawModel === null
             ? null
             : (SelectableModel::family_from_raw_model($rawModel) ?? (array_key_exists($rawModel, SelectableModel::PICKER_OPTIONS) ? $rawModel : null));
@@ -431,6 +436,7 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
             'prompt_questions' => $questions,
             'current_mode' => is_string($status['mode'] ?? null) ? $status['mode'] : null,
             'current_model' => $model,
+            'model_labels' => ClaudeModelCatalog::labels(),
             'current_antigravity_model' => null,
             'last_turn_error' => is_string($status['last_turn_error'] ?? null) ? $status['last_turn_error'] : null,
             'agent_session_id' => $agentSessionId,

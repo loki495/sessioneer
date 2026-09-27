@@ -753,8 +753,33 @@ document.addEventListener('keydown', function (e) {
     });
   }
 
+  // The plain family names show at once; the host agent's full names
+  // ("Opus 5.5", learned from the sessions it has seen) replace them when
+  // they arrive, and a failed fetch just leaves the family names.
+  var claudeModelsCache = null;
+
   function loadClaudeModels() {
-    populateModels(CLAUDE_MODELS);
+    populateModels(claudeModelsCache || CLAUDE_MODELS.slice(1));
+
+    if (claudeModelsCache) {
+      return;
+    }
+
+    fetch('/session_list_models.php?agent=claude', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data || !data.ok || !data.models) { return; }
+
+        claudeModelsCache = data.models.map(function (m) {
+          return { id: m.id, label: m.name || m.id };
+        });
+
+        if (agentSelect.value === 'claude') {
+          var chosen = modelSelect.value;
+          populateModels(claudeModelsCache);
+          modelSelect.value = chosen;
+        }
+      });
   }
 
   function loadOpenCodeModels() {

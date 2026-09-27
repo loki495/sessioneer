@@ -1181,6 +1181,18 @@
 
     modelSelect.disabled = !detail.current_model;
 
+    // Full names ("Opus 5.5") are learned as sessions run, so a poll can
+    // bring a label the page was rendered without.
+    if (detail.model_labels) {
+      for (var i = 0; i < modelSelect.options.length; i++) {
+        var label = detail.model_labels[modelSelect.options[i].value];
+
+        if (label && modelSelect.options[i].textContent !== label) {
+          modelSelect.options[i].textContent = label;
+        }
+      }
+    }
+
     if (detail.current_model) {
       modelSelect.value = detail.current_model;
     }
