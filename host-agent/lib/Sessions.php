@@ -14,7 +14,6 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../../vendor/autoload.php';
 
-use HostAgent\Services\ClaudeModelCatalog;
 use HostAgent\Services\Config;
 use HostAgent\Services\SessionService;
 use HostAgent\Services\PromptInteractionService;
@@ -989,57 +988,19 @@ function sessioneer_headless_question_prompt(array $q): array
 }
 
 /**
- * The serve's available models (flattened {providerID, id, name, family}) -
- * read from the sync's cache (GlobalStateStore), falling back to a live
- * /config/providers fetch if it isn't cached yet. Returns the Sessioneer-shaped
- * model list so the session page's model dropdown can be populated client-side.
+ * The agent's own model catalog (AgentAdapter::model_catalog()), so the model
+ * dropdowns can be populated client-side. Unknown agent ids are a handled
+ * failure, not an exception.
  *
  * @return array{ok:bool, models?:array<int, array<string, mixed>>, message?:string}
  */
 function sessioneer_list_models(string $agent = 'opencode'): array
 {
-    if ($agent === 'claude') {
-        // The form's own "Default" row is its first option; these are the rest.
-        $models = [];
-
-        foreach (ClaudeModelCatalog::labels() as $key => $label) {
-            if ($key !== 'default') {
-                $models[] = ['id' => $key, 'name' => $label];
-            }
-        }
-
-        return ['ok' => true, 'models' => $models];
+    if (!in_array($agent, AgentRegistry::known_agent_ids(), true)) {
+        return ['ok' => false, 'message' => 'Unknown agent'];
     }
 
-    if ($agent === 'codex') {
-        $reply = (new \HostAgent\Runtimes\CodexBridgeClient())->request('model/list', ['limit' => 100, 'includeHidden' => false]);
-        if ($reply['ok'] !== true) return $reply;
-        $data = is_array($reply['result']['data'] ?? null) ? $reply['result']['data'] : [];
-        $models = [];
-        foreach ($data as $model) {
-            if (!is_array($model) || !is_string($model['model'] ?? null)) continue;
-            $efforts = [];
-            foreach (($model['supportedReasoningEfforts'] ?? []) as $option) {
-                if (is_array($option) && is_string($option['reasoningEffort'] ?? null)) $efforts[] = $option['reasoningEffort'];
-            }
-            $models[] = [
-                'id' => $model['model'],
-                'name' => is_string($model['displayName'] ?? null) ? $model['displayName'] : $model['model'],
-                'isDefault' => (bool)($model['isDefault'] ?? false),
-                'defaultEffort' => is_string($model['defaultReasoningEffort'] ?? null) ? $model['defaultReasoningEffort'] : null,
-                'efforts' => $efforts,
-            ];
-        }
-        return ['ok' => true, 'models' => $models];
-    }
-
-    $models = (new OpenCodeServeClient())->available_models();
-
-    if ($models !== []) {
-        GlobalStateStore::write('opencode_models', ['models' => $models, 'updated_at' => time()]);
-    }
-
-    return ['ok' => true, 'models' => array_values($models)];
+    return AgentRegistry::get($agent)->model_catalog();
 }
 
 /**

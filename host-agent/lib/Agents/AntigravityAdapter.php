@@ -6,6 +6,7 @@ namespace HostAgent\Agents;
 
 use HostAgent\Runtimes\RuntimeType;
 use HostAgent\Services\AntigravityHookService;
+use HostAgent\Services\AntigravitySelectableModel;
 use HostAgent\Services\Config;
 
 /**
@@ -141,5 +142,16 @@ class AntigravityAdapter implements AgentAdapter
     public function supported_runtimes(): array
     {
         return [RuntimeType::TMUX];
+    }
+
+    public function model_catalog(): array
+    {
+        $models = [];
+
+        foreach (AntigravitySelectableModel::PICKER_OPTIONS as $key => $label) {
+            $models[] = ['id' => $key, 'name' => $label];
+        }
+
+        return ['ok' => true, 'models' => $models];
     }
 }
