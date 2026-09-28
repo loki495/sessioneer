@@ -15,6 +15,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../vendor/autoload.php';
 
 use HostAgent\Services\Config;
+use HostAgent\Services\GitBranchService;
 use HostAgent\Services\SessionService;
 use HostAgent\Services\PromptInteractionService;
 use HostAgent\Services\PlanFileService;
@@ -65,16 +66,16 @@ function dispatch_action(array $request): array
                 // entry (same shape a tmux session's detail has), not a
                 // server object that needs reshaping.
                 if ($agent === 'claude' && $serveDetail['ok'] === true && is_array($serveDetail['session'] ?? null)) {
-                    return ['ok' => true] + $serveDetail['session'];
+                    return sessioneer_with_git_branch(['ok' => true] + $serveDetail['session']);
                 }
 
                 if (($serveDetail['ok'] === true) && is_array($serveDetail['session'] ?? null)) {
-                    return sessioneer_headless_detail_shape($serveDetail['session'], $agent ?? 'opencode');
+                    return sessioneer_with_git_branch(sessioneer_headless_detail_shape($serveDetail['session'], $agent ?? 'opencode'));
                 }
 
                 return $serveDetail;
             }
-            return SessionDetailService::session_detail($session);
+            return sessioneer_with_git_branch(SessionDetailService::session_detail($session));
 
         case 'archived_session_detail':
             return SessionDetailService::archived_session_detail(
@@ -985,6 +986,27 @@ function sessioneer_headless_question_prompt(array $q): array
     $prompt['request_id'] = $requestId;
 
     return $prompt;
+}
+
+/**
+ * Adds `git_branch` (Dibs 91) to a session_detail result: the workdir's
+ * current branch, agent-agnostic (any session has a workdir, regardless of
+ * which agent runs it) - see GitBranchService's own docblock for why this is
+ * a separate concern from Claude's tmux-only, statusline-derived
+ * git_worktree. A no-op on a failed detail (no 'ok' => true, or no workdir).
+ *
+ * @param array{ok:bool, workdir?:?string} $detail
+ * @return array<string, mixed>
+ */
+function sessioneer_with_git_branch(array $detail): array
+{
+    if ($detail['ok'] !== true) {
+        return $detail;
+    }
+
+    $detail['git_branch'] = GitBranchService::current_branch(is_string($detail['workdir'] ?? null) ? $detail['workdir'] : null);
+
+    return $detail;
 }
 
 /**

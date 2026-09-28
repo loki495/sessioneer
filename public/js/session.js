@@ -6,6 +6,7 @@
   // header), so this is the new "was a real session found" sentinel.
   var list = document.getElementById('history-list');
   var headerTitle = document.getElementById('header-title');
+  var headerBranch = document.getElementById('header-branch');
 
   if (!list) {
     return; // session not found - nothing here to wire up
@@ -1053,6 +1054,13 @@
     var title = detail.title || detail.name;
     headerTitle.textContent = title;
     headerTitle.title = title;
+
+    // Mirrors header.php's own header-branch block - the branch can change
+    // mid-session (a `git checkout` in the same workdir), unlike the title.
+    if (headerBranch) {
+      headerBranch.textContent = detail.git_branch || '';
+      headerBranch.classList.toggle('hidden', !detail.git_branch);
+    }
   }
 
   // Mirrors render_thinking_indicator_html() - a single transient "is it
