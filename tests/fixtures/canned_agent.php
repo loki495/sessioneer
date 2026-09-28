@@ -227,6 +227,7 @@ $response = match ($action) {
             'workdir' => '/home/user/www/demo-project',
             'spawned_by_app' => true,
             'title' => 'Fix the login redirect bug',
+            'git_branch' => 'main',
             'working' => false,
             'blocked_reason' => 'Do you want to proceed?',
             'resume_hint' => 'tmux -S /fake/socket attach -t ' . CANNED_SESSION_NAME,

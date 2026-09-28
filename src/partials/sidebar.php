@@ -69,6 +69,20 @@
   </div>
   <div class="px-4 py-3 border-t border-slate-800 flex flex-col gap-2">
     <span class="block text-xs font-medium text-slate-500 mb-1">Settings</span>
+    <?php // Moved off the session page's own sticky header (Andres's own ask,
+          // 2026-09-28) - that header is cramped on mobile and this control
+          // is looked at rarely, unlike the header's title/branch/workdir. ?>
+    <label class="flex items-center justify-between gap-2 text-sm text-slate-300">
+      Poll interval
+      <select id="poll-interval-select" aria-label="Polling interval"
+        class="text-xs font-medium pl-1.5 pr-5 py-1 rounded-full border border-slate-700 bg-slate-800 text-slate-400">
+        <option value="1000">1s</option>
+        <option value="3000" selected>3s</option>
+        <option value="5000">5s</option>
+        <option value="10000">10s</option>
+        <option value="15000">15s</option>
+      </select>
+    </label>
     <label class="flex items-center gap-2 text-sm text-slate-300">
       <input type="checkbox" id="confirm-before-answer-toggle" class="rounded border-slate-600 bg-slate-800">
       Confirm before sending prompt answers

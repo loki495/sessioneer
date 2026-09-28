@@ -15,22 +15,20 @@
         <?php if ($found && ($detail['agent'] ?? 'claude') === 'claude'): ?>
           <span class="shrink-0 inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border <?= App\Views\SessionRowView::profile_badge_class($detail['profile'] ?? null) ?>"><?= htmlspecialchars(App\Views\SessionRowView::profile_label($detail['profile'] ?? null), ENT_QUOTES) ?></span>
         <?php endif ?>
+        <?php // Same pill/placement as SessionRowView's own headless badge
+              // (sidebar-row.php, row.php) - kept literally identical so it
+              // reads as the same signal everywhere it shows up. ?>
+        <?php if ($found && ($detail['runtime'] ?? null) === 'headless'): ?>
+          <span class="shrink-0 inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border bg-violet-900/30 text-violet-400 border-violet-700/40">Headless</span>
+        <?php endif ?>
       </div>
-      <?php if ($found && !empty($detail['workdir'])): ?>
-        <div id="header-cwd" class="text-[11px] text-slate-500 truncate cursor-pointer" title="<?= htmlspecialchars((string)$detail['workdir'], ENT_QUOTES) ?>"><?= htmlspecialchars((string)$detail['workdir'], ENT_QUOTES) ?></div>
-      <?php endif ?>
+      <?php // The workdir itself is NOT shown here (removed 2026-09-28,
+            // Andres's own ask) - the sidebar's own "This session" block
+            // already shows it, with a copy button the header never had. ?>
       <?php $gitBranch = $found && !empty($detail['git_branch']) ? (string)$detail['git_branch'] : ''; ?>
       <div id="header-branch" class="text-[11px] text-slate-500 truncate<?= $gitBranch === '' ? ' hidden' : '' ?>"><?= htmlspecialchars($gitBranch, ENT_QUOTES) ?></div>
     </div>
     <div class="flex items-center gap-1 justify-self-end">
-      <select id="poll-interval-select" aria-label="Polling interval"
-        class="text-xs font-medium pl-1.5 pr-5 py-1 rounded-full border border-slate-700 bg-slate-800 text-slate-400">
-        <option value="1000">1s</option>
-        <option value="3000" selected>3s</option>
-        <option value="5000">5s</option>
-        <option value="10000">10s</option>
-        <option value="15000">15s</option>
-      </select>
       <button type="button" id="sidebar-toggle-btn" aria-label="Show other sessions"
         class="relative text-slate-400 active:text-slate-200 -mr-2 px-2 py-1 text-lg leading-none">
         &#9776;
