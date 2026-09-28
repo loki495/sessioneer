@@ -6,7 +6,12 @@
       // position:static (below plain text content) so clicks there fall through
       // to it, but ABOVE interactive children (forms, buttons) which have their
       // own relative wrappers to opt out of that fall-through. ?>
-<a href="/session.php?session=<?= urlencode($name) ?>" class="block rounded-xl border px-4 py-3 active:bg-slate-800" style="<?= $agentCardStyle ?>" data-session="<?= $this->e($name) ?>">
+<?php // min-w-0: #sidebar-list is a column flex container, so each row is a
+      // flex item - without this, a flex item's default min-width:auto keeps
+      // it (and anything inside it, like the blocked-prompt card below) sized
+      // to its widest UNWRAPPED content instead of shrinking to the sidebar's
+      // actual width, pushing the whole card off the visible panel. ?>
+<a href="/session.php?session=<?= urlencode($name) ?>" class="block min-w-0 rounded-xl border px-4 py-3 active:bg-slate-800" style="<?= $agentCardStyle ?>" data-session="<?= $this->e($name) ?>">
   <div class="text-slate-200 truncate"><?= $this->e($title) ?></div>
   <?php if (!empty($agentLabel)): ?>
     <div class="select-none mt-0.5 mb-1.5 flex items-center gap-1.5">

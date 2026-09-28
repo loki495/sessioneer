@@ -1,6 +1,6 @@
 <div id="sidebar-overlay" class="hidden fixed inset-0 bg-black/60 z-30"></div>
 <aside id="sidebar"
-  class="select-none fixed top-0 right-0 h-full w-72 max-w-[85vw] bg-slate-900 border-l border-slate-800 z-40 translate-x-full transition-transform duration-200 ease-out overflow-y-auto overscroll-contain">
+  class="select-none fixed top-0 right-0 h-full w-80 max-w-[88vw] bg-slate-900 border-l border-slate-800 z-40 translate-x-full transition-transform duration-200 ease-out overflow-y-auto overscroll-contain">
   <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800 sticky top-0 bg-slate-900">
     <span class="text-sm font-medium text-slate-200">Other sessions</span>
     <button type="button" id="sidebar-close-btn" aria-label="Close" class="text-slate-400 active:text-slate-200 px-1 text-lg leading-none">&times;</button>
