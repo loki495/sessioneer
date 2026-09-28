@@ -35,9 +35,21 @@ putenv('SESSIONS_SQLITE_FILE=' . $root . '/sessions.sqlite');
 putenv('CACHE_DIR=' . $root . '/cache');
 putenv('HOME_ROOT=' . $root . '/home');
 
-if ((string)getenv('SIDECAR_DIR') === '') {
-    putenv('SIDECAR_DIR=' . $root . '/sidecars');
-    @mkdir($root . '/sidecars', 0700, true);
+// Unconditional, not "only if unset": a session running AS a Sessioneer
+// headless session (this file's own tests can run from inside one) inherits
+// the REAL manager's environment - including SIDECAR_DIR - by construction
+// (the manager passes its own env to every child it spawns), so an "if
+// unset" guard would silently do nothing and this test would run against
+// the real host's sessions.sqlite. Found live 2026-09-27 (Dibs 388's own
+// follow-up incident): a direct `php tests/test_X.php` run from inside such
+// a session locked and corrupted real session rows this way.
+$realSidecarDir = Config::sidecar_dir();
+putenv('SIDECAR_DIR=' . $root . '/sidecars');
+@mkdir($root . '/sidecars', 0700, true);
+
+if (Config::sidecar_dir() === $realSidecarDir) {
+    fwrite(STDERR, "REFUSING TO RUN: SIDECAR_DIR resolves to the real host sidecar dir.\n");
+    exit(1);
 }
 
 if (Config::push_sqlite_path() === $realPushSqliteFile || str_contains((string)Config::tmux_socket(), '/tmux-' . getmyuid() . '/default')) {

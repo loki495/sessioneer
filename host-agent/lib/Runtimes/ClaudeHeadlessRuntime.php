@@ -233,12 +233,66 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
             return ['ok' => false, 'message' => 'Session not found'];
         }
 
+        $entry = $this->reconcile_with_live_status($sessionRef, $entry);
+
         $agentSessionId = is_string($entry['agent_session_id'] ?? null) ? $entry['agent_session_id'] : null;
         $path = $agentSessionId !== null ? TranscriptRouter::find_transcript_path($agentSessionId, is_string($entry['profile'] ?? null) ? $entry['profile'] : null) : null;
         $tasks = $path !== null ? TranscriptService::find_current_task_list($path) : null;
         $todos = $tasks ?? ($path !== null ? TranscriptService::find_latest_todo_list($path) : null);
 
         return ['ok' => true, 'session' => $entry + ['has_transcript' => $path !== null, 'todos' => $todos]];
+    }
+
+    /**
+     * Cross-checks the DB-derived $entry against the manager's own live
+     * `sessioneer/status` for this one session (Dibs 388: a status write from
+     * event-handling can throw and never reach SessionStatusStore, leaving a
+     * child genuinely blocked/working in the manager's memory while the store
+     * - and so this app's dashboard/session page - still shows its previous
+     * state, forever, since nothing else ever re-derives it). Only called
+     * from detail(), the single-session page a person is actually looking
+     * at - never from list(), which stays a plain DB/file read for every
+     * session on every dashboard poll; ClaudeHeadlessManager::housekeeping()
+     * is what keeps the store itself eventually correct for every other
+     * reader. A manager that is unreachable, or reports nothing usable, just
+     * means the DB entry already on hand is the only truth there is - never
+     * an error out of this method.
+     *
+     * @param array<string, mixed> $entry
+     * @return array<string, mixed>
+     */
+    private function reconcile_with_live_status(string $sessionRef, array $entry): array
+    {
+        $live = $this->client->request('sessioneer/status', ['session' => $sessionRef]);
+
+        if (($live['ok'] ?? false) !== true || !is_string($live['state'] ?? null)) {
+            return $entry;
+        }
+
+        $liveWorking = $live['state'] === 'working';
+        $liveBlocked = $live['state'] === 'blocked';
+        $dbAgrees = (bool)($entry['working'] ?? false) === $liveWorking
+            && (($entry['status'] ?? null) === 'blocked') === $liveBlocked;
+
+        if ($dbAgrees) {
+            return $entry;
+        }
+
+        $fields = ['status' => $liveBlocked ? 'blocked' : ($liveWorking ? 'working' : 'idle')];
+
+        if ($liveBlocked) {
+            $prompt = $this->client->request('sessioneer/pendingPrompt', ['session' => $sessionRef]);
+            $fields['blocked'] = is_array($prompt['prompt'] ?? null) ? $prompt['prompt'] : null;
+        } else {
+            $fields['blocked'] = null;
+        }
+
+        SessionStatusStore::update_status($sessionRef, $fields);
+
+        // Re-derive the full entry from the now-corrected row rather than
+        // duplicating session_entry()'s own prompt/mode/model field mapping
+        // here - a second, cheap single-row read.
+        return $this->session_entry($sessionRef) ?? $entry;
     }
 
     public function kill(string $sessionRef): array

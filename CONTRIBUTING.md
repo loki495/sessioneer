@@ -603,6 +603,17 @@ processes on the host:**
   cleans up *then* terminates the script, rather than resuming the loop).
   It also refuses to run at all if `.env.testing` ever points at the real
   socket/sidecar paths.
+- A test run directly with `php tests/test_X.php` (not through `run.sh`) must
+  isolate its own env the same way, and must do it unconditionally - never
+  "set a safe path only if unset". A session that is itself a Sessioneer-
+  managed headless session (the default runtime) inherits the manager's own
+  real environment by construction, so `SIDECAR_DIR`/`TMUX_SOCKET`/etc. are
+  never actually unset there; an "if unset" guard silently does nothing and
+  the test runs against the real host state. Found live 2026-09-27 (Dibs
+  388's own follow-up incident, and Dibs 395's lesson): override first, then
+  assert the resolved value (`Config::sidecar_dir()`, etc.) actually changed
+  from what it was before, refusing to run if not - the same shape every
+  `PUSH_SQLITE_FILE` check in this suite already used correctly.
 - `test_ui_smoke.php` talks to a canned fake agent
   (`tests/fixtures/canned_agent.php`) instead of the real one, so it never
   touches tmux at all.

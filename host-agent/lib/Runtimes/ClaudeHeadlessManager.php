@@ -71,6 +71,21 @@ final class ClaudeHeadlessManager
 
     private ?string $spawnBlockedReason = null;
 
+    /**
+     * Status writes that threw (Dibs 388: a can_use_tool control request left
+     * a child correctly `blocked` in memory while SessionStatusStore's row
+     * silently stayed on its previous value - a busy/locked SQLite write is
+     * the suspected cause, never confirmed by a captured log line) - retried
+     * every housekeeping tick until one succeeds, keyed by session name so a
+     * retry survives the child itself being torn down. Only ever the LATEST
+     * snapshot per session, same "last write wins" rule every other status
+     * field already follows - an older failed write superseded by a newer
+     * one is simply dropped, not queued twice.
+     *
+     * @var array<string, array<string, mixed>>
+     */
+    private array $pendingStatusWrites = [];
+
     private ?string $lastApiKeySource = null;
 
     private ?string $lastClaudeVersion = null;
@@ -466,7 +481,7 @@ final class ClaudeHeadlessManager
 
         if ($child->state !== 'blocked') {
             $child->state = 'working';
-            SessionStatusStore::update_status($session, ['status' => 'working', 'blocked' => null, 'last_turn_error' => null]);
+            $this->persist_status($session, ['status' => 'working', 'blocked' => null, 'last_turn_error' => null]);
         }
 
         return ['ok' => true, 'message' => 'Message sent', 'queued' => $child->openTurns > 1];
@@ -535,7 +550,7 @@ final class ClaudeHeadlessManager
         $child->pending = null;
         $child->state = 'working';
         $child->lastActivity = time();
-        SessionStatusStore::update_status($session, ['status' => 'working', 'blocked' => null]);
+        $this->persist_status($session, ['status' => 'working', 'blocked' => null]);
 
         return ['ok' => true, 'message' => 'Prompt answered'];
     }
@@ -839,6 +854,10 @@ final class ClaudeHeadlessManager
     {
         $now = microtime(true);
 
+        foreach ($this->pendingStatusWrites as $session => $fields) {
+            $this->persist_status($session, $fields);
+        }
+
         foreach ($this->children as $child) {
             if (!$child->is_running()) {
                 $this->finalize_child($child);
@@ -952,7 +971,7 @@ final class ClaudeHeadlessManager
                 $this->spawnBlockedReason = $reason;
                 $child->guarded = true;
                 $this->log("{$child->name}: {$reason}");
-                SessionStatusStore::update_status($child->name, ['status' => 'idle', 'blocked' => null, 'last_turn_error' => $reason]);
+                $this->persist_status($child->name, ['status' => 'idle', 'blocked' => null, 'last_turn_error' => $reason]);
                 $child->openTurns = 0;
                 $this->request_stop($child);
                 $child->signal(SIGKILL);
@@ -995,7 +1014,7 @@ final class ClaudeHeadlessManager
         }
 
         if ($fields !== []) {
-            SessionStatusStore::update_status($child->name, $fields);
+            $this->persist_status($child->name, $fields);
         }
     }
 
@@ -1007,7 +1026,7 @@ final class ClaudeHeadlessManager
             // The mode was changed on purpose after spawn, so the spawn-time
             // "not applied" warning no longer describes reality.
             $child->modeWarning = null;
-            SessionStatusStore::update_status($child->name, ['mode' => $mode]);
+            $this->persist_status($child->name, ['mode' => $mode]);
         }
     }
 
@@ -1048,7 +1067,7 @@ final class ClaudeHeadlessManager
 
         $child->pending = $prompt;
         $child->state = 'blocked';
-        SessionStatusStore::update_status($child->name, ['status' => 'blocked', 'blocked' => $prompt]);
+        $this->persist_status($child->name, ['status' => 'blocked', 'blocked' => $prompt]);
     }
 
     /** @param array<string, mixed> $event */
@@ -1103,7 +1122,7 @@ final class ClaudeHeadlessManager
             $fields['token_usage'] = $event['usage'];
         }
 
-        SessionStatusStore::update_status($child->name, $fields);
+        $this->persist_status($child->name, $fields);
     }
 
     /** @param array<string, mixed> $event */
@@ -1194,7 +1213,7 @@ final class ClaudeHeadlessManager
         }
 
         try {
-            SessionStatusStore::update_status($child->name, $fields);
+            $this->persist_status($child->name, $fields);
         } catch (\Throwable $e) {
             $this->unexpected($e, "status write for {$child->name}");
         }
@@ -1313,6 +1332,27 @@ final class ClaudeHeadlessManager
      * otherwise it is handled so one bad session cannot take down every
      * other live child.
      */
+    /**
+     * SessionStatusStore::update_status(), made resilient: a write that
+     * throws (SQLITE_BUSY under WAL contention is the leading suspect, see
+     * $pendingStatusWrites' own docblock) is logged and queued for
+     * housekeeping() to retry every tick, instead of the session's real state
+     * silently never reaching the store that every reader (dashboard list,
+     * push, session_detail) depends on.
+     *
+     * @param array<string, mixed> $fields
+     */
+    private function persist_status(string $session, array $fields): void
+    {
+        try {
+            SessionStatusStore::update_status($session, $fields);
+            unset($this->pendingStatusWrites[$session]);
+        } catch (\Throwable $e) {
+            $this->unexpected($e, "persisting status for {$session}");
+            $this->pendingStatusWrites[$session] = $fields;
+        }
+    }
+
     private function unexpected(\Throwable $e, string $context): void
     {
         $this->log("unexpected error in {$context}: " . get_class($e) . ': ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
