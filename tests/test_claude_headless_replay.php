@@ -164,13 +164,26 @@ foreach ($captures as $i => $file) {
         assert_true((bool)wait_until(static fn (): bool => in_array(['replay_done' => true], fake_log($m), true)), "{$label}: the whole capture was consumed");
         assert_true((bool)wait_until(static fn (): bool => status_is($name, 'idle') && SessionStatusStore::read_status($name)['blocked'] === null), "{$label}: the session ends idle with no prompt");
 
-        $final = SessionStatusStore::read_status($name);
-
+        // last_turn_error is written in the SAME update_status() call as the
+        // status/blocked fields the wait_until above already confirmed, so it
+        // should never lag behind them - but reading it with its own
+        // wait_until, rather than trusting that atomicity across two
+        // separate reads, is what actually asserts the value this block
+        // cares about instead of a proxy for it (found live 2026-09-28: a
+        // plain unguarded read here flaked on a loaded CI runner).
         if (!empty($lastResult['is_error'])) {
-            assert_true(is_string($final['last_turn_error']) && $final['last_turn_error'] !== '', "{$label}: a final is_error result is recorded as the session's error");
+            assert_true(
+                (bool)wait_until(static fn (): bool => is_string(SessionStatusStore::read_status($name)['last_turn_error'] ?? null) && SessionStatusStore::read_status($name)['last_turn_error'] !== ''),
+                "{$label}: a final is_error result is recorded as the session's error"
+            );
         } else {
-            assert_equal(null, $final['last_turn_error'], "{$label}: a final successful result leaves no error");
+            assert_true(
+                (bool)wait_until(static fn (): bool => SessionStatusStore::read_status($name)['last_turn_error'] === null),
+                "{$label}: a final successful result leaves no error"
+            );
         }
+
+        $final = SessionStatusStore::read_status($name);
 
         if (is_array($lastResult['usage'] ?? null)) {
             assert_true(is_array($final['token_usage']), "{$label}: the final result's usage is recorded");
