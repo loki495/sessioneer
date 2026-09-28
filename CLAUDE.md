@@ -165,7 +165,14 @@ Docker-spawned, makes that impossible by construction — not by convention.
    "dormant" and the next message respawns it with `--resume`. The manager
    is the sole writer of `session_status` for these sessions - its children
    get no `SESSIONEER_SESSION_NAME`, so the hooks below stay silent for
-   them. Protocol and design records live in Dibs (plan #269, research
+   them. A write that throws (SQLITE_BUSY under WAL contention is the known
+   case, Dibs 388) is queued and retried every housekeeping tick rather than
+   silently lost (`ClaudeHeadlessManager::persist_status()`); the session
+   page's own `session_detail` call also cross-checks the manager's live
+   state for the one session being viewed and self-heals the store on a
+   mismatch (`ClaudeHeadlessRuntime::reconcile_with_live_status()`) - the
+   dashboard list stays a plain DB/file read, no live check, on every
+   session, every poll. Protocol and design records live in Dibs (plan #269, research
    #280, decision #282); `tests/fixtures/claude_stream_json_*_v2_1_278.ndjson`
    are the captured stream-json events and `tests/fixtures/fake_claude_stream`
    is the scripted stand-in the tests drive. `ClaudeHeadlessRuntime` is the
