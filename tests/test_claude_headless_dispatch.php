@@ -24,8 +24,18 @@ $root = sys_get_temp_dir() . '/sessioneer-test-claude-headless-dispatch-' . getm
 @mkdir($root . '/home/.claude/projects', 0700, true);
 @mkdir($root . '/work', 0700, true);
 
-// Isolate everything the host agent reaches for (see tests/.env.testing); a
-// direct `php tests/...` run gets safe defaults, a tests/run.sh run keeps its own.
+// Isolate everything the host agent reaches for (see tests/.env.testing).
+// Unconditional, never "only if unset": a session running AS a Sessioneer
+// headless session (this file's own tests can run from inside one) inherits
+// the REAL manager's environment by construction (the manager passes its own
+// env to every child it spawns) - an "if unset" guard would silently do
+// nothing and this test would run against the real tmux server and the real
+// host's sessions.sqlite. Found live 2026-09-27 (Dibs 388's own follow-up
+// incident) via a near-identical guard in tests/lib/claude_headless.php's
+// callers.
+$realTmuxSocket = \HostAgent\Services\Config::tmux_socket();
+$realSidecarDir = \HostAgent\Services\Config::sidecar_dir();
+
 foreach ([
     'TMUX_SOCKET' => $root . '/tmux/socket',
     'CLAUDE_BIN' => __DIR__ . '/fixtures/fake_claude',
@@ -36,9 +46,17 @@ foreach ([
     'OPENCODE_DB_PATH' => $root . '/no-opencode.db',
     'CODEX_BRIDGE_SOCKET' => $root . '/no-codex-bridge.sock',
 ] as $key => $value) {
-    if ((string)getenv($key) === '') {
-        putenv("{$key}={$value}");
-    }
+    putenv("{$key}={$value}");
+}
+
+if (\HostAgent\Services\Config::tmux_socket() === $realTmuxSocket) {
+    fwrite(STDERR, "REFUSING TO RUN: TMUX_SOCKET resolves to the real host socket.\n");
+    exit(1);
+}
+
+if (\HostAgent\Services\Config::sidecar_dir() === $realSidecarDir) {
+    fwrite(STDERR, "REFUSING TO RUN: SIDECAR_DIR resolves to the real host sidecar dir.\n");
+    exit(1);
 }
 
 @mkdir((string)getenv('SIDECAR_DIR'), 0700, true);
