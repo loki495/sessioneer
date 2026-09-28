@@ -314,10 +314,10 @@ try {
         preg_match('/<body class="[^"]*\boverscroll-y-none\b/', $result['body']) === 1,
         'GET /session.php: body has overscroll-y-none too (shared layout.php), Y-axis only so the iOS edge-swipe-back gesture is unaffected'
     );
-    assert_contains('demo-project', $result['body'], 'GET /session.php: canned workdir shown');
+    assert_contains('demo-project', $result['body'], 'GET /session.php: canned workdir shown (sidebar\'s own "This session" block, not the header - removed from there 2026-09-28)');
     assert_true(
-        preg_match('/id="header-cwd"[^>]*>[^<]*demo-project/', $result['body']) === 1,
-        'GET /session.php: the workdir specifically shows up in the fixed header\'s own #header-cwd line (the old session-info card is gone, 2026-08-20)'
+        preg_match('/id="header-branch"[^>]*>main</', $result['body']) === 1,
+        'GET /session.php: the header shows the canned git branch in its own #header-branch line'
     );
     assert_true(
         preg_match('/id="header-title"[^>]*title="Fix the login redirect bug"/', $result['body']) === 1,
@@ -469,7 +469,7 @@ try {
     assert_contains('id="sidebar-toggle-btn"', $result['body'], 'GET /session.php: sidebar toggle button present');
     assert_contains('id="sidebar-notify-dot"', $result['body'], 'GET /session.php: sidebar notification dot present');
     assert_contains('id="confirm-before-answer-toggle"', $result['body'], 'GET /session.php: confirm-before-answering setting checkbox present in the sidebar');
-    assert_contains('id="poll-interval-select"', $result['body'], 'GET /session.php: polling-interval dropdown present in the sticky header');
+    assert_contains('id="poll-interval-select"', $result['body'], 'GET /session.php: polling-interval dropdown present in the sidebar\'s Settings section (moved off the sticky header 2026-09-28)');
     assert_contains('value="3000" selected', $result['body'], 'GET /session.php: polling-interval dropdown defaults to 3s');
     assert_contains('id="show-subagent-toggle"', $result['body'], 'GET /session.php: the single show-subagent setting checkbox is present in the sidebar (merged from two separate call/output checkboxes, 2026-08-08)');
     assert_contains('id="show-subagent-toggle" class="rounded border-slate-600 bg-slate-800" checked', $result['body'], 'GET /session.php: show-subagent checkbox is checked (shown) by default');
@@ -591,7 +591,7 @@ try {
     assert_contains('.older-content-highlight', $result['body'], 'GET /session.php: the older-content-highlight CSS (distinct cyan glow) is shipped');
     assert_contains('function resetHistoryForRotatedTranscript(', $sessionJs['body'], 'GET /js/session.js: resetHistoryForRotatedTranscript() (clears the rendered history on /clear, /compact, --resume, --fork-session) is shipped');
     assert_contains("sessionHeader = document.getElementById('session-header')", $sessionJs['body'], 'GET /js/session.js: the iOS tap-header-to-scroll-to-top handler is shipped');
-    assert_contains("closestEventTarget(e, 'a, #header-title, #header-cwd, #poll-interval-select, #sidebar-toggle-btn')", $sessionJs['body'], 'GET /js/session.js: the tap-to-scroll-to-top handler excludes the header\'s own real tap targets through the safe event-target helper');
+    assert_contains("closestEventTarget(e, 'a, #header-title, #sidebar-toggle-btn')", $sessionJs['body'], 'GET /js/session.js: the tap-to-scroll-to-top handler excludes the header\'s own real tap targets through the safe event-target helper');
     // renderStaticInfo() no longer carries a session-info card (removed
     // 2026-08-20 - just title+cwd in the fixed header now, see header.php)
     // - only the header title/tooltip need live updating (cwd never

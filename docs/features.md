@@ -356,12 +356,14 @@ Implementation entry points:
   only - see its implementation section above); the sidebar's own "This
   session" block shows the current session's id and working directory, each
   with a copy button.
-- The session page header shows the workdir's current git branch under the
-  title, for every agent (any session has a workdir, whatever runs in it) - a
-  plain `git branch --show-current` in that directory, refreshed on poll,
-  blank for a non-git workdir or a detached HEAD. Separate from Claude's own
-  tmux-only, statusline-derived worktree name (context-window/worktree
-  parity gap above).
+- The session page header shows the workdir's current git branch as the
+  first line under the title, above the workdir itself, for every agent (any
+  session has a workdir, whatever runs in it) - a plain `git branch
+  --show-current` in that directory, refreshed on poll, blank for a non-git
+  workdir or a detached HEAD. Separate from Claude's own tmux-only,
+  statusline-derived worktree name (context-window/worktree parity gap
+  above). A headless session's title row also carries the same "Headless"
+  pill the dashboard and sidebar rows use.
 
 ## Known parity gaps
 

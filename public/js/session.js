@@ -13,7 +13,6 @@
   }
 
   wireTouchTooltip(headerTitle);
-  wireTouchTooltip(document.getElementById('header-cwd'));
 
   // Session-specific values that vary per page load (real transcript state,
   // not something this static file can know) - set by the small inline
@@ -162,8 +161,8 @@
   // #app-shell's own comment in this file), so window never scrolls at
   // all for the native gesture to catch. This reproduces the same
   // convention manually: tapping the header's own background (not one of
-  // its real tap targets - the back link, title/cwd, poll interval,
-  // sidebar toggle) scrolls #page-content to top instead.
+  // its real tap targets - the back link, title, sidebar toggle) scrolls
+  // #page-content to top instead.
   var sessionHeader = document.getElementById('session-header');
 
   if (sessionHeader) {
@@ -176,7 +175,7 @@
       // targets" as the trigger instead correctly covers the row's own
       // padding/gutters too, not just a sliver that's rarely hit in
       // practice.
-      if (!closestEventTarget(e, 'a, #header-title, #header-cwd, #poll-interval-select, #sidebar-toggle-btn')) {
+      if (!closestEventTarget(e, 'a, #header-title, #sidebar-toggle-btn')) {
         pageContent.scrollTo({ top: 0, behavior: 'smooth' });
       }
     });
