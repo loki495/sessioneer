@@ -1,6 +1,6 @@
 <header id="session-header" class="select-none sticky top-0 z-20 bg-slate-950/95 backdrop-blur border-b border-slate-800">
   <div class="max-w-2xl lg:max-w-4xl mx-auto px-4 py-2 grid grid-cols-[auto_1fr_auto] items-center gap-2">
-    <a href="/" class="text-sm text-slate-400 hover:underline whitespace-nowrap">&larr; All sessions</a>
+    <a href="/" class="text-sm text-slate-400 hover:underline whitespace-nowrap" aria-label="All sessions" title="All sessions">&larr;</a>
     <div class="min-w-0 text-center">
       <div class="flex items-center justify-center gap-1.5 min-w-0">
         <div id="header-title" class="min-w-0 text-sm font-medium text-slate-200 truncate cursor-pointer"
@@ -19,6 +19,8 @@
       <?php if ($found && !empty($detail['workdir'])): ?>
         <div id="header-cwd" class="text-[11px] text-slate-500 truncate cursor-pointer" title="<?= htmlspecialchars((string)$detail['workdir'], ENT_QUOTES) ?>"><?= htmlspecialchars((string)$detail['workdir'], ENT_QUOTES) ?></div>
       <?php endif ?>
+      <?php $gitBranch = $found && !empty($detail['git_branch']) ? (string)$detail['git_branch'] : ''; ?>
+      <div id="header-branch" class="text-[11px] text-slate-500 truncate<?= $gitBranch === '' ? ' hidden' : '' ?>"><?= htmlspecialchars($gitBranch, ENT_QUOTES) ?></div>
     </div>
     <div class="flex items-center gap-1 justify-self-end">
       <select id="poll-interval-select" aria-label="Polling interval"
