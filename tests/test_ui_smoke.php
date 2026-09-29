@@ -592,6 +592,9 @@ try {
     assert_contains('function resetHistoryForRotatedTranscript(', $sessionJs['body'], 'GET /js/session.js: resetHistoryForRotatedTranscript() (clears the rendered history on /clear, /compact, --resume, --fork-session) is shipped');
     assert_contains("sessionHeader = document.getElementById('session-header')", $sessionJs['body'], 'GET /js/session.js: the iOS tap-header-to-scroll-to-top handler is shipped');
     assert_contains("closestEventTarget(e, 'a, #header-title, #sidebar-toggle-btn')", $sessionJs['body'], 'GET /js/session.js: the tap-to-scroll-to-top handler excludes the header\'s own real tap targets through the safe event-target helper');
+    assert_contains('sidebarCurrentlyOpen ? refreshSidebarList() : Promise.resolve()', $sessionJs['body'], 'GET /js/session.js: pollOnce() refreshes the sidebar\'s other-sessions list while the panel is open, not just on open/answer (found live 2026-09-28: a session\'s card stayed on "working" after being answered from the sidebar until the panel was closed and reopened)');
+    assert_contains('function refreshSidebarList(', $sidebarJs['body'], 'GET /js/sidebar.js: refreshSidebarList() (the poll-time other-sessions refresh) is shipped');
+    assert_contains('if (html === lastRenderedSidebarHtml)', $sidebarJs['body'], 'GET /js/sidebar.js: the other-sessions list only actually re-renders when its HTML changed, so a poll tick never tears out an in-progress interaction (e.g. typing a free-text reply to another session\'s prompt) for nothing');
     // renderStaticInfo() no longer carries a session-info card (removed
     // 2026-08-20 - just title+cwd in the fixed header now, see header.php)
     // - only the header title/tooltip need live updating (cwd never

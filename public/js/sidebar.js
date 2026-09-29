@@ -345,57 +345,96 @@ function stopSidebarNotifyPolling() {
 }
 
 
+// Shared by loadSidebarList() (sidebar just opened, or a prompt was just
+// answered from within it - always renders) and refreshSidebarList()
+// (the regular poll cycle while the sidebar stays open - dedups against
+// lastRenderedSidebarHtml below, the same "skip the rebuild if nothing
+// actually changed" rule renderThinkingIndicator() etc. already follow in
+// session.js, so an in-progress interaction in one of these cards - e.g.
+// typing a free-text reply to another session's prompt - only ever gets
+// torn out when something in the list genuinely changed, not every tick).
+//
+// markSeen is passed straight through to processOtherSessions(): true for
+// an explicit open (opening the sidebar IS "looking", clears the green
+// dot for anything about to be shown), false for a background poll tick
+// (glancing at an unopened... no, an ALREADY-open panel isn't a fresh
+// "look" the same way, but the poll tick isn't the moment of intent
+// either - kept false to match refreshSidebarNotification()'s own use,
+// the state a poll tick reflects is not itself a user action).
+//
+// Returns 'ok' (rendered), 'unchanged' (data.ok, but the html was
+// identical to what's already shown - NOT an error; the caller must not
+// treat this the same as 'error', or it would stomp a correct,
+// already-rendered list with an error message any time a poll tick
+// happens to see the exact same state loadSidebarList()'s own fetch is
+// about to land too - found live 2026-09-28 running
+// test_sidebar_prompt_answer_browser.php: that exact conflation (both
+// were plain `false`) wiped out session C's fully-rendered row right
+// after answering B, because the poll-driven refresh had already
+// rendered the identical post-answer HTML a moment earlier), or 'error'
+// (data.ok was false).
+function renderSidebarSessions(data, markSeen) {
+  if (!data.ok) {
+    return 'error';
+  }
+
+  var showWorkerSessions = shouldShowWorkerSessions();
+  var others = (data.sessions || []).filter(function (s) {
+    return s.name !== sessionName && (showWorkerSessions || s.kind !== 'worker');
+  });
+  processOtherSessions(others, markSeen);
+  var doneState = updateSessionDoneState(others);
+  var html = others.length === 0
+    ? '<div class="px-1 text-slate-500">No other sessions.</div>'
+    : (data.sessions_html || '<div class="px-1 text-slate-500">No other sessions.</div>');
+
+  if (html === lastRenderedSidebarHtml) {
+    return 'unchanged';
+  }
+
+  lastRenderedSidebarHtml = html;
+  sidebarList.innerHTML = html;
+
+  // Apply the per-row "done" badge overlay after rendering:
+  // For each session marked done in doneState, find its row wrapper
+  // (data-session="<name>") and swap the status dot/text classes to
+  // the emerald "done" treatment.
+  for (var name in doneState) {
+    if (Object.prototype.hasOwnProperty.call(doneState, name) && doneState[name].done) {
+      var rowLink = sidebarList.querySelector('[data-session="' + name.replace(/"/g, '&quot;') + '"] [data-session-status]');
+      if (rowLink) {
+        // Remove all status color classes
+        rowLink.classList.remove('text-amber-400', 'text-emerald-400', 'text-slate-400');
+        // Apply "done" style (emerald, same as working)
+        rowLink.classList.add('text-emerald-400');
+        // Change label from idle/working/blocked to "done"
+        rowLink.textContent = 'done';
+        // Also update the status dot
+        var statusDot = rowLink.previousElementSibling;
+        if (statusDot && statusDot.classList.contains('rounded-full')) {
+          statusDot.classList.remove('bg-amber-400', 'bg-emerald-400', 'bg-slate-600');
+          statusDot.classList.add('bg-emerald-400');
+        }
+      }
+    }
+  }
+
+  return 'ok';
+}
+
+// lastRenderedSidebarHtml starts null (never '') so the very first render -
+// including "No other sessions." - always actually applies, matching every
+// other lastRendered* dedup guard in this codebase.
+var lastRenderedSidebarHtml = null;
+
 function loadSidebarList() {
   sidebarList.innerHTML = '<div class="px-1 text-slate-500">Loading&hellip;</div>';
+  lastRenderedSidebarHtml = null;
   fetch('/sidebar_sessions.php?session=' + encodeURIComponent(sessionName))
     .then(function (r) { return r.json(); })
     .then(function (data) {
-      if (!data.ok) {
+      if (renderSidebarSessions(data, true) === 'error') {
         sidebarList.innerHTML = '<div class="px-1 text-slate-500">Could not load sessions.</div>';
-        return;
-      }
-      var showWorkerSessions = shouldShowWorkerSessions();
-      var others = (data.sessions || []).filter(function (s) {
-        return s.name !== sessionName && (showWorkerSessions || s.kind !== 'worker');
-      });
-      // Opening the sidebar IS "looking" - clears the green (finished,
-      // unseen) dot for anything it's about to display. Deliberately
-      // NOT the same "seen" trigger as the per-row "done" badge below -
-      // that one only clears when Andres actually visits the session
-      // itself (see acknowledgeThisSessionVisited() above).
-      processOtherSessions(others, true);
-      var doneState = updateSessionDoneState(others);
-      if (others.length === 0) {
-        sidebarList.innerHTML = '<div class="px-1 text-slate-500">No other sessions.</div>';
-        return;
-      }
-      // Render server-generated HTML directly - no longer JS templating.
-      // The data.sessions_html already has the rows filtered (current session
-      // excluded), so just insert it.
-      sidebarList.innerHTML = data.sessions_html || '<div class="px-1 text-slate-500">No other sessions.</div>';
-
-      // Apply the per-row "done" badge overlay after rendering:
-      // For each session marked done in doneState, find its row wrapper
-      // (data-session="<name>") and swap the status dot/text classes to
-      // the emerald "done" treatment.
-      for (var name in doneState) {
-        if (Object.prototype.hasOwnProperty.call(doneState, name) && doneState[name].done) {
-          var rowLink = sidebarList.querySelector('[data-session="' + name.replace(/"/g, '&quot;') + '"] [data-session-status]');
-          if (rowLink) {
-            // Remove all status color classes
-            rowLink.classList.remove('text-amber-400', 'text-emerald-400', 'text-slate-400');
-            // Apply "done" style (emerald, same as working)
-            rowLink.classList.add('text-emerald-400');
-            // Change label from idle/working/blocked to "done"
-            rowLink.textContent = 'done';
-            // Also update the status dot
-            var statusDot = rowLink.previousElementSibling;
-            if (statusDot && statusDot.classList.contains('rounded-full')) {
-              statusDot.classList.remove('bg-amber-400', 'bg-emerald-400', 'bg-slate-600');
-              statusDot.classList.add('bg-emerald-400');
-            }
-          }
-        }
       }
     })
     .catch(function () {
@@ -403,15 +442,40 @@ function loadSidebarList() {
     });
 }
 
+// The other-sessions list used to only ever refresh when the sidebar was
+// (re)opened, or right after answering a prompt from within it (Andres's
+// own ask, 2026-09-28: with the sidebar left open across a real prompt
+// answered from it, the session's card stayed on "working" until the panel
+// was closed and reopened - a stale display, not a stale SessionStatusStore
+// row). Rides the same visibility-gated slot in pollOnce() that
+// loadUploadedFiles()/loadPlanFiles() already use - see that function's own
+// comment - never the fast per-session-page tab's OWN pollIntervalMs cost of
+// a full list_all_sessions() scan on every tick the way
+// refreshSidebarNotification()'s comment above warns against, since this
+// only ever runs while the panel is actually visible, same gate as those two.
+function refreshSidebarList() {
+  if (!sidebarList) {
+    return Promise.resolve();
+  }
+
+  return fetch('/sidebar_sessions.php?session=' + encodeURIComponent(sessionName), { credentials: 'same-origin', signal: pollAbortController.signal })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      renderSidebarSessions(data, false);
+    })
+    .catch(function () {});
+}
+
 // --- uploaded files: the sidebar's own list of whatever's been
 // uploaded for THIS session (see upload_file.php/the compose "+"
 // button) - name, size, a running total, and per-file/all-at-once
 // delete. Refreshed on sidebar open (like the other-sessions list
 // above) AND on every regular poll cycle while the sidebar stays open
-// (see pollOnce() in session.js) - unlike other-sessions, which only
-// needs a fresh look each time you open it, files can change from an
-// upload still in flight or a delete just clicked, and Andres wants to
-// see that reflected without having to close/reopen the sidebar. ---
+// (see pollOnce() in session.js) - files can change from an upload
+// still in flight or a delete just clicked, and Andres wants to see
+// that reflected without having to close/reopen the sidebar. The
+// other-sessions list rides the same poll-cycle refresh now too (see
+// refreshSidebarList()'s own comment, above loadSidebarList()). ---
 var uploadedFilesList = document.getElementById('uploaded-files-list');
 var uploadedFilesTotal = document.getElementById('uploaded-files-total');
 var deleteAllUploadsBtn = document.getElementById('delete-all-uploads-btn');
