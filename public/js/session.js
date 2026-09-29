@@ -2180,7 +2180,8 @@
       pollInfo(wasNearBottom),
       pollHistory(wasNearBottom),
       sidebarCurrentlyOpen ? loadUploadedFiles() : Promise.resolve(),
-      sidebarCurrentlyOpen ? loadPlanFiles() : Promise.resolve()
+      sidebarCurrentlyOpen ? loadPlanFiles() : Promise.resolve(),
+      sidebarCurrentlyOpen ? refreshSidebarList() : Promise.resolve()
     ]).finally(function () {
       pollRunning = false;
 
