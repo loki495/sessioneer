@@ -267,6 +267,25 @@ class Config
     }
 
     /**
+     * Seconds a headless child may sit completely silent while `working` (no
+     * stream-json event of any kind, not even a tool call starting) before
+     * the manager suspects it is wedged and sends a diagnostic interrupt.
+     * Generous by design: a single slow tool call (a browser automation step,
+     * a long build) produces no stdout either, and this must not cancel one
+     * just because it's taking a while. See Dibs 400 comment 317.
+     */
+    public static function claude_headless_stall_interrupt_seconds(): int
+    {
+        return max(1, (int)self::sessioneer_config('CLAUDE_HEADLESS_STALL_INTERRUPT_SECONDS', '600'));
+    }
+
+    /** Seconds of continued silence AFTER the diagnostic interrupt before the manager gives up and ends the child. */
+    public static function claude_headless_stall_kill_seconds(): int
+    {
+        return max(1, (int)self::sessioneer_config('CLAUDE_HEADLESS_STALL_KILL_SECONDS', '120'));
+    }
+
+    /**
      * Debug mode: unexpected exceptions in long-lived services are logged
      * and re-thrown instead of being handled into a generic failure.
      */
