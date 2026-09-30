@@ -1309,8 +1309,8 @@ try {
         'GET /archived_session.php: the Unarchive form carries the session\'s profile too, same field the archived-row Resume form carries (found live 2026-09-19: this form was missing it entirely)'
     );
     assert_true(
-        preg_match('#<button type="submit"[^>]*>Unarchive</button>\s*<button type="submit" name="runtime" value="headless"[^>]*>Headless</button>#', $archivedResult['body']) === 1,
-        'GET /archived_session.php: the detail page now offers a Headless resume option next to Unarchive, matching the archived-row list\'s existing Terminal/Headless pair (previously only reachable from the list, never from a session\'s own detail view)'
+        preg_match('#<button type="submit"[^>]*>Terminal</button>\s*<button type="submit" name="runtime" value="headless"[^>]*>Headless</button>#', $archivedResult['body']) === 1,
+        'GET /archived_session.php: the detail page offers Terminal/Headless resume buttons, matching the archived-row list\'s wording exactly (previously said "Unarchive" here and had no Headless option at all, only reachable from the list)'
     );
 
     // --- archived_session.php: an unknown (but well-formed) agent_session_id
