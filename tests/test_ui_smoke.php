@@ -250,8 +250,8 @@ try {
     assert_contains('Refactor the old widget', $archivedFragmentBody['archived_html'] ?? '', 'GET /archived_sessions_fragment.php: archived_html carries the canned archived session\'s title');
     assert_contains('/home/user/www/old-project', $archivedFragmentBody['archived_html'] ?? '', 'GET /archived_sessions_fragment.php: archived_html carries the canned archived session\'s cwd');
     assert_true(
-        preg_match('#<form method="post" action="/"[^>]*>\s*<input type="hidden" name="action" value="resume">\s*<input type="hidden" name="csrf_token"[^>]*>\s*<input type="hidden" name="agent_session_id" value="' . CANNED_ARCHIVED_CLAUDE_SESSION_ID . '">\s*<input type="hidden" name="workdir" value="/home/user/www/old-project">\s*<input type="hidden" name="profile" value="' . CANNED_ARCHIVED_CLAUDE_PROFILE . '">\s*<button type="submit"[^>]*>\s*Resume#', $archivedFragmentBody['archived_html'] ?? '') === 1,
-        'GET /archived_sessions_fragment.php: archived_html carries a Resume form with the row\'s agent_session_id, cwd, AND profile (found live 2026-09-19: the profile field was missing entirely, so resuming a work-profile archived session silently resumed under the default account)'
+        preg_match('#<form method="post" action="/"[^>]*>\s*<input type="hidden" name="action" value="resume">\s*<input type="hidden" name="csrf_token"[^>]*>\s*<input type="hidden" name="agent_session_id" value="' . CANNED_ARCHIVED_CLAUDE_SESSION_ID . '">\s*<input type="hidden" name="workdir" value="/home/user/www/old-project">\s*<input type="hidden" name="profile" value="' . CANNED_ARCHIVED_CLAUDE_PROFILE . '">\s*<button type="submit"[^>]*>\s*Terminal#', $archivedFragmentBody['archived_html'] ?? '') === 1,
+        'GET /archived_sessions_fragment.php: archived_html carries a Terminal-resume form with the row\'s agent_session_id, cwd, AND profile (found live 2026-09-19: the profile field was missing entirely, so resuming a work-profile archived session silently resumed under the default account)'
     );
     assert_contains('id="archived-load-more-btn"', $archivedFragmentBody['archived_html'] ?? '', 'GET /archived_sessions_fragment.php: archived_html ships the Load-more button that paginates the (potentially long) row list client-side');
 
@@ -1307,6 +1307,10 @@ try {
     assert_true(
         preg_match('#<input type="hidden" name="agent_session_id" value="' . CANNED_ARCHIVED_CLAUDE_SESSION_ID . '">\s*<input type="hidden" name="workdir" value="/home/user/www/old-project">\s*<input type="hidden" name="profile" value="' . CANNED_ARCHIVED_CLAUDE_PROFILE . '">#', $archivedResult['body']) === 1,
         'GET /archived_session.php: the Unarchive form carries the session\'s profile too, same field the archived-row Resume form carries (found live 2026-09-19: this form was missing it entirely)'
+    );
+    assert_true(
+        preg_match('#<button type="submit"[^>]*>Unarchive</button>\s*<button type="submit" name="runtime" value="headless"[^>]*>Headless</button>#', $archivedResult['body']) === 1,
+        'GET /archived_session.php: the detail page now offers a Headless resume option next to Unarchive, matching the archived-row list\'s existing Terminal/Headless pair (previously only reachable from the list, never from a session\'s own detail view)'
     );
 
     // --- archived_session.php: an unknown (but well-formed) agent_session_id
