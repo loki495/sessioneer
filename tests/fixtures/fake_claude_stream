@@ -14,6 +14,13 @@ declare(strict_types=1);
  *   QUESTION    ask an AskUserQuestion (requires_user_interaction)
  *   UNSUPPORTED send a control_request the manager does not implement
  *   SLOW        run until interrupted (or 20s)
+ *   SLOW_THEN_QUEUE  goes completely silent (no stdout at all, simulating an
+ *               in-flight MCP tool call) for 3s, accepts a queued follow-up
+ *               message during that silence exactly like SLOW does, but then
+ *               emits only ONE merged `result` covering both inputs instead
+ *               of one per message - reproduces the suspected real-CLI shape
+ *               behind Dibs 400 comment 317 (a message queued mid-tool-call
+ *               that never produced its own separate result)
  *   CRASH       exit 3 mid-turn with a stderr message, no result
  *   CLEAR       emit conversation_reset and continue under a NEW session id
  *   APIKEY      report an API key as the credential source
@@ -291,6 +298,30 @@ while (true) {
         emit(['type' => 'conversation_reset', 'new_conversation_id' => $sid, 'session_id' => $old]);
         init();
         result("cleared (session {$sid})");
+        continue;
+    }
+
+    if (str_contains($text, 'SLOW_THEN_QUEUE')) {
+        $deadline = microtime(true) + 3;
+        $queuedText = null;
+
+        while (microtime(true) < $deadline) {
+            $next = read_message(0.2);
+
+            if ($next === null) {
+                continue;
+            }
+
+            if (($next['type'] ?? '') === 'user') {
+                $queuedText = text_of($next);
+            } elseif (($next['type'] ?? '') === 'control_request') {
+                control_reply($next);
+            }
+        }
+
+        emit(['type' => 'assistant', 'message' => ['role' => 'assistant', 'content' => [['type' => 'text', 'text' => 'merged']]]]);
+        $merged = $queuedText !== null ? "merged: {$text} + {$queuedText}" : "merged: {$text} (no queued message arrived)";
+        result($merged);
         continue;
     }
 
