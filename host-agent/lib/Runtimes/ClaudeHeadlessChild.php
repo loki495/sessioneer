@@ -86,6 +86,12 @@ final class ClaudeHeadlessChild
      */
     public int $openTurns = 0;
 
+    /** Set when the manager sends a diagnostic interrupt to a silent `working` child; cleared once it shows any sign of life. */
+    public ?float $stallInterruptSentAt = null;
+
+    /** Set by the stall watchdog before it ends a wedged child, so finalize_child() reports WHY instead of a generic crash message. */
+    public ?string $terminationReason = null;
+
     /**
      * @param resource $process
      * @param resource $stdin

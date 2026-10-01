@@ -281,6 +281,16 @@ assert_true(($interrupted['ok'] ?? false) === true, 'interrupt is acknowledged b
 assert_true((bool)wait_until(static fn (): bool => has_result($m1, 'echo: follow-up while busy') && status_is($sn(1), 'idle')), 'the queued message still runs after the interrupt, then the session is idle');
 assert_true((bool)wait_until(static fn (): bool => SessionStatusStore::read_status($sn(1))['last_turn_error'] === null), 'and the follow-up\'s success clears the interrupted turn\'s error');
 
+echo "Turns: a message queued during a silent in-flight tool call (Dibs 400 comment 317 repro)\n";
+call($m1, 'sessioneer/sendInput', ['session' => $sn(1), 'content' => 'SLOW_THEN_QUEUE first']);
+assert_true((bool)wait_until(static fn (): bool => status_is($sn(1), 'working')), 'the turn shows as working while the fake child is silently "mid tool call"');
+$queuedSilent = call($m1, 'sessioneer/sendInput', ['session' => $sn(1), 'content' => 'during the silence']);
+assert_true(($queuedSilent['ok'] ?? false) === true && ($queuedSilent['queued'] ?? false) === true, 'the second message is accepted and reported as queued');
+assert_equal(2, call($m1, 'sessioneer/status', ['session' => $sn(1)])['open_turns'], 'two turns are open, same as the interrupt case above');
+assert_true((bool)wait_until(static fn (): bool => has_result($m1, 'merged: SLOW_THEN_QUEUE first + during the silence'), 6.0), 'the fake child eventually emits ONE merged result covering both inputs');
+assert_true((bool)wait_until(static fn (): bool => call($m1, 'sessioneer/status', ['session' => $sn(1)])['open_turns'] === 0), 'open_turns must still reach zero from a single result, or the session is stuck "working" forever');
+assert_true((bool)wait_until(static fn (): bool => status_is($sn(1), 'idle')), 'and the session must show idle, not stuck working');
+
 echo "Control: mode, model, rotation\n";
 $mode = call($m1, 'sessioneer/setMode', ['session' => $sn(1), 'mode' => 'accept edits']);
 assert_true(($mode['ok'] ?? false) === true, 'a permission mode change is acknowledged');
@@ -516,6 +526,20 @@ assert_true($elapsed >= 2.5, 'it waited out the grace period and the SIGTERM win
 assert_true(in_array(['signal' => 'SIGTERM'], fake_log($m6), true), 'SIGTERM was tried first (the child saw it and ignored it)');
 assert_equal('dormant', process_of($m6, $sn(50)), 'the session is dormant');
 assert_true(status_is($sn(50), 'idle') && SessionStatusStore::read_status($sn(50))['last_turn_error'] === null, 'a requested stop is not reported as a crash');
+
+echo "Stall watchdog: a child gone completely silent mid-turn is nudged, then ended, then self-heals (Dibs 400 comment 317)\n";
+$m9 = start_manager($root, 'm9', ['CLAUDE_HEADLESS_STALL_INTERRUPT_SECONDS' => '1', 'CLAUDE_HEADLESS_STALL_KILL_SECONDS' => '1']);
+make_session($root, $sn(55));
+call($m9, 'sessioneer/sendInput', ['session' => $sn(55), 'content' => 'STUBBORN forever']);
+assert_true((bool)wait_until(static fn (): bool => status_is($sn(55), 'working')), 'the stubborn child is "mid-turn" and then never emits anything else at all');
+$wedgedPid = (int)call($m9, 'sessioneer/status', ['session' => $sn(55)])['pid'];
+assert_true((bool)wait_until(static fn (): bool => str_contains((string)@file_get_contents($m9['log']), 'diagnostic interrupt'), 6.0), 'the watchdog notices the silence and nudges it with an interrupt, without being asked to');
+assert_true((bool)wait_until(static fn (): bool => !pid_alive($wedgedPid), 10.0), 'it never reacts to the nudge (or the SIGTERM that follows), so the watchdog SIGKILLs it');
+assert_true((bool)wait_until(static fn (): bool => status_is($sn(55), 'idle')), 'the session self-heals to idle instead of staying "working" forever');
+assert_contains('ended automatically', (string)(SessionStatusStore::read_status($sn(55))['last_turn_error'] ?? ''), 'and says WHY, distinctly from a generic crash message');
+assert_equal('dormant', process_of($m9, $sn(55)), 'the process itself is gone, not just marked idle');
+call($m9, 'sessioneer/sendInput', ['session' => $sn(55), 'content' => 'back after the wedge']);
+assert_true((bool)wait_until(static fn (): bool => has_result($m9, 'echo: back after the wedge') && status_is($sn(55), 'idle')), 'and the next message respawns and recovers it normally');
 
 echo "Restart: manager killed with a prompt open\n";
 $m7 = start_manager($root, 'm7');
