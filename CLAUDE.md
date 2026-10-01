@@ -172,7 +172,23 @@ Docker-spawned, makes that impossible by construction — not by convention.
    state for the one session being viewed and self-heals the store on a
    mismatch (`ClaudeHeadlessRuntime::reconcile_with_live_status()`) - the
    dashboard list stays a plain DB/file read, no live check, on every
-   session, every poll. Protocol and design records live in Dibs (plan #269, research
+   session, every poll. `ClaudeHeadlessChild::$openTurns` tracks whether a
+   turn is still in flight, but the stream-json protocol carries no per-turn
+   correlation id: `on_result()` treats every `result` event as "the child's
+   whole conversation loop is idle again" (resets `openTurns` to 0
+   unconditionally) rather than decrementing by 1 per message sent, because a
+   message queued mid-tool-call can get folded into the SAME turn's eventual
+   result instead of producing its own (Dibs 400 comment 317 - decrementing
+   by 1 left sessions stuck showing "working" forever after this happened).
+   Separately, `ClaudeHeadlessManager::check_stall()` (in `housekeeping()`)
+   watches for a `working` child gone completely silent (no stream-json event
+   at all, not even to its own diagnostic interrupt) for
+   `CLAUDE_HEADLESS_STALL_INTERRUPT_SECONDS`/`CLAUDE_HEADLESS_STALL_KILL_SECONDS`
+   (defaults 600s/120s - generous on purpose, since a single slow tool call
+   also produces no stdout and must not be mistaken for a hang) and forcibly
+   ends a genuinely wedged one so the existing dormant/lazy-resume path can
+   recover it, rather than leaving it stuck indefinitely. Never applies to
+   `blocked` (a pending prompt is normal to sit on). Protocol and design records live in Dibs (plan #269, research
    #280, decision #282); `tests/fixtures/claude_stream_json_*_v2_1_278.ndjson`
    are the captured stream-json events and `tests/fixtures/fake_claude_stream`
    is the scripted stand-in the tests drive. `ClaudeHeadlessRuntime` is the

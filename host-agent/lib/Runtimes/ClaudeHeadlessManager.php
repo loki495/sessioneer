@@ -100,6 +100,8 @@ final class ClaudeHeadlessManager
         private int $idleSeconds,
         private int $maxChildren,
         private int $stopGraceSeconds,
+        private int $stallInterruptSeconds = 600,
+        private int $stallKillSeconds = 120,
         ?ClaudeCodeAdapter $adapter = null,
     ) {
         $this->adapter = $adapter ?? new ClaudeCodeAdapter();
@@ -112,6 +114,8 @@ final class ClaudeHeadlessManager
             Config::claude_headless_idle_seconds(),
             Config::claude_headless_max_children(),
             Config::claude_headless_stop_grace_seconds(),
+            Config::claude_headless_stall_interrupt_seconds(),
+            Config::claude_headless_stall_kill_seconds(),
         );
     }
 
@@ -890,7 +894,81 @@ final class ClaudeHeadlessManager
                 $this->log("stopping idle session {$child->name}");
                 $this->request_stop($child);
             }
+
+            $this->check_stall($child, $now);
         }
+    }
+
+    /**
+     * Watchdog for a child stuck `working` with no stream-json event of any
+     * kind (handle_event() bumps lastActivity on every one, including its own
+     * control_response/result) for an abnormally long time - the failure mode
+     * behind Dibs 400 comment 317, where a real `claude -p` child went fully
+     * silent mid-turn and never produced another event at all, independent of
+     * the on_result() counting bug fixed above. Never applies to `blocked`
+     * (a pending permission/question prompt is normal to sit on indefinitely
+     * awaiting a human) or `idle`/`stopping` children.
+     *
+     * Two-stage, not an immediate kill: a single slow tool call (browser
+     * automation, a long build) is indistinguishable from a genuine hang by
+     * silence alone, so the manager first sends a diagnostic interrupt and
+     * gives the child a further grace window to react to it - ANY event
+     * afterward (even just the interrupt's own control_response) proves the
+     * child is alive and lets it continue normally (on_result()'s reset
+     * above self-heals openTurns once its turn actually concludes). Only a
+     * child that stays completely silent even after that nudge is treated as
+     * genuinely wedged and ended, so the session can self-heal via the
+     * existing lazy-resume path (dormant -> next message respawns it) instead
+     * of staying stuck "working" forever.
+     */
+    private function check_stall(ClaudeHeadlessChild $child, float $now): void
+    {
+        if ($child->state !== 'working') {
+            $child->stallInterruptSentAt = null;
+
+            return;
+        }
+
+        $silentFor = $now - $child->lastActivity;
+
+        if ($child->stallInterruptSentAt === null) {
+            if ($silentFor > $this->stallInterruptSeconds) {
+                $this->log("{$child->name}: no activity for " . (int)$silentFor . 's while working; sending a diagnostic interrupt to check it is still alive');
+                $child->write(['type' => 'control_request', 'request_id' => self::uuid(), 'request' => ['subtype' => 'interrupt']]);
+                $child->stallInterruptSentAt = $now;
+            }
+
+            return;
+        }
+
+        if ($child->lastActivity > $child->stallInterruptSentAt) {
+            // Something happened since the nudge (even just its own
+            // control_response) - it is alive, stand down.
+            $child->stallInterruptSentAt = null;
+
+            return;
+        }
+
+        if ($now - $child->stallInterruptSentAt > $this->stallKillSeconds) {
+            $this->log("{$child->name}: still silent " . (int)$silentFor . 's after a diagnostic interrupt got no reaction at all; ending the wedged process so the session can recover');
+            $this->finalize_stalled_child($child);
+        }
+    }
+
+    /**
+     * Forcibly ends a child the stall watchdog has concluded is wedged (SIGTERM,
+     * escalating to SIGKILL via the normal stopping/housekeeping path), tagging
+     * WHY so finalize_child() can tell the difference from an ordinary crash.
+     */
+    private function finalize_stalled_child(ClaudeHeadlessChild $child): void
+    {
+        $child->terminationReason = 'Claude stopped responding mid-turn and did not react to an interrupt; '
+            . 'the session was ended automatically so it could recover - send your message again';
+        $child->stopping = true;
+        $child->close_stdin();
+        $child->signal(SIGTERM);
+        $child->termSent = true;
+        $child->stopDeadline = microtime(true);
     }
 
     // ---------------------------------------------------------------- events
@@ -1096,9 +1174,21 @@ final class ClaudeHeadlessManager
     /** @param array<string, mixed> $event */
     private function on_result(ClaudeHeadlessChild $child, array $event): void
     {
-        $child->openTurns = max(0, $child->openTurns - 1);
+        // A `result` means the child's single conversation loop is completely
+        // idle again, not "one of N turns is done": the protocol carries no
+        // per-turn correlation id, and a message sent while a turn was still
+        // running (queued behind an in-flight tool call, say) can get folded
+        // into that SAME turn's eventual result instead of producing one of
+        // its own. Decrementing by exactly 1 per result left openTurns stuck
+        // above zero whenever that happened - a session shown as "working"
+        // forever even though the child was genuinely idle (Dibs 400 comment
+        // 317; reproduced in tests/test_claude_headless_manager.php via the
+        // SLOW_THEN_QUEUE fixture). A `result` is authoritative: whatever was
+        // pending is now resolved, full stop.
+        $child->openTurns = 0;
+        $child->stallInterruptSentAt = null;
         $child->pending = null;
-        $child->state = $child->openTurns > 0 ? 'working' : 'idle';
+        $child->state = 'idle';
 
         $error = null;
 
@@ -1204,7 +1294,9 @@ final class ClaudeHeadlessManager
         $interrupted = $child->openTurns > 0 || $child->pending !== null;
         $fields = ['status' => 'idle', 'blocked' => null];
 
-        if (!$child->stopping && $interrupted) {
+        if ($child->terminationReason !== null) {
+            $fields['last_turn_error'] = $child->terminationReason;
+        } elseif (!$child->stopping && $interrupted) {
             $code = $child->exit_code();
             $stderr = $child->stderr_tail();
             $fields['last_turn_error'] = 'Claude process exited unexpectedly'
