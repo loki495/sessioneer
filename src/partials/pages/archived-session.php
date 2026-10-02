@@ -38,7 +38,7 @@ $this->layout('layout', [
         <div class="text-xs text-slate-400 mt-1">Last active <?= $this->e(\App\Views\SessionRowView::relative_time((int)($detail['last_activity'] ?? 0))) ?></div>
       </div>
       <?php if (!empty($detail['cwd'])): ?>
-      <form method="post" action="/" class="shrink-0">
+      <form method="post" action="/" class="shrink-0 flex gap-2">
         <input type="hidden" name="action" value="resume">
         <input type="hidden" name="csrf_token" value="<?= $this->e($csrfToken) ?>">
         <input type="hidden" name="agent_session_id" value="<?= $this->e($agentSessionId) ?>">
@@ -47,7 +47,16 @@ $this->layout('layout', [
               // this, unarchiving a work-profile session silently resumed
               // under the default account instead. ?>
         <?php if (!empty($detail['profile'])): ?><input type="hidden" name="profile" value="<?= $this->e((string)$detail['profile']) ?>"><?php endif ?>
-        <button type="submit" class="select-none min-h-[2.75rem] rounded-lg border border-slate-700 bg-slate-800 active:bg-slate-700 text-slate-200 font-medium text-sm px-4 py-2">Unarchive</button>
+        <button type="submit" class="select-none min-h-[2.75rem] rounded-lg border border-slate-700 bg-slate-800 active:bg-slate-700 text-slate-200 font-medium text-sm px-4 py-2" title="Unarchive into a terminal (tmux) session">Terminal</button>
+        <?php // Claude conversations only: unarchive with no terminal (a
+              // headless session) - matches the archived-row list's own
+              // Terminal/Headless pair (archived-row.php) exactly, including
+              // the label - this page had no equivalent, so it was only
+              // reachable from the list, never from a session's own detail
+              // view. ?>
+        <?php if (($detail['agent'] ?? 'claude') === 'claude'): ?>
+          <button type="submit" name="runtime" value="headless" title="Unarchive without a terminal (headless)" class="select-none min-h-[2.75rem] shrink-0 rounded-lg border border-slate-700 bg-slate-800 active:bg-slate-700 text-slate-300 text-xs px-3 py-2">Headless</button>
+        <?php endif ?>
       </form>
       <?php endif ?>
     </div>
