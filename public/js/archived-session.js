@@ -10,6 +10,22 @@
 // archivedHistoryFragment()) - no client-side rendering logic to duplicate
 // at all.
 (function () {
+  // Swipe right anywhere navigates back to the dashboard - this page has no
+  // sidebar to open/close (session.php's own version of this gesture, in
+  // sidebar.js, also handles that), so it's a plain one-way navigation.
+  // Registered unconditionally, before the load-more guard below, since it
+  // has nothing to do with whether the transcript itself loaded (found live
+  // 2026-09-30: this page previously had no swipe-gesture JS at all and
+  // relied entirely on the browser/OS's own native edge-swipe-back gesture,
+  // which isn't available in every context - a home-screen-installed iOS
+  // PWA running in standalone display mode has no browser chrome to swipe
+  // from, so swipe-right did nothing there).
+  initHorizontalSwipe({
+    onSwipeRight: function () {
+      window.location.href = '/';
+    }
+  });
+
   var btn = document.getElementById('load-more-btn');
   var list = document.getElementById('history-list');
 
