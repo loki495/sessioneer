@@ -1023,8 +1023,113 @@ if (navigationBlanket) {
   // the blanket would stay stuck over a page the user never actually
   // left, with no real navigation ever coming along to replace it.
   window.addEventListener('pageshow', function (e) {
-    if (e.persisted) {
-      navigationBlanket.classList.add('hidden');
+    if (!e.persisted) {
+      return;
     }
+
+    // The dashboard specifically (not session.php/archived_session.php,
+    // which intentionally preserve scroll position/compose drafts across
+    // app-backgrounding-triggered bfcache restores - reloading THOSE would
+    // regress that on purpose-built behavior): a genuine bfcache restore (a
+    // real history back-navigation - either browser back/forward, or the
+    // swipe-right gesture below/sidebar.js's own copy of it, both of which
+    // navigate via a plain forward `location.href` and so should normally
+    // NOT hit this at all, but iOS's own native edge-swipe-back gesture can
+    // ALSO fire independently of this app's JS and does a real bfcache
+    // restore) serves the exact DOM the dashboard had at the moment it was
+    // left, frozen - unlike session.php's live-polled content, nothing here
+    // ever refreshes that on its own, so a stale header/session list can sit
+    // there indefinitely instead of just the one poll cycle a fresh load
+    // would need. #new-session-details only exists on the dashboard.
+    if (document.getElementById('new-session-details')) {
+      location.reload();
+
+      return;
+    }
+
+    navigationBlanket.classList.add('hidden');
   });
+}
+
+// --- shared horizontal-swipe detector (touch devices) - the guard logic
+// (ignore touches inside a horizontally-scrollable block, an active text
+// selection, or a textarea) used to live duplicated per page; extracted
+// 2026-09-30 so archived_session.php could get its own swipe-right-to-
+// dashboard gesture without copying it a second time. archived_session.php
+// previously had NO swipe-gesture JS of its own at all and relied entirely
+// on the browser/OS's native edge-swipe-back - which isn't available in
+// every context (e.g. a home-screen-installed iOS PWA running in standalone
+// display mode has no browser chrome to swipe from at all), so swiping
+// right there could do nothing (Andres, 2026-09-30). sidebar.js (session.php)
+// uses this for its open/close-sidebar-or-navigate gesture; archived-
+// session.js uses it for a plain swipe-right-to-dashboard, matching
+// session.php's behavior. Ignored for anything that isn't a clearly
+// horizontal gesture, so it doesn't fight with normal vertical scrolling.
+function initHorizontalSwipe(handlers) {
+  var SWIPE_MIN_DISTANCE_PX = 80;
+  var SWIPE_MAX_VERTICAL_RATIO = 0.5;
+  var touchStartX = null;
+  var touchStartY = null;
+
+  // A non-collapsed selection means this touch is (or might become)
+  // dragging a text-selection handle, not swiping - those handles are
+  // native OS chrome, not real DOM elements, so there's no element to
+  // target-check the way the scrollable-block case below does; checking
+  // the selection itself is the only reliable signal. Checked on both
+  // touchstart (the selection already exists from an earlier long-press)
+  // and touchend (in case it changed mid-touch), since real devices vary
+  // in whether those are the same touch sequence or two separate ones.
+  function touchTargetsActiveSelection() {
+    var selection = window.getSelection();
+    return !!selection && !selection.isCollapsed;
+  }
+
+  // window.getSelection() above never sees a selection inside a <textarea>
+  // - form controls keep their own separate selectionStart/selectionEnd
+  // state, invisible to the document-level Selection API - so a swipe-to-
+  // select drag starting there used to fall straight through to the
+  // sidebar/back-navigation gesture instead. Any touch landing on a
+  // textarea at all is excluded here, not just an active-selection one:
+  // that gesture belongs to the textarea (caret placement, selecting,
+  // scrolling a tall one), never to the app-level swipe.
+  function touchTargetsTextarea(e) {
+    return !!closestEventTarget(e, 'textarea');
+  }
+
+  document.addEventListener('touchstart', function (e) {
+    // Ignore touches starting inside a horizontally-scrollable command/
+    // output block - that gesture is for scrolling the block itself, not
+    // for the app-level swipe.
+    if (e.touches.length !== 1 || closestEventTarget(e, '.overflow-x-auto, .overflow-auto') || touchTargetsActiveSelection() || touchTargetsTextarea(e)) {
+      touchStartX = null;
+      touchStartY = null;
+      return;
+    }
+
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+
+  document.addEventListener('touchend', function (e) {
+    if (touchStartX === null || e.changedTouches.length !== 1 || touchTargetsActiveSelection() || touchTargetsTextarea(e)) {
+      touchStartX = null;
+      touchStartY = null;
+      return;
+    }
+
+    var deltaX = e.changedTouches[0].clientX - touchStartX;
+    var deltaY = e.changedTouches[0].clientY - touchStartY;
+    touchStartX = null;
+    touchStartY = null;
+
+    if (Math.abs(deltaX) < SWIPE_MIN_DISTANCE_PX || Math.abs(deltaY) > Math.abs(deltaX) * SWIPE_MAX_VERTICAL_RATIO) {
+      return;
+    }
+
+    if (deltaX < 0 && handlers.onSwipeLeft) {
+      handlers.onSwipeLeft();
+    } else if (deltaX > 0 && handlers.onSwipeRight) {
+      handlers.onSwipeRight();
+    }
+  }, { passive: true });
 }
