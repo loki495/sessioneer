@@ -258,11 +258,16 @@ $this->layout('layout', [
       </button>
     </div>
     <div id="history-list" class="flex flex-col gap-2">
-      <?php if (!$historyOk): ?>
-        <p id="history-empty-note" class="select-none rounded-lg px-4 py-3 text-sm bg-slate-900/50 border border-slate-800 text-slate-500">
-          <?= $this->e((string)($history['message'] ?? 'No transcript available for this session.')) ?>
-        </p>
-      <?php elseif (empty($entries)): ?>
+      <?php // $found already gates whether session_history() is even called
+            // (see SessionController::show()) - by the time we get here,
+            // $found is true, so a failed $historyOk ALWAYS means "no
+            // transcript file exists yet" (a brand-new session, most
+            // commonly one just redirected straight to from creation - see
+            // DashboardController's 'new' action), never a real error
+            // worth alarming over. Same placeholder either way, rather
+            // than surfacing the backend's raw "Transcript file not found"/
+            // "No transcript recorded for this session" message. ?>
+      <?php if (!$historyOk || empty($entries)): ?>
         <p id="history-empty-note" class="select-none rounded-lg px-4 py-3 text-sm bg-slate-900/50 border border-slate-800 text-slate-500">
           Nothing recorded yet.
         </p>

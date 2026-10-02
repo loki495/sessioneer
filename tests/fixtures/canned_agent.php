@@ -306,11 +306,16 @@ $response = match ($action) {
     'create_dir' => (string)($request['name'] ?? '') === 'new-folder'
         ? ['ok' => true, 'path' => '/home/user/www/new-folder', 'parent' => '/home/user/www', 'dirs' => []]
         : ['ok' => false, 'message' => 'Invalid folder name'],
-    // Echoes the runtime it was asked for, so the UI smoke test can prove the
-    // New Session form's runtime choice actually reaches the agent (and that
-    // an absent or invalid one sends none).
-    'create' => ['ok' => true, 'message' => 'Created session cc-20260101-1300 in /home/user/www/demo-project'
-        . (is_string($request['runtime'] ?? null) ? ' [runtime=' . $request['runtime'] . ']' : '')],
+    // `name` encodes the runtime it was asked for (DashboardController
+    // redirects straight to /session.php?session=<name> on a successful
+    // create now, same as resume/switch_runtime below - see Dibs/CLAUDE.md
+    // "redirect to that session's page" - so the UI smoke test proves the
+    // New Session form's runtime choice reached the agent, and that an
+    // absent or invalid one sends none, via the Location header rather
+    // than a dashboard flash that no longer ever renders for this action).
+    'create' => ['ok' => true, 'name' => 'cc-fake-' . (in_array($request['runtime'] ?? null, ['headless', 'tmux'], true) ? $request['runtime'] : 'none'),
+        'message' => 'Created session cc-20260101-1300 in /home/user/www/demo-project'
+            . (is_string($request['runtime'] ?? null) ? ' [runtime=' . $request['runtime'] . ']' : '')],
     // Requires the matching profile too (not just id/workdir) - found live
     // 2026-09-19: neither the archived-row Resume form nor the
     // archived-session Unarchive form sent one, and DashboardController

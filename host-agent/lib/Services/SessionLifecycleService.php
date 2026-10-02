@@ -143,7 +143,14 @@ class SessionLifecycleService
         // reported as spawned_by_app=false.
         SidecarStore::write_sidecar($name, ['workdir' => $workdir, 'spawned_at' => time(), 'agent_session_id' => $agentSessionId, 'spawned_by_app' => true, 'agent' => $agent->id(), 'profile' => $profile]);
 
-        return ['ok' => true, 'message' => "Created session {$name} in {$workdir}"];
+        // Every other 'create' path in Sessions.php normalizes its own
+        // response to carry `name` for exactly this (see its own "for the
+        // redirect to session.php?session=name" comments) - this tmux path
+        // is the one the convention actually originates from, so it needs
+        // to keep its own promise: DashboardController's 'new' action reads
+        // this to redirect straight to the new session instead of back to
+        // the dashboard with a flash.
+        return ['ok' => true, 'message' => "Created session {$name} in {$workdir}", 'name' => $name];
     }
 
     /**

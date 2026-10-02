@@ -122,6 +122,18 @@ class DashboardController extends Controller
                 $message = $ok
                     ? (string)($result['message'] ?? 'Created session')
                     : (string)($result['message'] ?? 'Unknown error');
+
+                // Same reasoning as 'resume' below: redirect straight to the
+                // new session's own view rather than back to the dashboard
+                // with a flash. Every 'create' path in Sessions.php already
+                // normalizes its response to carry `name` for exactly this
+                // (see its own "for the redirect to session.php?session=name"
+                // comments) - this was the one caller not actually using it.
+                if ($ok && is_string($result['name'] ?? null) && $result['name'] !== '') {
+                    header('Location: /session.php?session=' . urlencode((string)$result['name']), true, 303);
+
+                    return;
+                }
                 break;
 
             case 'resume':

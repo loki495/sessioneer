@@ -142,20 +142,20 @@ try {
     $csrfToken = extract_csrf_token($result['body']);
     assert_true($csrfToken !== null, 'GET /: page includes a csrf_token field');
 
-    // --- POST new: redirect + session-based flash (no message in the URL) ---
+    // --- POST new: redirects straight to the new session's own view, same
+    // as resume/switch_runtime below - Andres's own ask, 2026-09-30: a
+    // dashboard flash meant an extra tap to actually see the session just
+    // created, unlike resume's already-instant redirect. ---
     $result = curl_request('POST', "{$baseUrl}/", [
         '-d', 'action=new&csrf_token=' . urlencode((string)$csrfToken) . '&workdir=' . urlencode('/home/user/www/demo-project'),
     ], $cookieJar);
     assert_equal(303, $result['status'], 'POST new: 303 redirect');
-    assert_equal('/', $result['headers']['location'] ?? '', 'POST new: redirects to / with no message in the URL');
+    assert_equal('/session.php?session=cc-fake-none', $result['headers']['location'] ?? '', 'POST new: redirects straight to the new session\'s own view, not back to the dashboard with a flash');
 
     $follow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
-    assert_equal(200, $follow['status'], 'POST new -> redirect target: 200');
-    assert_contains('Created session', $follow['body'], 'POST new -> redirect target: flash message shown');
+    assert_equal(200, $follow['status'], 'GET / afterward: 200');
+    assert_true(!str_contains($follow['body'], 'Created session'), 'GET / afterward: no flash message - there never was one to show');
     $csrfToken = extract_csrf_token($follow['body']);
-
-    $again = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
-    assert_true(!str_contains($again['body'], 'Created session'), 'GET / again: flash message does not reappear on refresh');
 
     // --- POST without a valid CSRF token is rejected ---
     $result = curl_request('POST', "{$baseUrl}/", [
@@ -1423,25 +1423,33 @@ try {
     assert_contains("new-session-runtime-label", (string)$indexJs['body'], 'GET /js/index.js: the runtime picker is toggled per agent');
     assert_true(preg_match('#<form method="post" action="/"[^>]*>\s*<input type="hidden" name="action" value="switch_runtime">\s*<input type="hidden" name="csrf_token"[^>]*>\s*<input type="hidden" name="session" value="cc-20260101-1200">\s*<input type="hidden" name="runtime" value="headless">#', $runtimeFrontPage['body']) === 1, 'GET /: a tmux Claude row offers switching to headless');
 
-    curl_request('POST', "{$baseUrl}/", ['-d', 'action=new&csrf_token=' . urlencode((string)$runtimeCsrf) . '&workdir=' . urlencode('/home/user/www/demo-project') . '&agent=claude&runtime=headless'], $cookieJar);
+    // Each 'new' below now redirects straight to the new session's own view
+    // instead of back to the dashboard with a flash (same change as the
+    // plain POST new case above) - the runtime choice reaching (or not
+    // reaching) the agent is proven via the canned agent's own `name`
+    // (encoding the runtime it received - see canned_agent.php's 'create'),
+    // carried in the redirect's Location header, rather than dashboard
+    // flash text that no longer ever renders for this action. A fresh
+    // session-based CSRF token still round-trips via the dashboard GET
+    // that follows each one.
+    $runtimeNew = curl_request('POST', "{$baseUrl}/", ['-d', 'action=new&csrf_token=' . urlencode((string)$runtimeCsrf) . '&workdir=' . urlencode('/home/user/www/demo-project') . '&agent=claude&runtime=headless'], $cookieJar);
+    assert_equal('/session.php?session=cc-fake-headless', $runtimeNew['headers']['location'] ?? '', 'POST new (runtime=headless): the choice reaches the agent');
     $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
-    assert_contains('[runtime=headless]', $runtimeFollow['body'], 'POST new (runtime=headless): the choice reaches the agent');
     $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
 
-    curl_request('POST', "{$baseUrl}/", ['-d', 'action=new&csrf_token=' . urlencode((string)$runtimeCsrf) . '&workdir=' . urlencode('/home/user/www/demo-project') . '&agent=claude&runtime='], $cookieJar);
+    $runtimeNew = curl_request('POST', "{$baseUrl}/", ['-d', 'action=new&csrf_token=' . urlencode((string)$runtimeCsrf) . '&workdir=' . urlencode('/home/user/www/demo-project') . '&agent=claude&runtime='], $cookieJar);
+    assert_equal('/session.php?session=cc-fake-none', $runtimeNew['headers']['location'] ?? '', 'POST new (empty runtime): still creates, with no runtime sent - the agent applies its own default');
     $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
-    assert_contains('Created session', $runtimeFollow['body'], 'POST new (empty runtime): still creates');
-    assert_true(!str_contains($runtimeFollow['body'], '[runtime='), 'POST new (empty runtime): no runtime is sent - the agent applies its own default');
     $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
 
-    curl_request('POST', "{$baseUrl}/", ['-d', 'action=new&csrf_token=' . urlencode((string)$runtimeCsrf) . '&workdir=' . urlencode('/home/user/www/demo-project') . '&agent=claude&runtime=' . urlencode('tmux; rm -rf /')], $cookieJar);
+    $runtimeNew = curl_request('POST', "{$baseUrl}/", ['-d', 'action=new&csrf_token=' . urlencode((string)$runtimeCsrf) . '&workdir=' . urlencode('/home/user/www/demo-project') . '&agent=claude&runtime=' . urlencode('tmux; rm -rf /')], $cookieJar);
+    assert_equal('/session.php?session=cc-fake-none', $runtimeNew['headers']['location'] ?? '', 'POST new (garbage runtime): anything but "headless" or "tmux" is dropped, never forwarded');
     $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
-    assert_true(!str_contains($runtimeFollow['body'], '[runtime='), 'POST new (garbage runtime): anything but "headless" or "tmux" is dropped, never forwarded');
     $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
 
-    curl_request('POST', "{$baseUrl}/", ['-d', 'action=new&csrf_token=' . urlencode((string)$runtimeCsrf) . '&workdir=' . urlencode('/home/user/www/demo-project') . '&agent=claude&runtime=tmux'], $cookieJar);
+    $runtimeNew = curl_request('POST', "{$baseUrl}/", ['-d', 'action=new&csrf_token=' . urlencode((string)$runtimeCsrf) . '&workdir=' . urlencode('/home/user/www/demo-project') . '&agent=claude&runtime=tmux'], $cookieJar);
+    assert_equal('/session.php?session=cc-fake-tmux', $runtimeNew['headers']['location'] ?? '', 'POST new (runtime=tmux): the terminal choice reaches the agent');
     $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
-    assert_contains('[runtime=tmux]', $runtimeFollow['body'], 'POST new (runtime=tmux): the terminal choice reaches the agent');
     $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
 
     $runtimeResume = curl_request('POST', "{$baseUrl}/", [
@@ -1579,6 +1587,12 @@ try {
         preg_match('#<div id="history-list"[^>]*>\s*<p id="history-empty-note"[^>]*>#', $newSessionResult['body']) === 1,
         'GET /session.php (brand-new session): #history-list is present and contains the placeholder note, not omitted'
     );
+    assert_contains(
+        'Nothing recorded yet.',
+        $newSessionResult['body'],
+        'GET /session.php (brand-new session): shows the same friendly placeholder as an empty-but-valid transcript, not the backend\'s raw "Transcript file not found" message - a brand-new session (especially one redirected straight here from creation) is normal, not an error'
+    );
+    assert_true(!str_contains($newSessionResult['body'], 'Transcript file not found'), 'GET /session.php (brand-new session): the raw backend error string never reaches the page');
     assert_contains('id="compose-bar"', $newSessionResult['body'], 'GET /session.php (brand-new session): compose bar still renders normally');
     assert_true(
         preg_match('#<div id="todo-list-section">\s*</div>#', $newSessionResult['body']) === 1,
