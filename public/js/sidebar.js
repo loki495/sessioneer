@@ -985,77 +985,21 @@ document.addEventListener('keydown', function (e) {
 });
 
 if (sidebarToggleBtn) {
-  var SWIPE_MIN_DISTANCE_PX = 80;
-  var SWIPE_MAX_VERTICAL_RATIO = 0.5;
-  var touchStartX = null;
-  var touchStartY = null;
-
-  // A non-collapsed selection means this touch is (or might become)
-  // dragging a text-selection handle, not swiping - those handles are
-  // native OS chrome, not real DOM elements, so there's no element to
-  // target-check the way the scrollable-block case below does; checking
-  // the selection itself is the only reliable signal. Checked on both
-  // touchstart (the selection already exists from an earlier long-press)
-  // and touchend (in case it changed mid-touch), since real devices vary
-  // in whether those are the same touch sequence or two separate ones.
-  function touchTargetsActiveSelection() {
-    var selection = window.getSelection();
-    return !!selection && !selection.isCollapsed;
-  }
-
-  // window.getSelection() above never sees a selection inside a
-  // <textarea> (#compose-textarea, the free-text prompt-reply textarea)
-  // - form controls keep their own separate selectionStart/selectionEnd
-  // state, invisible to the document-level Selection API - so a swipe-
-  // to-select drag starting there used to fall straight through to the
-  // sidebar/back-navigation gesture instead. Any touch landing on a
-  // textarea at all is excluded here, not just an active-selection one:
-  // that gesture belongs to the textarea (caret placement, selecting,
-  // scrolling a tall one), never to the app-level swipe.
-  function touchTargetsTextarea(e) {
-    return !!closestEventTarget(e, 'textarea');
-  }
-
-  document.addEventListener('touchstart', function (e) {
-    // Ignore touches starting inside a horizontally-scrollable command/
-    // output block - that gesture is for scrolling the block itself,
-    // not for opening/closing the sidebar.
-    if (e.touches.length !== 1 || closestEventTarget(e, '.overflow-x-auto, .overflow-auto') || touchTargetsActiveSelection() || touchTargetsTextarea(e)) {
-      touchStartX = null;
-      touchStartY = null;
-      return;
-    }
-
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
-  }, { passive: true });
-
-  document.addEventListener('touchend', function (e) {
-    if (touchStartX === null || e.changedTouches.length !== 1 || touchTargetsActiveSelection() || touchTargetsTextarea(e)) {
-      touchStartX = null;
-      touchStartY = null;
-      return;
-    }
-
-    var deltaX = e.changedTouches[0].clientX - touchStartX;
-    var deltaY = e.changedTouches[0].clientY - touchStartY;
-    touchStartX = null;
-    touchStartY = null;
-
-    if (Math.abs(deltaX) < SWIPE_MIN_DISTANCE_PX || Math.abs(deltaY) > Math.abs(deltaX) * SWIPE_MAX_VERTICAL_RATIO) {
-      return;
-    }
-
-    var sidebarOpen = !sidebar.classList.contains('translate-x-full');
-
-    if (deltaX < 0) {
-      if (!sidebarOpen) {
+  // Guard logic (scrollable blocks/text selection/textarea) lives in
+  // common.js's initHorizontalSwipe() now, shared with archived-session.js's
+  // own plain swipe-right-to-dashboard gesture - see its own comment there.
+  initHorizontalSwipe({
+    onSwipeLeft: function () {
+      if (sidebar.classList.contains('translate-x-full')) {
         openSidebar();
       }
-    } else if (sidebarOpen) {
-      closeSidebar();
-    } else {
-      window.location.href = '/';
+    },
+    onSwipeRight: function () {
+      if (!sidebar.classList.contains('translate-x-full')) {
+        closeSidebar();
+      } else {
+        window.location.href = '/';
+      }
     }
-  }, { passive: true });
+  });
 }
