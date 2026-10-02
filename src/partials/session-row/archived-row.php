@@ -5,9 +5,9 @@
     default => 'background-color: rgba(15, 23, 42, 0.5); border-color: rgb(30, 41, 59)',
   };
 ?>
-<li class="relative rounded-xl border px-4 py-3 flex items-start justify-between gap-3" style="<?= $agentCardStyle ?>" data-archived-row data-agent="<?= $this->e($agentId ?? 'claude') ?>">
+<li class="relative rounded-xl border px-4 py-3 flex flex-col gap-2" style="<?= $agentCardStyle ?>" data-archived-row data-agent="<?= $this->e($agentId ?? 'claude') ?>">
   <a href="/archived_session.php?agent_session_id=<?= urlencode($agentSessionId) ?>" class="absolute inset-0 rounded-xl" aria-label="View archived transcript for <?= $this->e($title) ?>"></a>
-  <div class="min-w-0 flex-1">
+  <div class="min-w-0">
     <div class="select-none text-sm leading-tight truncate"><?= $this->e($title) ?></div>
     <?php if (!empty($agentLabel)): ?>
       <?php
@@ -29,7 +29,7 @@
     <div class="select-none text-xs text-slate-400 mt-1"><?= $this->e($relativeTime) ?></div>
   </div>
   <?php if (!empty($cwd)): ?>
-  <form method="post" action="/" class="relative">
+  <form method="post" action="/" class="relative flex gap-2">
     <input type="hidden" name="action" value="resume">
     <input type="hidden" name="csrf_token" value="<?= $this->e($csrfToken) ?>">
     <input type="hidden" name="agent_session_id" value="<?= $this->e($agentSessionId) ?>">
@@ -40,10 +40,14 @@
           // resumed under the default account instead (Sessions.php's
           // 'resume' case had no profile to read since nothing sent one). ?>
     <?php if (!empty($profile)): ?><input type="hidden" name="profile" value="<?= $this->e($profile) ?>"><?php endif ?>
-    <button type="submit" class="select-none min-h-[2.75rem] shrink-0 rounded-lg border border-slate-700 bg-slate-800 active:bg-slate-700 text-slate-200 font-medium text-sm px-4 py-2">Resume</button>
+    <?php // "Terminal" (not "Resume"): Headless sits right next to it as the
+          // other explicit choice, so a bare "Resume" no longer says which
+          // one this is - matches the live-session runtime-switch button's
+          // wording for the same tmux/TUI concept (session-row/row.php). ?>
+    <button type="submit" class="select-none min-h-[2.75rem] shrink-0 rounded-lg border border-slate-700 bg-slate-800 active:bg-slate-700 text-slate-200 font-medium text-sm px-4 py-2">Terminal</button>
     <?php // Claude conversations only: resume with no terminal (a headless
           // session). The button's own name/value is what selects it - the
-          // plain Resume button above submits no runtime and stays tmux. ?>
+          // Terminal button above submits no runtime and stays tmux. ?>
     <?php if (($agentId ?? 'claude') === 'claude'): ?>
       <button type="submit" name="runtime" value="headless" title="Resume without a terminal (headless)" class="select-none min-h-[2.75rem] shrink-0 rounded-lg border border-slate-700 bg-slate-800 active:bg-slate-700 text-slate-300 text-xs px-3 py-2">Headless</button>
     <?php endif ?>
