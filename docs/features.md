@@ -169,7 +169,8 @@ refused); plain Resume and Take over still open a terminal session. Permission a
 (single and multi-question), plan approval, interrupt, queued messages, image
 attachments and model and permission-mode changes all work through the process's
 own structured events, and the transcript view still reads the same transcript
-file. A permission mode that Claude does not apply (`auto` was silently ignored on
+file. Only one permission prompt is tracked at a time, which background subagents
+can run into (see "Known parity gaps"). A permission mode that Claude does not apply (`auto` was silently ignored on
 2.1.278) is flagged on the session instead of trusted. There is no terminal to
 attach to; to continue a conversation in one, switch the session to the terminal
 runtime. A headless session's own process never appears under "other Claude
@@ -391,3 +392,11 @@ Implementation entry points:
 9. Plain Resume and Take over always open a terminal session, whatever the
    default runtime is, and Sessioneer cannot pass `--add-dir` to a headless
    process at start, so `/add-dir` has no way to grant another directory.
+10. A Claude headless session tracks one pending permission prompt at a time and
+    clears it when the main conversation's turn ends. Background or parallel
+    subagents that need an approval can lose their prompt this way, either
+    replaced by a newer prompt or cleared while the subagent is still waiting.
+    The subagent then waits indefinitely with nothing on screen to answer, while
+    the main conversation looks healthy. Until this is fixed, give a session that
+    will run background subagents a permission mode or allow-list that doesn't
+    prompt for the tools they use, or run it in the terminal runtime.
