@@ -6,3 +6,7 @@
 /docker-compose.override.yml
 /node_modules/
 /.ai/
+.phpactor.json
+.idea/
+.vscode/
+*.swp
