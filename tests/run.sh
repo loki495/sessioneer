@@ -113,8 +113,8 @@ export HOME="$TEST_HOME"
 export SESSIONEER_LIVE_HOME="$ORIGINAL_HOME"
 
 # Keyed by SCRIPT_DIR (not a single global path) so this only ever blocks a
-# second run of THIS SAME checkout - a different worktree/clone (e.g.
-# claude-session-manager-refactor) has its own tests/.env.testing pointing
+# second run of THIS SAME checkout - a different worktree/clone has its
+# own tests/.env.testing pointing
 # at its own isolated fixture paths, so running its suite concurrently with
 # this one is genuinely safe, not something to block. Two runs of the SAME
 # checkout are not safe: they'd share the exact same TMUX_SOCKET/

@@ -38,12 +38,9 @@ class SidecarStore
         // default account. A profile name, not a resolved config_dir, so
         // this stays correct if agents.php's own entry for it changes later.
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'profile', 'TEXT');
-        // Transitional: renamed from claude_session_id/spawned_by_csm (Sessioneer
-        // rename, 2026-09-01) - CREATE TABLE IF NOT EXISTS alone never retroactively
-        // renames a column on a table already created under the old schema. Same
-        // add-alongside-not-migrate-in-place approach as the agent/runtime/title
-        // columns above; the old columns are left in place, unused, on the live
-        // (tmpfs, reboot-wiped) table rather than dropped.
+        // Added after the table's first schema - CREATE TABLE IF NOT EXISTS
+        // never adds a column to a table that already exists. Same
+        // add-alongside approach as the agent/runtime/title columns above.
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'agent_session_id', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'spawned_by_app', 'INTEGER');
 
