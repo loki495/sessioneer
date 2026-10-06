@@ -7,13 +7,13 @@ services:
       context: .
       args:
         APP_UID: ${APP_UID:-1000}
-        APP_GID: ${APP_GID:-1001}
+        APP_GID: ${APP_GID:-1000}
       dockerfile_inline: |
         FROM php:8.3-cli-alpine
         # No tmux client needed here - the container never touches tmux or
         # the host process table directly. See host-agent/ and README.md.
         ARG APP_UID=1000
-        ARG APP_GID=1001
+        ARG APP_GID=1000
         RUN addgroup -g "${APP_GID}" appgroup \
             && adduser -D -H -u "${APP_UID}" -G appgroup appuser
         # Default upload_max_filesize=2M/post_max_size=8M rejects a
