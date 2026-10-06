@@ -45,6 +45,17 @@ try {
         assert_equal(null, $detail['last_turn_error'], $status . ' turn clears the old quota warning despite stale stored state');
         assert_equal('', TranscriptView::render_turn_error_html($detail, 'Codex'), $status . ' turn has no error card');
     }
+    SessionStatusStore::update_status('quota-fixture', ['status' => 'idle']);
+    $active = sessioneer_headless_detail_shape(['id' => 'quota-fixture', 'status' => ['type' => 'active']], 'codex');
+    assert_equal(true, $active['working'], 'live active Codex status shows thinking despite a stale idle cache');
+    assert_equal('working', $active['status'], 'active Codex thread has consistent status and thinking');
+    SessionStatusStore::update_status('quota-fixture', ['status' => 'working']);
+    $idle = sessioneer_headless_detail_shape(['id' => 'quota-fixture', 'status' => ['type' => 'idle']], 'codex');
+    assert_equal(false, $idle['working'], 'live idle Codex status clears stale thinking');
+    SessionStatusStore::update_status('quota-fixture', ['status' => 'blocked', 'blocked' => ['question' => 'Allow command?']]);
+    $blocked = sessioneer_headless_detail_shape(['id' => 'quota-fixture', 'status' => ['type' => 'active']], 'codex');
+    assert_equal(false, $blocked['working'], 'a pending approval takes precedence over live active status');
+    assert_equal('Allow command?', $blocked['blocked_reason'], 'pending approval controls remain visible');
     $client->turns = [];
     assert_equal(null, $runtime->detail('quota-fixture')['session']['lastTurnError'], 'an empty thread has no error');
     assert_equal('Network unavailable', CodexTranscriptService::turn_error_message(['message' => 'Network unavailable', 'codexErrorInfo' => 'Other']), 'non-quota errors keep their actual message');

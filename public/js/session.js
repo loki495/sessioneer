@@ -959,7 +959,7 @@
     el.dataset.pendingText = pendingEntryText(blocks);
 
     var pendingNote = document.createElement('span');
-    pendingNote.className = 'italic';
+    pendingNote.className = 'italic pending-send-note';
     pendingNote.textContent = 'Sending…';
     el.querySelector('.mb-1').appendChild(pendingNote);
 
@@ -2448,6 +2448,10 @@
         .then(function (r) { return parseJsonResponse(r, 'compose-send'); })
         .then(function (data) {
           if (data && data.ok) {
+            if (pendingEl && data.message === 'Message queued') {
+              var pendingSendNote = pendingEl.querySelector('.pending-send-note');
+              if (pendingSendNote) pendingSendNote.textContent = 'Queued';
+            }
             composeTextarea.value = '';
             autoGrowCompose();
             clearComposeDraft();
