@@ -1143,6 +1143,10 @@ function sessioneer_headless_detail_shape(array $serve, string $agentId = 'openc
     $model = is_array($serve['model'] ?? null) ? $serve['model'] : [];
     $blocked = is_array($status['blocked'] ?? null) ? $status['blocked'] : null;
 
+    if ($agentId === 'codex' && is_string($serve['status']['type'] ?? null) && ($status['status'] ?? null) !== 'blocked') {
+        $status['status'] = $serve['status']['type'] === 'active' ? 'working' : 'idle';
+    }
+
     // OpenCode: 'blocked' is normally written by the throttled headless sync
     // (sessioneer_headless_sync(), which only runs off the dashboard `list`
     // action). A question that just appeared - or a session whose sync is
