@@ -1280,7 +1280,7 @@ try {
     assert_true(!$bad['ok'], 'create: a claude binary that fails to start is reported as failure');
 
     // --- AgentAdapter: create_agent_session() with an $agentId
-    // (docs/antigravity-adapter-plan.md Phase 2) ---
+    // (docs/history/antigravity-adapter-plan.md Phase 2) ---
 
     // Same failure shape as the CLAUDE_BIN case above, for antigravity.
     $originalAntigravityBin = Config::antigravity_bin();

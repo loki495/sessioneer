@@ -1127,7 +1127,7 @@ function sessioneer_codex_resume(string $workdir, string $threadId): array
  * workdir/agent/agent_label/agent_session_id/status). The raw serve GET
  * /session/{id} object carries id/title/directory but none of those keys,
  * which is why a headless session page used to render broken/blank instead
- * of loading - see docs/headless-runtime-plan.md Phase 3. Status comes from
+ * of loading - see docs/history/headless-runtime-plan.md Phase 3. Status comes from
  * the same SessionStatusStore the sync writes (default 'idle'); rich
  * blocked-prompt detail is Phase 3.
  *

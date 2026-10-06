@@ -221,7 +221,7 @@ sessioneer/
 │   │   │                     # TmuxRuntime (a real pane) vs HeadlessRuntime, behind
 │   │   │                     # RuntimeProvider/RuntimeRegistry/RuntimeType, plus the two
 │   │   │                     # headless clients (OpenCodeServeClient, CodexBridgeClient) and
-│   │   │                     # CodexHeadlessRuntime. See docs/headless-runtime-plan.md.
+│   │   │                     # CodexHeadlessRuntime. See docs/history/headless-runtime-plan.md.
 │   │   ├── Services/         # the real logic - too many classes to list here; the
 │   │   │                     # load-bearing ones are Config, SessionService (listing +
 │   │   │                     # build_session_entry), SessionLifecycleService (create/resume/

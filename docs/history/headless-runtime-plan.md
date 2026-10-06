@@ -1,5 +1,10 @@
 # Parallel tmux + headless runtimes — OpenCode and Codex implementation plan
 
+> **Historical design record:** kept for the research and reasoning behind
+> the current code; status lines and plans here are as of when it was
+> written, not the current state. See [`../features.md`](../features.md) for
+> what Sessioneer does today.
+
 Status: **Codex server-backed MVP implemented**, on `refactor/headless-runtime`
 (2026-08-27). The remaining Codex parity work is bridge reconnect recovery
 and persisted pending requests.

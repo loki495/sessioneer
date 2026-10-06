@@ -12,7 +12,7 @@
 #   own `/usage` call) - runs once and exits, same as a real print-mode
 #   invocation, with a canned JSON envelope matching the real `/usage`
 #   response shape (confirmed live 2026-08-24, see
-#   docs/antigravity-adapter-plan.md) - close enough for tests that only
+#   docs/history/antigravity-adapter-plan.md) - close enough for tests that only
 #   care about the parsing/storage logic downstream, not the real numbers.
 for arg in "$@"; do
     if [ "$arg" = "-p" ] || [ "$arg" = "--print" ]; then

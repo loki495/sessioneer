@@ -4,7 +4,7 @@ Description=Periodically poll Antigravity's own account-wide quota (agy -p "/usa
 [Timer]
 # 60s (Andres's own ask, 2026-08-24): confirmed live this call is free
 # (duration_seconds=0, zero token usage, no real model turn - see
-# docs/antigravity-adapter-plan.md's quota research), so there's no cost
+# docs/history/antigravity-adapter-plan.md's quota research), so there's no cost
 # pressure to poll less often. Quota itself only changes on real tool/model
 # usage elsewhere, so once a minute is already generous relative to how
 # fast the underlying number actually moves.

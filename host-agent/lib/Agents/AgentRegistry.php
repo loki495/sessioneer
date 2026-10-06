@@ -9,7 +9,7 @@ namespace HostAgent\Agents;
  * everything else (SessionLifecycleService, agent.php's dispatch_action(),
  * the dashboard) asks this for an adapter by id rather than instantiating
  * one directly, so adding a new agent (Antigravity - see
- * docs/antigravity-adapter-plan.md) only ever needs one line added to
+ * docs/history/antigravity-adapter-plan.md) only ever needs one line added to
  * ADAPTERS below.
  */
 class AgentRegistry
