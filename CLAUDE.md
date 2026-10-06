@@ -75,6 +75,13 @@ their code once, so restart them after editing what they run
 Restarting the Claude headless manager stops every live headless process:
 sessions resume on their next message and any open prompt is lost.
 
+**This checkout is the live, in-use deployment**, so a saved edit under `src/`
+or `public/` is live at once. Leave the site loading at every step: when code
+starts reading a new env var, add it to the real `.env` and run
+`docker compose up -d` in the same change, then check the LAN address and the
+proxied hostnames return 200. Use a separate worktree for anything that could
+break the page partway through.
+
 ## Architecture: two runtimes, one repo
 
 The web UI (`src/`) runs in a Docker container. It **never touches tmux or

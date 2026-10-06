@@ -37,6 +37,10 @@ services:
     restart: unless-stopped
     environment:
       SESSIONEER_AGENT_SOCKET: /run/sessioneer-agent.sock
+      # Host-header allowlist (see .env.example): requests for any other
+      # hostname get a 421, which is what stops DNS rebinding.
+      SESSIONEER_BIND_ADDR: ${BIND_ADDR:-127.0.0.1}
+      SESSIONEER_ALLOWED_HOSTS: ${ALLOWED_HOSTS:-}
       # php -S is single-threaded by default, so session.php's 3 parallel poll
       # requests (history/info/sidebar) were queuing behind each other instead
       # of actually running concurrently - measured ~165ms serialized vs an

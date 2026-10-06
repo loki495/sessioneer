@@ -205,7 +205,7 @@ sessioneer/
 │       │                     # everything except the two full-page renders), an AgentClient::agent_call(),
 │       │                     # then handing the result to a View to render
 │       ├── Services/
-│       │   └── AuthService.php  # same-origin check + CSRF token + session start, shared by every controller
+│       │   └── AuthService.php  # Host allowlist + same-origin check + CSRF token + session start
 │       └── Views/           # App\Views\* - one render class per feature area (TranscriptView,
 │                             # SessionRowView, BlockedPromptView, QuotaFooterView, HealthBoxView,
 │                             # PushNotifyView, plus PageView for the two full-page templates) -

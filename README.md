@@ -81,6 +81,11 @@ internet - it can create and kill agent sessions on your machine.
   also LAN-only - it's easy to have this app's own bind address correctly
   restricted while an existing shared reverse proxy in front of it is
   bound more broadly, silently exposing this app anyway.
+- The app only answers to `localhost`, `127.0.0.1`, `::1`, `BIND_ADDR` and
+  the hostnames in `ALLOWED_HOSTS` (other `Host` headers get a 421), so a
+  web page using DNS rebinding can't reach it. If you browse to it by any
+  other name, such as a reverse-proxy hostname, add that name to
+  `ALLOWED_HOSTS`.
 - Consider a host firewall rule (`iptables`/`ufw`/`nftables`) restricting
   inbound `APP_PORT` to your LAN subnet as defense in depth.
 
