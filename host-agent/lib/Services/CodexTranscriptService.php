@@ -12,6 +12,24 @@ class CodexTranscriptService
 {
     private const PREFIX = 'codex:';
 
+    /** Formats both app-server errors and errors saved by older bridges. */
+    public static function turn_error_message(mixed $error): ?string
+    {
+        if (is_string($error)) {
+            $decoded = json_decode($error, true);
+            if (is_array($decoded)) return self::turn_error_message($decoded);
+            return trim($error) !== '' ? $error : null;
+        }
+        if (!is_array($error)) return null;
+
+        $message = is_string($error['message'] ?? null) ? trim($error['message']) : '';
+        $info = $error['codexErrorInfo'] ?? null;
+        $quota = $info === 'usageLimitExceeded' || $info === 'UsageLimitExceeded'
+            || (is_array($info) && (array_key_exists('usageLimitExceeded', $info) || array_key_exists('UsageLimitExceeded', $info)));
+        if ($quota) return 'Codex quota reached.' . ($message !== '' ? ' ' . $message : ' Try again after your usage limit resets.');
+        return $message !== '' ? $message : 'Codex could not complete this turn.';
+    }
+
     public static function find_transcript_path(string $threadId): ?string
     {
         $sidecar = SidecarStore::read_sidecar($threadId);
