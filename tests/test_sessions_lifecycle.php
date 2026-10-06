@@ -1094,9 +1094,9 @@ try {
     // all. Display-only: never changes what a row's own Kill/Take-over
     // targets, never touches a row with no resolved id at all. ---
     $declutterInput = [
-        ['pid' => 100, 'cwd' => '/home/andres', 'is_daemon_supervisor' => true],
+        ['pid' => 100, 'cwd' => '/home/user', 'is_daemon_supervisor' => true],
         ['pid' => 200, 'cwd' => '/tmp/cc-daemon-1000/abc/spare', 'resolved_agent_session_id' => 'sess-a', 'resolved_title' => 'Session A'],
-        ['pid' => 201, 'cwd' => '/home/andres/www/project-a', 'resolved_agent_session_id' => 'sess-a', 'resolved_title' => 'Session A'],
+        ['pid' => 201, 'cwd' => '/home/user/www/project-a', 'resolved_agent_session_id' => 'sess-a', 'resolved_title' => 'Session A'],
         ['pid' => 300, 'cwd' => '/tmp/cc-daemon-1000/def/spare'],
     ];
     $decluttered = BareProcessService::declutter_bare_list($declutterInput);
