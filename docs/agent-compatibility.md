@@ -1,13 +1,43 @@
 # Agent Compatibility
 
-Sessioneer supports four coding agents, each with its own protocol and UI integration. This page documents tested versions and known quirks per agent.
+Sessioneer drives four coding agents, each through its own protocol. This page
+lists how well each one is supported, the last agent version it was verified
+against, and the main limitations. [features.md](features.md) has the full
+capability matrix and parity gaps.
 
-| Agent | Tested Versions | Status | Notes |
-|-------|-----------------|--------|-------|
-| **Claude Code** | 2.1.x (headless protocol captured and live-verified on 2.1.278) | Stable | Primary agent; runs headless (default) or in tmux; full feature support including hooks, tool approvals, context usage |
-| **Antigravity** | 1.0–1.2.1+ | Stable | Full tmux integration; approval dialog and tool-call shape updates in 1.2.1+ |
-| **OpenCode** | Recent versions | Stable | Headless by default (`opencode serve`); tmux fallback (`oc-*`) also supported |
-| **Codex** | Recent versions | Stable | Headless only (thread UUIDs); no tmux variant; private bridge for turn ownership |
+## Support tiers
+
+- **Primary**: the agent Sessioneer is built around.
+  Every feature lands here first, and the suite carries captured protocol
+  fixtures for it.
+- **Supported**: works end to end and is covered by the suite, with known gaps.
+- **Experimental**: works for the main flows but leans on pane scraping or
+  unofficial formats that change between releases.
+
+| Agent | Tier | Last verified | Runtimes | Main limitations |
+|-------|------|---------------|----------|------------------|
+| **Claude Code** | Primary | 2.1.278 (headless stream-json captures); tmux pane fixtures from 2.1.269 | Headless (default) or tmux | Headless sessions show no context % or worktree; one pending permission prompt tracked at a time |
+| **OpenCode** | Supported | 1.18.21 | `opencode serve` (default) or tmux fallback | No full status-hook plugin or mode vocabulary; tmux fallback is less complete |
+| **Codex** | Supported | 0.152.1 (app-server schema from 0.150.1) | Headless only | Approvals and input requests owned by Codex Remote are visible but can't be answered; no transcript search |
+| **Antigravity** | Experimental | `agy` 1.2.1 | tmux only | Approval dialogs read from the pane; model changes are account-wide; no transcript search; hooks are a manual install |
+
+"Last verified" is the newest version the integration was checked against live
+or captured in test fixtures, not a minimum. Older versions may work; newer ones
+usually do, but a changed protocol or screen layout can break detection until
+Sessioneer catches up.
+
+## Compatibility policy (0.x)
+
+Sessioneer is pre-1.0. Until 1.0:
+
+- Any minor release (0.x) can change behaviour, configuration or the support
+  tier of an agent. Release notes call out such changes.
+- Only the "Last verified" versions above are known to work. When an agent
+  ships a release that breaks Sessioneer, the fix targets the new agent version
+  and the table is updated; older agent versions aren't kept working on purpose.
+- The Claude Code health box warns when the installed `claude` is older than
+  the verified version. After upgrading to a newer one, run
+  `bash tests/run.sh --live` to check it against the real CLI.
 
 ## Per-Agent Details
 
@@ -16,7 +46,7 @@ Sessioneer supports four coding agents, each with its own protocol and UI integr
 - tmux: hooks are the primary integration point (`SessionStart`, `PreToolUse`, `PermissionRequest`, etc.); transcript rotation on `/clear`, `--resume`, `--fork-session` is tracked via `SessionStart`
 - Headless: a persistent manager runs one `claude -p` stream-json process per active session on your own claude.ai login (never an API key) and reports state, prompts and session-id changes from that process's own events; no hooks or pane are involved. See [features](features.md#headless-runtime)
 - Tool approval dialogs and blocked-on-input detection fully supported in both
-- Context usage percentage live-updated on dashboard
+- Context usage percentage on the dashboard for tmux sessions (headless sessions have no status line to read it from)
 - The dashboard health box compares the installed `claude --version` with the version the headless handling was verified against and flags an older one; after a newer one, run `bash tests/run.sh --live`
 
 ### Antigravity
