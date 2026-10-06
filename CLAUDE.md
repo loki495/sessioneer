@@ -330,8 +330,7 @@ that only `create_agent_session()`-spawned sessions have).
    into `SessionStatusStore`; throttled headless polling must preserve its
    live questions. Replies require the question request ID, not the tool
    call ID. v2 replies use no-content success; scoped legacy replies return
-   JSON `true`. See `.ai/research/opencode-11821-webui-sse-question-prompts.md`
-   for the captured evidence and WebUI compatibility-layer distinctions.
+   JSON `true`.
 
 - **Claude Code multi-account ("profile") support: any new Claude-specific
   transcript/session-lookup function needs a `?string $profile = null`

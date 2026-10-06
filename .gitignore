@@ -1,10 +1,8 @@
 .env
 .playwright-mcp/
 /todo
-/.ai/plans/
-/.ai/feature-atlas/
-/.ai/archive/
 /vendor/
 /host-agent/state/
 /docker-compose.override.yml
 /node_modules/
+/.ai/

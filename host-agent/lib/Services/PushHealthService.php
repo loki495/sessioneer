@@ -107,7 +107,7 @@ class PushHealthService
 
     /**
      * opencode-serve.service - the OpenCode headless server this app's
-     * OpenCode integration talks to (see .ai/PLAN.md). Checks two things:
+     * OpenCode integration talks to. Checks two things:
      * the systemd unit is enabled AND currently active, and the server
      * itself answers its /global/health endpoint on the configured port.
      * Not gated on OPENCODE_BIN being set - the app never reads opencode.db

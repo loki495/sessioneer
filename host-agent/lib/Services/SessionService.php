@@ -161,8 +161,8 @@ class SessionService
         $profile = is_string($sidecar['profile'] ?? null) ? $sidecar['profile'] : null;
 
         // Opencode creates no DB row at spawn time, only after the first
-        // prompt (reactive binding, like Antigravity's pre_invocation.php
-        // — see .ai/QUESTIONS.md Q1.1). Self-heal the sidecar's
+        // prompt (reactive binding, like Antigravity's pre_invocation.php).
+        // Self-heal the sidecar's
         // agent_session_id on the next poll so transcript reads start
         // working once the ses_* row appears. Best-effort, no extra tmux
         // capture needed — just a DB lookup by workdir+spawn time.

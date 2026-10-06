@@ -7,8 +7,7 @@ declare(strict_types=1);
  * against the isolated tmux socket and tests/fixtures/fake_opencode
  * (never the real tmux server or real opencode binary — same isolation as
  * test_sessions_lifecycle.php). Verifies the oc-* prefix, sidecar agent
- * field, and that agent_session_id starts as null (reactive binding —
- * see .ai/QUESTIONS.md Q1.1).
+ * field, and that agent_session_id starts as null (reactive binding).
  */
 
 require __DIR__ . '/lib/assert.php';
