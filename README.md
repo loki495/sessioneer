@@ -84,6 +84,68 @@ internet - it can create and kill agent sessions on your machine.
 - Consider a host firewall rule (`iptables`/`ufw`/`nftables`) restricting
   inbound `APP_PORT` to your LAN subnet as defense in depth.
 
+## Requirements
+
+- Linux with systemd user services (`systemd --user`) for the host agent.
+- PHP 8.2+ on the host, with `pdo_sqlite` (`php -m | grep sqlite`) and, for
+  a graceful shutdown of headless Claude sessions, `pcntl`. CI runs PHP 8.3.
+- Composer, and Docker with Docker Compose.
+- `tmux`, if you use Antigravity (always tmux-driven), run Claude Code in a
+  terminal instead of headless, or want OpenCode's tmux fallback.
+- At least one of the CLIs you plan to manage: [Claude
+  Code](https://claude.com/claude-code), [Codex](https://github.com/openai/codex),
+  [OpenCode](https://opencode.ai), or Antigravity's `agy`. Sessioneer manages
+  sessions for whichever of these you have installed; it doesn't install them.
+
+## Setup
+
+**Install and start the host agent before starting the container.** Docker
+bind-mounts a source path that doesn't exist yet as an empty directory, so if
+the container starts first, the agent socket inside it is a directory instead
+of the real socket and every request fails with "Cannot reach host agent."
+
+1. Clone the repo and install the host agent (runs natively under
+   `systemd --user`, no containers):
+   ```
+   git clone https://github.com/loki495/sessioneer.git
+   cd sessioneer
+   ./host-agent/install.sh
+   ```
+   It installs Composer dependencies, creates `host-agent/.env` from
+   `host-agent/.env.example`, records the `claude` it finds on `PATH` as
+   `CLAUDE_BIN`, and enables the agent socket plus the services for each agent
+   whose binary is set (the Claude headless manager, the Codex bridge, OpenCode
+   serve). Set `CODEX_BIN`, `OPENCODE_BIN` or `ANTIGRAVITY_BIN` in
+   `host-agent/.env` (`which <cli>`) for the agents you use, then re-run the
+   script. It prints the fix if lingering is off, which the socket needs to
+   survive logout and reboot.
+
+   Check that the socket exists and is a socket (`s` in `ls -la`), not a
+   directory:
+   ```
+   ls -la $XDG_RUNTIME_DIR/sessioneer-agent.sock
+   ```
+
+2. `cp .env.example .env` and set:
+   - `APP_GID` to the group the installer set on the agent socket
+     (`install.sh` prints it at the end).
+   - `SESSIONEER_AGENT_SOCKET_HOST` to the socket from step 1, normally
+     `/run/user/<your-uid>/sessioneer-agent.sock`.
+   - `BIND_ADDR` / `APP_PORT`; see "Network binding" above.
+
+3. Build and start the container:
+   ```
+   docker compose up -d --build
+   ```
+   PHP/JS edits under `src/` and `public/` never need a rebuild.
+
+4. Open `http://<BIND_ADDR>:<APP_PORT>/` (`http://127.0.0.1:8091/` by default).
+
+5. The dashboard's health box checks the prerequisites and each agent's
+   integration. Its **Install hooks** button merges Sessioneer's Claude Code
+   and Codex hooks into your existing hook files, leaving unrelated hooks in
+   place. The agent sections below cover the remaining per-agent steps.
+
 ## Intended use
 
 Sessioneer is meant to be run by an individual, on their own machine, driving
