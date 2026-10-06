@@ -1,8 +1,8 @@
 <?php
   $agentCardStyle = App\Views\SessionRowView::agent_card_style($agentId ?? 'claude');
 ?>
-<?php // Worker sessions (see the orchestrator-worker skill's session-tagging
-      // convention) render `hidden` by DEFAULT, server-side - not toggled on
+<?php // Worker sessions (see the worker-session tagging convention in
+      // docs/features.md) render `hidden` by DEFAULT, server-side - not toggled on
       // by CSS/JS after the fact - so there's no flash of a worker row
       // before the show-worker-sessions preference (default: hidden) has a
       // chance to run. Only JS-removing this class (see

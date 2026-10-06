@@ -340,8 +340,17 @@ Implementation entry points:
 - Transcript blocks support Markdown, collapsing, copying, attachments,
   tool-call grouping, subagent/worker lineage, thinking state, and turn errors
   where the source agent records them.
-- Worker sessions are tagged with parent lineage and hidden by default behind
-  **Show worker sessions**.
+- Worker sessions: an OpenCode or Codex session picked up by the headless
+  session sync whose title (or first prompt line, for agents with no title
+  flag) starts with
+  `[WORKER session=<orchestration-id>/<task-id> parent=<parent-session-id>]`
+  is treated as a worker dispatched by another session. tmux sessions are
+  never tagged. It shows with the tag
+  stripped from its title and a link to its parent, and is hidden from the
+  dashboard and sidebar lists by default behind **Show worker sessions**. The
+  match is lenient (a truncated tag still counts) and `parent=unknown` means
+  no parent link. Any orchestrator can use the convention; nothing in
+  Sessioneer creates the tag itself.
 - Archived sessions are read-only until resumed. Transcript routing, cwd/title
   resolution, paging, and resume routing cover all four agents.
 - Plan/handoff/todo files are read-only views; todo Markdown is rendered in the

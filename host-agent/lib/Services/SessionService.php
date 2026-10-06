@@ -86,9 +86,8 @@ class SessionService
     }
 
     /**
-     * Parses the orchestrator-worker skill's session-tagging convention
-     * (~/dotfiles/ai/skills/orchestrator-worker/SKILL.md, "Worker Session
-     * Tagging") from a session's raw title. A cross-tool worker's prompt is
+     * Parses the worker-session tagging convention (see docs/features.md)
+     * from a session's raw title. A cross-tool worker's prompt is
      * required to start with a literal
      * "[WORKER session=<orchestration-id>/<task-id> parent=<parent-session-id>]"
      * line, which (for tools with no explicit title-setting flag - codex,
@@ -116,8 +115,8 @@ class SessionService
         }
 
         // If the closing "]" never arrived (a truncated preview - codex/agy
-        // have no explicit title-setting flag, see the skill's own honesty
-        // note on this), there's no real task text left to show either way -
+        // have no explicit title-setting flag), there's no real task text
+        // left to show either way -
         // preg_match (not preg_replace) means a no-match here correctly
         // yields an empty $rest, falling to the placeholder below, rather
         // than leaking the raw, cut-off tag syntax into the UI.

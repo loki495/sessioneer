@@ -646,7 +646,7 @@ function sessioneer_headless_sessions(): array
             ? $sidecar['title']
             : ($workdir !== null && $workdir !== '' ? basename($workdir) : $id);
         // Every headless (opencode/codex) session's title is checked for the
-        // orchestrator-worker skill's [WORKER ...] tag - see
+        // worker-session [WORKER ...] tag (docs/features.md) - see
         // SessionService::parse_worker_tag() - since a bare cross-tool CLI
         // worker launch is the one path that bypasses this app's own spawn
         // API entirely and only ever surfaces here via this sync.

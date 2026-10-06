@@ -146,7 +146,7 @@ function shouldConfirmBeforeAnswer() {
 
 // Setting: whether sessions tagged as orchestrator-worker "workers" (see
 // row.php's data-kind="worker" and the [WORKER ...] session-tagging
-// convention in ~/dotfiles/ai/skills/orchestrator-worker/SKILL.md) show in
+// convention in docs/features.md) show in
 // the dashboard's session list and the sidebar's "other sessions" list.
 // Global (not per-session) - unlike SHOW_SUBAGENT_KEY, there's no "this
 // session's own output" framing here, it's one cross-app preference for
