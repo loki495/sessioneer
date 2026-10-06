@@ -173,7 +173,7 @@ Docker-spawned, makes that impossible by construction — not by convention.
    is the sole writer of `session_status` for these sessions - its children
    get no `SESSIONEER_SESSION_NAME`, so the hooks below stay silent for
    them. A write that throws (SQLITE_BUSY under WAL contention is the known
-   case, Dibs 388) is queued and retried every housekeeping tick rather than
+   case) is queued and retried every housekeeping tick rather than
    silently lost (`ClaudeHeadlessManager::persist_status()`); the session
    page's own `session_detail` call also cross-checks the manager's live
    state for the one session being viewed and self-heals the store on a
@@ -185,7 +185,7 @@ Docker-spawned, makes that impossible by construction — not by convention.
    whole conversation loop is idle again" (resets `openTurns` to 0
    unconditionally) rather than decrementing by 1 per message sent, because a
    message queued mid-tool-call can get folded into the SAME turn's eventual
-   result instead of producing its own (Dibs 400 comment 317 - decrementing
+   result instead of producing its own (decrementing
    by 1 left sessions stuck showing "working" forever after this happened).
    Separately, `ClaudeHeadlessManager::check_stall()` (in `housekeeping()`)
    watches for a `working` child gone completely silent (no stream-json event
@@ -195,8 +195,8 @@ Docker-spawned, makes that impossible by construction — not by convention.
    also produces no stdout and must not be mistaken for a hang) and forcibly
    ends a genuinely wedged one so the existing dormant/lazy-resume path can
    recover it, rather than leaving it stuck indefinitely. Never applies to
-   `blocked` (a pending prompt is normal to sit on). Protocol and design records live in Dibs (plan #269, research
-   #280, decision #282); `tests/fixtures/claude_stream_json_*_v2_1_278.ndjson`
+   `blocked` (a pending prompt is normal to sit on).
+   `tests/fixtures/claude_stream_json_*_v2_1_278.ndjson`
    are the captured stream-json events and `tests/fixtures/fake_claude_stream`
    is the scripted stand-in the tests drive. `ClaudeHeadlessRuntime` is the
    `RuntimeProvider` face of it: a `create` request with `runtime=headless`
@@ -336,7 +336,7 @@ that only `create_agent_session()`-spawned sessions have).
 - **Claude Code multi-account ("profile") support: any new Claude-specific
   transcript/session-lookup function needs a `?string $profile = null`
   parameter, or it silently only works for the default account.** Added
-  2026-09-18 (Dibs plan #230/#234/#236) - a session can be spawned under a
+  2026-09-18 - a session can be spawned under a
   different `CLAUDE_CONFIG_DIR` (a separate account, e.g. work), named in
   `host-agent/config/agents.php`. `Config::claude_config_dir($profile)` is
   the base every Claude-account-scoped path is built from; the profile name

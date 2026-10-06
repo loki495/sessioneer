@@ -504,7 +504,7 @@ class BareProcessService
         foreach ($candidates as $c) {
             // list_archived_sessions() now scans every configured Claude
             // Code profile and tags each candidate with the one its
-            // transcript actually lives under (see Dibs plan #230) - must
+            // transcript actually lives under - must
             // be passed back here, or a work-profile candidate's own
             // timestamp lookup would silently miss (glob against the
             // wrong/default account's projects dir).

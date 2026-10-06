@@ -356,7 +356,7 @@ class SessionController extends Controller
 
     /**
      * GET-only JSON endpoint backing the New Session form's Claude account
-     * picker (Dibs plan #230/#234) - profile names live in host-agent/
+     * picker - profile names live in host-agent/
      * config/agents.php, which this container has no direct filesystem
      * access to (same reason listModels() above reaches through the
      * socket rather than reading host-agent state directly) - see

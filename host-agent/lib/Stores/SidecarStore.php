@@ -32,7 +32,7 @@ class SidecarStore
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'agent', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'runtime', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'title', 'TEXT');
-        // Added for multi-account support (Dibs plan #230) - the Claude
+        // Added for multi-account support - the Claude
         // Code profile name (see Config::claude_profile_config()) this
         // session was spawned under, or NULL for a pre-profile row/the
         // default account. A profile name, not a resolved config_dir, so
@@ -103,7 +103,7 @@ class SidecarStore
                 // null for pre-headless rows, so callers fall back to a
                 // workdir basename.
                 'title' => $row['title'],
-                // Added for multi-account support (Dibs plan #230). NULL
+                // Added for multi-account support. NULL
                 // for any row written before this column existed, or for a
                 // session spawned under the default account - callers
                 // treat a null profile as "use Config's own defaults",

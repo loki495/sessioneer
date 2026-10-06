@@ -154,8 +154,8 @@ class SessionService
 
         $sidecar = SidecarStore::read_sidecar($tmuxSession['name']);
         $agentId = is_string($sidecar['agent'] ?? null) ? $sidecar['agent'] : 'claude';
-        // Which Claude Code account this session was spawned under (see
-        // Dibs plan #230) - null for every non-Claude agent and every
+        // Which Claude Code account this session was spawned under -
+        // null for every non-Claude agent and every
         // sidecar written before profiles existed, both of which mean
         // "the default account", same fallback Config's own profile
         // helpers already use.

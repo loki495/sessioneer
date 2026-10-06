@@ -272,7 +272,7 @@ class Config
      * the manager suspects it is wedged and sends a diagnostic interrupt.
      * Generous by design: a single slow tool call (a browser automation step,
      * a long build) produces no stdout either, and this must not cancel one
-     * just because it's taking a while. See Dibs 400 comment 317.
+     * just because it's taking a while.
      */
     public static function claude_headless_stall_interrupt_seconds(): int
     {

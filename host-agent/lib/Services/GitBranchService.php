@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace HostAgent\Services;
 
 /**
- * The session page's git-branch line (Dibs 91) - deliberately agent-agnostic:
+ * The session page's git-branch line - deliberately agent-agnostic:
  * every session already carries a workdir regardless of which agent runs it,
  * and a branch name is a property of that directory, not of the agent. Kept
  * separate from StatuslineMarkerService's git_worktree (Claude tmux only, read

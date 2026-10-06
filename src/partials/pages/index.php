@@ -136,7 +136,7 @@ $this->layout('layout', [
           <?php endforeach ?>
         </select>
       </label>
-      <!-- Claude account picker (Dibs plan #230/#234) - which
+      <!-- Claude account picker - which
            host-agent/config/agents.php profile (e.g. a separate work
            account) this session spawns under. Claude-only (agent picker
            above must be 'claude'); hidden entirely for every other agent

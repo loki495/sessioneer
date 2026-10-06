@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Dibs 388: a real headless session was correctly `blocked` in
+ * A real headless session was correctly `blocked` in
  * ClaudeHeadlessManager's own memory (a genuine can_use_tool prompt) while
  * SessionStatusStore's row silently never learned that - the write threw
  * (SQLITE_BUSY under WAL contention is the leading suspect) and was
@@ -43,8 +43,7 @@ $root = sys_get_temp_dir() . '/sessioneer-test-status-reconcile-' . getmypid();
 // (the manager passes its own env to every child it spawns), so an "if
 // unset" guard would silently do nothing and this test would run against
 // the real host's sessions.sqlite. Found live 2026-09-27 - the first version
-// of THIS test file did exactly that and briefly corrupted real session rows
-// (see Dibs 388's own follow-up comment).
+// of THIS test file did exactly that and briefly corrupted real session rows.
 $realSidecarDir = Config::sidecar_dir();
 putenv('SIDECAR_DIR=' . $root . '/sidecars');
 @mkdir($root . '/sidecars', 0700, true);

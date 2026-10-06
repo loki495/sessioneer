@@ -34,8 +34,7 @@ version and probing capabilities at startup are therefore part of the design.
   from the process, never passes `--bare`, kills a process whose `init`
   reports an `apiKeySource` other than `none`, and refuses new starts while
   overage is in use. tmux remains a supported runtime for Claude and for
-  sessions started by hand. Design and protocol records: Dibs decision #298
-  and research #280.
+  sessions started by hand.
 - **antigravity has no headless session mode** (only one-shot
   `agy -p`). Stays tmux-driven.
 - **codex uses `codex app-server` as its primary runtime.** `codex exec

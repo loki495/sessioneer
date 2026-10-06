@@ -65,8 +65,8 @@ interface AgentAdapter
      *   env: extra env vars SessionLifecycleService should set on the
      *   spawned tmux pane (via `-e`, same mechanism as its own
      *   SESSIONEER_SESSION_NAME) - e.g. ClaudeCodeAdapter's CLAUDE_CONFIG_DIR
-     *   when $options['profile'] names a non-default account (see Dibs
-     *   plan #230). Omitted entirely by an adapter with nothing to add.
+     *   when $options['profile'] names a non-default account.
+     *   Omitted entirely by an adapter with nothing to add.
      */
     public function build_spawn_argv(array $options): array;
 

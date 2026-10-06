@@ -225,8 +225,8 @@ class TranscriptService
      *
      * $profile: same meaning as claude_projects_dir()'s own - null scans
      * only the default account. Scanning every configured profile's
-     * transcripts in one archived-session listing is a known follow-up
-     * (Dibs plan #230's UI/verification tasks), not done here yet - no
+     * transcripts in one archived-session listing is a known follow-up,
+     * not done here yet - no
      * caller passes a non-null profile today.
      *
      * @return array<int, array{agent_session_id:string, cwd:?string, ai_title:?string, last_activity:int, path:string}>

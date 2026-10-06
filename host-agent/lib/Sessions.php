@@ -156,7 +156,7 @@ function dispatch_action(array $request): array
             $workdir = (string)($request['workdir'] ?? '');
             $modelId = is_string($request['model'] ?? null) ? $request['model'] : null;
             $modelProvider = is_string($request['model_provider'] ?? null) ? $request['model_provider'] : null;
-            // Which Claude Code account to spawn under (see Dibs plan #230) -
+            // Which Claude Code account to spawn under -
             // ignored by every agent but 'claude' (AgentAdapter's own "reads
             // only what it understands" contract). Not surfaced in the New
             // Session UI yet, but wired through the protocol so it's ready
@@ -414,8 +414,8 @@ function dispatch_action(array $request): array
         case 'list_models':
             return sessioneer_list_models(is_string($request['agent'] ?? null) ? $request['agent'] : 'opencode');
 
-        // Backs the New Session form's Claude account picker (Dibs plan
-        // #230/#234) - profile NAMES only, live off agents.php
+        // Backs the New Session form's Claude account picker -
+        // profile NAMES only, live off agents.php
         // (Config::claude_profile_names()), never a static/cached list, so
         // an edit to that file is picked up on the very next page load
         // with no app restart needed.
@@ -989,7 +989,7 @@ function sessioneer_headless_question_prompt(array $q): array
 }
 
 /**
- * Adds `git_branch` (Dibs 91) to a session_detail result: the workdir's
+ * Adds `git_branch` to a session_detail result: the workdir's
  * current branch, agent-agnostic (any session has a workdir, regardless of
  * which agent runs it) - see GitBranchService's own docblock for why this is
  * a separate concern from Claude's tmux-only, statusline-derived
