@@ -298,6 +298,11 @@ path. Two separate transports serve different purposes:
    started or currently loaded by Codex Remote. Queued turns are FIFO and wait
    behind an active turn.
 
+Quota failures appear as a readable error in the session conversation, including
+Codex's reset guidance when supplied. The latest turn is read directly so queued
+turns are covered even when they run outside Sessioneer's private bridge. Starting
+a new turn clears the previous error.
+
 This is bidirectional at the normal-message level, not at the pending-prompt
 protocol level. Approval and `request_user_input` response IDs are scoped to
 the app-server connection that created them. A prompt raised while Sessioneer's

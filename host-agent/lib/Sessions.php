@@ -28,6 +28,7 @@ use HostAgent\Services\TranscriptRouter;
 use HostAgent\Services\BareProcessService;
 use HostAgent\Services\HookService;
 use HostAgent\Services\CodexHookService;
+use HostAgent\Services\CodexTranscriptService;
 use HostAgent\Services\UploadService;
 use HostAgent\Services\QuotaService;
 use HostAgent\Stores\SidecarStore;
@@ -1218,7 +1219,11 @@ function sessioneer_headless_detail_shape(array $serve, string $agentId = 'openc
         'read_only_reason' => is_string($serve['readOnlyReason'] ?? null) ? $serve['readOnlyReason'] : null,
         'current_provider' => is_string($model['providerID'] ?? null) ? $model['providerID'] : (is_string($serve['modelProvider'] ?? null) ? $serve['modelProvider'] : null),
         'current_effort' => is_string($serve['reasoningEffort'] ?? null) ? $serve['reasoningEffort'] : (is_string($serve['effort'] ?? null) ? $serve['effort'] : null),
-        'last_turn_error' => null,
+        'last_turn_error' => $agentId === 'codex'
+            ? (array_key_exists('lastTurnError', $serve)
+                ? CodexTranscriptService::turn_error_message($serve['lastTurnError'])
+                : CodexTranscriptService::turn_error_message($status['last_turn_error'] ?? null))
+            : null,
         'context_used_percentage' => null,
         'git_worktree' => null,
         'has_transcript' => true,
