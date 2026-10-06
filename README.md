@@ -436,6 +436,18 @@ mechanism, notification-content details, and the quota-push variant.
 - Browser coverage exercises the main rendered interactions, but live calls to
   third-party agent services still require explicit local verification.
 
+## How it's tested
+
+`bash tests/run.sh` runs a hermetic suite of plain PHP test scripts against
+an isolated tmux server, throwaway SQLite files and fake agent binaries, so
+it never touches your real sessions or spends plan usage. It covers the host
+agent protocol, session lifecycle, each agent's prompt parsing against
+captured real output, and the web UI, including headless-Chrome browser
+tests. CI runs the full suite, PHPStan, a Composer audit and a JS syntax
+check on every pull request, and merging to `master` requires it to pass.
+`bash tests/run.sh --live` adds opt-in checks against the real installed
+agent CLIs.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the architecture deep-dive, file
