@@ -4,9 +4,9 @@ This file provides guidance to Antigravity (agy) when working with code in this 
 
 ## What this is
 
-A personal, single-user web UI for managing tmux sessions running Claude
-Code, Codex, OpenCode, and Antigravity (`cc-*`, `cx-*`, `oc-*`, `ag-*`) on
-this dev box — list sessions, see blocked prompts, answer them, send
+A personal, single-user web UI for managing Claude Code, Codex, OpenCode
+and Antigravity sessions (tmux sessions `cc-*`, `oc-*`, `ag-*`, plus
+headless ones) on this dev box — list sessions, see blocked prompts, answer them, send
 messages, view transcripts, kill sessions. No database, no user accounts;
 access control is the network binding (LAN-only), not a login.
 
@@ -17,8 +17,9 @@ bash tests/run.sh          # run the whole test suite
 bash tests/run.sh --bail   # stop at the first failing test file
 ```
 
-No Composer test runner, no Pest, no build step for JS/CSS (plain files,
-no bundler/npm). `tests/run.sh` runs each `tests/test_*.php` directly via
+No Composer test runner, no Pest, and nothing to build to run the app (plain
+JS; `public/css/tailwind.css` is committed, regenerated with the dev-only
+`npm run build:css`). `tests/run.sh` runs each `tests/test_*.php` directly via
 the `php` CLI. Tests are self-isolating: they point `TMUX_SOCKET`/
 `CLAUDE_BIN`/sidecar paths at fixtures (`tests/.env.testing`), so they
 never touch the real tmux server or spawn a real (billable) process, and

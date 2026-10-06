@@ -43,7 +43,7 @@ All three are now fed by hook sequence:
 
 - `host-agent/hooks/user_prompt_submit.php` (Claude Code's `UserPromptSubmit` hook, fires whenever a message is actually submitted) marks the session `working` and clears any previously-recorded blocked state.
 - `host-agent/hooks/permission_request.php` (Claude Code's `PermissionRequest` hook, fires when a permission prompt is shown) records the blocked state: `permission_mode` from Claude Code's status line, and `blocked_since` timestamp. This is what triggers "⚠️ blocked on input" on the dashboard.
-- `host-agent/hooks/stop.php` (Claude Code's `Stop` hook, fires when a session is stopped/killed) clears the blocked state, so the dashboard knows the session is no longer waiting.
+- `host-agent/hooks/stop.php` (Claude Code's `Stop` hook, fires once Claude finishes responding, not while it's blocked on a permission prompt) marks the session idle and clears any blocked state.
 
 Together, these three hooks own the full `blocked` / `working` / `idle` state machine without any pane scraping. If Claude Code's rendered state glyph ever changes, nothing breaks — Sessioneer uses the hooks, not the glyphs.
 

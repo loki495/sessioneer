@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A personal, single-user web UI for managing tmux sessions running Claude
-Code, Codex, OpenCode, and Antigravity (`cc-*`, `cx-*`, `oc-*`, `ag-*`) on
-this dev box — list sessions, see blocked prompts, answer them, send
+A personal, single-user web UI for managing Claude Code, Codex, OpenCode
+and Antigravity sessions (tmux sessions `cc-*`, `oc-*`, `ag-*`, plus
+headless ones) on this dev box — list sessions, see blocked prompts, answer them, send
 messages, view transcripts, kill sessions. No database, no user accounts;
 access control is the network binding (LAN-only), not a login.
 
@@ -133,7 +133,7 @@ Docker-spawned, makes that impossible by construction — not by convention.
    `dispatch_push_action()` handles `push_*` actions, falling through
    (`null`) to `Sessions.php`'s `dispatch_action()` for everything else.
    Both are now thin switches — the real logic lives in
-   `host-agent/lib/Services/*` (36 classes; the load-bearing ones are
+   `host-agent/lib/Services/*` (the load-bearing ones are
    `Config`, `SessionService`, `SessionLifecycleService`,
    `PromptInteractionService`, `ArchivedSessionService`, `PlanFileService`,
    `TmuxService`, `TranscriptService`, `PromptParser`, `ProcessInspector`,
@@ -411,17 +411,15 @@ that only `create_agent_session()`-spawned sessions have).
     the shared copy-to-clipboard affordance (`copyTextToClipboard()` in
     `common.js`). A new block kind needs both attached the same way, or it
     silently loses search-jump and copy support that every other kind has.
-- Branch model actually used here: work happens directly on `master`
-  (pushed straight to `origin/master`) for anything normal - a new feature,
-  a bug fix, a doc update. A separate `refactor/*` or `feature/*` branch
-  (sometimes in a second git worktree, e.g.
-  `../claude-session-manager-refactor`) is reserved for changes big/risky
-  enough that the live site could stop loading partway through - a
-  multi-phase structural refactor (the Plates-templating and
-  front-controller/router migrations were the two so far), not a small
-  self-contained feature. Once merged, delete the branch (both local and
-  remote) - don't let finished branches pile up. This repo does not use the
-  generic global `master → local → feature` model.
+- Branch model actually used here: `master` is protected (the "Core tests
+  (PHP 8.3)" check is required, the branch must be up to date, and this
+  applies to admins), so every change goes through a short-lived branch and
+  a pull request, rebased onto `master` before it merges. Changes big or
+  risky enough that the live site could stop loading partway through (a
+  multi-phase structural refactor, like the Plates-templating and
+  front-controller/router migrations) are done in a separate git worktree.
+  Once merged, delete the branch, local and remote. This repo does not use
+  the generic global `master → local → feature` model.
 - Andres may open-source this repo. When a design choice could go either
   toward "simplest for the one deployment this runs today" or "the
   standard/portable shape," default to the portable one, even if it's a

@@ -1,46 +1,63 @@
-# Frontend Build and Type-Checking
+# Frontend: CSS build and JS type-checking
 
-This document covers the frontend tooling: CSS (Tailwind), JavaScript transpilation, and type-checking setup.
-
-## CSS Build (Tailwind)
-
-Sessioneer uses Tailwind CSS v4 with a native CSS engine build (not PostCSS). The build is configured in `tailwind.config.js` and runs via npm:
+Nothing needs building to run the app. `public/js/*.js` is plain, unbundled ES5,
+and `public/css/tailwind.css` is a committed, precompiled file. `npm` is a
+dev-only tool for whoever changes markup, classes or JS.
 
 ```bash
-npm run build       # Production build (minified, optimized)
-npm run dev         # Watch mode (rebuilds on file change)
+npm install          # once
+npm run build:css    # regenerate public/css/tailwind.css after changing utility classes
+npm run typecheck    # JSDoc type-check of public/js/*.js (tsc --noEmit)
 ```
 
-**Important:** Tailwind's native engine requires Node 20+. Check your installed version with `node --version`.
+## JavaScript is plain ES5
 
-The output CSS is written to `public/styles.css`, which is referenced in `resources/views/app.blade.php`. This build step is part of the Docker setup and runs automatically when the container starts.
+`public/js/*.js` uses `var` and `function`: no `const`/`let`, arrow functions,
+`Set` or template literals. There's no transpiler, and mobile Safari
+compatibility (this is a home-screen PWA) has repeatedly been the reason.
 
-### Why Plain CSS in JS
+## CSS (Tailwind v4)
 
-The frontend JavaScript (`public/js/*.js`) is deliberately **plain ES5** — no `const`/`let`/arrow functions/template literals. Mobile Safari compatibility is the reason, since this is a PWA meant to be added to an iOS/Android home screen.
+`resources/tailwind.css` is the source: `@import "tailwindcss"` plus `@source`
+globs for `src/partials/**/*.php`, `src/lib/Views/**/*.php` and
+`public/js/**/*.js`. Much of the markup is built as HTML strings inside the JS,
+so the class scanner has to read those files too. `npm run build:css` writes the
+minified result to `public/css/tailwind.css`; commit it with the change that
+needed it. There is no `tailwind.config.js` or custom theme.
 
-## Type-Checking Frontend JavaScript (JSDoc + TypeScript Compiler)
+The CSS used to come from Tailwind's CDN script. It was replaced because a page
+fetching a script from a third-party host at runtime is an external dependency
+for an app whose point is that everything runs locally.
 
-The frontend is type-checked without a transpiler using JSDoc annotations + the TypeScript compiler in "check JS only" mode:
+## Type-checking the JS (JSDoc + tsc)
 
-```bash
-npm run type-check
-```
+`npm run typecheck` runs `tsc --noEmit` over the plain `.js` files (see
+`tsconfig.json`): no build step and no transpilation. `// @ts-check` at the top
+of each file only signals the editor and the CLI. `public/js/types.d.ts`
+declares the one global the app adds itself, `window.SESSIONEER_BOOTSTRAP`.
+`public/sw.js` is excluded: a service worker runs in a different global scope
+and would need its own tsconfig with the `webworker` lib.
 
-This validates type consistency in `public/js/*.js` against JSDoc type comments, catching common mistakes early without needing to build/transpile. Configuration lives in `tsconfig.json` with `allowJs: true` and `checkJs: true`.
-
-**Example JSDoc type annotation:**
 ```javascript
 /**
- * Fetch the current session list
- * @param {string} sessionName - The session identifier
- * @returns {Promise<Session[]>} Array of session objects
+ * @param {string} id
+ * @returns {string}
  */
-async function fetchSessions(sessionName) { ... }
+function inputValue(id) {
+    var input = /** @type {HTMLInputElement} */ (document.getElementById(id));
+    return input.value;
+}
 ```
 
-This approach keeps the runtime code vanilla ES5 (for mobile Safari) while still catching type mistakes before they reach users.
+The check doesn't report zero errors yet, and that's expected. Most findings
+are DOM lookups typed too loosely (`getElementById()` returning `HTMLElement`,
+`event.target` typed as `EventTarget`); the fix is a JSDoc cast such as
+`/** @type {HTMLInputElement} */` at each call site, applied incrementally. Two
+are known gaps in the DOM typings, left as they are: `resolve()` called with no
+argument in `common.js`, and `new URLSearchParams(new FormData(form))` in
+`index.js`. New code shouldn't add errors.
 
-## Frontend Testing
+## Testing
 
-Frontend tests are integration tests that exercise the full stack (container + host agent). See [CONTRIBUTING.md](../CONTRIBUTING.md#running-tests) for test commands.
+The UI is tested end to end through the real front controller: see "Running
+tests" in [CONTRIBUTING.md](../CONTRIBUTING.md#running-tests).

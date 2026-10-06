@@ -151,6 +151,15 @@ of the real socket and every request fails with "Cannot reach host agent."
    and Codex hooks into your existing hook files, leaving unrelated hooks in
    place. The agent sections below cover the remaining per-agent steps.
 
+**Deploying behind a real web server instead of `php -S`**: point its
+document root at `public/`, nothing else. Apache: enable `mod_rewrite` and
+use `public/.htaccess` as-is. nginx: add the equivalent of
+```nginx
+location / {
+    try_files $uri $uri/ /index.php?$query_string;
+}
+```
+
 ## Intended use
 
 Sessioneer is meant to be run by an individual, on their own machine, driving
@@ -180,6 +189,8 @@ answered in Sessioneer.
 | Antigravity | tmux only | Hooks provide lifecycle and conversation identity; the live pane identifies approval dialogs | Install its global hooks; optionally enable its quota timer |
 | OpenCode | `opencode serve` by default; tmux fallback | Serve API + SQLite + global permissions plugin; tmux permissions also consult the live pane | Re-run `host-agent/install.sh` after setting `OPENCODE_BIN` |
 | Codex | headless only | Private app-server bridge for locally-owned startup; persistent queue + Codex hooks for shared/Remote-owned threads | Click **Install hooks**, trust them in Codex, and bootstrap Remote control when sharing with Codex Remote |
+
+For detailed agent version compatibility and known quirks, see [`docs/agent-compatibility.md`](docs/agent-compatibility.md).
 
 ### Claude Code
 
@@ -288,9 +299,6 @@ SQLite usage with the OpenCode Go usage endpoint when configured.
 
 ### Codex: shared threads and ownership
 
-For detailed agent version compatibility and known quirks, see [`docs/agent-compatibility.md`](docs/agent-compatibility.md).
-
-
 Sessioneer never puts Codex in tmux. `host-agent/install.sh` installs and
 enables `sessioneer-codex-bridge.service`, which owns a private, persistent
 `codex app-server --stdio` connection for thread creation, the first turn of
@@ -346,17 +354,13 @@ useful prompt context, removes answer buttons, and directs you to Codex Remote.
 The persistent queue solves cross-owner **messages**, not cross-owner **prompt
 responses**.
 
-**Deploying behind a real web server instead of `php -S`**: point its
-document root at `public/`, nothing else. Apache: enable `mod_rewrite` and
-use `public/.htaccess` as-is. nginx: add the equivalent of
-```nginx
-location / {
-    try_files $uri $uri/ /index.php?$query_string;
-}
-```
-
-
 ## Home screen bookmark
+
+On a phone on the same LAN, open `http://<BIND_ADDR>:<APP_PORT>/` (or your
+own HTTPS URL if you've set one up - required for Web Push, see below) and
+use "Add to Home Screen" (Safari: Share → Add to Home Screen; Chrome: ⋮
+menu → Add to Home Screen).
+
 ## Web Push notifications
 
 Lets a session's newly-blocked prompt reach your phone without the tab
@@ -416,7 +420,7 @@ self-heals a subscription that's started to go stale.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full push-delivery
 mechanism, notification-content details, and the quota-push variant.
 
-# Current limitations
+## Current limitations
 
 
 - No accounts, no multi-user support — this is a single-operator tool for one person's
@@ -438,3 +442,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the architecture deep-dive, file
 structure, hook rationale, development workflow, and testing details.
 
 ## License
+
+[MIT](LICENSE)

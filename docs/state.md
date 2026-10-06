@@ -9,6 +9,8 @@ Conversations live in each agent's own transcript files. Sessioneer itself keeps
 | `sessions.sqlite` | `$SIDECAR_DIR/sessions.sqlite` (`SESSIONS_SQLITE_FILE` overrides; `SIDECAR_DIR` defaults to `/run/user/<uid>/sessioneer-sessions`) | tmpfs, cleared on reboot (the tracked processes died with the reboot anyway) | `sidecars`, `session_status`, `pending_tools` |
 | `push.sqlite` | `host-agent/state/push.sqlite` (`PUSH_SQLITE_FILE` overrides) | persistent (a phone's push subscription must survive a reboot) | `push_subscriptions`, `push_session_state`, `push_quota_state`, `global_state` |
 
+These stores used to be JSON files written read-merge-write, which lost updates when two hooks fired close together (`PreToolUse` and `PermissionRequest` for the same tool call), and quota notifications could fire twice the same way. SQLite serialises writers, so each update is one atomic `UPDATE` or `INSERT ... ON CONFLICT DO UPDATE`: the race is closed structurally, not with a lock around the old read-modify-write.
+
 Both are opened with WAL mode by one connection per request; the schemas live in `host-agent/lib/Stores/SqliteDb.php`, and columns added later are migrated in with `ALTER TABLE ... ADD COLUMN` on first use.
 
 ## `sessions.sqlite`
