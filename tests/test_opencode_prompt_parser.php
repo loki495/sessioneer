@@ -50,7 +50,7 @@ try {
     // --- parse_blocking_prompt: permission shape ---
     $parsed = OpenCodePromptParser::parse_blocking_prompt($permPane);
     assert_equal('permission', $parsed['tool_name'] ?? null, 'parse_blocking_prompt: detects the permission modal');
-    assert_equal('Access external directory ~/dotfiles/claude/agents', $parsed['question'] ?? null, 'parse_blocking_prompt: permission question is the "← Access ..." line');
+    assert_equal('Access external directory ~/projects/docs-site/templates', $parsed['question'] ?? null, 'parse_blocking_prompt: permission question is the "← Access ..." line');
     $labels = array_column($parsed['options'], 'label', 'number');
     assert_equal('Allow once', $labels[1] ?? null, 'parse_blocking_prompt: permission option 1 is Allow once');
     assert_equal('Allow always', $labels[2] ?? null, 'parse_blocking_prompt: permission option 2 is Allow always');

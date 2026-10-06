@@ -43,12 +43,12 @@ try {
         'id' => 'per_abc',
         'type' => 'require',
         'sessionID' => $ses,
-        'title' => 'Access external directory ~/dotfiles/claude/agents',
-        'pattern' => ['/home/user/dotfiles/claude/agents/*'],
+        'title' => 'Access external directory ~/projects/docs-site/templates',
+        'pattern' => ['/home/user/projects/docs-site/templates/*'],
         'metadata' => ['message' => 'Run bash: ls -la'],
     ];
     PermissionStore::write_pending_permission($ses, $permission);
-    assert_equal('Access external directory ~/dotfiles/claude/agents', PermissionStore::read_pending_permission($ses)['title'] ?? null, 'write_pending_permission + read_pending_permission: round-trips the record');
+    assert_equal('Access external directory ~/projects/docs-site/templates', PermissionStore::read_pending_permission($ses)['title'] ?? null, 'write_pending_permission + read_pending_permission: round-trips the record');
 
     // --- answer intent write + consume (consume clears) ---
     assert_equal(null, PermissionStore::consume_answer_intent($ses), 'consume_answer_intent: null before any intent is written');
