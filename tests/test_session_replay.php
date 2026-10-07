@@ -44,7 +44,8 @@ $ctx = replay_setup('full-session', $workdir);
 $agentSocket = sys_get_temp_dir() . '/sessioneer-test-replay-agent.sock';
 $agentHarness = start_harness(['php', dirname(__DIR__) . '/host-agent/agent.php'], $agentSocket);
 
-$port = 18199;
+require_once __DIR__ . '/lib/free_port.php';
+$port = test_free_port();
 $baseUrl = "http://127.0.0.1:{$port}";
 
 $serverEnv = array_merge(getenv(), ['SESSIONEER_AGENT_SOCKET' => $agentSocket]);

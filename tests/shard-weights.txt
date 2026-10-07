@@ -39,6 +39,7 @@ test_push_headless_claude.php 20
 test_push.php 1
 test_quota_live_state_writer.php 1
 test_quota.php 10
+test_run_isolation.php 1
 test_runtime_contract.php 1
 test_runtime_headless_routing.php 3
 test_session_hook.php 6
