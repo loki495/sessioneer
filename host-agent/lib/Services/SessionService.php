@@ -86,9 +86,8 @@ class SessionService
     }
 
     /**
-     * Parses the orchestrator-worker skill's session-tagging convention
-     * (~/dotfiles/ai/skills/orchestrator-worker/SKILL.md, "Worker Session
-     * Tagging") from a session's raw title. A cross-tool worker's prompt is
+     * Parses the worker-session tagging convention (see docs/features.md)
+     * from a session's raw title. A cross-tool worker's prompt is
      * required to start with a literal
      * "[WORKER session=<orchestration-id>/<task-id> parent=<parent-session-id>]"
      * line, which (for tools with no explicit title-setting flag - codex,
@@ -116,8 +115,8 @@ class SessionService
         }
 
         // If the closing "]" never arrived (a truncated preview - codex/agy
-        // have no explicit title-setting flag, see the skill's own honesty
-        // note on this), there's no real task text left to show either way -
+        // have no explicit title-setting flag), there's no real task text
+        // left to show either way -
         // preg_match (not preg_replace) means a no-match here correctly
         // yields an empty $rest, falling to the placeholder below, rather
         // than leaking the raw, cut-off tag syntax into the UI.
@@ -154,16 +153,16 @@ class SessionService
 
         $sidecar = SidecarStore::read_sidecar($tmuxSession['name']);
         $agentId = is_string($sidecar['agent'] ?? null) ? $sidecar['agent'] : 'claude';
-        // Which Claude Code account this session was spawned under (see
-        // Dibs plan #230) - null for every non-Claude agent and every
+        // Which Claude Code account this session was spawned under -
+        // null for every non-Claude agent and every
         // sidecar written before profiles existed, both of which mean
         // "the default account", same fallback Config's own profile
         // helpers already use.
         $profile = is_string($sidecar['profile'] ?? null) ? $sidecar['profile'] : null;
 
         // Opencode creates no DB row at spawn time, only after the first
-        // prompt (reactive binding, like Antigravity's pre_invocation.php
-        // — see .ai/QUESTIONS.md Q1.1). Self-heal the sidecar's
+        // prompt (reactive binding, like Antigravity's pre_invocation.php).
+        // Self-heal the sidecar's
         // agent_session_id on the next poll so transcript reads start
         // working once the ses_* row appears. Best-effort, no extra tmux
         // capture needed — just a DB lookup by workdir+spawn time.

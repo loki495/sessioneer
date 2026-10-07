@@ -7,7 +7,7 @@ namespace HostAgent\Agents;
 /**
  * One implementation per supported coding CLI agent (Claude Code first,
  * see ClaudeCodeAdapter; Antigravity next, see
- * docs/antigravity-adapter-plan.md for the research this interface is
+ * docs/history/antigravity-adapter-plan.md for the research this interface is
  * shaped around). Deliberately narrow - covers only what genuinely differs
  * per agent (spawn argv, hook registration, permission-mode vocabulary),
  * not things like tmux plumbing or SQLite storage that are already
@@ -26,7 +26,7 @@ interface AgentAdapter
 {
     /**
      * Stable machine identifier - 'claude', 'antigravity', etc. Stored in
-     * the sidecars table's `agent` column (see docs/antigravity-adapter-plan.md
+     * the sidecars table's `agent` column (see docs/history/antigravity-adapter-plan.md
      * Phase 0) so a session's own row says which adapter governs it.
      */
     public function id(): string;
@@ -54,7 +54,7 @@ interface AgentAdapter
      * session identifier if it can be chosen up front (Claude Code's
      * --session-id), or null if the agent has no such mechanism and the
      * real id can only be learned reactively, off whatever hook fires
-     * first after spawn (Antigravity - see docs/antigravity-adapter-plan.md's
+     * first after spawn (Antigravity - see docs/history/antigravity-adapter-plan.md's
      * "CLI flags" section for why).
      *
      * @param array<string, mixed> $options adapter-specific spawn options
@@ -65,8 +65,8 @@ interface AgentAdapter
      *   env: extra env vars SessionLifecycleService should set on the
      *   spawned tmux pane (via `-e`, same mechanism as its own
      *   SESSIONEER_SESSION_NAME) - e.g. ClaudeCodeAdapter's CLAUDE_CONFIG_DIR
-     *   when $options['profile'] names a non-default account (see Dibs
-     *   plan #230). Omitted entirely by an adapter with nothing to add.
+     *   when $options['profile'] names a non-default account.
+     *   Omitted entirely by an adapter with nothing to add.
      */
     public function build_spawn_argv(array $options): array;
 

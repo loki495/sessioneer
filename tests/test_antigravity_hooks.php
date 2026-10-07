@@ -5,7 +5,7 @@ declare(strict_types=1);
  * Exercises AntigravityHookService::check_session_hook()/install_session_hook()
  * (the ~/.gemini/config/hooks.json read-modify-write logic covering the 4
  * hooks this app installs for Antigravity - see
- * docs/antigravity-adapter-plan.md Phase 3) and the actual
+ * docs/history/antigravity-adapter-plan.md Phase 3) and the actual
  * host-agent/hooks/antigravity/{pre_invocation,pre_tool_use,post_tool_use,stop}.php
  * scripts `agy` invokes - both against isolated fixture paths, never the
  * real ~/.gemini/config/hooks.json or the real sidecar dir. Mirrors

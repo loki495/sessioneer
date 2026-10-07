@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /**
  * Registered as Antigravity's PostToolUse hook (see AntigravityHookService
- * and docs/antigravity-adapter-plan.md Phase 3) - fires after a tool step
+ * and docs/history/antigravity-adapter-plan.md Phase 3) - fires after a tool step
  * completes. Clears PendingToolStore, a cleaner signal than Claude Code
  * gets (it has no PostToolUse-equivalent at all - PendingToolStore
  * entries there are only ever implicitly superseded by the NEXT tool

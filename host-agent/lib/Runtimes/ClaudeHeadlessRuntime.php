@@ -245,7 +245,7 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
 
     /**
      * Cross-checks the DB-derived $entry against the manager's own live
-     * `sessioneer/status` for this one session (Dibs 388: a status write from
+     * `sessioneer/status` for this one session (a status write from
      * event-handling can throw and never reach SessionStatusStore, leaving a
      * child genuinely blocked/working in the manager's memory while the store
      * - and so this app's dashboard/session page - still shows its previous

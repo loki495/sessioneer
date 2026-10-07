@@ -6,8 +6,7 @@ declare(strict_types=1);
  * Stand-in for `claude -p --input-format stream-json --output-format
  * stream-json --permission-prompt-tool stdio`, for tests of
  * ClaudeHeadlessManager. Speaks the protocol captured live from Claude Code
- * 2.1.278 (see tests/fixtures/claude_stream_json_*_v2_1_278.ndjson and Dibs
- * research #280), never touches the network, never costs anything.
+ * 2.1.278 (see tests/fixtures/claude_stream_json_*_v2_1_278.ndjson), never touches the network, never costs anything.
  *
  * Behaviour is driven by keywords in the user message text:
  *   PERMISSION  ask to use Write (can_use_tool) and wait for the answer
@@ -19,7 +18,7 @@ declare(strict_types=1);
  *               message during that silence exactly like SLOW does, but then
  *               emits only ONE merged `result` covering both inputs instead
  *               of one per message - reproduces the suspected real-CLI shape
- *               behind Dibs 400 comment 317 (a message queued mid-tool-call
+ *               seen live (a message queued mid-tool-call
  *               that never produced its own separate result)
  *   CRASH       exit 3 mid-turn with a stderr message, no result
  *   CLEAR       emit conversation_reset and continue under a NEW session id
@@ -30,7 +29,7 @@ declare(strict_types=1);
  *   QUOTAJUNK   emit a rate_limit_event whose windows are unusable, then echo
  *   AUTHFAIL    end the turn with an is_error result saying the login expired
  *               (SYNTHETIC: the real text was never captured; the manager must
- *               only depend on is_error/result/terminal_reason, per research #280)
+ *               only depend on is_error/result/terminal_reason)
  *   STUBBORN    ignore stdin EOF and interrupts, and log (not obey) SIGTERM,
  *               so only SIGKILL ends it
  *   (anything else) echo the text back

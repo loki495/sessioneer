@@ -11,9 +11,8 @@ use HostAgent\Stores\GlobalStateStore;
 
 /**
  * Third AgentAdapter implementation, for the OpenCode TUI CLI
- * (binary `opencode`) - see .ai/PLAN.md and .ai/QUESTIONS.md Q1 for the
- * research this is built against (live-verified 2026-08-25 on a real
- * `opencode` 1.18.21 install). TUI positional arg is the project path
+ * (binary `opencode`), live-verified 2026-08-25 against a real `opencode`
+ * 1.18.21 install. TUI positional arg is the project path
  * (`opencode [project]`), not `--session-id`; `--session` is resume-only
  * (confirmed: `opencode --session <nonexistent>` → "Session not found").
  * Plugin system (https://opencode.ai/docs/plugins/) provides
@@ -47,7 +46,7 @@ class OpenCodeAdapter implements AgentAdapter
      * --permission-mode / --effort equivalent, only --auto for
      * auto-approve (not wired here; Phase 7 stretch goal).
      *
-     * assigned_id is always null - confirmed live (see .ai/QUESTIONS.md Q1.1)
+     * assigned_id is always null - confirmed live
      * that no --session-id equivalent exists for starting a fresh TUI
      * session; `--session <id>` only RESUMES an existing one. Real identity
      * (`ses_*` from opencode.db) can only be learned reactively after the
@@ -101,8 +100,7 @@ class OpenCodeAdapter implements AgentAdapter
      * Code's acceptEdits/plan/auto or Antigravity's accept-edits/plan.
      * Its closest equivalent is --auto (auto-approve permissions, deny is
      * the default) - a boolean, not a mode enum. No map to provide here
-     * until a real mode-like field is observed in a plugin hook payload
-     * (see .ai/QUESTIONS.md Q1.2).
+     * until a real mode-like field is observed in a plugin hook payload.
      *
      * @return array<string, string>
      */

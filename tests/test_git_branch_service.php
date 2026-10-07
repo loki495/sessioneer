@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * GitBranchService and its session_detail wiring (Dibs 91) - agent-agnostic
+ * GitBranchService and its session_detail wiring - agent-agnostic
  * by design: every session already carries a workdir, and a branch name is a
  * property of that directory, not of the agent running in it. Uses real
  * scratch git repos under sys_get_temp_dir(), never the real host state.

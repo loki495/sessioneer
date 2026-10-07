@@ -18,31 +18,6 @@ host process table directly.** It only knows how to speak a tiny
 request/response protocol over a UNIX socket. A separate, host-native
 **agent** (`host-agent/`, installed directly on the host via
 `host-agent/install.sh` - not containerized) owns tmux, `/proc` scanning,
-and all host-specific concerns.
-
-For the full architecture overview and major implementation decisions, see
-[`docs/architecture.md`](docs/architecture.md).
-
-# Contributing
-
-Thanks for taking a look. This started as, and still primarily is, a
-personal tool - see the note at the top of [README.md](README.md) about
-scope. Issues and PRs are welcome; this doc is the architecture/workflow
-reference for working on the code itself. For "how do I install and run
-this," see the README instead.
-
-For the current four-agent runtime map, write paths, hook/plugin sources, and
-ownership caveats, use [`docs/features.md`](docs/features.md). Several deep
-dives below intentionally describe the original Claude Code backend; they are
-not claims that every agent uses the same transport or signal source.
-
-## Architecture: container + host-native agent
-
-The web UI runs in a Docker container, but **it never touches tmux or the
-host process table directly.** It only knows how to speak a tiny
-request/response protocol over a UNIX socket. A separate, host-native
-**agent** (`host-agent/`, installed directly on the host via
-`host-agent/install.sh` - not containerized) owns tmux, `/proc` scanning,
 and everything else that has to run in the host's own namespace.
 
 **Why the split exists:** tmux has a client/server model where the *first*
@@ -162,7 +137,7 @@ DOM in the first place.
   "Conventions worth knowing" for the exact pairing requirement), which
   is how a jump target is found regardless of whether it ended up
   standalone or swept into a grouped "N tool calls" pair.
-- **Found live 2026-08-09**: `Element.scrollIntoView()` silently no-op'd
+- `Element.scrollIntoView()` silently no-op'd
   on this page in a real headless-Chrome automation context used to
   verify the jump-to-match flow end to end - confirmed by calling
   `window.scrollTo()` directly in that same context immediately
@@ -205,7 +180,7 @@ sessioneer/
 │       │                     # everything except the two full-page renders), an AgentClient::agent_call(),
 │       │                     # then handing the result to a View to render
 │       ├── Services/
-│       │   └── AuthService.php  # same-origin check + CSRF token + session start, shared by every controller
+│       │   └── AuthService.php  # Host allowlist + same-origin check + CSRF token + session start
 │       └── Views/           # App\Views\* - one render class per feature area (TranscriptView,
 │                             # SessionRowView, BlockedPromptView, QuotaFooterView, HealthBoxView,
 │                             # PushNotifyView, plus PageView for the two full-page templates) -
@@ -240,14 +215,14 @@ sessioneer/
 │   │   ├── Agents/           # the per-agent abstraction: AgentAdapter (the interface every
 │   │   │                     # agent implements) + AgentRegistry, with ClaudeCodeAdapter,
 │   │   │                     # CodexAdapter, OpenCodeAdapter, AntigravityAdapter behind it.
-│   │   │                     # This is what keeps cc-*/cx-*/oc-*/ag-* differences out of the
+│   │   │                     # This is what keeps per-agent differences out of the
 │   │   │                     # services - add an agent here, not with branches elsewhere.
 │   │   ├── Runtimes/         # HOW a session runs, independent of WHICH agent it is:
 │   │   │                     # TmuxRuntime (a real pane) vs HeadlessRuntime, behind
 │   │   │                     # RuntimeProvider/RuntimeRegistry/RuntimeType, plus the two
 │   │   │                     # headless clients (OpenCodeServeClient, CodexBridgeClient) and
-│   │   │                     # CodexHeadlessRuntime. See docs/headless-runtime-plan.md.
-│   │   ├── Services/         # the real logic - 36 classes, too many to list here; the
+│   │   │                     # CodexHeadlessRuntime. See docs/history/headless-runtime-plan.md.
+│   │   ├── Services/         # the real logic - too many classes to list here; the
 │   │   │                     # load-bearing ones are Config, SessionService (listing +
 │   │   │                     # build_session_entry), SessionLifecycleService (create/resume/
 │   │   │                     # kill), PromptInteractionService (sending input/answers),
@@ -332,6 +307,9 @@ under `host-agent/systemd/` themselves.
 The web container communicates with the host agent over a UNIX socket using a JSON request/response protocol.
 For details on the socket protocol and important caveats about machine locality, see [`docs/socket.md`](docs/socket.md).
 
+## How Web Push notifications are triggered
+
+Setup is in the README's "Web Push notifications" section. Sending is
 entirely server/host-triggered - the `sessioneer-push-check` timer runs
 `host-agent/push_trigger.php` on an interval (default 10s), which compares
 each live session's current blocked/working/idle state
@@ -382,158 +360,30 @@ with the GMP or BCMath PHP extension installed (`php -m | grep -i
 'gmp\|bcmath'` to check) - not required, sends still work without it, just
 slower.
 
-## Per-session/global state storage (SQLite)
+## State storage (SQLite)
 
-Requires the `pdo_sqlite` PHP extension on the **host** (not the
-container - see "Architecture" above, these Stores are all host-agent
-classes, never touched from `src/`). Check with `php -m | grep sqlite`;
-if missing, enable it the same way as any other PHP extension for your
-distro (e.g. Arch: `echo "extension=pdo_sqlite.so" | sudo tee
-/etc/php/conf.d/pdo_sqlite.ini`) - the `.so` is commonly already present
-even when not loaded by default.
+The host agent keeps its state in two SQLite files, `sessions.sqlite`
+(tracked sessions and their live status, on tmpfs) and `push.sqlite`
+(push and quota state, persistent). They need the `pdo_sqlite` extension
+on the **host**, not in the container: every Store is a host-agent class,
+never touched from `src/`. Check with `php -m | grep sqlite`; the `.so` is
+often present but not loaded (Arch:
+`echo "extension=pdo_sqlite.so" | sudo tee /etc/php/conf.d/pdo_sqlite.ini`).
 
-Two SQLite DB files (`host-agent/lib/Stores/SqliteDb.php`), matching the
-two different persistence lifetimes the plain-JSON-file versions of these
-Stores already had before 2026-08-24:
+The tables, who writes them, and why SQLite rather than JSON files are in
+[`docs/state.md`](docs/state.md).
 
-- `Config::sessions_sqlite_path()` (defaults under `Config::sidecar_dir()`,
-  tmpfs, wiped on reboot) - `SidecarStore`/`SessionStatusStore`/
-  `PendingToolStore`'s three tables (`sidecars`/`session_status`/
-  `pending_tools`).
-- `Config::push_sqlite_path()` (defaults to `host-agent/state/push.sqlite`,
-  persisted, gitignored) - `PushSubscriptionStore`/`PushSessionStateStore`/
-  `PushQuotaStateStore`'s three tables, plus `GlobalStateStore`'s single
-  `global_state` table (small single-blob concerns keyed by name, e.g.
-  `quota_live_state` - see "Usage quota footer" above).
-
-**Why**: `SessionStatusStore::update_status()`'s old read-json-merge-
-write-json had a real, confirmed-live (2026-08-23) lost-update race
-between two hooks firing close together (`PreToolUse` and
-`PermissionRequest` for the same tool call); `PushQuotaStateStore` had the
-same shape of race behind Andres's quota-double-push report. SQLite
-serializes writers to the same row/table, so both are now a single atomic
-`UPDATE`/`INSERT ... ON CONFLICT DO UPDATE` instead - the race is closed
-structurally, not by adding a lock around the old read-modify-write.
-
-**Live cutover, not a one-time migration script**: every read method
-(`read_sidecar()`, `read_status()`, etc.) checks for a still-present
-legacy JSON file on an SQLite miss, imports it, and deletes it -
-important because these tmpfs files back **currently-running** sessions
-whose `SessionStart`-hook-driven rebind only fires on `/clear`/`/compact`/
-`--resume`/`--fork-session`, not every turn. A hard cutover with no
-fallback would have silently dropped every already-running session out of
-`list_tracked_tmux_sessions()` until it happened to rotate, possibly
-hours later. Every direct-write method (`write_sidecar()`,
-`update_status()`, `write_pending_tool()`) ALSO cleans up any leftover
-legacy file itself, not just the read path - found live while building
-this: `PreToolUse` fires `write_pending_tool()` on nearly every tool call,
-so a session's first post-migration touch is almost always a write, not a
-read, and the read-only cleanup left `.pending-tool.json` files stranded
-on disk forever once a direct write had already created the SQLite row.
-Verified against this app's own real, live sidecar directory while
-building this feature, not just the test suite - every currently-tracked
-session (including the one used to write this) migrated correctly with
-zero tracking gap.
-
-Replaced `AtomicFile.php` (temp-file-then-`rename()` for a single
-whole-file write, atomic against torn reads but never against a
-concurrent read-modify-write) entirely - deleted outright, along with its
-dedicated test, once nothing referenced it any more, not left around
-unused.
-
-
-
-## Per-Session and Global State Storage
-
-Session metadata, sidecars, and UI preferences are stored in SQLite at `~/.sessioneer/data.db`.
-For details on the data model and state persistence strategy, see [`docs/state.md`](docs/state.md).
+## Frontend (CSS and JS type-checking)
 
 ```
-npm install         # once
-npm run build:css   # regenerate public/css/tailwind.css after editing any
-                     # utility classes, in a .php partial/view or in JS
+npm install          # once
+npm run build:css    # regenerate the committed public/css/tailwind.css after changing classes
+npm run typecheck    # JSDoc type-check of public/js/*.js
 ```
 
-`public/css/tailwind.css` is a committed, precompiled file - `npm` is a
-**dev-only** tool for whoever is changing markup/classes, never required to
-install or run the app itself (matches the "no build step" rule for
-`public/js/*.js`, which is still plain unbundled ES5 - only the CSS moved
-off a live CDN script). `resources/tailwind.css` is the actual source
-(`@import "tailwindcss"` plus `@source` globs pointing at
-`src/partials/**/*.php`, `src/lib/Views/**/*.php`, and `public/js/**/*.js`
-- Tailwind's class scanner reads raw file text regardless of language, and
-a large share of this app's markup is built as HTML strings inside plain
-JS, not just PHP, so it has to be told to scan there too).
-
-This replaced a `<script src="https://cdn.tailwindcss.com">` (2026-08-24) -
-the browser's own console warns against that pattern in production, and a
-page load fetching a script from a third-party host at runtime is a real
-external dependency for a project whose whole pitch is "everything runs
-locally, no external services." There was no `tailwind.config.js` or
-custom theme/darkMode setup to port - the CDN script was plain default
-Tailwind, verified before writing the replacement.
-
-## Type-checking the frontend (JSDoc + tsc)
-
-```
-npm run typecheck
-```
-
-`tsc --noEmit` against plain `.js` (see `tsconfig.json`) - not a build
-step, no transpilation, no bundler: `public/js/*.js` stays exactly the
-plain, unbundled ES5 it already was (`// @ts-check` at the top of each
-file is only an editor/CLI signal, zero runtime effect). `public/sw.js`
-is deliberately excluded - a service worker runs in a completely
-different global scope (`self`/`clients`/notification-event fields, no
-`window`/DOM) that would need its own separate tsconfig with the
-`webworker` lib, not the browser-page one the rest of this app uses; not
-set up yet. `public/js/types.d.ts` declares the one ambient global this
-app adds itself, `window.SESSIONEER_BOOTSTRAP` - never loaded by the browser (a
-`.d.ts` has no runtime output), type-checking only.
-
-Same "don't grind through the whole codebase in one pass" convention as
-the PHPStan baseline below: `npm run typecheck` reports 121 known errors
-today (2026-08-24), not zero, and that's expected - not a broken setup.
-Two clusters:
-
-- **~119 of them** are `document.getElementById()` returning the generic
-  `HTMLElement` (no `.value`/`.checked`/`.disabled`/`.files`) and
-  `event.target` being typed as the generic `EventTarget` (no `.closest`/
-  `.dataset`/`.classList`) - both real elements at runtime, just typed too
-  loosely by the DOM lib's own generic return types. The real fix is a
-  JSDoc type cast (`/** @type {HTMLInputElement} */`) at each specific
-  call site that needs the narrower type - not done in this first pass
-  given the sheer number of sites; chip away incrementally rather than
-  block on it.
-- **2 known TS/DOM-lib gaps**, left as-is (verified correct, not
-  suppressed): `common.js`'s `new Promise(function (resolve) {...})`
-  calling `resolve()` with no argument (perfectly valid - checkJs just
-  wants a JSDoc hint to infer that), and `index.js`'s
-  `new URLSearchParams(new FormData(form))` (real browsers accept
-  `FormData` via its iterable-of-pairs protocol; lib.dom.d.ts's
-  `URLSearchParams` constructor type just hasn't caught up to that).
-
-One already-fixed finding from this same pass, not lib-typing noise: two
-dead lines in `resetHistoryForRotatedTranscript()`
-(`lastKnownContextUsedPercentage = null; lastKnownGitWorktree = null;`)
-assigned two variables that were never declared OR read anywhere else in
-the codebase - `tsc`'s "Cannot find name" caught real orphaned code from
-a past refactor, removed rather than baselined. Also worth knowing:
-`session.js`'s `autoGrowCompose()` is declared with `function
-autoGrowCompose() {}` inside an `if` block, not directly in the file's
-own top-level IIFE - real non-strict-mode browsers still hoist it to the
-enclosing function scope via Annex B legacy compatibility semantics
-(verified live), but `tsc` doesn't model that, hence the two
-`@ts-expect-error` comments there instead of a "fix" that would just be
-restructuring already-correct code.
-
-
-
-## Frontend CSS Build (Tailwind)
-
-Frontend styling uses Tailwind CSS v4 with a native CSS engine. JavaScript is plain ES5 for mobile Safari
-compatibility. For details on CSS, JavaScript type-checking with JSDoc, and the type-checking setup,
-see [`docs/frontend.md`](docs/frontend.md).
+`public/js/*.js` is plain, unbundled ES5 and nothing is built to run the app;
+`npm` is only needed when you change markup, classes or JS. Details, and why the
+type-check doesn't report zero yet, are in [`docs/frontend.md`](docs/frontend.md).
 
 ## Static analysis (PHPStan)
 
@@ -541,8 +391,7 @@ see [`docs/frontend.md`](docs/frontend.md).
 composer phpstan
 ```
 
-Runs on the **host**, not inside the container - unlike everything else in
-this repo, `phpstan.neon` scans both `src/lib` (container-side) and
+Runs on the **host**, not inside the container: `phpstan.neon` scans both `src/lib` (container-side) and
 `host-agent/lib`/`host-agent/hooks` (host-native) in one pass, and
 `host-agent/` is deliberately never mounted into the container at all (see
 "Architecture: container + host-native agent" above) - `docker exec` has
@@ -550,23 +399,15 @@ no way to see it. Host PHP just needs to be a reasonably recent version;
 PHPStan's own checks aren't sensitive to the host/container PHP version
 difference at the level this project runs.
 
-Level 6, with a baseline (`phpstan-baseline.neon`) regenerated most
-recently at 119 findings (2026-08-24, after the SQLite migration below) -
-per this project's own convention, a strict gate is pinned to today's real
-number rather than demanding the whole codebase pass immediately. New code
-should not add to the baseline; existing baselined findings can be cleaned
-up incrementally, regenerating the baseline file as they are (a file whose
-code changes shape entirely - as every Stores/*.php file did in this same
-migration - invalidates its own old baseline entries by exact message/path,
-surfaced as `ignore.unmatched` errors; regenerate rather than hand-edit).
-Worth a dedicated look regardless of level: `src/lib/Views/TranscriptView.php`
-has a cluster of `always false`/`always true` comparisons flagged in
-its tool-call-entry rendering (roughly lines 322-360 and 578-706) - most
-`missingType.iterableValue` findings elsewhere are just missing array-shape
-docblocks (cosmetic), but this cluster is a different, more interesting
-category: PHPStan is saying a branch's own array-shape narrowing makes
-certain conditions provably always true/false, which is either a real dead
-code path or an overly narrow docblock - not yet triaged.
+Level 6, with a baseline (`phpstan-baseline.neon`) holding the findings that
+predate the gate - a strict gate pinned to the codebase as it was, rather than
+demanding everything pass at once. New code must not add to the baseline;
+existing entries can be cleaned up incrementally. Entries are keyed to the
+exact message and path, so a file whose code changes shape surfaces them as
+`ignore.unmatched` errors: regenerate the baseline rather than hand-editing
+it. One cluster deserves a real look: `src/lib/Views/TranscriptView.php` has
+`always true`/`always false` comparisons in its tool-call rendering, meaning
+either dead code or a docblock narrower than the data - not yet triaged.
 
 ## Running tests
 
@@ -609,8 +450,7 @@ processes on the host:**
   managed headless session (the default runtime) inherits the manager's own
   real environment by construction, so `SIDECAR_DIR`/`TMUX_SOCKET`/etc. are
   never actually unset there; an "if unset" guard silently does nothing and
-  the test runs against the real host state. Found live 2026-09-27 (Dibs
-  388's own follow-up incident, and Dibs 395's lesson): override first, then
+  the test runs against the real host state, which has happened. Override first, then
   assert the resolved value (`Config::sidecar_dir()`, etc.) actually changed
   from what it was before, refusing to run if not - the same shape every
   `PUSH_SQLITE_FILE` check in this suite already used correctly.
@@ -627,6 +467,22 @@ pagination, search, archived-session listing) against real fixture JSONL
 files under a fake `HOME_ROOT`, and `tests/test_ui_smoke.php` covers the
 web UI end to end via curl (plus the optional headless-browser tier
 above).
+
+## Submitting changes
+
+1. Branch from `master` and open a pull request against `master`; nothing is
+   pushed to `master` directly.
+2. Before pushing, run `composer phpstan` and `bash tests/run.sh` (add
+   `npm run build:css` if you changed classes, and commit the regenerated
+   CSS).
+3. The **Core tests (PHP 8.3)** CI job must pass before a PR can merge, and the
+   branch must be up to date with `master`. That job validates and audits
+   Composer, runs PHPStan, syntax-checks `public/js/*.js` and `public/sw.js`
+   with `node --check`, and runs the full suite including the browser tests.
+   Shellcheck runs too, but only advisory.
+4. Keep each commit to one change, with an imperative subject line that says
+   what changed and a body that says why. Docs and tests go in the same commit
+   as the change they describe.
 
 ## Code style / conventions
 
@@ -665,6 +521,3 @@ above).
   so a new bare `<?= ?>` for a value that ISN'T provably one of the above
   needs `$this->e()`, not an assumption that the existing pattern makes it
   safe by association.
-
-## Running tests
-

@@ -1,60 +1,60 @@
 
-  ┃                                                                                                                                                             Cloning dotfiles config setup
-  ┃  i'd like you to read ~/dotfiles/claude to understand how its set up, and see if we could "clone" or copy most of that stuff us (rules and info in
-  ┃  CLAUDE.md, commands, hooks, agents, commands, skills...)                                                                                                   Context
+  ┃                                                                                                                                                             Reviewing docs site build
+  ┃  please read ~/projects/docs-site to understand how its build is set up, and see if we could move most of it to the new layout (config, templates,
+  ┃  scripts, assets, plugins, themes...)                                                                                                                       Context
   ┃                                                                                                                                                             16,107 tokens
                                                                                                                                                                 2% used
      + Thought: 733ms                                                                                                                                           $0.00 spent
 
   ┃                                                                                                                                                             LSP
-  ┃  $ ls -la ~/dotfiles/claude 2>/dev/null && echo "---" && ls -la ~/dotfiles 2>/dev/null                                                                      LSPs are disabled
+  ┃  $ ls -la ~/projects/docs-site 2>/dev/null && echo "---" && ls -la ~/projects 2>/dev/null                                                                   LSPs are disabled
   ┃
   ┃  total 32
   ┃  drwxr-xr-x 1 user user   148 Aug 24 00:07 .
   ┃  drwxr-xr-x 1 user user   348 Aug 25 09:25 ..
-  ┃  drwxr-xr-x 1 user user   314 Aug 23 12:02 agents
-  ┃  -rw-r--r-- 1 user user 19618 Aug 25 02:25 CLAUDE.md
-  ┃  drwxr-xr-x 1 user user   224 Aug 23 12:02 commands
-  ┃  drwxr-xr-x 1 user user    84 Aug 23 16:41 hooks
-  ┃  -rw------- 1 user user   961 Jul 26 12:18 RTK.md
-  ┃  -rw------- 1 user user  3448 Aug 22 00:37 settings.json
-  ┃  drwxr-xr-x 1 user user   372 Aug 23 12:21 skills
+  ┃  drwxr-xr-x 1 user user   314 Aug 23 12:02 templates
+  ┃  -rw-r--r-- 1 user user 19618 Aug 25 02:25 README.md
+  ┃  drwxr-xr-x 1 user user   224 Aug 23 12:02 scripts
+  ┃  drwxr-xr-x 1 user user    84 Aug 23 16:41 assets
+  ┃  -rw------- 1 user user   961 Jul 26 12:18 NOTES.md
+  ┃  -rw------- 1 user user  3448 Aug 22 00:37 config.json
+  ┃  drwxr-xr-x 1 user user   372 Aug 23 12:21 themes
   ┃  …
   ┃
   ┃  Click to expand
   ┃
 
-     I'll explore the claude directory structure thoroughly.
+     I'll explore the docs-site directory structure thoroughly.
 
   ┃
-  ┃  $ cd ~/dotfiles/claude && find . -type f | sort
+  ┃  $ cd ~/projects/docs-site && find . -type f | sort
   ┃
-  ┃  ./agents/code-reviewer.md
-  ┃  ./agents/feature-atlas-auditor.md
-  ┃  ./agents/feature-atlas-mapper.md
-  ┃  ./agents/feature-atlas-scout.md
-  ┃  ./agents/feature-atlas-synthesizer.md
-  ┃  ./agents/git-helper.md
-  ┃  ./agents/legacy-auditor.md
-  ┃  ./agents/test-writer.md
-  ┃  ./CLAUDE.md
-  ┃  ./commands/cherry-pick-to.md
+  ┃  ./assets/logo.svg
+  ┃  ./assets/style.css
+  ┃  ./NOTES.md
+  ┃  ./README.md
+  ┃  ./config.json
+  ┃  ./scripts/build.sh
+  ┃  ./scripts/deploy.sh
+  ┃  ./templates/base.html
+  ┃  ./templates/page.html
+  ┃  ./templates/post.html
   ┃  …
   ┃
   ┃  Click to expand
   ┃
 
   ┃
-  ┃  $ cd ~/dotfiles/claude && echo "=== settings.json ===" && cat settings.json && echo "" && echo "=== RTK.md ===" && cat RTK.md
+  ┃  $ cd ~/projects/docs-site && echo "=== config.json ===" && cat config.json && echo "" && echo "=== NOTES.md ===" && cat NOTES.md
   ┃
-  ┃  === settings.json ===
+  ┃  === config.json ===
   ┃  {
-  ┃    "model": "sonnet",
-  ┃    "hooks": {
-  ┃      "PostToolUse": [
+  ┃    "theme": "plain",
+  ┃    "build": {
+  ┃      "steps": [
   ┃        {
-  ┃          "matcher": "Write|Edit",
-  ┃          "hooks": [
+  ┃          "match": "*.md",
+  ┃          "run": [
   ┃            {
   ┃              "type": "command",
   ┃  …
@@ -91,9 +91,9 @@
 
      + Thought: 401ms
 
-     Now let me read the actual content of the Claude files to understand what needs migrating. Let me read the agents, commands, and skills.
+     Now let me read the actual template files to understand what needs moving. Let me read the templates, scripts, and themes.
 
-     $ cd ~/dotfiles/claude/agents && for f in *.md; do echo "===== $f ====="; cat "$f"; echo; done
+     $ cd ~/projects/docs-site/templates && for f in *.html; do echo "===== $f ====="; cat "$f"; echo; done
 
      ▣  Build · DeepSeek V4 Flash Vision Exp
 
@@ -138,11 +138,11 @@
 
   ┃
   ┃  △ Permission required
-  ┃    ← Access external directory ~/dotfiles/claude/agents
+  ┃    ← Access external directory ~/projects/docs-site/templates
   ┃
   ┃  Patterns
   ┃
-  ┃  - /home/user/dotfiles/claude/agents/*
+  ┃  - /home/user/projects/docs-site/templates/*
   ┃
   ┃                                                                                                                                                             ~/.config/opencode
   ┃   Allow once   Allow always   Reject                                                                       ctrl+f fullscreen  ⇆ select  enter confirm

@@ -34,8 +34,6 @@ use HostAgent\Stores\SidecarStore;
  * The manager is the SOLE writer of session_status for headless sessions.
  * Its children deliberately do NOT get SESSIONEER_SESSION_NAME, which every
  * Claude hook script requires, so the hooks stay silent for them.
- *
- * Research/decision records: Dibs #280 (protocol), #282 (design).
  */
 final class ClaudeHeadlessManager
 {
@@ -72,7 +70,7 @@ final class ClaudeHeadlessManager
     private ?string $spawnBlockedReason = null;
 
     /**
-     * Status writes that threw (Dibs 388: a can_use_tool control request left
+     * Status writes that threw (a can_use_tool control request left
      * a child correctly `blocked` in memory while SessionStatusStore's row
      * silently stayed on its previous value - a busy/locked SQLite write is
      * the suspected cause, never confirmed by a captured log line) - retried
@@ -903,7 +901,7 @@ final class ClaudeHeadlessManager
      * Watchdog for a child stuck `working` with no stream-json event of any
      * kind (handle_event() bumps lastActivity on every one, including its own
      * control_response/result) for an abnormally long time - the failure mode
-     * behind Dibs 400 comment 317, where a real `claude -p` child went fully
+     * seen live, where a real `claude -p` child went fully
      * silent mid-turn and never produced another event at all, independent of
      * the on_result() counting bug fixed above. Never applies to `blocked`
      * (a pending permission/question prompt is normal to sit on indefinitely
@@ -1181,8 +1179,7 @@ final class ClaudeHeadlessManager
         // into that SAME turn's eventual result instead of producing one of
         // its own. Decrementing by exactly 1 per result left openTurns stuck
         // above zero whenever that happened - a session shown as "working"
-        // forever even though the child was genuinely idle (Dibs 400 comment
-        // 317; reproduced in tests/test_claude_headless_manager.php via the
+        // forever even though the child was genuinely idle (reproduced in tests/test_claude_headless_manager.php via the
         // SLOW_THEN_QUEUE fixture). A `result` is authoritative: whatever was
         // pending is now resolved, full stop.
         $child->openTurns = 0;

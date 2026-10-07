@@ -123,7 +123,7 @@ $this->layout('layout', [
            find_current_task_list(), cascaded alongside the older TodoWrite
            reader in SessionDetailService::session_detail() - see that method's
            own docblock. -->
-      <!-- AgentAdapter picker (docs/antigravity-adapter-plan.md Phase 2) -
+      <!-- AgentAdapter picker (docs/history/antigravity-adapter-plan.md Phase 2) -
            Claude Code stays the pre-selected default so an untouched
            dropdown behaves exactly as before this existed. Antigravity
            sessions currently only get as far as spawning - status
@@ -136,7 +136,7 @@ $this->layout('layout', [
           <?php endforeach ?>
         </select>
       </label>
-      <!-- Claude account picker (Dibs plan #230/#234) - which
+      <!-- Claude account picker - which
            host-agent/config/agents.php profile (e.g. a separate work
            account) this session spawns under. Claude-only (agent picker
            above must be 'claude'); hidden entirely for every other agent

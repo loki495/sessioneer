@@ -15,6 +15,43 @@ class AuthService
 {
     private const SESSION_LIFETIME_SECONDS = 60 * 60 * 24 * 30;
 
+    private const ALWAYS_ALLOWED_HOSTS = ['localhost', '127.0.0.1', '::1'];
+
+    /* ---------- Host allowlist ---------- */
+    /* same_origin_or_no_origin() compares Origin with Host, and both come from
+       the browser: a DNS-rebinding page (attacker.example re-resolved to this
+       app's IP) is same-origin with itself and would pass. Checking Host
+       against names the operator chose closes that. */
+
+    /**
+     * @param string $configured comma-separated extra hostnames (ALLOWED_HOSTS)
+     */
+    public static function host_allowed(?string $hostHeader, string $configured, string $bindAddr): bool
+    {
+        if ($hostHeader === null || $hostHeader === '') {
+            return false;
+        }
+
+        $host = strtolower(trim($hostHeader));
+        $host = str_starts_with($host, '[')
+            ? substr($host, 1, (int)strpos($host, ']') - 1)
+            : (string)preg_replace('/:\d+$/', '', $host);
+
+        $allowed = array_merge(self::ALWAYS_ALLOWED_HOSTS, [$bindAddr], explode(',', $configured));
+        $allowed = array_map(static fn(string $h): string => strtolower(trim($h)), $allowed);
+
+        return in_array($host, array_filter($allowed), true);
+    }
+
+    public static function request_host_allowed(): bool
+    {
+        return self::host_allowed(
+            $_SERVER['HTTP_HOST'] ?? null,
+            (string)getenv('SESSIONEER_ALLOWED_HOSTS'),
+            (string)getenv('SESSIONEER_BIND_ADDR'),
+        );
+    }
+
     /* ---------- CSRF guards ---------- */
     /* Two independent layers, both required on every state-changing POST:
        same_origin_or_no_origin() (a same-origin check, no token involved) plus

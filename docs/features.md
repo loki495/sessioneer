@@ -169,7 +169,8 @@ refused); plain Resume and Take over still open a terminal session. Permission a
 (single and multi-question), plan approval, interrupt, queued messages, image
 attachments and model and permission-mode changes all work through the process's
 own structured events, and the transcript view still reads the same transcript
-file. A permission mode that Claude does not apply (`auto` was silently ignored on
+file. Only one permission prompt is tracked at a time, which background subagents
+can run into (see "Known parity gaps"). A permission mode that Claude does not apply (`auto` was silently ignored on
 2.1.278) is flagged on the session instead of trusted. There is no terminal to
 attach to; to continue a conversation in one, switch the session to the terminal
 runtime. A headless session's own process never appears under "other Claude
@@ -346,8 +347,17 @@ Implementation entry points:
 - Transcript blocks support Markdown, collapsing, copying, attachments,
   tool-call grouping, subagent/worker lineage, thinking state, and turn errors
   where the source agent records them.
-- Worker sessions are tagged with parent lineage and hidden by default behind
-  **Show worker sessions**.
+- Worker sessions: an OpenCode or Codex session picked up by the headless
+  session sync whose title (or first prompt line, for agents with no title
+  flag) starts with
+  `[WORKER session=<orchestration-id>/<task-id> parent=<parent-session-id>]`
+  is treated as a worker dispatched by another session. tmux sessions are
+  never tagged. It shows with the tag
+  stripped from its title and a link to its parent, and is hidden from the
+  dashboard and sidebar lists by default behind **Show worker sessions**. The
+  match is lenient (a truncated tag still counts) and `parent=unknown` means
+  no parent link. Any orchestrator can use the convention; nothing in
+  Sessioneer creates the tag itself.
 - Archived sessions are read-only until resumed. Transcript routing, cwd/title
   resolution, paging, and resume routing cover all four agents.
 - Plan/handoff/todo files are read-only views; todo Markdown is rendered in the
@@ -398,3 +408,11 @@ Implementation entry points:
 9. Plain Resume and Take over always open a terminal session, whatever the
    default runtime is, and Sessioneer cannot pass `--add-dir` to a headless
    process at start, so `/add-dir` has no way to grant another directory.
+10. A Claude headless session tracks one pending permission prompt at a time and
+    clears it when the main conversation's turn ends. Background or parallel
+    subagents that need an approval can lose their prompt this way, either
+    replaced by a newer prompt or cleared while the subagent is still waiting.
+    The subagent then waits indefinitely with nothing on screen to answer, while
+    the main conversation looks healthy. Until this is fixed, give a session that
+    will run background subagents a permission mode or allow-list that doesn't
+    prompt for the tools they use, or run it in the terminal runtime.

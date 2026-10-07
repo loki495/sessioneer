@@ -157,7 +157,7 @@ function dispatch_action(array $request): array
             $workdir = (string)($request['workdir'] ?? '');
             $modelId = is_string($request['model'] ?? null) ? $request['model'] : null;
             $modelProvider = is_string($request['model_provider'] ?? null) ? $request['model_provider'] : null;
-            // Which Claude Code account to spawn under (see Dibs plan #230) -
+            // Which Claude Code account to spawn under -
             // ignored by every agent but 'claude' (AgentAdapter's own "reads
             // only what it understands" contract). Not surfaced in the New
             // Session UI yet, but wired through the protocol so it's ready
@@ -415,8 +415,8 @@ function dispatch_action(array $request): array
         case 'list_models':
             return sessioneer_list_models(is_string($request['agent'] ?? null) ? $request['agent'] : 'opencode');
 
-        // Backs the New Session form's Claude account picker (Dibs plan
-        // #230/#234) - profile NAMES only, live off agents.php
+        // Backs the New Session form's Claude account picker -
+        // profile NAMES only, live off agents.php
         // (Config::claude_profile_names()), never a static/cached list, so
         // an edit to that file is picked up on the very next page load
         // with no app restart needed.
@@ -647,7 +647,7 @@ function sessioneer_headless_sessions(): array
             ? $sidecar['title']
             : ($workdir !== null && $workdir !== '' ? basename($workdir) : $id);
         // Every headless (opencode/codex) session's title is checked for the
-        // orchestrator-worker skill's [WORKER ...] tag - see
+        // worker-session [WORKER ...] tag (docs/features.md) - see
         // SessionService::parse_worker_tag() - since a bare cross-tool CLI
         // worker launch is the one path that bypasses this app's own spawn
         // API entirely and only ever surfaces here via this sync.
@@ -990,7 +990,7 @@ function sessioneer_headless_question_prompt(array $q): array
 }
 
 /**
- * Adds `git_branch` (Dibs 91) to a session_detail result: the workdir's
+ * Adds `git_branch` to a session_detail result: the workdir's
  * current branch, agent-agnostic (any session has a workdir, regardless of
  * which agent runs it) - see GitBranchService's own docblock for why this is
  * a separate concern from Claude's tmux-only, statusline-derived
@@ -1128,7 +1128,7 @@ function sessioneer_codex_resume(string $workdir, string $threadId): array
  * workdir/agent/agent_label/agent_session_id/status). The raw serve GET
  * /session/{id} object carries id/title/directory but none of those keys,
  * which is why a headless session page used to render broken/blank instead
- * of loading - see docs/headless-runtime-plan.md Phase 3. Status comes from
+ * of loading - see docs/history/headless-runtime-plan.md Phase 3. Status comes from
  * the same SessionStatusStore the sync writes (default 'idle'); rich
  * blocked-prompt detail is Phase 3.
  *

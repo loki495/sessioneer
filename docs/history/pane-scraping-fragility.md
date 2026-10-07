@@ -1,5 +1,10 @@
 # Pane-scraping fragility: inventory + mitigation
 
+> **Historical design record:** kept for the research and reasoning behind
+> the current code; status lines and plans here are as of when it was
+> written, not the current state. See [`../features.md`](../features.md) for
+> what Sessioneer does today.
+
 Prompted by a real bug (2026-08-29): Claude Code's `AskUserQuestion` tab UI
 started rendering the current tab's question with a leading `│ ` quote-marker
 (`│ How do you want to handle adminer, redis-ui, and git...`). Nothing in
@@ -63,7 +68,7 @@ changed their API" risk, not this doc's risk.
   parsing site - but it still means a real feature silently stops working
   with no error surfaced anywhere except the one rejected user action.
 - **No CLI version pinning/probing exists for the tmux-runtime Claude Code parsing**, unlike Codex
-  (`docs/headless-runtime-plan.md`'s "pinning a tested minimum CLI version
+  (`docs/history/headless-runtime-plan.md`'s "pinning a tested minimum CLI version
   and probing capabilities at startup") or the dated, "verified live
   YYYY-MM-DD against version X" comments scattered through this file. There
   is no single place that records "this pane-scraping code was last

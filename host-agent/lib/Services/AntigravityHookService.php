@@ -6,7 +6,7 @@ namespace HostAgent\Services;
 
 /**
  * Checks/installs this app's own Antigravity CLI hooks (PreToolUse,
- * PostToolUse, PreInvocation, Stop - see docs/antigravity-adapter-plan.md
+ * PostToolUse, PreInvocation, Stop - see docs/history/antigravity-adapter-plan.md
  * Phase 3) into Config::antigravity_hooks_path() (~/.gemini/config/hooks.json)
  * - the Antigravity counterpart to HookService, not a shared base class
  * with it, since the on-disk schema genuinely differs (a named hook-group
@@ -31,7 +31,7 @@ class AntigravityHookService
     /**
      * `grouped: true` (PreToolUse/PostToolUse) needs the `matcher` +
      * `hooks` wrapper; `grouped: false` (PreInvocation/Stop) is a flat
-     * `{type, command}` list - see docs/antigravity-adapter-plan.md's
+     * `{type, command}` list - see docs/history/antigravity-adapter-plan.md's
      * "Hooks" research section for the confirmed real schema difference.
      * No PostInvocation entry - not used by any Phase 3 script (see that
      * phase's own docblock for why the 4 scripts here are enough for

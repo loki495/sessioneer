@@ -107,7 +107,7 @@ class PushHealthService
 
     /**
      * opencode-serve.service - the OpenCode headless server this app's
-     * OpenCode integration talks to (see .ai/PLAN.md). Checks two things:
+     * OpenCode integration talks to. Checks two things:
      * the systemd unit is enabled AND currently active, and the server
      * itself answers its /global/health endpoint on the configured port.
      * Not gated on OPENCODE_BIN being set - the app never reads opencode.db
@@ -236,8 +236,8 @@ class PushHealthService
         // One "Claude Code" section per configured profile (Config::
         // claude_profiles_to_scan()) - a work account with no hooks
         // installed in its OWN settings.json would otherwise never show up
-        // here at all, and silently reports permanently idle/unknown (see
-        // Dibs plan #230). The default account keeps its plain "Claude
+        // here at all, and silently reports permanently idle/unknown.
+        // The default account keeps its plain "Claude
         // Code" section label unchanged; a named profile gets its own
         // "Claude Code (work)"-style section so this stays legible once
         // more than one account is configured.

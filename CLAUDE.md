@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A personal, single-user web UI for managing tmux sessions running Claude
-Code, Codex, OpenCode, and Antigravity (`cc-*`, `cx-*`, `oc-*`, `ag-*`) on
-this dev box — list sessions, see blocked prompts, answer them, send
+A personal, single-user web UI for managing Claude Code, Codex, OpenCode
+and Antigravity sessions (tmux sessions `cc-*`, `oc-*`, `ag-*`, plus
+headless ones) on this dev box — list sessions, see blocked prompts, answer them, send
 messages, view transcripts, kill sessions. No database, no user accounts;
 access control is the network binding (LAN-only), not a login.
 
@@ -75,6 +75,13 @@ their code once, so restart them after editing what they run
 Restarting the Claude headless manager stops every live headless process:
 sessions resume on their next message and any open prompt is lost.
 
+**This checkout is the live, in-use deployment**, so a saved edit under `src/`
+or `public/` is live at once. Leave the site loading at every step: when code
+starts reading a new env var, add it to the real `.env` and run
+`docker compose up -d` in the same change, then check the LAN address and the
+proxied hostnames return 200. Use a separate worktree for anything that could
+break the page partway through.
+
 ## Architecture: two runtimes, one repo
 
 The web UI (`src/`) runs in a Docker container. It **never touches tmux or
@@ -126,7 +133,7 @@ Docker-spawned, makes that impossible by construction — not by convention.
    `dispatch_push_action()` handles `push_*` actions, falling through
    (`null`) to `Sessions.php`'s `dispatch_action()` for everything else.
    Both are now thin switches — the real logic lives in
-   `host-agent/lib/Services/*` (36 classes; the load-bearing ones are
+   `host-agent/lib/Services/*` (the load-bearing ones are
    `Config`, `SessionService`, `SessionLifecycleService`,
    `PromptInteractionService`, `ArchivedSessionService`, `PlanFileService`,
    `TmuxService`, `TranscriptService`, `PromptParser`, `ProcessInspector`,
@@ -147,7 +154,7 @@ Docker-spawned, makes that impossible by construction — not by convention.
    runs, independently of which agent it is (`TmuxRuntime` vs
    `HeadlessRuntime` behind `RuntimeProvider`/`RuntimeRegistry`/`RuntimeType`,
    plus `OpenCodeServeClient`, `CodexBridgeClient`, `CodexHeadlessRuntime` —
-   see `docs/headless-runtime-plan.md`). All PSR-4 autoloaded under
+   see `docs/history/headless-runtime-plan.md`). All PSR-4 autoloaded under
    `HostAgent\Services`/`Stores`/`Agents`/`Runtimes`.
 
    Claude Code's headless runtime (no tmux pane) is a second persistent
@@ -166,7 +173,7 @@ Docker-spawned, makes that impossible by construction — not by convention.
    is the sole writer of `session_status` for these sessions - its children
    get no `SESSIONEER_SESSION_NAME`, so the hooks below stay silent for
    them. A write that throws (SQLITE_BUSY under WAL contention is the known
-   case, Dibs 388) is queued and retried every housekeeping tick rather than
+   case) is queued and retried every housekeeping tick rather than
    silently lost (`ClaudeHeadlessManager::persist_status()`); the session
    page's own `session_detail` call also cross-checks the manager's live
    state for the one session being viewed and self-heals the store on a
@@ -178,7 +185,7 @@ Docker-spawned, makes that impossible by construction — not by convention.
    whole conversation loop is idle again" (resets `openTurns` to 0
    unconditionally) rather than decrementing by 1 per message sent, because a
    message queued mid-tool-call can get folded into the SAME turn's eventual
-   result instead of producing its own (Dibs 400 comment 317 - decrementing
+   result instead of producing its own (decrementing
    by 1 left sessions stuck showing "working" forever after this happened).
    Separately, `ClaudeHeadlessManager::check_stall()` (in `housekeeping()`)
    watches for a `working` child gone completely silent (no stream-json event
@@ -188,8 +195,8 @@ Docker-spawned, makes that impossible by construction — not by convention.
    also produces no stdout and must not be mistaken for a hang) and forcibly
    ends a genuinely wedged one so the existing dormant/lazy-resume path can
    recover it, rather than leaving it stuck indefinitely. Never applies to
-   `blocked` (a pending prompt is normal to sit on). Protocol and design records live in Dibs (plan #269, research
-   #280, decision #282); `tests/fixtures/claude_stream_json_*_v2_1_278.ndjson`
+   `blocked` (a pending prompt is normal to sit on).
+   `tests/fixtures/claude_stream_json_*_v2_1_278.ndjson`
    are the captured stream-json events and `tests/fixtures/fake_claude_stream`
    is the scripted stand-in the tests drive. `ClaudeHeadlessRuntime` is the
    `RuntimeProvider` face of it: a `create` request with `runtime=headless`
@@ -312,7 +319,7 @@ that only `create_agent_session()`-spawned sessions have).
   only returns the tiny "currently live" set and is unreliable for
   enumeration (caused the headless sync to prune just-resumed sessions);
   v2 is the fuller, canonical surface (see the "Convention" note in
-  `docs/headless-runtime-plan.md`). When touching any opencode-server
+  `docs/history/headless-runtime-plan.md`). When touching any opencode-server
   call, check whether a v2 endpoint exists and use it; fall back to v1
   only where v2 genuinely isn't available/working for that operation.
  - **OpenCode question events (1.18.21):** `GET /event` delivers
@@ -323,13 +330,12 @@ that only `create_agent_session()`-spawned sessions have).
    into `SessionStatusStore`; throttled headless polling must preserve its
    live questions. Replies require the question request ID, not the tool
    call ID. v2 replies use no-content success; scoped legacy replies return
-   JSON `true`. See `.ai/research/opencode-11821-webui-sse-question-prompts.md`
-   for the captured evidence and WebUI compatibility-layer distinctions.
+   JSON `true`.
 
 - **Claude Code multi-account ("profile") support: any new Claude-specific
   transcript/session-lookup function needs a `?string $profile = null`
   parameter, or it silently only works for the default account.** Added
-  2026-09-18 (Dibs plan #230/#234/#236) - a session can be spawned under a
+  2026-09-18 - a session can be spawned under a
   different `CLAUDE_CONFIG_DIR` (a separate account, e.g. work), named in
   `host-agent/config/agents.php`. `Config::claude_config_dir($profile)` is
   the base every Claude-account-scoped path is built from; the profile name
@@ -404,17 +410,15 @@ that only `create_agent_session()`-spawned sessions have).
     the shared copy-to-clipboard affordance (`copyTextToClipboard()` in
     `common.js`). A new block kind needs both attached the same way, or it
     silently loses search-jump and copy support that every other kind has.
-- Branch model actually used here: work happens directly on `master`
-  (pushed straight to `origin/master`) for anything normal - a new feature,
-  a bug fix, a doc update. A separate `refactor/*` or `feature/*` branch
-  (sometimes in a second git worktree, e.g.
-  `../claude-session-manager-refactor`) is reserved for changes big/risky
-  enough that the live site could stop loading partway through - a
-  multi-phase structural refactor (the Plates-templating and
-  front-controller/router migrations were the two so far), not a small
-  self-contained feature. Once merged, delete the branch (both local and
-  remote) - don't let finished branches pile up. This repo does not use the
-  generic global `master → local → feature` model.
+- Branch model actually used here: `master` is protected (the "Core tests
+  (PHP 8.3)" check is required, the branch must be up to date, and this
+  applies to admins), so every change goes through a short-lived branch and
+  a pull request, rebased onto `master` before it merges. Changes big or
+  risky enough that the live site could stop loading partway through (a
+  multi-phase structural refactor, like the Plates-templating and
+  front-controller/router migrations) are done in a separate git worktree.
+  Once merged, delete the branch, local and remote. This repo does not use
+  the generic global `master → local → feature` model.
 - Andres may open-source this repo. When a design choice could go either
   toward "simplest for the one deployment this runs today" or "the
   standard/portable shape," default to the portable one, even if it's a

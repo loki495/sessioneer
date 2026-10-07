@@ -210,7 +210,7 @@ class Config
      * where the Antigravity CLI (binary name `agy`) was installed, so this
      * is empty until ANTIGRAVITY_BIN is set explicitly. Run `which agy` to
      * find the real path. Added 2026-08-24 for AntigravityAdapter, see
-     * docs/antigravity-adapter-plan.md.
+     * docs/history/antigravity-adapter-plan.md.
      */
     public static function antigravity_bin(): string
     {
@@ -272,7 +272,7 @@ class Config
      * the manager suspects it is wedged and sends a diagnostic interrupt.
      * Generous by design: a single slow tool call (a browser automation step,
      * a long build) produces no stdout either, and this must not cancel one
-     * just because it's taking a while. See Dibs 400 comment 317.
+     * just because it's taking a while.
      */
     public static function claude_headless_stall_interrupt_seconds(): int
     {
@@ -415,7 +415,7 @@ class Config
 
     /**
      * An Antigravity conversation's real, confirmed-live transcript file
-     * path (docs/antigravity-adapter-plan.md's "Transcript format"
+     * path (docs/history/antigravity-adapter-plan.md's "Transcript format"
      * research) - unlike Claude Code's find_transcript_path() (a glob
      * against an encoded-cwd directory Claude Code names itself), this is
      * a direct, deterministic path from the conversationId alone, no
@@ -609,7 +609,7 @@ class Config
 
     /**
      * Antigravity's real hooks config file (see
-     * docs/antigravity-adapter-plan.md's "Hooks" research section) - the
+     * docs/history/antigravity-adapter-plan.md's "Hooks" research section) - the
      * SHARED global location (confirmed via the CLI's own embedded
      * changelog: a past bug wrote to the wrong, non-shared path and was
      * fixed to write here instead), not the per-workspace

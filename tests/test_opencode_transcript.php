@@ -3,8 +3,7 @@ declare(strict_types=1);
 
 /**
  * Exercises HostAgent\Services\OpenCodeTranscriptService — the SQLite-backed
- * transcript reader for OpenCode TUI sessions (see .ai/QUESTIONS.md Q1.4 for
- * live-verified storage details). Mirrors test_antigravity_transcript.php's
+ * transcript reader for OpenCode TUI sessions. Mirrors test_antigravity_transcript.php's
  * own fixture/pagination pattern but against a canned opencode.db SQLite
  * fixture rather than JSONL, so no live opencode process is needed.
  */

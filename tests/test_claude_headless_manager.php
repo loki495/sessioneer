@@ -9,7 +9,7 @@ declare(strict_types=1);
  * protocol, talked to through the real ClaudeHeadlessManagerClient socket
  * client. Never spawns the real `claude` binary, never billable.
  *
- * Covers the accepted design (Dibs decision #282, protocol research #280):
+ * Covers the accepted design:
  * lazy spawn/resume, status + blocked-prompt feed, answering prompts,
  * interrupt and queued messages, mode/model control, session-id rotation,
  * graceful and forced stop, idle reaping, max children, the no-API-key and
@@ -37,8 +37,7 @@ $root = sys_get_temp_dir() . '/sessioneer-test-claude-headless-' . getmypid();
 // the REAL manager's environment - including SIDECAR_DIR - by construction
 // (the manager passes its own env to every child it spawns), so an "if
 // unset" guard would silently do nothing and this test would run against
-// the real host's sessions.sqlite. Found live 2026-09-27 (Dibs 388's own
-// follow-up incident): a direct `php tests/test_X.php` run from inside such
+// the real host's sessions.sqlite. Found live 2026-09-27: a direct `php tests/test_X.php` run from inside such
 // a session locked and corrupted real session rows this way.
 $realSidecarDir = Config::sidecar_dir();
 putenv('SIDECAR_DIR=' . $root . '/sidecars');
@@ -281,7 +280,7 @@ assert_true(($interrupted['ok'] ?? false) === true, 'interrupt is acknowledged b
 assert_true((bool)wait_until(static fn (): bool => has_result($m1, 'echo: follow-up while busy') && status_is($sn(1), 'idle')), 'the queued message still runs after the interrupt, then the session is idle');
 assert_true((bool)wait_until(static fn (): bool => SessionStatusStore::read_status($sn(1))['last_turn_error'] === null), 'and the follow-up\'s success clears the interrupted turn\'s error');
 
-echo "Turns: a message queued during a silent in-flight tool call (Dibs 400 comment 317 repro)\n";
+echo "Turns: a message queued during a silent in-flight tool call\n";
 call($m1, 'sessioneer/sendInput', ['session' => $sn(1), 'content' => 'SLOW_THEN_QUEUE first']);
 assert_true((bool)wait_until(static fn (): bool => status_is($sn(1), 'working')), 'the turn shows as working while the fake child is silently "mid tool call"');
 $queuedSilent = call($m1, 'sessioneer/sendInput', ['session' => $sn(1), 'content' => 'during the silence']);
@@ -527,7 +526,7 @@ assert_true(in_array(['signal' => 'SIGTERM'], fake_log($m6), true), 'SIGTERM was
 assert_equal('dormant', process_of($m6, $sn(50)), 'the session is dormant');
 assert_true(status_is($sn(50), 'idle') && SessionStatusStore::read_status($sn(50))['last_turn_error'] === null, 'a requested stop is not reported as a crash');
 
-echo "Stall watchdog: a child gone completely silent mid-turn is nudged, then ended, then self-heals (Dibs 400 comment 317)\n";
+echo "Stall watchdog: a child gone completely silent mid-turn is nudged, then ended, then self-heals\n";
 $m9 = start_manager($root, 'm9', ['CLAUDE_HEADLESS_STALL_INTERRUPT_SECONDS' => '1', 'CLAUDE_HEADLESS_STALL_KILL_SECONDS' => '1']);
 make_session($root, $sn(55));
 call($m9, 'sessioneer/sendInput', ['session' => $sn(55), 'content' => 'STUBBORN forever']);

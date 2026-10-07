@@ -18,11 +18,21 @@ use HostAgent\Services\SessionService;
 use HostAgent\Services\TmuxService;
 use HostAgent\Stores\SidecarStore;
 
-// Ensure we're using the test fixture environment
-$realTmuxSocket = '/tmp/tmux-' . getmyuid() . '/default';
+// Force the isolated fixtures unconditionally (same values as tests/.env.testing):
+// run directly from a managed session, the inherited env points at the real
+// tmux server and sidecars, and this file kills its tmux server.
+$isolated = [
+    'TMUX_SOCKET' => '/tmp/sessioneer-test-tmux/socket',
+    'SIDECAR_DIR' => '/tmp/sessioneer-test-sidecars',
+    'WWW_ROOT' => __DIR__ . '/fixtures/www_root',
+];
 
-if (Config::tmux_socket() === $realTmuxSocket) {
-    fwrite(STDERR, "REFUSING TO RUN: TMUX_SOCKET resolves to the real host socket. Check tests/.env.testing.\n");
+foreach ($isolated as $name => $value) {
+    putenv("{$name}={$value}");
+}
+
+if (Config::tmux_socket() !== $isolated['TMUX_SOCKET'] || Config::sidecar_dir() !== $isolated['SIDECAR_DIR']) {
+    fwrite(STDERR, "REFUSING TO RUN: TMUX_SOCKET/SIDECAR_DIR didn't resolve to the isolated fixtures.\n");
     exit(1);
 }
 
@@ -159,7 +169,18 @@ try {
     echo "✓ All Codex resume tests passed\n";
 } finally {
     // Cleanup
-    @shell_exec("rm -rf {$testWorkdir}");
+    if (is_dir($testWorkdir)) {
+        $entries = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($testWorkdir, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($entries as $entry) {
+            $entry->isDir() && !$entry->isLink() ? rmdir($entry->getPathname()) : unlink($entry->getPathname());
+        }
+
+        rmdir($testWorkdir);
+    }
     // Clean up sidecars written during tests
     if (isset($threadId1)) {
         SidecarStore::delete_sidecar($threadId1);

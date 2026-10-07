@@ -7,7 +7,7 @@ declare(strict_types=1);
  * {type, role, timestamp, blocks} form, plus pagination/incremental-poll
  * reading) and TranscriptRouter (dispatch to TranscriptService vs
  * AntigravityTranscriptService by path shape) - see
- * docs/antigravity-adapter-plan.md Phase 4. Entry shapes here are
+ * docs/history/antigravity-adapter-plan.md Phase 4. Entry shapes here are
  * modeled directly on real ones captured live 2026-08-24 (see that plan
  * doc's "Open questions" research), not guessed.
  */
@@ -35,7 +35,7 @@ $transcriptDir = Config::home_root() . '/.gemini/antigravity-cli/brain/' . $conv
 mkdir($transcriptDir, 0700, true);
 $transcriptPath = $transcriptDir . '/transcript_full.jsonl';
 
-// Real shapes, modeled on the live captures in docs/antigravity-adapter-plan.md.
+// Real shapes, modeled on the live captures in docs/history/antigravity-adapter-plan.md.
 $lines = [
     // 1: USER_INPUT - the wrapper tags must be stripped for display.
     json_encode(['step_index' => 0, 'source' => 'USER_EXPLICIT', 'type' => 'USER_INPUT', 'status' => 'DONE', 'created_at' => '2026-08-24T20:18:50Z', 'content' => "<USER_REQUEST>\nRun 'echo hi' in the shell\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nThe current local time is: 2026-08-24T13:18:50-07:00.\n</ADDITIONAL_METADATA>"]),

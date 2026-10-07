@@ -8,7 +8,7 @@ declare(strict_types=1);
  * tests/fixtures/fake_agy's canned `/usage` response (see that file's own
  * docblock for why it needs to distinguish -p/--print from the
  * interactive-TUI shape every other Antigravity test already uses it
- * for). See docs/antigravity-adapter-plan.md's Phase 7 ("quota
+ * for). See docs/history/antigravity-adapter-plan.md's Phase 7 ("quota
  * research") for the real response shape this fixture is modeled on.
  */
 

@@ -4,7 +4,7 @@ declare(strict_types=1);
 /**
  * Exercises HostAgent\Agents\AgentRegistry/ClaudeCodeAdapter/
  * AntigravityAdapter - the seam introduced 2026-08-24
- * (docs/antigravity-adapter-plan.md Phase 1) and its second real
+ * (docs/history/antigravity-adapter-plan.md Phase 1) and its second real
  * implementation (Phase 2). ClaudeCodeAdapter::build_spawn_argv() must
  * produce BYTE-IDENTICAL argv to what SessionLifecycleService::
  * create_agent_session() built inline before this extraction - this file is
@@ -133,7 +133,7 @@ try {
     assert_true(is_file($settingsPath), 'install_hooks(): actually wrote ~/.claude/settings.json, proving this reached the real HookService::install_session_hook(), not a stub');
     assert_equal(HookService::check_session_hook(), $adapter->check_hooks(), 'check_hooks(): still identical to HookService::check_session_hook() after installing');
 
-    // --- AntigravityAdapter (docs/antigravity-adapter-plan.md Phase 2) ---
+    // --- AntigravityAdapter (docs/history/antigravity-adapter-plan.md Phase 2) ---
 
     $antigravity = AgentRegistry::get('antigravity');
     assert_true($antigravity instanceof AntigravityAdapter, "AgentRegistry::get('antigravity'): returns an AntigravityAdapter instance");

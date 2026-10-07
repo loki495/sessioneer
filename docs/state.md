@@ -9,6 +9,8 @@ Conversations live in each agent's own transcript files. Sessioneer itself keeps
 | `sessions.sqlite` | `$SIDECAR_DIR/sessions.sqlite` (`SESSIONS_SQLITE_FILE` overrides; `SIDECAR_DIR` defaults to `/run/user/<uid>/sessioneer-sessions`) | tmpfs, cleared on reboot (the tracked processes died with the reboot anyway) | `sidecars`, `session_status`, `pending_tools` |
 | `push.sqlite` | `host-agent/state/push.sqlite` (`PUSH_SQLITE_FILE` overrides) | persistent (a phone's push subscription must survive a reboot) | `push_subscriptions`, `push_session_state`, `push_quota_state`, `global_state` |
 
+These stores used to be JSON files written read-merge-write, which lost updates when two hooks fired close together (`PreToolUse` and `PermissionRequest` for the same tool call), and quota notifications could fire twice the same way. SQLite serialises writers, so each update is one atomic `UPDATE` or `INSERT ... ON CONFLICT DO UPDATE`: the race is closed structurally, not with a lock around the old read-modify-write.
+
 Both are opened with WAL mode by one connection per request; the schemas live in `host-agent/lib/Stores/SqliteDb.php`, and columns added later are migrated in with `ALTER TABLE ... ADD COLUMN` on first use.
 
 ## `sessions.sqlite`
@@ -50,6 +52,6 @@ A headless Claude session is a sidecar row with `agent = claude` and `runtime = 
 
 The row is the truth and the process is a cache: a session with no running process is "dormant" and the next message starts one with `--resume`. The manager is the only writer of that session's `session_status` row; the hooks never write it. The transcript is still read from Claude's own `~/.claude/projects/<cwd>/<id>.jsonl`.
 
-A write that throws (SQLITE_BUSY under WAL contention is the known case, Dibs 388 - a real incident, not a hypothetical) is queued and retried every housekeeping tick rather than lost, and `session_detail` cross-checks the manager's own live state for the one session on screen and self-heals the row on a mismatch, so a lost write can never leave a session looking dead forever.
+A write that throws (SQLITE_BUSY under WAL contention is the known case - a real incident, not a hypothetical) is queued and retried every housekeeping tick rather than lost, and `session_detail` cross-checks the manager's own live state for the one session on screen and self-heals the row on a mismatch, so a lost write can never leave a session looking dead forever.
 
 Claude's account-wide rate-limit windows are kept in `global_state` (`quota_live_state`, plus `quota_live_state:<profile>` per extra account). Two writers feed it through one merge rule: the statusLine script of a tmux session, and the headless manager from its processes' rate-limit events (a headless process renders no status line).

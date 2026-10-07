@@ -308,7 +308,7 @@ $response = match ($action) {
         : ['ok' => false, 'message' => 'Invalid folder name'],
     // `name` encodes the runtime it was asked for (DashboardController
     // redirects straight to /session.php?session=<name> on a successful
-    // create now, same as resume/switch_runtime below - see Dibs/CLAUDE.md
+    // create now, same as resume/switch_runtime below - see CLAUDE.md
     // "redirect to that session's page" - so the UI smoke test proves the
     // New Session form's runtime choice reached the agent, and that an
     // absent or invalid one sends none, via the Location header rather
