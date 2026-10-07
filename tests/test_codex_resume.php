@@ -21,9 +21,10 @@ use HostAgent\Stores\SidecarStore;
 // Force the isolated fixtures unconditionally (same values as tests/.env.testing):
 // run directly from a managed session, the inherited env points at the real
 // tmux server and sidecars, and this file kills its tmux server.
+$testId = getenv('SESSIONEER_TEST_ID') ?: 'adhoc';
 $isolated = [
-    'TMUX_SOCKET' => '/tmp/sessioneer-test-tmux/socket',
-    'SIDECAR_DIR' => '/tmp/sessioneer-test-sidecars',
+    'TMUX_SOCKET' => "/tmp/sessioneer-test-tmux-{$testId}/socket",
+    'SIDECAR_DIR' => "/tmp/sessioneer-test-sidecars-{$testId}",
     'WWW_ROOT' => __DIR__ . '/fixtures/www_root',
 ];
 

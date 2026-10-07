@@ -30,7 +30,8 @@ const CANNED_NEW_SESSION_NAME = 'cc-20260101-1600';
 $agentSocket = sys_get_temp_dir() . '/sessioneer-test-ui-agent.sock';
 $agentHarness = start_harness(['php', __DIR__ . '/fixtures/canned_agent.php'], $agentSocket);
 
-$port = 18099;
+require_once __DIR__ . '/lib/free_port.php';
+$port = test_free_port();
 $baseUrl = "http://127.0.0.1:{$port}";
 
 $serverEnv = array_merge(getenv(), [

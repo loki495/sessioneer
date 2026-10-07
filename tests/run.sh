@@ -133,18 +133,16 @@ TEST_HOME="$(mktemp -d /tmp/sessioneer-test-home.XXXXXX)" || {
 export HOME="$TEST_HOME"
 export SESSIONEER_LIVE_HOME="$ORIGINAL_HOME"
 
-# Keyed by SCRIPT_DIR (not a single global path) so this only ever blocks a
-# second run of THIS SAME checkout - a different worktree/clone has its
-# own tests/.env.testing pointing
-# at its own isolated fixture paths, so running its suite concurrently with
-# this one is genuinely safe, not something to block. Two runs of the SAME
-# checkout are not safe: they'd share the exact same TMUX_SOCKET/
-# SIDECAR_DIR from one tests/.env.testing, and whichever
-# finishes first would tear that state down via its own EXIT trap out from
-# under the one still running. -n (non-blocking) fails fast with a clear
-# message instead of silently hanging behind a run that might itself be
-# stuck.
-LOCK_FILE="/tmp/sessioneer-test-run-$(echo -n "$SCRIPT_DIR" | cksum | cut -d' ' -f1).lock"
+# SESSIONEER_TEST_ID is a hash of this checkout's path. .env.testing builds the
+# tmux socket, sidecar and cache paths from it, and the lock below is keyed by
+# it, so suites running in different worktrees never share state and cannot
+# tear each other down. Two runs of the SAME checkout still would (one's EXIT
+# trap kills the other's tmux server), hence the lock; -n (non-blocking) fails
+# fast with a clear message instead of hanging behind a run that might itself
+# be stuck.
+SESSIONEER_TEST_ID="$(echo -n "$SCRIPT_DIR" | cksum | cut -d' ' -f1)"
+export SESSIONEER_TEST_ID
+LOCK_FILE="/tmp/sessioneer-test-run-$SESSIONEER_TEST_ID.lock"
 exec 200>"$LOCK_FILE"
 if ! flock -n 200; then
     echo "REFUSING TO RUN: another tests/run.sh for this same checkout ($SCRIPT_DIR) is already in progress (lock: $LOCK_FILE). Wait for it to finish - running two at once would corrupt each other's isolated tmux/sidecar state." >&2
@@ -306,7 +304,9 @@ fi
 
 for test_file in "${test_files[@]}"; do
     echo "== $(basename "$test_file") =="
-    if php "$test_file"; then
+    # 200>&- so an orphaned test child can't keep the run lock held after this
+    # script is gone.
+    if php "$test_file" 200>&-; then
         echo "-- $(basename "$test_file"): PASS --"
     else
         echo "-- $(basename "$test_file"): FAIL --"

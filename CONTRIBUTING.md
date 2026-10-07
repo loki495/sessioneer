@@ -434,7 +434,7 @@ otherwise.
 **Isolation, since this tool can create real tmux sessions and spawn real
 processes on the host:**
 
-- `tests/.env.testing` points `TMUX_SOCKET` at `/tmp/sessioneer-test-tmux/socket`
+- `tests/.env.testing` points `TMUX_SOCKET` at `/tmp/sessioneer-test-tmux-<id>/socket` (the id is a hash of the checkout path that `run.sh` exports, so suites in different worktrees never share tmux, sidecar or cache state; each test's `php -S` server takes a free port at runtime)
   - a completely separate tmux **server**, never your real one. It cannot
   see or touch your real `cc-*` sessions.
 - `CLAUDE_BIN` points at `tests/fixtures/fake_claude`, a script that behaves
