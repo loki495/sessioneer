@@ -222,7 +222,7 @@ class PromptInteractionService
             $answerResult = OpenCodeQuestionService::answer($ocQid, [$chosenLabel]);
 
             if (!($answerResult['ok'] ?? false)) {
-                return ['ok' => false, 'message' => (string)($answerResult['message'] ?? 'Failed to answer question')];
+                return ['ok' => false, 'message' => $answerResult['message']];
             }
 
             PendingToolStore::delete_pending_tool($name);

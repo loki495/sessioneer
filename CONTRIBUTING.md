@@ -414,6 +414,7 @@ either dead code or a docblock narrower than the data - not yet triaged.
 ```
 bash tests/run.sh          # run every test file
 bash tests/run.sh --bail   # stop at the first failing test file
+bash tests/run.sh --shard 2/3  # only the 2nd of 3 round-robin slices (what CI runs per runner)
 ```
 
 No Composer, no Pest - plain PHP scripts (`tests/test_*.php`) run directly
@@ -476,10 +477,11 @@ above).
    `npm run build:css` if you changed classes, and commit the regenerated
    CSS).
 3. The **Core tests (PHP 8.3)** CI job must pass before a PR can merge, and the
-   branch must be up to date with `master`. That job validates and audits
-   Composer, runs PHPStan, syntax-checks `public/js/*.js` and `public/sw.js`
-   with `node --check`, and runs the full suite including the browser tests.
-   Shellcheck runs too, but only advisory.
+   branch must be up to date with `master`. That job passes when all three
+   parallel test shards pass; together they run the full suite including the
+   browser tests, and the first shard also validates and audits Composer, runs
+   PHPStan, syntax-checks `public/js/*.js` and `public/sw.js` with
+   `node --check`, and runs Shellcheck (advisory only).
 4. Keep each commit to one change, with an imperative subject line that says
    what changed and a body that says why. Docs and tests go in the same commit
    as the change they describe.

@@ -245,7 +245,7 @@ class QuotaService
             $stmt->execute([$sessionId]);
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            if ($row === false || !is_array($row)) {
+            if ($row === false) {
                 return null;
             }
 
@@ -266,7 +266,7 @@ class QuotaService
         // Dashboard: aggregate across all sessions (mirrors `opencode stats` totals)
         $row = $pdo->query('SELECT COUNT(*) as cnt, COALESCE(SUM(cost),0) as sum_cost, COALESCE(SUM(tokens_input),0) as sum_in, COALESCE(SUM(tokens_output),0) as sum_out, COALESCE(SUM(tokens_reasoning),0) as sum_reason, COALESCE(SUM(tokens_cache_read),0) as sum_cr, COALESCE(SUM(tokens_cache_write),0) as sum_cw FROM session')->fetch(\PDO::FETCH_ASSOC);
 
-        if ($row === false || !is_array($row) || (int)($row['cnt'] ?? 0) === 0) {
+        if ($row === false || (int)($row['cnt'] ?? 0) === 0) {
             return null;
         }
 
