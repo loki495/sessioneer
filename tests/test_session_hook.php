@@ -566,6 +566,18 @@ try {
     run_session_start_hook($sidecarName, ['session_id' => $phantomId]);
     assert_equal($newId, SidecarStore::read_sidecar($sidecarName)['agent_session_id'] ?? null, 'session_start.php: a session-id with no matching transcript file anywhere is never trusted enough to rebind an existing, working sidecar');
 
+    // --- the new transcript only appears ~650ms after /clear on Claude Code
+    // 2.1.285 (found live 2026-10-06: two /clears in a row left the sidecar
+    // on the pre-/clear id). A file written 900ms after the hook starts must
+    // still be picked up. ---
+
+    $lateId = '33333333-3333-4333-8333-333333333333';
+    $lateDir = Config::home_root() . '/.claude/projects/fixture-project';
+    exec('(sleep 0.9 && printf %s ' . escapeshellarg(json_encode(['type' => 'user', 'sessionId' => $lateId]) . "\n") . ' > ' . escapeshellarg("{$lateDir}/{$lateId}.jsonl") . ') > /dev/null 2>&1 &');
+    run_session_start_hook($sidecarName, ['session_id' => $lateId]);
+    assert_equal($lateId, SidecarStore::read_sidecar($sidecarName)['agent_session_id'] ?? null, 'session_start.php: rebinds to a new session-id whose transcript only appears ~1s after the hook fires');
+    SidecarStore::write_sidecar($sidecarName, ['workdir' => '/fixture/workdir', 'spawned_at' => 1000, 'agent_session_id' => $newId, 'spawned_by_app' => true]);
+
     // --- SESSIONEER_SESSION_NAME set + real sidecar + payload reports a session-id
     // that's real (has a transcript) but is ALREADY the live id of a
     // DIFFERENT tracked tmux session -> the rebind is refused, same as the

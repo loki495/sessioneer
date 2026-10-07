@@ -102,6 +102,9 @@ if ($existingSidecar === null && !$createIfMissing) {
 // this hook fires (SessionStart can fire before Claude Code's own first
 // write to the new transcript path - same kind of ordering surprise
 // already found for the Stop hook, see tests/README/todo notes on that).
+// Claude Code 2.1.285 creates the file ~650ms after /clear, so the wait
+// allows up to 3s; it only runs that long when the file is late or never
+// comes.
 // Which Claude Code account this pane's session was originally spawned
 // under - read from the sidecar being rebound, NOT
 // re-derived from anything in this hook's own env, since CLAUDE_CONFIG_DIR
@@ -114,7 +117,7 @@ if ($existingSidecar === null && !$createIfMissing) {
 $profile = is_string($existingSidecar['profile'] ?? null) ? $existingSidecar['profile'] : null;
 
 $transcriptConfirmed = false;
-for ($attempt = 0; $attempt < 4; $attempt++) {
+for ($attempt = 0; $attempt < 20; $attempt++) {
     if (TranscriptService::find_transcript_path($agentSessionId, $profile) !== null) {
         $transcriptConfirmed = true;
         break;
