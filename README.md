@@ -27,10 +27,10 @@ The dashboard lists tracked Claude Code, Codex, OpenCode, and Antigravity
 sessions currently running on your box, using tmux names or each headless
 agent's native session ID as appropriate.
 
-A session waiting on a tool-permission approval, with real Approve/Deny
-buttons right in the browser:
+A session waiting on a tool-permission approval, with the numbered choices (1. Yes / 2. No)
+answerable right in the browser:
 
-![A session showing a blocked tool-permission prompt with Approve/Deny buttons](docs/screenshots/blocked-prompt.png)
+![A session showing a blocked tool-permission prompt with numbered Yes/No choices](docs/screenshots/blocked-prompt.png)
 
 The dashboard and a blocked prompt, on a phone-sized viewport (this app is
 an installable PWA, meant to be added to an iOS/Android home screen):
