@@ -434,6 +434,57 @@ try {
     $sendResult = PushDeliveryService::send_push_notification($unreachableSubscription, 'Title', 'Body');
     assert_equal(false, $sendResult['ok'], 'send_push_notification: a real (failed) send against an unreachable endpoint reports ok=false, not an uncaught exception');
 
+    // --- send_push_notification() against a local stand-in push service: a
+    // real encrypted, VAPID-signed request goes out and a 201 reports ok,
+    // while a 410 reports the subscription as expired. ---
+
+    $stubLog = sys_get_temp_dir() . '/sessioneer-test-push-stub-' . bin2hex(random_bytes(4)) . '.log';
+    $stubSock = stream_socket_server('tcp://127.0.0.1:0', $stubErrno, $stubErrstr);
+    assert_true($stubSock !== false, 'push stub: reserved a local port');
+    $stubAddr = (string)stream_socket_get_name($stubSock, false);
+    fclose($stubSock);
+    $stubPort = (int)substr($stubAddr, strrpos($stubAddr, ':') + 1);
+    $stubProc = proc_open(
+        ['php', '-S', "127.0.0.1:{$stubPort}", __DIR__ . '/fixtures/push_endpoint_stub.php'],
+        [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
+        $stubPipes,
+        null,
+        ['SESSIONEER_STUB_LOG' => $stubLog, 'PATH' => getenv('PATH') ?: '/usr/bin:/bin']
+    );
+
+    try {
+        $stubUp = false;
+        for ($i = 0; $i < 30 && !$stubUp; $i++) {
+            usleep(100000);
+            $probe = @fsockopen('127.0.0.1', $stubPort);
+            if ($probe !== false) {
+                fclose($probe);
+                $stubUp = true;
+            }
+        }
+        assert_true($stubUp, 'push stub: php -S is listening');
+        @unlink($stubLog);
+
+        $okResult = PushDeliveryService::send_push_notification(['endpoint' => "http://127.0.0.1:{$stubPort}/ok", 'keys' => ['p256dh' => $fakeP256dh, 'auth' => $fakeAuth]], 'Title', 'Body', '/session.php?session=cc-x');
+        assert_equal(['ok' => true, 'expired' => false], $okResult, 'send_push_notification: a 201 from the push service reports ok=true');
+
+        $stubRequests = array_map(static fn (string $line): array => (array)json_decode($line, true), array_filter(explode("\n", (string)@file_get_contents($stubLog))));
+        $sent = $stubRequests[0] ?? [];
+        assert_equal('POST', $sent['method'] ?? null, 'send_push_notification: the push service receives a POST');
+        assert_equal('aesgcm', $sent['headers']['content-encoding'] ?? null, 'send_push_notification: the payload is sent encrypted (aesgcm, the library default for subscriptions without a contentEncoding)');
+        assert_true(str_starts_with((string)($sent['headers']['authorization'] ?? ''), 'WebPush ') && str_contains((string)($sent['headers']['crypto-key'] ?? ''), 'p256ecdsa='), 'send_push_notification: the request is VAPID-signed (WebPush authorization + p256ecdsa key)');
+        assert_true(($sent['body_bytes'] ?? 0) > 0, 'send_push_notification: the encrypted payload is not empty');
+
+        $goneResult = PushDeliveryService::send_push_notification(['endpoint' => "http://127.0.0.1:{$stubPort}/gone", 'keys' => ['p256dh' => $fakeP256dh, 'auth' => $fakeAuth]], 'Title', 'Body');
+        assert_equal(false, $goneResult['ok'], 'send_push_notification: a 410 from the push service reports ok=false');
+        assert_equal(true, $goneResult['expired'], 'send_push_notification: a 410 marks the subscription as expired');
+        assert_true(is_string($goneResult['message'] ?? null), 'send_push_notification: a 410 carries a readable reason, not a crash');
+    } finally {
+        proc_terminate($stubProc);
+        proc_close($stubProc);
+        @unlink($stubLog);
+    }
+
     PushSubscriptionStore::add_push_subscription($unreachableSubscription);
     PushSessionStateStore::clear_all();
     $withRealSubscriber = PushDeliveryService::check_and_send_pushes([['name' => 'cc-real-send', 'blocked_reason' => 'Proceed?', 'working' => false]]);

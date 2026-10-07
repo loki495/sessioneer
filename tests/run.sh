@@ -2,12 +2,16 @@
 # Runs every tests/test_*.php file against isolated fixtures (see
 # tests/.env.testing) and guarantees cleanup of anything they start -
 # tmux sessions, the fake claude process, sidecar files - even if a test
-# fails or the run is interrupted. Usage: bash tests/run.sh [--bail] [--cleanup] [--replay] [--no-browser] [--browser] [--live]
+# fails or the run is interrupted. Usage: bash tests/run.sh [--bail] [--cleanup] [--replay] [--no-browser] [--browser] [--live] [--shard N/M]
 #   --bail     stop at the first failing test file instead of running the rest
 #   --replay   only run the session-replay test files (test_session_replay*.php)
 #              - fast iteration on tests/lib/replay_fixture.php,
 #              tests/lib/cdp.php, or tests/fixtures/replay/* without paying
 #              for the other 10 unrelated test files every time
+#   --shard N/M  run only the Nth of M round-robin slices (1-based) of the
+#              selected files, in name order - lets CI spread the suite over
+#              M parallel runners. Every runner is a separate machine, so the
+#              fixed ports and /tmp paths the tests bind never collide.
 #   --live     the ONLY way to run a *_live.php test file (matched by filename,
 #              currently test_claude_trust_prompt_live.php and
 #              test_claude_headless_live.php) - every other
@@ -58,8 +62,16 @@ no_browser=0
 browser_only=0
 headed=0
 live_only=0
+shard=""
+expect_shard=0
 for arg in "$@"; do
+    if [ "$expect_shard" -eq 1 ]; then
+        shard="$arg"
+        expect_shard=0
+        continue
+    fi
     case "$arg" in
+        --shard) expect_shard=1 ;;
         --bail) bail=1 ;;
         --cleanup) cleanup_only=1 ;;
         --replay) replay_only=1 ;;
@@ -73,6 +85,15 @@ for arg in "$@"; do
             ;;
     esac
 done
+
+if [ "$expect_shard" -eq 1 ] || { [ -n "$shard" ] && ! [[ "$shard" =~ ^[1-9][0-9]*/[1-9][0-9]*$ ]]; }; then
+    echo "--shard needs N/M with 1 <= N <= M, e.g. --shard 2/3." >&2
+    exit 1
+fi
+if [ -n "$shard" ] && [ "${shard%/*}" -gt "${shard#*/}" ]; then
+    echo "--shard N/M needs N <= M (got $shard)." >&2
+    exit 1
+fi
 
 if [ "$live_only" -eq 1 ] && { [ "$replay_only" -eq 1 ] || [ "$no_browser" -eq 1 ] || [ "$browser_only" -eq 1 ]; }; then
     echo "Contradictory flags: --live selects a different, non-overlapping set of test files than --replay/--no-browser/--browser." >&2
@@ -277,6 +298,16 @@ elif [ "$browser_only" -eq 1 ]; then
         esac
     done
     test_files=("${filtered_files[@]}")
+fi
+
+if [ -n "$shard" ]; then
+    sharded_files=()
+    for i in "${!test_files[@]}"; do
+        if [ $((i % ${shard#*/})) -eq $((${shard%/*} - 1)) ]; then
+            sharded_files+=("${test_files[$i]}")
+        fi
+    done
+    test_files=("${sharded_files[@]}")
 fi
 
 for test_file in "${test_files[@]}"; do

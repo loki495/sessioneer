@@ -6,8 +6,9 @@
     "require": {
         "php": ">=8.2",
         "ext-pdo_sqlite": "*",
-        "minishlink/web-push": "^9.0",
-        "league/plates": "^3.6"
+        "minishlink/web-push": "^11.0",
+        "league/plates": "^3.6",
+        "guzzlehttp/guzzle": "^7.9"
     },
     "autoload": {
         "psr-4": {
@@ -26,5 +27,10 @@
     },
     "scripts": {
         "phpstan": "phpstan analyse --memory-limit=1G"
+    },
+    "config": {
+        "allow-plugins": {
+            "php-http/discovery": false
+        }
     }
 }
