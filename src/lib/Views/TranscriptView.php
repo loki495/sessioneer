@@ -734,8 +734,14 @@ class TranscriptView extends View
         $parsedTimestamp = is_string($timestampSource['timestamp'] ?? null) ? strtotime($timestampSource['timestamp']) : false;
         $timestamp = $parsedTimestamp !== false ? SessionRowView::relative_time($parsedTimestamp) : '';
 
+        $summaryLabel = self::tool_call_entry_summary($callEntry, $resultEntry, $cwd);
+        $description = self::first_text_bearing_block($callEntry)['description'] ?? null;
+
         return self::render('transcript/tool-call-entry', [
-            'summaryLabel' => self::tool_call_entry_summary($callEntry, $resultEntry, $cwd),
+            'summaryLabel' => $summaryLabel,
+            // Shown on the summary's first line, with the label below it: a Bash
+            // call's label is its command, and the description says why it ran.
+            'summaryDescription' => is_string($description) && trim($description) !== '' && $description !== $summaryLabel ? $description : null,
             'timestamp' => $timestamp,
             'callHtml' => $callEntry !== null ? self::render_entry_blocks_html($callEntry, $sessionIdentifier, $isArchived, true) : '',
             'resultHtml' => $resultEntry !== null ? self::render_entry_blocks_html($resultEntry, $sessionIdentifier, $isArchived, true) : '',
@@ -754,11 +760,10 @@ class TranscriptView extends View
      *   absolute path is mostly repeated noise (the session's own cwd), so
      *   relative is the readable middle ground.
      * - Bash: "Ran truncated command" - the real command, truncated via
-     *   BlockedPromptView::collapsible_summary() same as everything else -
-     *   deliberately NOT the call's own `description` param (present on
-     *   nearly every real Bash call) - Andres's own call 2026-08-22: the
-     *   actual command is more useful at a glance than a possibly-vague
-     *   description.
+     *   BlockedPromptView::collapsible_summary() same as everything else.
+     *   The call's own `description` (present on nearly every real Bash
+     *   call) is not the label; render_tool_call_entry_html() shows it on
+     *   its own line above.
      * - Everything else: the call's own description when it has one, else
      *   its summarized text truncated the same way.
      *
@@ -847,8 +852,8 @@ class TranscriptView extends View
     }
 
     /**
-     * @param array{blocks:array<int, array{kind:string, text:string}>}|null $entry
-     * @return array{kind:string, text:string}|null
+     * @param array{blocks:array<int, array{kind:string, text:string, description?:?string, tool_name?:?string, file_path?:?string, command?:?string}>}|null $entry
+     * @return array{kind:string, text:string, description?:?string, tool_name?:?string, file_path?:?string, command?:?string}|null
      */
     private static function first_text_bearing_block(?array $entry): ?array
     {

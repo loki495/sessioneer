@@ -664,8 +664,8 @@ try {
         'GET /session.php: a Write call summarizes as "Write <relative path>" (natural language, not "Write(path)"), relativized against the session\'s own workdir'
     );
     assert_true(
-        preg_match('/<details class="tool-call-entry[^"]*"><summary[^>]*>Ran composer install<\/summary>.*?Installed 42 packages.*?<\/details>/s', $result['body']) === 1,
-        'GET /session.php: a Bash call summarizes as "Ran <command>", preferring the real command over the call\'s own "Install dependencies" description'
+        preg_match('/<details class="tool-call-entry[^"]*"><summary[^>]*><span class="tool-call-description[^"]*">Install dependencies<\/span><span class="block truncate">Ran composer install<\/span><\/summary>.*?Installed 42 packages.*?<\/details>/s', $result['body']) === 1,
+        'GET /session.php: a Bash call summarizes as "Ran <command>", with the call\'s own "Install dependencies" description on the line above it'
     );
     assert_true(
         substr_count($result['body'], '<details class="tool-call-entry') === 5,

@@ -683,10 +683,9 @@
   // Read get "Write relative/path.php" / "Edit ..." / "Read ..." - natural
   // language, not "ToolName(args)" (Andres's own call 2026-08-22) -
   // block.file_path relativized against sessionCwd. Bash gets "Ran
-  // truncated command" (block.command, deliberately preferred over the
-  // call's own `description` param - the real command is more useful at a
-  // glance). Everything else: the call's own description when it has one,
-  // else its summarized text truncated via collapsibleSummary(). Falls back
+  // truncated command" (block.command; the call's `description`, if any,
+  // is rendered on its own line above by renderToolCallEntry()). Everything
+  // else: the call's own description when it has one, else its summarized text truncated via collapsibleSummary(). Falls back
   // to the RESULT's own text only for the rare orphaned-result edge case
   // (no preceding call in this batch).
   function toolCallEntrySummary(callEntry, resultEntry) {
@@ -728,7 +727,14 @@
 
     var details = document.createElement('details');
     details.className = 'tool-call-entry rounded-lg border border-slate-800 bg-slate-900/50 px-3 py-2 lg:max-w-[75%] lg:self-start';
-    details.innerHTML = '<summary class="select-none cursor-pointer truncate text-xs font-medium text-slate-400">' + escapeHtml(toolCallEntrySummary(callEntry, resultEntry)) + '</summary>'
+    var summaryLabel = toolCallEntrySummary(callEntry, resultEntry);
+    var callBlock = firstTextBearingBlock(callEntry);
+    var description = callBlock && typeof callBlock.description === 'string' && callBlock.description.trim() !== '' && callBlock.description !== summaryLabel ? callBlock.description : null;
+    details.innerHTML = '<summary class="select-none cursor-pointer truncate text-xs font-medium text-slate-400">'
+      + (description
+        ? '<span class="tool-call-description text-slate-300">' + escapeHtml(description) + '</span><span class="block truncate">' + escapeHtml(summaryLabel) + '</span>'
+        : escapeHtml(summaryLabel))
+      + '</summary>'
       + '<div class="mt-2 flex flex-col gap-1.5">'
       + (timestamp ? '<div class="select-none text-xs text-slate-500">' + timestamp + '</div>' : '')
       + callHtml + '<div class="tool-call-result-slot"></div></div>';

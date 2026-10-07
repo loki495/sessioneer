@@ -535,12 +535,6 @@ parameters:
 			path: src/lib/Views/SessionRowView.php
 
 		-
-			message: '#^Call to function in_array\(\) with arguments null, array\{''bash'', ''execute'', ''run_command''\} and true will always evaluate to false\.$#'
-			identifier: function.impossibleType
-			count: 1
-			path: src/lib/Views/TranscriptView.php
-
-		-
 			message: '#^Method App\\Views\\TranscriptView\:\:render_antigravity_model_toggle_html\(\) has parameter \$detail with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
@@ -619,24 +613,6 @@ parameters:
 			path: src/lib/Views/TranscriptView.php
 
 		-
-			message: '#^Offset ''command'' on array\{kind\: string, text\: string\} on left side of \?\? does not exist\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: src/lib/Views/TranscriptView.php
-
-		-
-			message: '#^Offset ''description'' on array\{kind\: string, text\: string\} on left side of \?\? does not exist\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: src/lib/Views/TranscriptView.php
-
-		-
-			message: '#^Offset ''file_path'' on array\{kind\: string, text\: string\} on left side of \?\? does not exist\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: src/lib/Views/TranscriptView.php
-
-		-
 			message: '#^Offset ''image'' on array\{kind\: string, text\: string\} in isset\(\) does not exist\.$#'
 			identifier: isset.offset
 			count: 1
@@ -661,13 +637,7 @@ parameters:
 			path: src/lib/Views/TranscriptView.php
 
 		-
-			message: '#^Offset ''text'' on array\{kind\: string, text\: string\} on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: src/lib/Views/TranscriptView.php
-
-		-
-			message: '#^Offset ''tool_name'' on array\{kind\: string, text\: string\} on left side of \?\? does not exist\.$#'
+			message: '#^Offset ''text'' on array\{kind\: string, text\: string, description\?\: string\|null, tool_name\?\: string\|null, file_path\?\: string\|null, command\?\: string\|null\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
 			path: src/lib/Views/TranscriptView.php
@@ -675,7 +645,7 @@ parameters:
 		-
 			message: '#^Result of && is always false\.$#'
 			identifier: booleanAnd.alwaysFalse
-			count: 4
+			count: 1
 			path: src/lib/Views/TranscriptView.php
 
 		-
@@ -691,25 +661,13 @@ parameters:
 			path: src/lib/Views/TranscriptView.php
 
 		-
-			message: '#^Strict comparison using \!\=\= between \*NEVER\* and '''' will always evaluate to true\.$#'
-			identifier: notIdentical.alwaysTrue
-			count: 1
-			path: src/lib/Views/TranscriptView.php
-
-		-
 			message: '#^Strict comparison using \!\=\= between null and null will always evaluate to false\.$#'
 			identifier: notIdentical.alwaysFalse
-			count: 8
+			count: 3
 			path: src/lib/Views/TranscriptView.php
 
 		-
 			message: '#^Strict comparison using \=\=\= between \*NEVER\* and ''approved'' will always evaluate to false\.$#'
-			identifier: identical.alwaysFalse
-			count: 1
-			path: src/lib/Views/TranscriptView.php
-
-		-
-			message: '#^Strict comparison using \=\=\= between null and ''Bash'' will always evaluate to false\.$#'
 			identifier: identical.alwaysFalse
 			count: 1
 			path: src/lib/Views/TranscriptView.php

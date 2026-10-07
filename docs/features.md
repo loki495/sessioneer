@@ -347,6 +347,10 @@ Implementation entry points:
 - Transcript blocks support Markdown, collapsing, copying, attachments,
   tool-call grouping, subagent/worker lineage, thinking state, and turn errors
   where the source agent records them.
+- Each tool call is one collapsed entry labelled by what it did ("Ran
+  <command>", "Edit <path>", ...). When the call carries its own short
+  description (Claude Code's Bash `description`, for example), that line
+  sits above the label; calls without one show just the label.
 - Worker sessions: an OpenCode or Codex session picked up by the headless
   session sync whose title (or first prompt line, for agents with no title
   flag) starts with
