@@ -385,6 +385,10 @@ npm run typecheck    # JSDoc type-check of public/js/*.js
 `npm` is only needed when you change markup, classes or JS. Details, and why the
 type-check doesn't report zero yet, are in [`docs/frontend.md`](docs/frontend.md).
 
+The README screenshots come from a canned demo agent, not real sessions:
+[`docs/screenshots/demo_agent.php`](docs/screenshots/demo_agent.php)'s header
+has the two commands that serve it and the pages and viewport sizes to capture.
+
 ## Static analysis (PHPStan)
 
 ```
