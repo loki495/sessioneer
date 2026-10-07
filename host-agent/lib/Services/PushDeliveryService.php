@@ -330,7 +330,7 @@ class PushDeliveryService
             // itself hasn't changed - this is what lets a later tick compute
             // "how long has it actually been in this state" rather than just
             // "not the same as last tick".
-            $since = ($previousStateName === $state && $previousSince !== null) ? $previousSince : $now;
+            $since = $previousStateName === $state ? $previousSince : $now;
             $currentState[$name] = ['state' => $state, 'since' => $since];
 
             $notification = null;
@@ -344,7 +344,6 @@ class PushDeliveryService
             } elseif (
                 $state === 'idle'
                 && $previousStateName === 'working'
-                && $previousSince !== null
                 && ($now - $previousSince) >= $minWorkingSeconds
             ) {
                 $notification = [

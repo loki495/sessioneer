@@ -284,7 +284,7 @@ class SessionService
                 $prompt !== null
                 && $panePrompt !== null
                 && !($panePrompt['is_folder_trust'] ?? false)
-                && count($panePrompt['options'] ?? []) >= 2
+                && count($panePrompt['options']) >= 2
                 && PromptParser::classify_permission_option_intent((string)($panePrompt['options'][0]['label'] ?? '')) === 'yes_once'
                 && PromptParser::classify_permission_option_intent((string)($panePrompt['options'][count($panePrompt['options']) - 1]['label'] ?? '')) === 'no'
             ) {
