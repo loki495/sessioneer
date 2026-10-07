@@ -103,7 +103,7 @@ if ($existingSidecar === null && !$createIfMissing) {
 // write to the new transcript path - same kind of ordering surprise
 // already found for the Stop hook, see tests/README/todo notes on that).
 // Which Claude Code account this pane's session was originally spawned
-// under (see Dibs plan #230) - read from the sidecar being rebound, NOT
+// under - read from the sidecar being rebound, NOT
 // re-derived from anything in this hook's own env, since CLAUDE_CONFIG_DIR
 // is only ever set at spawn time (create_agent_session()), not something
 // this hook receives directly. A work-profile session's transcript lives

@@ -1,4 +1,4 @@
-From: CSM local fix
+From: Sessioneer local fix
 Subject: [PATCH] Fix provider model resolution across directories in serve mode
 
 PROBLEM:

@@ -6,7 +6,7 @@ namespace HostAgent\Services;
 
 /**
  * A generic process-execution primitive - not tmux-specific (used for
- * tmux commands, kill signals, and running claude-quota alike), so it's
+ * tmux commands, kill signals and other host commands alike), so it's
  * its own small class rather than folded into TmuxService.
  */
 class ProcessRunner

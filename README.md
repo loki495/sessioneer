@@ -81,8 +81,84 @@ internet - it can create and kill agent sessions on your machine.
   also LAN-only - it's easy to have this app's own bind address correctly
   restricted while an existing shared reverse proxy in front of it is
   bound more broadly, silently exposing this app anyway.
+- The app only answers to `localhost`, `127.0.0.1`, `::1`, `BIND_ADDR` and
+  the hostnames in `ALLOWED_HOSTS` (other `Host` headers get a 421), so a
+  web page using DNS rebinding can't reach it. If you browse to it by any
+  other name, such as a reverse-proxy hostname, add that name to
+  `ALLOWED_HOSTS`.
 - Consider a host firewall rule (`iptables`/`ufw`/`nftables`) restricting
   inbound `APP_PORT` to your LAN subnet as defense in depth.
+
+## Requirements
+
+- Linux with systemd user services (`systemd --user`) for the host agent.
+- PHP 8.2+ on the host, with `pdo_sqlite` (`php -m | grep sqlite`) and, for
+  a graceful shutdown of headless Claude sessions, `pcntl`. CI runs PHP 8.3.
+- Composer, and Docker with Docker Compose.
+- `tmux`, if you use Antigravity (always tmux-driven), run Claude Code in a
+  terminal instead of headless, or want OpenCode's tmux fallback.
+- At least one of the CLIs you plan to manage: [Claude
+  Code](https://claude.com/claude-code), [Codex](https://github.com/openai/codex),
+  [OpenCode](https://opencode.ai), or Antigravity's `agy`. Sessioneer manages
+  sessions for whichever of these you have installed; it doesn't install them.
+
+## Setup
+
+**Install and start the host agent before starting the container.** Docker
+bind-mounts a source path that doesn't exist yet as an empty directory, so if
+the container starts first, the agent socket inside it is a directory instead
+of the real socket and every request fails with "Cannot reach host agent."
+
+1. Clone the repo and install the host agent (runs natively under
+   `systemd --user`, no containers):
+   ```
+   git clone https://github.com/loki495/sessioneer.git
+   cd sessioneer
+   ./host-agent/install.sh
+   ```
+   It installs Composer dependencies, creates `host-agent/.env` from
+   `host-agent/.env.example`, records the `claude` it finds on `PATH` as
+   `CLAUDE_BIN`, and enables the agent socket plus the services for each agent
+   whose binary is set (the Claude headless manager, the Codex bridge, OpenCode
+   serve). Set `CODEX_BIN`, `OPENCODE_BIN` or `ANTIGRAVITY_BIN` in
+   `host-agent/.env` (`which <cli>`) for the agents you use, then re-run the
+   script. It prints the fix if lingering is off, which the socket needs to
+   survive logout and reboot.
+
+   Check that the socket exists and is a socket (`s` in `ls -la`), not a
+   directory:
+   ```
+   ls -la $XDG_RUNTIME_DIR/sessioneer-agent.sock
+   ```
+
+2. `cp .env.example .env` and set:
+   - `APP_GID` to the group the installer set on the agent socket
+     (`install.sh` prints it at the end).
+   - `SESSIONEER_AGENT_SOCKET_HOST` to the socket from step 1, normally
+     `/run/user/<your-uid>/sessioneer-agent.sock`.
+   - `BIND_ADDR` / `APP_PORT`; see "Network binding" above.
+
+3. Build and start the container:
+   ```
+   docker compose up -d --build
+   ```
+   PHP/JS edits under `src/` and `public/` never need a rebuild.
+
+4. Open `http://<BIND_ADDR>:<APP_PORT>/` (`http://127.0.0.1:8091/` by default).
+
+5. The dashboard's health box checks the prerequisites and each agent's
+   integration. Its **Install hooks** button merges Sessioneer's Claude Code
+   and Codex hooks into your existing hook files, leaving unrelated hooks in
+   place. The agent sections below cover the remaining per-agent steps.
+
+**Deploying behind a real web server instead of `php -S`**: point its
+document root at `public/`, nothing else. Apache: enable `mod_rewrite` and
+use `public/.htaccess` as-is. nginx: add the equivalent of
+```nginx
+location / {
+    try_files $uri $uri/ /index.php?$query_string;
+}
+```
 
 ## Intended use
 
@@ -113,6 +189,8 @@ answered in Sessioneer.
 | Antigravity | tmux only | Hooks provide lifecycle and conversation identity; the live pane identifies approval dialogs | Install its global hooks; optionally enable its quota timer |
 | OpenCode | `opencode serve` by default; tmux fallback | Serve API + SQLite + global permissions plugin; tmux permissions also consult the live pane | Re-run `host-agent/install.sh` after setting `OPENCODE_BIN` |
 | Codex | headless only | Private app-server bridge for locally-owned startup; persistent queue + Codex hooks for shared/Remote-owned threads | Click **Install hooks**, trust them in Codex, and bootstrap Remote control when sharing with Codex Remote |
+
+For detailed agent version compatibility and known quirks, see [`docs/agent-compatibility.md`](docs/agent-compatibility.md).
 
 ### Claude Code
 
@@ -221,9 +299,6 @@ SQLite usage with the OpenCode Go usage endpoint when configured.
 
 ### Codex: shared threads and ownership
 
-For detailed agent version compatibility and known quirks, see [`docs/agent-compatibility.md`](docs/agent-compatibility.md).
-
-
 Sessioneer never puts Codex in tmux. `host-agent/install.sh` installs and
 enables `sessioneer-codex-bridge.service`, which owns a private, persistent
 `codex app-server --stdio` connection for thread creation, the first turn of
@@ -279,17 +354,13 @@ useful prompt context, removes answer buttons, and directs you to Codex Remote.
 The persistent queue solves cross-owner **messages**, not cross-owner **prompt
 responses**.
 
-**Deploying behind a real web server instead of `php -S`**: point its
-document root at `public/`, nothing else. Apache: enable `mod_rewrite` and
-use `public/.htaccess` as-is. nginx: add the equivalent of
-```nginx
-location / {
-    try_files $uri $uri/ /index.php?$query_string;
-}
-```
-
-
 ## Home screen bookmark
+
+On a phone on the same LAN, open `http://<BIND_ADDR>:<APP_PORT>/` (or your
+own HTTPS URL if you've set one up - required for Web Push, see below) and
+use "Add to Home Screen" (Safari: Share → Add to Home Screen; Chrome: ⋮
+menu → Add to Home Screen).
+
 ## Web Push notifications
 
 Lets a session's newly-blocked prompt reach your phone without the tab
@@ -349,7 +420,7 @@ self-heals a subscription that's started to go stale.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full push-delivery
 mechanism, notification-content details, and the quota-push variant.
 
-# Current limitations
+## Current limitations
 
 
 - No accounts, no multi-user support — this is a single-operator tool for one person's
@@ -365,9 +436,23 @@ mechanism, notification-content details, and the quota-push variant.
 - Browser coverage exercises the main rendered interactions, but live calls to
   third-party agent services still require explicit local verification.
 
+## How it's tested
+
+`bash tests/run.sh` runs a hermetic suite of plain PHP test scripts against
+an isolated tmux server, throwaway SQLite files and fake agent binaries, so
+it never touches your real sessions or spends plan usage. It covers the host
+agent protocol, session lifecycle, each agent's prompt parsing against
+captured real output, and the web UI, including headless-Chrome browser
+tests. CI runs the full suite, PHPStan, a Composer audit and a JS syntax
+check on every pull request, and merging to `master` requires it to pass.
+`bash tests/run.sh --live` adds opt-in checks against the real installed
+agent CLIs.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the architecture deep-dive, file
 structure, hook rationale, development workflow, and testing details.
 
 ## License
+
+[MIT](LICENSE)

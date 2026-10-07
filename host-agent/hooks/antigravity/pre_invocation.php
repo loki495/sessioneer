@@ -5,7 +5,7 @@ declare(strict_types=1);
 /**
  * Registered as Antigravity's PreInvocation hook (see
  * AntigravityHookService, host-agent/lib/Services/AntigravityHookService.php,
- * and docs/antigravity-adapter-plan.md Phase 3) - fires before every model
+ * and docs/history/antigravity-adapter-plan.md Phase 3) - fires before every model
  * turn, the closest available signal to Claude Code's UserPromptSubmit
  * (Antigravity has no direct equivalent). Marks the session working, same
  * "working/idle/blocked hook-sequence" convention host-agent/hooks/

@@ -32,18 +32,15 @@ class SidecarStore
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'agent', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'runtime', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'title', 'TEXT');
-        // Added for multi-account support (Dibs plan #230) - the Claude
+        // Added for multi-account support - the Claude
         // Code profile name (see Config::claude_profile_config()) this
         // session was spawned under, or NULL for a pre-profile row/the
         // default account. A profile name, not a resolved config_dir, so
         // this stays correct if agents.php's own entry for it changes later.
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'profile', 'TEXT');
-        // Transitional: renamed from claude_session_id/spawned_by_csm (Sessioneer
-        // rename, 2026-09-01) - CREATE TABLE IF NOT EXISTS alone never retroactively
-        // renames a column on a table already created under the old schema. Same
-        // add-alongside-not-migrate-in-place approach as the agent/runtime/title
-        // columns above; the old columns are left in place, unused, on the live
-        // (tmpfs, reboot-wiped) table rather than dropped.
+        // Added after the table's first schema - CREATE TABLE IF NOT EXISTS
+        // never adds a column to a table that already exists. Same
+        // add-alongside approach as the agent/runtime/title columns above.
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'agent_session_id', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'spawned_by_app', 'INTEGER');
 
@@ -84,7 +81,7 @@ class SidecarStore
                 // made that ?? see an already-"set" value and never fall
                 // through to the hook's own SESSIONEER_SESSION_NAME-based default).
                 'spawned_by_app' => $row['spawned_by_app'] !== null ? (bool)$row['spawned_by_app'] : null,
-                // Added 2026-08-24 (docs/antigravity-adapter-plan.md Phase
+                // Added 2026-08-24 (docs/history/antigravity-adapter-plan.md Phase
                 // 0) for multi-agent support - a row written before this
                 // column existed reads back null here (add_column_if_missing()
                 // never backfills existing rows), which every real caller
@@ -103,7 +100,7 @@ class SidecarStore
                 // null for pre-headless rows, so callers fall back to a
                 // workdir basename.
                 'title' => $row['title'],
-                // Added for multi-account support (Dibs plan #230). NULL
+                // Added for multi-account support. NULL
                 // for any row written before this column existed, or for a
                 // session spawned under the default account - callers
                 // treat a null profile as "use Config's own defaults",

@@ -45,8 +45,8 @@ class ArchivedSessionService
                     'last_activity' => $t['last_activity'],
                     'agent' => 'claude',
                     'agent_label' => 'Claude Code',
-                    // Which account this dormant session belongs to (see
-                    // Dibs plan #230) - null for the default account, so
+                    // Which account this dormant session belongs to -
+                    // null for the default account, so
                     // resuming/opening it later can pass the right profile
                     // back through (see Sessions.php's archived_* dispatch
                     // cases). Every other agent's archived entries below

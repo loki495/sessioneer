@@ -17,7 +17,7 @@ use HostAgent\Services\SessionLifecycleService;
  * implementation - a thin wrapper around this app's existing
  * Claude-Code-specific code (Config::claude_bin(), HookService,
  * PermissionMode), not a rewrite of any of it. Extracted 2026-08-24 as
- * Phase 1 of docs/antigravity-adapter-plan.md - a pure refactor, byte-for-
+ * Phase 1 of docs/history/antigravity-adapter-plan.md - a pure refactor, byte-for-
  * byte identical spawn argv/hook behavior to what SessionLifecycleService
  * built inline before this existed.
  */
@@ -61,7 +61,7 @@ class ClaudeCodeAdapter implements AgentAdapter
      * claude_bin($profile)), and the returned env carries CLAUDE_CONFIG_DIR
      * so the spawned tmux pane's `claude` process (and Claude Code's own
      * transcript/settings storage under it) actually runs under that
-     * account - see Dibs plan #230.
+     * account.
      */
     public function build_spawn_argv(array $options): array
     {
@@ -86,7 +86,7 @@ class ClaudeCodeAdapter implements AgentAdapter
      * vocabulary, but a `claude -p` process that speaks NDJSON on
      * stdin/stdout and routes permission prompts to its client
      * (--permission-prompt-tool stdio). Never --bare: bare mode ignores the
-     * subscription login (live-verified, research issue #280).
+     * subscription login (live-verified).
      *
      * $options['resume'] (?string) is an existing Claude session id to
      * continue (`--resume <id>`); absent/empty starts a fresh session with a

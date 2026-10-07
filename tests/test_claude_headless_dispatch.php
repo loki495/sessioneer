@@ -30,8 +30,7 @@ $root = sys_get_temp_dir() . '/sessioneer-test-claude-headless-dispatch-' . getm
 // the REAL manager's environment by construction (the manager passes its own
 // env to every child it spawns) - an "if unset" guard would silently do
 // nothing and this test would run against the real tmux server and the real
-// host's sessions.sqlite. Found live 2026-09-27 (Dibs 388's own follow-up
-// incident) via a near-identical guard in tests/lib/claude_headless.php's
+// host's sessions.sqlite. Found live 2026-09-27 via a near-identical guard in tests/lib/claude_headless.php's
 // callers.
 $realTmuxSocket = \HostAgent\Services\Config::tmux_socket();
 $realSidecarDir = \HostAgent\Services\Config::sidecar_dir();

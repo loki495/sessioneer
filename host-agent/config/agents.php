@@ -10,7 +10,7 @@ declare(strict_types=1);
  *
  * Named agents.php (not claude_profiles.php) on purpose: the schema below
  * is keyed by agent id so a later pass can add 'codex'/'opencode'/
- * 'antigravity' entries without a rename - see Dibs plan #230/#236.
+ * 'antigravity' entries without a rename.
  *
  * config_dir: null means "use this process's own default" (today's
  * single-account behavior, e.g. $HOME/.claude for Claude Code) - so an

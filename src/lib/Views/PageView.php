@@ -22,7 +22,7 @@ class PageView extends View
      * rather than calling them, same pattern TranscriptView::MODE_OPTIONS
      * already uses for Claude Code's own mode vocabulary). Keep in sync
      * with HostAgent\Agents\AgentRegistry's own ADAPTERS list by hand when
-     * a new adapter is added - see docs/antigravity-adapter-plan.md.
+     * a new adapter is added - see docs/history/antigravity-adapter-plan.md.
      */
     public const AGENT_OPTIONS = ['claude' => 'Claude Code', 'antigravity' => 'Antigravity', 'opencode' => 'OpenCode', 'codex' => 'Codex'];
 

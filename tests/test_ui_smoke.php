@@ -78,6 +78,14 @@ if (!$ready) {
 try {
     $cookieJar = tempnam(sys_get_temp_dir(), 'sessioneer-test-cookies');
 
+    // --- Host allowlist: a rebinding hostname is refused before any route runs ---
+    $rebound = curl_request('GET', "{$baseUrl}/", ['-H', 'Host: attacker.example:' . $port]);
+    assert_equal(421, $rebound['status'], 'GET / with an unlisted Host: 421');
+    assert_contains('ALLOWED_HOSTS', $rebound['body'], 'GET / with an unlisted Host: explains the fix');
+    assert_true(!str_contains($rebound['body'], 'Sessioneer'), 'GET / with an unlisted Host: no page or CSRF token leaks');
+    $reboundPost = curl_request('POST', "{$baseUrl}/", ['-H', 'Host: attacker.example', '-H', 'Origin: http://attacker.example', '-d', 'action=kill&name=cc-20260101-1200']);
+    assert_equal(421, $reboundPost['status'], 'POST with an unlisted Host and matching Origin: 421');
+
     // --- page reflects the canned agent's data ---
     $result = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
     assert_equal(200, $result['status'], 'GET /: 200');

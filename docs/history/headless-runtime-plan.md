@@ -1,5 +1,10 @@
 # Parallel tmux + headless runtimes — OpenCode and Codex implementation plan
 
+> **Historical design record:** kept for the research and reasoning behind
+> the current code; status lines and plans here are as of when it was
+> written, not the current state. See [`../features.md`](../features.md) for
+> what Sessioneer does today.
+
 Status: **Codex server-backed MVP implemented**, on `refactor/headless-runtime`
 (2026-08-27). The remaining Codex parity work is bridge reconnect recovery
 and persisted pending requests.
@@ -34,8 +39,7 @@ version and probing capabilities at startup are therefore part of the design.
   from the process, never passes `--bare`, kills a process whose `init`
   reports an `apiKeySource` other than `none`, and refuses new starts while
   overage is in use. tmux remains a supported runtime for Claude and for
-  sessions started by hand. Design and protocol records: Dibs decision #298
-  and research #280.
+  sessions started by hand.
 - **antigravity has no headless session mode** (only one-shot
   `agy -p`). Stays tmux-driven.
 - **codex uses `codex app-server` as its primary runtime.** `codex exec

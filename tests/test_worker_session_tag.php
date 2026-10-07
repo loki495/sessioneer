@@ -4,9 +4,8 @@ declare(strict_types=1);
 /**
  * Pure unit tests for HostAgent\Services\SessionService::parse_worker_tag()
  * - no tmux, no socket, no fixtures, just string in/array out. Parses the
- * orchestrator-worker skill's [WORKER session=.../... parent=...] session-
- * tagging convention (~/dotfiles/ai/skills/orchestrator-worker/SKILL.md,
- * "Worker Session Tagging") out of a session's raw title, as used by
+ * [WORKER session=.../... parent=...] session-tagging convention (see
+ * docs/features.md) out of a session's raw title, as used by
  * sessioneer_headless_sessions() in host-agent/lib/Sessions.php.
  */
 

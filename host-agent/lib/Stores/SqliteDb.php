@@ -79,7 +79,7 @@ class SqliteDb
      * One-off transitional migration for a column added to an existing
      * table after real rows already exist (sidecars.agent, added
      * 2026-08-24 for multi-agent support - see
-     * docs/antigravity-adapter-plan.md Phase 0) - CREATE TABLE IF NOT
+     * docs/history/antigravity-adapter-plan.md Phase 0) - CREATE TABLE IF NOT
      * EXISTS alone never retroactively adds a column to a table that was
      * already created under the old schema. sidecars is tmpfs (wiped on
      * reboot, see Config::sessions_sqlite_path()), so this self-resolves

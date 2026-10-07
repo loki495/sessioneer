@@ -832,7 +832,7 @@ document.addEventListener('keydown', function (e) {
     if (MODEL_PICKER_AGENTS[agent]) {
       loadModels(agent);
     } else {
-      // Antigravity: create doesn't take a model yet (Dibs 98)
+      // Antigravity: create doesn't take a model yet
       modelSelect.options[0].textContent = 'Default';
     }
   }

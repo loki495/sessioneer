@@ -34,6 +34,13 @@ if (
 
 require __DIR__ . '/../vendor/autoload.php';
 
+if (!App\Services\AuthService::request_host_allowed()) {
+    http_response_code(421);
+    echo 'Host not allowed. Add it to ALLOWED_HOSTS in .env.';
+
+    return;
+}
+
 $router = require __DIR__ . '/../src/routes.php';
 $handler = $router->match($_SERVER['REQUEST_METHOD'], $path);
 

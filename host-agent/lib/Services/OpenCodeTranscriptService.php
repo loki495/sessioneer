@@ -579,8 +579,8 @@ class OpenCodeTranscriptService
      * Reactive binding: finds the most recent OpenCode session row whose
      * directory matches $workdir and whose creation time is at or after
      * $spawnedAt (the tmux session's birth). This is the opencode
-     * equivalent of Antigravity's pre_invocation.php reactive bind (see
-     * .ai/QUESTIONS.md Q1.1) — opencode creates no DB row at spawn time,
+     * equivalent of Antigravity's pre_invocation.php reactive bind —
+     * opencode creates no DB row at spawn time,
      * only after the first prompt, so the sidecar starts with
      * agent_session_id=null and learns the real ses_* on the next poll.
      *

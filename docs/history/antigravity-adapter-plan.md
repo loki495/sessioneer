@@ -2,8 +2,8 @@
 
 > **Historical design record:** this file preserves the research and phased
 > implementation history. Its phase labels are not the current user-facing
-> support status. See [`../README.md`](../README.md#antigravity) for required
-> setup and [`features.md`](features.md#antigravity-implementation) for the
+> support status. See [`../README.md`](../../README.md#antigravity) for required
+> setup and [`features.md`](../features.md#antigravity-implementation) for the
 > current capability/caveat reference.
 
 Status: **in progress**, started 2026-08-24. Supersedes the "long-term,

@@ -239,7 +239,7 @@ class HookService
      * check_session_hook() across every configured Claude Code profile
      * (Config::claude_profiles_to_scan()) - a work profile with no hooks
      * installed in its own settings.json is exactly the "reports
-     * permanently idle/unknown" failure mode Dibs plan #230 called out, so
+     * permanently idle/unknown" failure mode, so
      * the dashboard's existing single health check needs to cover every
      * account, not just the default one, for that to actually be visible.
      * `ok`/`installed` are the AND of every profile's own (any one

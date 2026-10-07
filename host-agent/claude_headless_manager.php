@@ -6,8 +6,7 @@ declare(strict_types=1);
  * Persistent manager for headless Claude Code sessions: owns one long-lived
  * `claude -p --input-format stream-json` child per active session and speaks a
  * narrow Sessioneer-shaped UNIX-socket API to the request-per-process host
- * agent. See HostAgent\Runtimes\ClaudeHeadlessManager for the design notes and
- * Dibs decision #282.
+ * agent. See HostAgent\Runtimes\ClaudeHeadlessManager for the design notes.
  *
  * Run by sessioneer-claude-headless-manager.service.
  */

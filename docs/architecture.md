@@ -36,7 +36,7 @@ Pane parsing is therefore limited to prompt shapes whose owning agent exposes no
 
 ### Command Invocation
 
-Every command runs via `proc_open()` with the command as an array, never a shell string. This isn't a hardening pass bolted on after the fact — it's the only way any command in this codebase is ever invoked, which rules out shell metacharacter injection by construction rather than by escaping.
+Every command the host agent runs goes through `proc_open()` with the command as an array, never a shell string. This isn't a hardening pass bolted on after the fact — it's the only way the app invokes a command, which rules out shell metacharacter injection by construction rather than by escaping. (Some test helpers and fixtures still shell out, only with escaped or constant arguments.)
 
 ### Frontend Compatibility
 

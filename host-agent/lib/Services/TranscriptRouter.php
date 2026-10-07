@@ -14,7 +14,7 @@ namespace HostAgent\Services;
  * once find_transcript_path() has resolved a real path, that path alone
  * says which backend parsed it - no need to also know or pass the
  * session's `agent` sidecar column at each of the ~6 call sites this
- * replaces. See docs/antigravity-adapter-plan.md Phase 4.
+ * replaces. See docs/history/antigravity-adapter-plan.md Phase 4.
  */
 class TranscriptRouter
 {

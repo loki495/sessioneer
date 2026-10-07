@@ -21,7 +21,7 @@ use HostAgent\Stores\SessionStatusStore;
  * `/question` surface; the v2 `/api/session/:id/{history,question,
  * permission}` GETs 500 on a freshly-created session in a not-yet-registered
  * directory (it lands in the `global` project until realized), so they are
- * not used for reads here. See docs/headless-runtime-plan.md.
+ * not used for reads here. See docs/history/headless-runtime-plan.md.
  *
  * Every call goes through ProcessRunner (command as a string[] - no shell
  * string, this project's standard no-metacharacter-injection rule) and
