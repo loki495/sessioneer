@@ -154,7 +154,7 @@ class PushDeliveryService
                 // on this network (times out after the full 30s) while IPv4 to
                 // the exact same endpoint responds instantly - forcing IPv4
                 // avoids paying that timeout on every send.
-                'curl' => [CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4],
+                'force_ip_resolve' => 'v4',
             ]), $httpFactory, $httpFactory);
 
             $payload = json_encode([
