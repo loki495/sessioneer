@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace HostAgent\Services;
 
+use GuzzleHttp\Client;
+use GuzzleHttp\Psr7\HttpFactory;
 use HostAgent\Stores\GlobalStateStore;
 use HostAgent\Stores\PushQuotaStateStore;
 use HostAgent\Stores\PushSessionStateStore;
@@ -139,19 +141,21 @@ class PushDeliveryService
         // one send failing. Found live while testing against a deliberately
         // malformed key: it's a hard ErrorException, not a normal return.
         try {
+            $httpFactory = new HttpFactory();
             $webPush = new WebPush([
                 'VAPID' => [
                     'subject' => self::vapid_subject(),
                     'publicKey' => self::vapid_public_key(),
                     'privateKey' => self::vapid_private_key(),
                 ],
-            ], [], 30, [
+            ], [], new Client([
+                'timeout' => 30,
                 // Found live: IPv6 to web.push.apple.com can silently black-hole
                 // on this network (times out after the full 30s) while IPv4 to
                 // the exact same endpoint responds instantly - forcing IPv4
                 // avoids paying that timeout on every send.
                 'curl' => [CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4],
-            ]);
+            ]), $httpFactory, $httpFactory);
 
             $payload = json_encode([
                 'title' => $title,
