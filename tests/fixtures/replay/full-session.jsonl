@@ -1,7 +1,7 @@
 {"type":"mode","uuid":null,"parentUuid":null,"timestamp":null}
 {"type":"user","uuid":"fs-u1","parentUuid":null,"timestamp":"2026-08-11T00:00:00Z","message":{"role":"user","content":"Fix the login bug"}}
 {"type":"assistant","uuid":"fs-a1","parentUuid":"fs-u1","timestamp":"2026-08-11T00:00:05Z","message":{"role":"assistant","content":[{"type":"text","text":"Sure, looking into it."}]}}
-{"type":"assistant","uuid":"fs-a2","parentUuid":"fs-a1","timestamp":"2026-08-11T00:00:10Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_fs1","name":"Bash","input":{"command":"grep -r login src/"}}]}}
+{"type":"assistant","uuid":"fs-a2","parentUuid":"fs-a1","timestamp":"2026-08-11T00:00:10Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_fs1","name":"Bash","input":{"command":"grep -r login src/","description":"Find the login handling code"}}]}}
 {"type":"user","uuid":"fs-u2","parentUuid":"fs-a2","timestamp":"2026-08-11T00:00:12Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_fs1","content":[{"type":"text","text":"src/auth.php: check login credentials"}]}]}}
 {"type":"assistant","uuid":"fs-a3","parentUuid":"fs-u2","timestamp":"2026-08-11T00:00:15Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_fs2","name":"ExitPlanMode","input":{"plan":"## Plan\n1. Patch src/auth.php\n2. Add a regression test"}}]}}
 {"type":"user","uuid":"fs-u3","parentUuid":"fs-a3","timestamp":"2026-08-11T00:00:17Z","toolUseResult":{"plan":"## Plan\n1. Patch src/auth.php\n2. Add a regression test"},"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_fs2","content":[{"type":"text","text":"## Approved Plan:\n## Plan\n1. Patch src/auth.php\n2. Add a regression test"}]}]}}

@@ -594,6 +594,18 @@ try {
                 'uncaught-error-leaked'
             );
 
+            // Both Bash calls (lines 4 and 12) arrived through the poll, so
+            // session.js's renderToolCallEntry() drew them: the first has a
+            // description, the second has none.
+            $toolCallSummary = static function (int $line) use (&$page): mixed {
+                return cdp_evaluate($page, "(function () { var el = document.querySelector('[data-line=\"{$line}\"]'); var entry = el ? el.closest('details.tool-call-entry') : null; if (!entry) { return null; } var d = entry.querySelector('summary .tool-call-description'); return { description: d ? d.textContent : null, summary: entry.querySelector('summary').textContent }; })()");
+            };
+            $described = $toolCallSummary(4);
+            browser_assert($page, is_array($described) && $described['description'] === 'Find the login handling code', 'session.php (poll-rendered): a Bash call with a description shows it on its own line in the tool-call summary', 'tool-call-description-missing');
+            browser_assert($page, is_array($described) && str_ends_with((string)$described['summary'], 'Ran grep -r login src/'), 'session.php (poll-rendered): the described Bash call still shows its "Ran <command>" line', 'tool-call-ran-line-missing');
+            $undescribed = $toolCallSummary(12);
+            browser_assert($page, is_array($undescribed) && $undescribed['description'] === null && $undescribed['summary'] === 'Ran rm -rf /var/www/uploads/tmp', 'session.php (poll-rendered): a Bash call with no description shows only "Ran <command>", no empty description line', 'tool-call-description-unexpected');
+
             // Real end-to-end coverage of the jump-to-search-result "wrong
             // spot" bug (found live 2026-08-20): line 4 in the fixture's
             // own jsonl is the Bash tool_use, paired with its result into
