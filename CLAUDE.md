@@ -15,6 +15,7 @@ access control is the network binding (LAN-only), not a login.
 ```bash
 bash tests/run.sh          # run the whole test suite
 bash tests/run.sh --bail   # stop at the first failing test file
+bash tests/run.sh --shard N/M  # Nth of M round-robin slices; CI runs 3 shards in parallel
 bash tests/run.sh --live   # run ONLY the live smoke test (see below) - never part of the default run
 ```
 

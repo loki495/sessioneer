@@ -193,12 +193,6 @@ parameters:
 			path: host-agent/lib/Services/PromptInteractionService.php
 
 		-
-			message: '#^Offset ''message'' on \*NEVER\* on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: host-agent/lib/Services/PromptInteractionService.php
-
-		-
 			message: '#^Offset ''ok'' on array\{ok\: bool, message\: string\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
@@ -231,19 +225,19 @@ parameters:
 		-
 			message: '#^Method HostAgent\\Services\\PromptParser\:\:augment_prompt_with_pending_tool\(\) return type has no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
-			count: 2
+			count: 1
 			path: host-agent/lib/Services/PromptParser.php
 
 		-
 			message: '#^Method HostAgent\\Services\\PromptParser\:\:build_prompt_from_hook_status\(\) has parameter \$blocked with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
-			count: 2
+			count: 1
 			path: host-agent/lib/Services/PromptParser.php
 
 		-
 			message: '#^Method HostAgent\\Services\\PromptParser\:\:build_prompt_from_hook_status\(\) return type has no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
-			count: 2
+			count: 1
 			path: host-agent/lib/Services/PromptParser.php
 
 		-
@@ -271,12 +265,6 @@ parameters:
 			path: host-agent/lib/Services/PushDeliveryService.php
 
 		-
-			message: '#^Offset ''detail'' on \*NEVER\* on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: host-agent/lib/Services/PushHealthService.php
-
-		-
 			message: '#^Offset ''ok'' on array\{ok\: bool, detail\: string\|null\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 2
@@ -297,7 +285,7 @@ parameters:
 		-
 			message: '#^Method HostAgent\\Services\\QuotaService\:\:get_quota\(\) return type has no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
-			count: 3
+			count: 1
 			path: host-agent/lib/Services/QuotaService.php
 
 		-
@@ -345,19 +333,19 @@ parameters:
 		-
 			message: '#^Method HostAgent\\Services\\SessionService\:\:build_session_entry\(\) return type has no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
-			count: 3
+			count: 1
 			path: host-agent/lib/Services/SessionService.php
 
 		-
 			message: '#^Method HostAgent\\Services\\SessionService\:\:list_all_sessions\(\) return type has no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
-			count: 2
+			count: 1
 			path: host-agent/lib/Services/SessionService.php
 
 		-
 			message: '#^Method HostAgent\\Services\\SessionService\:\:list_all_sessions_uncached\(\) return type has no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
-			count: 2
+			count: 1
 			path: host-agent/lib/Services/SessionService.php
 
 		-
@@ -368,12 +356,6 @@ parameters:
 
 		-
 			message: '#^Offset ''ok'' on array\{ok\: bool, entries\: array\<int, array\>, next_before\: int\|null, has_more\: bool, message\?\: string\} on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: host-agent/lib/Services/SessionService.php
-
-		-
-			message: '#^Offset ''options'' on \*NEVER\* on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
 			path: host-agent/lib/Services/SessionService.php
@@ -465,13 +447,13 @@ parameters:
 		-
 			message: '#^Method HostAgent\\Stores\\SessionListCacheStore\:\:read\(\) return type has no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
-			count: 2
+			count: 1
 			path: host-agent/lib/Stores/SessionListCacheStore.php
 
 		-
 			message: '#^Method HostAgent\\Stores\\SessionListCacheStore\:\:write\(\) has parameter \$data with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
-			count: 2
+			count: 1
 			path: host-agent/lib/Stores/SessionListCacheStore.php
 
 		-
