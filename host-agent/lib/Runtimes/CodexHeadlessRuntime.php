@@ -92,6 +92,15 @@ class CodexHeadlessRuntime implements RuntimeProvider
         $thread['writable'] = true;
         $thread['readOnlyReason'] = null;
 
+        // Queued turns may run in another app-server, outside our bridge.
+        if (is_array($thread['turns'] ?? null)) {
+            $turns = $thread['turns'];
+            $latest = $turns !== [] ? $turns[array_key_last($turns)] : null;
+            $thread['lastTurnError'] = is_array($latest) && ($latest['status'] ?? null) === 'failed'
+                ? CodexTranscriptService::turn_error_message($latest['error'] ?? null)
+                : null;
+        }
+
         return ['ok' => true, 'session' => $thread];
     }
 
