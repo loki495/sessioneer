@@ -14,10 +14,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  core:
-    name: Core tests (PHP 8.3)
+  # The suite binds fixed ports and /tmp paths, so it can't run in parallel on
+  # one machine; each shard gets its own runner instead. The `core` job below
+  # keeps the name branch protection requires.
+  shard:
+    name: Tests (PHP 8.3, shard ${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: true
+      matrix:
+        shard: [1, 2, 3]
 
     steps:
       - name: Check out repository
@@ -48,26 +55,40 @@ jobs:
         run: sudo ln -sf "${{ steps.setup-chrome.outputs.chrome-path }}" /usr/bin/google-chrome-stable
 
       - name: Validate Composer manifest
+        if: matrix.shard == 1
         run: composer validate --strict --no-check-lock
 
       - name: Install Composer dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
 
       - name: Audit Composer dependencies for known vulnerabilities
+        if: matrix.shard == 1
         run: composer audit --no-dev
 
       - name: Run PHPStan
+        if: matrix.shard == 1
         run: composer phpstan
 
       - name: Check public JS syntax
+        if: matrix.shard == 1
         run: for f in public/js/*.js public/sw.js; do node --check "$f"; done
 
       # Advisory, like PHPStan started out - shellcheck has never run
       # against these scripts before, so no baseline of what's pre-existing
       # vs. a real regression exists yet.
       - name: Shellcheck (advisory)
+        if: matrix.shard == 1
         continue-on-error: true
         run: shellcheck tests/run.sh host-agent/install.sh docs/opencode-serve-fix/apply-opencode-patch.sh
 
-      - name: Run full test suite (including browser tests)
-        run: bash tests/run.sh --bail
+      - name: Run test suite shard (including browser tests)
+        run: bash tests/run.sh --bail --shard ${{ matrix.shard }}/3
+
+  core:
+    name: Core tests (PHP 8.3)
+    needs: shard
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every shard to pass
+        run: test "${{ needs.shard.result }}" = success
