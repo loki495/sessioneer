@@ -8,8 +8,8 @@
 #              - fast iteration on tests/lib/replay_fixture.php,
 #              tests/lib/cdp.php, or tests/fixtures/replay/* without paying
 #              for the other 10 unrelated test files every time
-#   --shard N/M  run only the Nth of M round-robin slices (1-based) of the
-#              selected files, in name order - lets CI spread the suite over
+#   --shard N/M  run only the Nth of M duration-balanced slices (1-based) of the
+#              selected files, balanced by tests/shard-weights.txt - lets CI spread the suite over
 #              M parallel runners. Every runner is a separate machine, so the
 #              fixed ports and /tmp paths the tests bind never collide.
 #   --live     the ONLY way to run a *_live.php test file (matched by filename,
@@ -86,12 +86,12 @@ for arg in "$@"; do
     esac
 done
 
-if [ "$expect_shard" -eq 1 ] || { [ -n "$shard" ] && ! [[ "$shard" =~ ^[1-9][0-9]*/[1-9][0-9]*$ ]]; }; then
-    echo "--shard needs N/M with 1 <= N <= M, e.g. --shard 2/3." >&2
-    exit 1
+# shellcheck source=lib/shard.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/shard.sh"
+if [ "$expect_shard" -eq 1 ]; then
+    shard="missing"
 fi
-if [ -n "$shard" ] && [ "${shard%/*}" -gt "${shard#*/}" ]; then
-    echo "--shard N/M needs N <= M (got $shard)." >&2
+if [ -n "$shard" ] && ! shard_validate "$shard"; then
     exit 1
 fi
 
@@ -301,13 +301,7 @@ elif [ "$browser_only" -eq 1 ]; then
 fi
 
 if [ -n "$shard" ]; then
-    sharded_files=()
-    for i in "${!test_files[@]}"; do
-        if [ $((i % ${shard#*/})) -eq $((${shard%/*} - 1)) ]; then
-            sharded_files+=("${test_files[$i]}")
-        fi
-    done
-    test_files=("${sharded_files[@]}")
+    mapfile -t test_files < <(shard_files "$shard" "$SCRIPT_DIR/shard-weights.txt" "${test_files[@]}")
 fi
 
 for test_file in "${test_files[@]}"; do

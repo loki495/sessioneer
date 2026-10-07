@@ -79,7 +79,7 @@ jobs:
       - name: Shellcheck (advisory)
         if: matrix.shard == 1
         continue-on-error: true
-        run: shellcheck tests/run.sh host-agent/install.sh docs/opencode-serve-fix/apply-opencode-patch.sh
+        run: shellcheck tests/run.sh tests/lib/shard.sh host-agent/install.sh docs/opencode-serve-fix/apply-opencode-patch.sh
 
       - name: Run test suite shard (including browser tests)
         run: bash tests/run.sh --bail --shard ${{ matrix.shard }}/3

@@ -418,10 +418,12 @@ either dead code or a docblock narrower than the data - not yet triaged.
 ```
 bash tests/run.sh          # run every test file
 bash tests/run.sh --bail   # stop at the first failing test file
-bash tests/run.sh --shard 2/3  # only the 2nd of 3 round-robin slices (what CI runs per runner)
+bash tests/run.sh --shard 2/3  # only the 2nd of 3 duration-balanced slices (what CI runs per runner)
 ```
 
-No Composer, no Pest - plain PHP scripts (`tests/test_*.php`) run directly
+`tests/shard-weights.txt` lists each test file's runtime in seconds so the
+shards come out even; refresh a line when a test's runtime changes a lot (files
+not listed count as 5s). No Composer, no Pest - plain PHP scripts (`tests/test_*.php`) run directly
 by the `php` CLI, driven by a bash entrypoint. Nothing beyond `php`,
 `bash`, `curl`, and `tmux` (already required to run this app at all) is
 needed; a headless browser (`google-chrome-stable`, `google-chrome`,
