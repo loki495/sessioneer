@@ -11,6 +11,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use HostAgent\Services\CodexPromptProtocol;
+use HostAgent\Services\CodexTranscriptService;
 use HostAgent\Services\Config;
 use HostAgent\Stores\SessionStatusStore;
 
@@ -235,14 +236,14 @@ try {
                     } elseif ($threadId !== '' && $method === 'turn/started') {
                         $turnId = is_string($params['turn']['id'] ?? null) ? $params['turn']['id'] : '';
                         if ($turnId !== '') $activeTurns[$threadId] = $turnId;
-                        SessionStatusStore::update_status($threadId, ['status' => 'working', 'blocked' => null]);
+                        SessionStatusStore::update_status($threadId, ['status' => 'working', 'blocked' => null, 'last_turn_error' => null]);
                     } elseif ($threadId !== '' && $method === 'turn/completed') {
                         unset($pendingPrompts[$threadId], $activeTurns[$threadId]);
                         $turn = is_array($params['turn'] ?? null) ? $params['turn'] : [];
                         SessionStatusStore::update_status($threadId, [
                             'status' => 'idle',
                             'blocked' => null,
-                            'last_turn_error' => isset($turn['error']) ? json_encode($turn['error']) : null,
+                            'last_turn_error' => CodexTranscriptService::turn_error_message($turn['error'] ?? null),
                         ]);
                     } elseif ($threadId !== '' && $method === 'thread/tokenUsage/updated') {
                         $usage = is_array($params['tokenUsage'] ?? null) ? $params['tokenUsage'] : null;
@@ -288,7 +289,7 @@ try {
                 }
                 codex_bridge_write($appIn, ['id' => $pending['request_id'], 'result' => $response]);
                 unset($pendingPrompts[$threadId]);
-                SessionStatusStore::update_status($threadId, ['status' => 'working', 'blocked' => null]);
+                SessionStatusStore::update_status($threadId, ['status' => 'working', 'blocked' => null, 'last_turn_error' => null]);
                 codex_bridge_reply($stream, ['ok' => true, 'message' => 'Prompt answered']);
                 continue;
             }
