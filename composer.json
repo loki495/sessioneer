@@ -6,7 +6,7 @@
     "require": {
         "php": ">=8.2",
         "ext-pdo_sqlite": "*",
-        "minishlink/web-push": "^9.0",
+        "minishlink/web-push": "^11.0",
         "league/plates": "^3.6"
     },
     "autoload": {
