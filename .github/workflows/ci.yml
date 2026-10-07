@@ -42,7 +42,7 @@ jobs:
       # those spots the harness actually looks for.
       - name: Set up Chrome
         id: setup-chrome
-        uses: browser-actions/setup-chrome@v1
+        uses: browser-actions/setup-chrome@v2
 
       - name: Link Chrome for the CDP test harness
         run: sudo ln -sf "${{ steps.setup-chrome.outputs.chrome-path }}" /usr/bin/google-chrome-stable
