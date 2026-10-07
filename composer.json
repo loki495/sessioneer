@@ -8,7 +8,7 @@
         "ext-pdo_sqlite": "*",
         "minishlink/web-push": "^11.0",
         "league/plates": "^3.6",
-        "guzzlehttp/guzzle": "^7.9"
+        "guzzlehttp/guzzle": "^8.2"
     },
     "autoload": {
         "psr-4": {
