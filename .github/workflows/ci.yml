@@ -38,8 +38,14 @@ jobs:
           coverage: none
           tools: composer:v2
 
+      # The runner's apt mirror has stalled for the full job timeout before, so
+      # each attempt is capped and retried.
       - name: Install tmux
-        run: sudo apt-get update && sudo apt-get install --yes tmux
+        run: |
+          for attempt in 1 2 3; do
+            sudo timeout 120 bash -c 'apt-get update && apt-get install --yes tmux' && exit 0
+          done
+          exit 1
 
       # tests/lib/cdp.php and test_ui_smoke.php's headless-browser checks
       # only ever probe the fixed paths /usr/bin/google-chrome-stable,
