@@ -17,7 +17,7 @@ capability matrix and parity gaps.
 | Agent | Tier | Last verified | Runtimes | Main limitations |
 |-------|------|---------------|----------|------------------|
 | **Claude Code** | Primary | 2.1.278 (headless stream-json captures); tmux pane fixtures from 2.1.269 | Headless (default) or tmux | Headless sessions show no context % or worktree; one pending permission prompt tracked at a time |
-| **OpenCode** | Supported | 1.18.21 | `opencode serve` (default) or tmux fallback | No full status-hook plugin or mode vocabulary; tmux fallback is less complete |
+| **OpenCode** | Supported | 1.18.21 | `opencode serve` (default) or tmux fallback | 1.x only: OpenCode 2.x is not supported yet (see below). No full status-hook plugin or mode vocabulary; tmux fallback is less complete |
 | **Codex** | Supported | 0.152.1 (app-server schema from 0.150.1) | Headless only | Approvals and input requests owned by Codex Remote are visible but can't be answered; no transcript search |
 | **Antigravity** | Experimental | `agy` 1.2.1 | tmux only | Approval dialogs read from the pane; model changes are account-wide; no transcript search; hooks are a manual install |
 
@@ -59,6 +59,7 @@ Sessioneer is pre-1.0. Until 1.0:
 - Tmux fallback (`oc-*` sessions) available but secondary
 - Permissions plugin integration for tool approvals
 - Both modes can coexist; Sessioneer auto-detects which is available per session
+- **OpenCode 2.x (checked against 2.0.20) is not supported.** With a database created by 2.x, `opencode serve` answers Sessioneer's `/session`, `/permission` and `/question` routes with the web app's HTML, and the `/api/...` routes with 401 "Authentication required"; 2.x also keeps sessions in new tables (`session_v2`, `session_message`) instead of the `session`, `message` and `part` tables the transcript reader uses. A `serve` process still running 1.18.21 keeps working. Stay on 1.x for Sessioneer until 2.x support lands
 
 ### Codex
 - Headless only — no tmux variant
