@@ -18,8 +18,7 @@
     },
     "authors": [
         {
-            "name": "Andres Crucitti",
-            "email": "andres@ac495.net"
+            "name": "Andres Crucitti"
         }
     ],
     "require-dev": {
