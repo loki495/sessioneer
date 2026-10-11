@@ -197,6 +197,13 @@ Docker-spawned, makes that impossible by construction — not by convention.
    ends a genuinely wedged one so the existing dormant/lazy-resume path can
    recover it, rather than leaving it stuck indefinitely. Never applies to
    `blocked` (a pending prompt is normal to sit on).
+   `ClaudeHeadlessChild::$pending` is an ordered queue of `can_use_tool`
+   requests keyed by request_id (parallel subagents send several at once):
+   the head is the prompt the dashboard shows, `answer_prompt` matches the
+   posted request_id to its entry, the session stays `blocked` until the queue
+   drains, a `control_cancel_request` drops just its entry, a normal `result`
+   keeps open requests (a subagent may still be waiting) while an `aborted_*`
+   one or process exit clears the whole queue.
    `tests/fixtures/claude_stream_json_*_v2_1_278.ndjson`
    are the captured stream-json events and `tests/fixtures/fake_claude_stream`
    is the scripted stand-in the tests drive. `ClaudeHeadlessRuntime` is the

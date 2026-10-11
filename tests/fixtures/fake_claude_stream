@@ -11,6 +11,13 @@ declare(strict_types=1);
  * Behaviour is driven by keywords in the user message text:
  *   PERMISSION  ask to use Write (can_use_tool) and wait for the answer
  *   QUESTION    ask an AskUserQuestion (requires_user_interaction)
+ *   MULTIREQ    emit three can_use_tool requests back to back (ids multi-1..3,
+ *               like parallel subagents) and finish once all are answered
+ *   MULTIREQ_CANCEL  like MULTIREQ with two requests, then withdraw multi-1
+ *               with a control_cancel_request; finishes on multi-2's answer
+ *   MULTIREQ_RESULT  emit two requests and end the turn with a normal result
+ *               while they are still unanswered (a subagent still waiting)
+ *   MULTIREQ_ABORT  same, but the turn ends aborted (as after an interrupt)
  *   UNSUPPORTED send a control_request the manager does not implement
  *   SLOW        run until interrupted (or 20s)
  *   SLOW_THEN_QUEUE  goes completely silent (no stdout at all, simulating an
@@ -350,6 +357,48 @@ while (true) {
         if (!$interrupted) {
             result('slow done');
         }
+        continue;
+    }
+
+    if (str_contains($text, 'MULTIREQ')) {
+        $ids = str_contains($text, 'MULTIREQ_CANCEL') || str_contains($text, 'MULTIREQ_RESULT') || str_contains($text, 'MULTIREQ_ABORT') ? ['multi-1', 'multi-2'] : ['multi-1', 'multi-2', 'multi-3'];
+
+        foreach ($ids as $rid) {
+            emit(['type' => 'control_request', 'request_id' => $rid, 'request' => ['subtype' => 'can_use_tool', 'tool_name' => 'Bash', 'display_name' => 'Bash',
+                'input' => ['command' => "echo {$rid}"], 'description' => 'fake', 'permission_suggestions' => [], 'tool_use_id' => "toolu_{$rid}"]]);
+        }
+
+        if (str_contains($text, 'MULTIREQ_RESULT')) {
+            result('ended with prompts open');
+            continue;
+        }
+
+        if (str_contains($text, 'MULTIREQ_ABORT')) {
+            result('', true, 'aborted_streaming');
+            continue;
+        }
+
+        if (str_contains($text, 'MULTIREQ_CANCEL')) {
+            emit(['type' => 'control_cancel_request', 'request_id' => 'multi-1']);
+            $ids = ['multi-2'];
+        }
+
+        $answers = [];
+        $deadline = microtime(true) + 30;
+
+        while (count($answers) < count($ids) && microtime(true) < $deadline) {
+            $msg = read_message(0.2);
+
+            if (($msg['type'] ?? '') === 'user') {
+                $queue[] = $msg;
+            } elseif (($msg['type'] ?? '') === 'control_request') {
+                control_reply($msg);
+            } elseif (($msg['type'] ?? '') === 'control_response') {
+                $answers[] = ($msg['response']['request_id'] ?? '?') . '=' . ($msg['response']['response']['behavior'] ?? ($msg['response']['subtype'] ?? 'none'));
+            }
+        }
+
+        result('multi answered: ' . implode(',', $answers));
         continue;
     }
 
