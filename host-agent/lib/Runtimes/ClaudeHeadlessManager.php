@@ -498,7 +498,7 @@ final class ClaudeHeadlessManager
             return $tracked;
         }
 
-        return ['ok' => true, 'prompt' => ($this->children[$session] ?? null)?->pending];
+        return ['ok' => true, 'prompt' => ($this->children[$session] ?? null)?->pending_head()];
     }
 
     /**
@@ -519,13 +519,13 @@ final class ClaudeHeadlessManager
 
         $child = $this->children[$session] ?? null;
 
-        if ($child === null || $child->pending === null) {
+        if ($child === null || $child->pending === []) {
             return ['ok' => false, 'message' => 'Rejected: no prompt is currently pending on this session'];
         }
 
         $requestId = $params['request_id'] ?? null;
 
-        if (!is_string($requestId) || $requestId !== $child->pending['request_id']) {
+        if (!is_string($requestId) || !isset($child->pending[$requestId])) {
             return ['ok' => false, 'message' => 'Rejected: that prompt is no longer the pending one'];
         }
 
@@ -549,10 +549,9 @@ final class ClaudeHeadlessManager
             return ['ok' => false, 'message' => 'Could not write to the Claude process; the prompt is gone'];
         }
 
-        $child->pending = null;
-        $child->state = 'working';
+        unset($child->pending[$requestId]);
         $child->lastActivity = time();
-        $this->persist_status($session, ['status' => 'working', 'blocked' => null]);
+        $this->sync_blocked($child);
 
         return ['ok' => true, 'message' => 'Prompt answered'];
     }
@@ -686,7 +685,7 @@ final class ClaudeHeadlessManager
                 'state' => $child->state,
                 'agent_session_id' => $child->agentSessionId,
                 'idle_seconds' => $now - $child->lastActivity,
-                'has_pending_prompt' => $child->pending !== null,
+                'pending_prompts' => count($child->pending),
                 'stopping' => $child->stopping,
             ];
         }
@@ -887,7 +886,7 @@ final class ClaudeHeadlessManager
                 continue;
             }
 
-            if ($this->idleSeconds > 0 && $child->state === 'idle' && $child->pending === null
+            if ($this->idleSeconds > 0 && $child->state === 'idle' && $child->pending === []
                 && $child->openTurns === 0 && (time() - $child->lastActivity) > $this->idleSeconds) {
                 $this->log("stopping idle session {$child->name}");
                 $this->request_stop($child);
@@ -1017,6 +1016,8 @@ final class ClaudeHeadlessManager
             };
         } elseif ($type === 'control_request') {
             $this->on_control_request($child, $event);
+        } elseif ($type === 'control_cancel_request') {
+            $this->on_control_cancel_request($child, $event);
         } elseif ($type === 'control_response') {
             $this->on_control_response($child, $event);
         } elseif ($type === 'result') {
@@ -1141,9 +1142,34 @@ final class ClaudeHeadlessManager
             'requires_user_interaction' => !empty($request['requires_user_interaction']),
         ];
 
-        $child->pending = $prompt;
-        $child->state = 'blocked';
-        $this->persist_status($child->name, ['status' => 'blocked', 'blocked' => $prompt]);
+        $child->pending[$requestId] = $prompt;
+        $this->sync_blocked($child);
+    }
+
+    /**
+     * Claude withdrew a request (its tool call was aborted); drop only that one.
+     *
+     * @param array<string, mixed> $event
+     */
+    private function on_control_cancel_request(ClaudeHeadlessChild $child, array $event): void
+    {
+        $requestId = $event['request_id'] ?? null;
+
+        if (!is_string($requestId) || !isset($child->pending[$requestId])) {
+            return;
+        }
+
+        unset($child->pending[$requestId]);
+        $this->sync_blocked($child);
+    }
+
+    /** Status follows the queue: blocked on its head while non-empty, back to working/idle once it drains. */
+    private function sync_blocked(ClaudeHeadlessChild $child): void
+    {
+        $head = $child->pending_head();
+        // Drained after the turn already ended (a subagent's prompt): nothing is running on the main thread.
+        $child->state = $head !== null ? 'blocked' : ($child->openTurns > 0 ? 'working' : 'idle');
+        $this->persist_status($child->name, ['status' => $child->state, 'blocked' => $head]);
     }
 
     /** @param array<string, mixed> $event */
@@ -1181,11 +1207,21 @@ final class ClaudeHeadlessManager
         // above zero whenever that happened - a session shown as "working"
         // forever even though the child was genuinely idle (reproduced in tests/test_claude_headless_manager.php via the
         // SLOW_THEN_QUEUE fixture). A `result` is authoritative: whatever was
-        // pending is now resolved, full stop.
+        // in-flight work is now resolved, full stop (except permission
+        // requests, below).
         $child->openTurns = 0;
         $child->stallInterruptSentAt = null;
-        $child->pending = null;
-        $child->state = 'idle';
+
+        // A request the CLI is still waiting on must stay answerable, or the
+        // subagent that asked hangs forever with nothing on screen (a `result`
+        // carries no request_id and only ends the MAIN thread's turn). An
+        // aborted turn is the exception: the CLI abandons its requests then,
+        // and no capture shows it withdrawing them with control_cancel_request.
+        if (str_starts_with((string)($event['terminal_reason'] ?? ''), 'aborted')) {
+            $child->pending = [];
+        }
+
+        $child->state = $child->pending === [] ? 'idle' : 'blocked';
 
         $error = null;
 
@@ -1201,7 +1237,7 @@ final class ClaudeHeadlessManager
 
         $fields = [
             'status' => $child->state,
-            'blocked' => null,
+            'blocked' => $child->pending_head(),
             'last_turn_error' => $error,
         ];
 
@@ -1288,7 +1324,8 @@ final class ClaudeHeadlessManager
             $child->signal(SIGKILL);
         }
 
-        $interrupted = $child->openTurns > 0 || $child->pending !== null;
+        $interrupted = $child->openTurns > 0 || $child->pending !== [];
+        $child->pending = [];
         $fields = ['status' => 'idle', 'blocked' => null];
 
         if ($child->terminationReason !== null) {

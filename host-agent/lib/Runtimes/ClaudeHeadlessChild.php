@@ -46,8 +46,20 @@ final class ClaudeHeadlessChild
     /** starting | idle | working | blocked */
     public string $state = 'starting';
 
-    /** @var array<string, mixed>|null the raw can_use_tool request awaiting an answer */
-    public ?array $pending = null;
+    /**
+     * Raw can_use_tool requests awaiting an answer, in arrival order, keyed by
+     * request_id. Concurrent requests (parallel subagents) must not overwrite
+     * each other: the CLI waits on every request_id forever.
+     *
+     * @var array<string, array<string, mixed>>
+     */
+    public array $pending = [];
+
+    /** @return array<string, mixed>|null the prompt the dashboard shows (oldest first) */
+    public function pending_head(): ?array
+    {
+        return $this->pending === [] ? null : reset($this->pending);
+    }
 
     public int $lastActivity;
 

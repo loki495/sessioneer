@@ -486,6 +486,16 @@ assert_equal(50, GlobalStateStore::read(Config::quota_live_state_key())['session
 echo "Quota: per-account keys, merge rule, unusable windows\n";
 $m8 = start_manager($root, 'm8');
 $capturedBefore = GlobalStateStore::read(Config::quota_live_state_key())['captured_at'] ?? null;
+$has_pending_count = static function (array $m, string $name): int {
+    foreach (call($m, 'sessioneer/list')['children'] ?? [] as $row) {
+        if ($row['session'] === $name) {
+            return (int)$row['pending_prompts'];
+        }
+    }
+
+    return 0;
+};
+
 make_session($root, $sn(70));
 call($m8, 'sessioneer/sendInput', ['session' => $sn(70), 'content' => 'lower reading']);
 assert_true((bool)wait_until(static fn (): bool => has_result($m8, 'echo: lower reading') && status_is($sn(70), 'idle')), 'a normal turn runs');
@@ -563,6 +573,72 @@ assert_equal(null, call($m7b, 'sessioneer/pendingPrompt', ['session' => $sn(60)]
 assert_contains('no prompt is currently pending', (string)(call($m7b, 'sessioneer/answerPrompt', ['session' => $sn(60), 'request_id' => $oldPrompt['request_id'], 'response' => ['behavior' => 'allow']])['message'] ?? ''), 'answering the lost prompt is a handled rejection');
 call($m7b, 'sessioneer/sendInput', ['session' => $sn(60), 'content' => 'retry the turn']);
 assert_true((bool)wait_until(static fn (): bool => has_result($m7b, 'echo: retry the turn') && status_is($sn(60), 'idle')), 'the retried turn runs and the session recovers');
+
+// ============================================== prompts (concurrent queue)
+
+echo "Prompts: concurrent requests queue by request_id\n";
+$answer = static fn (array $m, int $n, string $id, ?array $response = null): array => call($m, 'sessioneer/answerPrompt', ['session' => $sn($n), 'request_id' => $id, 'response' => $response ?? ['behavior' => 'allow']]);
+$head = static fn (array $m, int $n): ?string => call($m, 'sessioneer/pendingPrompt', ['session' => $sn($n)])['prompt']['request_id'] ?? null;
+$blockedId = static fn (int $n): ?string => SessionStatusStore::read_status($sn($n))['blocked']['request_id'] ?? null;
+
+make_session($root, $sn(70));
+call($m7b, 'sessioneer/sendInput', ['session' => $sn(70), 'content' => 'MULTIREQ go']);
+assert_true((bool)wait_until(static fn (): bool => $has_pending_count($m7b, $sn(70)) === 3), 'all three concurrent requests are kept, none overwritten');
+assert_equal('multi-1', $head($m7b, 70), 'the dashboard prompt is the oldest request');
+assert_equal('multi-1', $blockedId(70), 'and the blocked status names the same one');
+assert_contains('no longer the pending one', (string)($answer($m7b, 70, 'multi-9')['message'] ?? ''), 'an unknown request id is rejected');
+assert_equal(3, $has_pending_count($m7b, $sn(70)), 'the rejection leaves the queue untouched');
+
+assert_true(($answer($m7b, 70, 'multi-2', ['behavior' => 'deny', 'message' => 'no'])['ok'] ?? false) === true, 'a later request can be answered out of order by its id');
+assert_equal('multi-1', $head($m7b, 70), 'the head is unchanged by answering a non-head request');
+assert_equal('blocked', call($m7b, 'sessioneer/status', ['session' => $sn(70)])['state'], 'the session stays blocked with prompts left');
+assert_contains('no longer the pending one', (string)($answer($m7b, 70, 'multi-2')['message'] ?? ''), 'answering the same id twice is rejected');
+
+$answer($m7b, 70, 'multi-1');
+assert_equal('multi-3', $head($m7b, 70), 'answering the head promotes the next request');
+assert_equal('multi-3', $blockedId(70), 'and the blocked status follows it');
+assert_equal('blocked', call($m7b, 'sessioneer/status', ['session' => $sn(70)])['state'], 'still blocked on the last request');
+
+$answer($m7b, 70, 'multi-3');
+assert_true((bool)wait_until(static fn (): bool => status_is($sn(70), 'idle') && has_result($m7b, 'multi answered: multi-2=deny,multi-1=allow,multi-3=allow')), 'Claude got every answer and the turn finished');
+assert_equal(null, $head($m7b, 70), 'the queue is empty afterwards');
+assert_equal(null, $blockedId(70), 'and nothing is shown as blocked');
+
+echo "Prompts: control_cancel_request drops only its entry\n";
+make_session($root, $sn(71));
+call($m7b, 'sessioneer/sendInput', ['session' => $sn(71), 'content' => 'MULTIREQ_CANCEL go']);
+assert_true((bool)wait_until(static fn (): bool => $head($m7b, 71) === 'multi-2'), 'the withdrawn request leaves the queue and the next one is promoted');
+assert_equal(1, $has_pending_count($m7b, $sn(71)), 'only the cancelled entry was removed');
+assert_equal('multi-2', $blockedId(71), 'the blocked status follows the survivor');
+assert_contains('no longer the pending one', (string)($answer($m7b, 71, 'multi-1')['message'] ?? ''), 'answering the withdrawn request is rejected');
+$answer($m7b, 71, 'multi-2');
+assert_true((bool)wait_until(static fn (): bool => status_is($sn(71), 'idle') && has_result($m7b, 'multi answered: multi-2=allow')), 'the surviving request still resolves normally');
+
+echo "Prompts: a normal result keeps open requests answerable, an aborted one and process exit clear them\n";
+make_session($root, $sn(72));
+call($m7b, 'sessioneer/sendInput', ['session' => $sn(72), 'content' => 'MULTIREQ_RESULT go']);
+assert_true((bool)wait_until(static fn (): bool => has_result($m7b, 'ended with prompts open') && $has_pending_count($m7b, $sn(72)) === 2), 'the turn ends with two requests still open and both are kept');
+assert_equal('blocked', call($m7b, 'sessioneer/status', ['session' => $sn(72)])['state'], 'the session stays blocked on them');
+assert_equal('multi-1', $blockedId(72), 'and the dashboard still shows the oldest');
+$answer($m7b, 72, 'multi-1');
+$answer($m7b, 72, 'multi-2', ['behavior' => 'deny', 'message' => 'no']);
+assert_true((bool)wait_until(static fn (): bool => status_is($sn(72), 'idle')), 'answering the last one returns an ended-turn session to idle, not working');
+assert_equal(null, $blockedId(72), 'and nothing is shown as blocked');
+
+make_session($root, $sn(74));
+call($m7b, 'sessioneer/sendInput', ['session' => $sn(74), 'content' => 'MULTIREQ_ABORT go']);
+assert_true((bool)wait_until(static fn (): bool => status_is($sn(74), 'idle')), 'an aborted turn ends idle');
+assert_equal(null, $head($m7b, 74), 'an aborted turn clears every pending request');
+assert_equal(null, $blockedId(74), 'and the blocked status');
+assert_contains('no prompt is currently pending', (string)($answer($m7b, 74, 'multi-1')['message'] ?? ''), 'answering an abandoned request is a handled rejection');
+
+make_session($root, $sn(73));
+call($m7b, 'sessioneer/sendInput', ['session' => $sn(73), 'content' => 'MULTIREQ die']);
+assert_true((bool)wait_until(static fn (): bool => $has_pending_count($m7b, $sn(73)) === 3), 'three requests are open');
+kill_hard((int)call($m7b, 'sessioneer/status', ['session' => $sn(73)])['pid']);
+assert_true((bool)wait_until(static fn (): bool => process_of($m7b, $sn(73)) === 'dormant'), 'the child is forgotten');
+assert_equal(null, SessionStatusStore::read_status($sn(73))['blocked'], 'no request stays shown as blocked after the process died');
+assert_equal(null, $head($m7b, 73), 'and none is offered');
 
 // ============================================================== done
 
