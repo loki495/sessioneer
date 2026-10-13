@@ -6,7 +6,7 @@ Sessioneer's web container never touches tmux, the process table or an agent dir
 
 `host-agent/systemd/sessioneer-agent.socket` listens on `%t/sessioneer-agent.sock`, which is `/run/user/<uid>/sessioneer-agent.sock`. systemd starts one `sessioneer-agent@<connection>.service` (running `host-agent/agent.php`) per connection, with the socket as its stdin and stdout, so the agent needs no long-running process of its own.
 
-**Protocol:** the client writes one JSON object, `{"action": "<name>", ...parameters}`, half-closes its write side and reads one JSON reply until end of stream. Replies carry `"ok": true|false` and, on failure, a `"message"`. An empty or malformed request gets `{"ok": false, "message": "Malformed request"}`. `src/lib/AgentClient.php` is the client the web UI uses.
+**Protocol:** the client writes one JSON object, `{"action": "<name>", ...parameters}`, half-closes its write side and reads one JSON reply until end of stream. Replies carry `"ok": true|false` and, on failure, a `"message"`. An empty or malformed request gets `{"ok": false, "message": "Malformed request"}`. `src/lib/AgentClient.php` is the client the web UI uses; `bin/sessioneer` ([cli.md](cli.md)) is a second client, sending the `launch`, `launch_kill` and `launch_list` actions to start, resume, reuse, stop or list sessions.
 
 The web container gets the socket through a bind mount in `docker-compose.yml` (`${SESSIONEER_AGENT_SOCKET_HOST:-/run/user/1000/sessioneer-agent.sock}` to `/run/sessioneer-agent.sock`, with `SESSIONEER_AGENT_SOCKET` pointing at the container path). The socket is host-local:
 

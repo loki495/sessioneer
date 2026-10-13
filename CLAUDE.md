@@ -250,6 +250,17 @@ Docker-spawned, makes that impossible by construction — not by convention.
    `ClaudeHeadlessHealthService` is the "Claude Code headless" health-box
    section (service, spawn guard, credential, version, capacity, quota
    freshness).
+
+   `bin/sessioneer` (docs/cli.md) is a second socket client besides the web
+   container: it sends the `launch`, `launch_kill` and `launch_list` actions, which `HostAgent\Launch\
+   LaunchService` routes to a per-agent `SessionLauncher` (the interface
+   documents the request/reply keys; only `ClaudeSessionLauncher` exists).
+   A new agent's launch support is one class plus one line in
+   `LaunchService::LAUNCHERS`, not a branch in `Sessions.php`. The Claude
+   launcher creates a headless session, resumes one, or - when a sidecar
+   already tracks the conversation id - sends the prompt to that session
+   instead of opening a second process; a conversation held by a bare
+   terminal process is refused (Take over is the dashboard's job).
 5. `App\Views\*` (one render class per feature area — `TranscriptView`,
    `SessionRowView`, `BlockedPromptView`, `QuotaFooterView`,
    `HealthBoxView`, `PushNotifyView`, plus `PageView` for the two full-page
