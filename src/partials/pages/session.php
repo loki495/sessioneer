@@ -181,7 +181,7 @@ $this->layout('layout', [
 
 <?php include __DIR__ . '/../sidebar.php'; ?>
 
-<!-- #app-shell: a full-height flex column so #page-content can be the
+<?php /* #app-shell: a full-height flex column so #page-content can be the
      ONLY scrolling element on this page, instead of the whole body -
      needed to fix #compose-bar's position:fixed detaching mid-scroll on
      iOS Safari (see its own comment). #sidebar/#go-to-bottom-btn/the two
@@ -189,7 +189,7 @@ $this->layout('layout', [
      siblings same as before - nesting a position:fixed element inside an
      overflow-hidden flex ancestor risks it being clipped, exactly the
      kind of thing worth not risking on the same browser this is already
-     working around a fixed-position bug on. -->
+     working around a fixed-position bug on. */ ?>
 <div id="app-shell" class="flex flex-col h-full min-h-0" style="<?= ($detail['agent'] ?? 'claude') === 'opencode' ? 'background-color: rgba(46, 16, 101, 0.16)' : (($detail['agent'] ?? 'claude') === 'codex' ? 'background-color: rgba(3, 78, 92, 0.14)' : (($detail['agent'] ?? 'claude') === 'antigravity' ? 'background-color: rgba(69, 26, 3, 0.12)' : '')) ?>">
 <?php include __DIR__ . '/../header.php'; ?>
 
@@ -208,21 +208,21 @@ $this->layout('layout', [
         : (isset($detail['agent']) && $detail['agent'] === 'antigravity' ? 'Antigravity' : (isset($detail['agent']) && $detail['agent'] === 'codex' ? 'Codex' : 'Claude Code'));
     ?>
     <?php if ($jumpLine !== null): ?>
-      <!-- Landed here from a search result (see sidebar.php's search box/
+      <?php /* Landed here from a search result (see sidebar.php's search box/
            session.js) - the page above this loads a window ENDING at
            jumpLine, via session_history's existing `before` cursor, rather
            than the usual latest-tail page. "Back to latest" is a plain
            link (full navigation), not a JS action - simplest way back to
            the normal view, and matches this app's existing classic-link
            pattern for anything that isn't a repeated, high-frequency
-           action (see CLAUDE.md's own AJAX-vs-redirect distinction). -->
+           action (see CLAUDE.md's own AJAX-vs-redirect distinction). */ ?>
       <div class="select-none mb-4 rounded-lg border border-sky-800/40 bg-sky-950/20 px-3 py-2 flex items-center justify-between gap-2 text-xs text-sky-300">
         <span>Showing a search result</span>
         <a href="/session.php?session=<?= urlencode($sessionName) ?>" class="text-sky-400 active:text-sky-200 font-medium">Back to latest &rarr;</a>
       </div>
     <?php endif; ?>
 
-    <!-- #history-list and #load-more-btn are ALWAYS rendered (never
+    <?php /* #history-list and #load-more-btn are ALWAYS rendered (never
          conditionally, unlike the old version of this template) - both are
          captured ONCE by session.js at load time (document.getElementById,
          never re-queried), so a session opened before its first line
@@ -235,15 +235,15 @@ $this->layout('layout', [
          plain placeholder note instead, which session.js's own
          appendPendingEntry()/pollHistory() already remove the moment any
          real content (optimistic or polled) actually lands - see
-         removeHistoryEmptyNote() there. -->
-    <!-- Two buttons, not one - Andres asked 2026-08-24 for a faster way to
+         removeHistoryEmptyNote() there. */ ?>
+    <?php /* Two buttons, not one - Andres asked 2026-08-24 for a faster way to
          back-page through history than clicking "Load older messages"
          repeatedly, when what's actually wanted is "get back to the start
          of the most recent real exchange." #load-until-user-btn shares
          data-before with #load-more-btn (both page the SAME cursor - only
          which one moves it differs) and toggles hidden the same way, since
          either one running out of history at once is exactly the same
-         "nothing left to load" state for both. -->
+         "nothing left to load" state for both. */ ?>
     <div class="flex gap-2 mb-2">
       <button type="button" id="load-more-btn"
         data-session="<?= $this->e($sessionName) ?>"
@@ -284,9 +284,9 @@ $this->layout('layout', [
       <?= \App\Views\TranscriptView::render_turn_error_html($detail, $agentLabel) ?>
     </div>
 
-    <!-- The live, actionable prompt state sits after history, not pinned
+    <?php /* The live, actionable prompt state sits after history, not pinned
          above it - reads like the "current" end of the chat, and is what
-         the initial/poll-triggered auto-scroll brings into view. -->
+         the initial/poll-triggered auto-scroll brings into view. */ ?>
     <div id="blocked-prompt-section" class="mt-4">
       <?= \App\Views\TranscriptView::render_blocked_prompt_section_html($detail, $csrfToken) ?>
     </div>
@@ -295,7 +295,7 @@ $this->layout('layout', [
 </div>
 </div>
 
-<!-- #scroll-toolbar: docked flat scroll-control strip (Andres's own ask,
+<?php /* #scroll-toolbar: docked flat scroll-control strip (Andres's own ask,
      2026-09-06) - replaced the four position:fixed circles that hovered
      over the right edge and covered chat text on mobile. A real flex child
      of #app-shell between #page-content and #compose-bar, so it takes
@@ -306,7 +306,7 @@ $this->layout('layout', [
      flat - no rounding, no per-control background - and simply sit muted
      (disabled) when their action isn't currently available: Top/Bottom at
      their own edge, Prev with no user history, New with no unread divider.
-     Left-to-right: top, previous user, new, bottom. -->
+     Left-to-right: top, previous user, new, bottom. */ ?>
 <div id="scroll-toolbar" class="select-none flex-none bg-slate-950/95 border-t border-slate-800">
   <div class="max-w-2xl lg:max-w-4xl mx-auto flex text-xs divide-x divide-slate-800">
     <button type="button" id="go-to-top-btn"

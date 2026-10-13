@@ -37,14 +37,14 @@
   <?php if ($found): ?>
     <div class="px-4 py-3 border-b border-slate-800">
       <span class="block text-xs font-medium text-slate-500 mb-2">Search</span>
-      <!-- text-base (16px), not text-sm - iOS Safari auto-zooms the whole
+      <?php /* text-base (16px), not text-sm - iOS Safari auto-zooms the whole
            viewport in on focusing any text input rendered under 16px, no
            way to opt out of that short of the font size itself.
            appearance-none suppresses the native WebKit search-cancel
            button - Andres wants ONE consistent custom clear button
            everywhere (native ones vary in styling/position by browser and
            textareas never get one at all), not that plus a second,
-           differently-styled native one alongside it. -->
+           differently-styled native one alongside it. */ ?>
       <div class="relative">
         <input type="search" id="session-search-input" placeholder="Search messages&hellip;" autocomplete="off"
           class="appearance-none w-full rounded-lg border border-slate-700 bg-slate-800 pl-2 pr-8 py-1.5 text-base text-slate-200 placeholder:text-slate-500">
@@ -97,14 +97,14 @@
     </label>
   </div>
   <?php if ($found): ?>
-    <!-- Bare, no border/padding of its own (unlike the sections below it) -
+    <?php /* Bare, no border/padding of its own (unlike the sections below it) -
          render_todo_list_html() returns '' (nothing, zero height) for a
          session that's never called TodoWrite or the Task family (TaskCreate/
          TaskUpdate) or has cleared its list back to empty, and its OWN
          template carries the full border-t/px-4/py-3 section styling when
          there IS something to show - a wrapper with its own border here
          would render as an empty bordered box for the common case of a
-         session that never touches either tool at all. -->
+         session that never touches either tool at all. */ ?>
     <div id="todo-list-section"><?= \App\Views\TranscriptView::render_todo_list_html($detail) ?></div>
     <div class="px-4 py-3 border-t border-slate-800">
       <button type="button" id="todo-file-link"

@@ -415,6 +415,15 @@ either dead code or a docblock narrower than the data - not yet triaged.
 
 ## Running tests
 
+Prerequisites:
+
+- PHP 8.3+ with `pdo_sqlite`, plus `bash` and `curl`.
+- `tmux` (the suite starts its own isolated tmux server).
+- Chrome or Chromium at one of the fixed paths `/usr/bin/google-chrome-stable`,
+  `/usr/bin/google-chrome`, `/usr/bin/chromium`, `/usr/bin/chromium-browser`
+  (checked in that order by `tests/lib/cdp.php`; there is no environment
+  variable override). Without one, the browser checks are skipped cleanly.
+
 ```
 bash tests/run.sh          # run every test file
 bash tests/run.sh --bail   # stop at the first failing test file

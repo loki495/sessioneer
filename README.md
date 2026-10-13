@@ -97,8 +97,8 @@ internet - it can create and kill agent sessions on your machine.
 ## Requirements
 
 - Linux with systemd user services (`systemd --user`) for the host agent.
-- PHP 8.2+ on the host, with `pdo_sqlite` (`php -m | grep sqlite`) and, for
-  a graceful shutdown of headless Claude sessions, `pcntl`. CI runs PHP 8.3.
+- PHP 8.3+ on the host, with `pdo_sqlite` (`php -m | grep sqlite`) and, for
+  a graceful shutdown of headless Claude sessions, `pcntl`. CI runs PHP 8.3, the minimum.
 - Composer, and Docker with Docker Compose.
 - `tmux`, if you use Antigravity (always tmux-driven), run Claude Code in a
   terminal instead of headless, or want OpenCode's tmux fallback.
