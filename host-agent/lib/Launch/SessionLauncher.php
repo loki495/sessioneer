@@ -1,0 +1,58 @@
+<?php
+
+declare(strict_types=1);
+
+namespace HostAgent\Launch;
+
+/**
+ * What one agent must answer to be startable from outside the web UI (the
+ * `launch` host-agent action, driven by `bin/sessioneer`). LaunchService
+ * picks the implementation by agent id, so a new agent is one class plus
+ * one line in LaunchService::LAUNCHERS; nothing else branches per agent.
+ *
+ * Request keys (a launcher reads only the ones it understands):
+ *   agent             string   agent id; the launcher's own agent_id()
+ *   prompt            string   first/next message to deliver; optional when resuming
+ *   agent_session_id  string   existing conversation to resume or reuse; absent = new session
+ *   workdir           string   absolute directory; required for a new session
+ *   model             string   optional
+ *   starting_mode     string   optional permission mode
+ *   profile           string   optional account/profile
+ *   enable_task_tools bool     optional
+ *
+ * Reply: ['ok' => bool, 'message' => string] plus, once a session exists,
+ * 'name' (the session ref the dashboard uses), 'action' (created|resumed|
+ * reused) and 'prompt_sent' (bool). A session that was started but could
+ * not take its prompt is ok=false WITH 'name', so the caller can find it.
+ */
+interface SessionLauncher
+{
+    public function agent_id(): string;
+
+    /**
+     * @param array<string, mixed> $request
+     * @return array<string, mixed>
+     */
+    public function launch(array $request): array;
+
+    /**
+     * Stops a session. Request: `target` (session name or agent conversation
+     * id) and optional `force` (bool); a working or blocked session is
+     * refused without it. The conversation stays resumable (archived).
+     * Reply: ['ok' => bool, 'message' => string, 'name' => string once found].
+     *
+     * @param array<string, mixed> $request
+     * @return array<string, mixed>
+     */
+    public function kill(array $request): array;
+
+    /**
+     * The sessions this launcher can manage. Reply: ['ok' => true,
+     * 'sessions' => list of {name, agent_session_id, status, workdir, title,
+     * model}].
+     *
+     * @param array<string, mixed> $request
+     * @return array<string, mixed>
+     */
+    public function list_sessions(array $request): array;
+}

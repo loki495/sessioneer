@@ -127,6 +127,15 @@ The push-check timer lists headless Claude sessions through the same code path
 as the dashboard, so a headless session waiting on a prompt notifies with the
 prompt itself.
 
+### Launch from the command line
+
+`bin/sessioneer` starts a headless Claude session with a first prompt, resumes
+an archived conversation, or delivers a prompt to the session already tracking a
+conversation id, so scripts and other sessions can spawn a continuation that
+shows up in the dashboard. `--list` shows headless sessions and `--kill` stops
+one (refusing a working or blocked session without `--force`). Claude only; see
+[cli.md](cli.md).
+
 ### Headless runtime
 
 A Claude session can also run without a terminal. Sessioneer's headless runtime

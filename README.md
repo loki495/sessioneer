@@ -58,6 +58,11 @@ an installable PWA, meant to be added to an iOS/Android home screen):
 - **Answer `AskUserQuestion` / `UserPrompt` prompts**: some agents ask
   follow-up questions during a run (`"which one: A or B?"`); Sessioneer
   shows them and collects answers.
+- **Launch from the command line**: `bin/sessioneer` starts, resumes,
+  reuses, lists or stops headless Claude sessions, so scripts and other
+  sessions can spawn a continuation you then follow in the dashboard (see
+  [`docs/cli.md`](docs/cli.md)). Put it on your `PATH` by symlinking it, e.g.
+  `ln -s "$PWD/bin/sessioneer" ~/.local/bin/sessioneer`.
 - **Kill sessions**: stop a running session without killing the whole
   terminal/tmux.
 - **View transcripts**: read the full conversation history for a session,

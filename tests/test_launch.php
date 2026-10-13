@@ -1,0 +1,199 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * The `launch` host-agent action (what bin/sessioneer sends): a new headless
+ * Claude session with a first prompt, reuse of a session Sessioneer already
+ * tracks on a conversation id, resume of an archived conversation (workdir
+ * taken from its transcript), and the handled refusals. Served by a REAL
+ * ClaudeHeadlessManager driving the scripted tests/fixtures/fake_claude_stream;
+ * never spawns the real `claude`, never billable.
+ */
+
+require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/lib/assert.php';
+require_once __DIR__ . '/lib/claude_headless.php';
+
+$root = sys_get_temp_dir() . '/sessioneer-test-launch-' . getmypid();
+@mkdir($root . '/home/.claude/projects', 0700, true);
+@mkdir($root . '/work', 0700, true);
+
+$realTmuxSocket = \HostAgent\Services\Config::tmux_socket();
+$realSidecarDir = \HostAgent\Services\Config::sidecar_dir();
+
+foreach ([
+    'TMUX_SOCKET' => $root . '/tmux/socket',
+    'CLAUDE_BIN' => __DIR__ . '/fixtures/fake_claude',
+    'CACHE_DIR' => $root . '/cache',
+    'SIDECAR_DIR' => $root . '/sidecars',
+    'SESSION_LIST_CACHE_TTL_SECONDS' => '0',
+    'OPENCODE_SERVE_URL' => 'http://127.0.0.1:1',
+    'OPENCODE_DB_PATH' => $root . '/no-opencode.db',
+    'CODEX_BRIDGE_SOCKET' => $root . '/no-codex-bridge.sock',
+] as $key => $value) {
+    putenv("{$key}={$value}");
+}
+
+if (\HostAgent\Services\Config::tmux_socket() === $realTmuxSocket || \HostAgent\Services\Config::sidecar_dir() === $realSidecarDir) {
+    fwrite(STDERR, "REFUSING TO RUN: configuration resolves to the real host.\n");
+    exit(1);
+}
+
+@mkdir((string)getenv('SIDECAR_DIR'), 0700, true);
+@mkdir((string)getenv('CACHE_DIR'), 0700, true);
+@mkdir(dirname((string)getenv('TMUX_SOCKET')), 0700, true);
+putenv('HOME_ROOT=' . $root . '/home');
+putenv('CLAUDE_HEADLESS_SOCKET=' . $root . '/mgr.sock');
+
+require_once dirname(__DIR__) . '/host-agent/lib/Sessions.php';
+
+use HostAgent\Launch\ClaudeSessionLauncher;
+use HostAgent\Launch\SessionLauncher;
+use HostAgent\Stores\SessionStatusStore;
+use HostAgent\Stores\SidecarStore;
+
+/** @var array<int, array{proc: resource, sock: string, log: string, fake: string}> $managers */
+$managers = [];
+
+/** @var array<int, string> $made */
+$made = [];
+
+register_shutdown_function(static function () use (&$managers, &$made, $root): void {
+    foreach ($managers as $m) {
+        if (is_resource($m['proc'])) {
+            @proc_terminate($m['proc'], SIGTERM);
+            usleep(300000);
+            @proc_terminate($m['proc'], SIGKILL);
+            @proc_close($m['proc']);
+        }
+    }
+
+    foreach ($made as $name) {
+        SidecarStore::delete_sidecar($name);
+        SessionStatusStore::delete_status($name);
+    }
+
+    exec('rm -rf ' . escapeshellarg($root));
+});
+
+/** @param array<string, mixed> $request @return array<string, mixed> */
+function launch(array $request): array
+{
+    return dispatch_action(['action' => 'launch'] + $request);
+}
+
+function status_of(string $name): string
+{
+    return (string)(dispatch_action(['action' => 'session_detail', 'session' => $name])['status'] ?? '?');
+}
+
+$m = start_manager($root, 'mgr');
+$workdir = $root . '/work/project';
+@mkdir($workdir, 0700, true);
+
+echo "Contract\n";
+assert_true(new ClaudeSessionLauncher() instanceof SessionLauncher, 'the Claude launcher implements the SessionLauncher contract');
+assert_equal('claude', (new ClaudeSessionLauncher())->agent_id(), 'and names its agent');
+
+echo "Refusals\n";
+$unsupported = launch(['agent' => 'codex', 'prompt' => 'hi', 'workdir' => $workdir]);
+assert_equal(false, $unsupported['ok'] ?? null, 'an agent with no launcher is refused');
+assert_contains("not supported for agent 'codex' (supported: claude)", (string)$unsupported['message'], 'naming the agent and what is supported');
+assert_contains('needs a prompt', (string)launch(['workdir' => $workdir])['message'], 'a new session without a prompt is refused');
+assert_contains('needs a prompt', (string)launch(['workdir' => $workdir, 'prompt' => "  \n"])['message'], 'a blank prompt counts as none');
+assert_contains('existing absolute workdir', (string)launch(['workdir' => 'relative', 'prompt' => 'hi'])['message'], 'a relative workdir is refused');
+assert_contains('existing absolute workdir', (string)launch(['workdir' => $root . '/nope', 'prompt' => 'hi'])['message'], 'so is a missing one');
+assert_contains('No transcript found', (string)launch(['agent_session_id' => 'no-such-conversation'])['message'], 'resuming an unknown conversation without a workdir is a handled error');
+assert_contains('No transcript was found', (string)launch(['agent_session_id' => 'no-such-conversation', 'workdir' => $workdir])['message'], 'and with one');
+assert_equal([], SidecarStore::list_runtime_sidecars('headless'), 'none of the refusals left a session behind');
+
+echo "New session\n";
+$new = launch(['prompt' => 'first words', 'workdir' => $workdir, 'model' => 'haiku', 'starting_mode' => 'plan']);
+assert_true(($new['ok'] ?? false) === true, 'a new session launches' . (($new['ok'] ?? false) === true ? '' : ' - got ' . json_encode($new)));
+$name = (string)($new['name'] ?? '');
+$made[] = $name;
+assert_equal('created', $new['action'] ?? null, 'reported as created');
+assert_equal(true, $new['prompt_sent'] ?? null, 'with its prompt delivered');
+assert_equal('headless', SidecarStore::read_sidecar($name)['runtime'] ?? null, 'as a headless session');
+assert_true((bool)wait_until(static fn (): bool => status_of($name) === 'idle' && has_result($m, 'echo: first words')), 'and the process receives the prompt');
+$conversationId = (string)(dispatch_action(['action' => 'session_detail', 'session' => $name])['agent_session_id'] ?? '');
+assert_true($conversationId !== '', 'the session is bound to a conversation id');
+
+echo "Reuse\n";
+$reused = launch(['agent_session_id' => $conversationId, 'prompt' => 'second words']);
+assert_true(($reused['ok'] ?? false) === true, 'a conversation Sessioneer already tracks is reused' . (($reused['ok'] ?? false) === true ? '' : ' - got ' . json_encode($reused)));
+assert_equal($name, $reused['name'] ?? null, 'the SAME session receives the prompt');
+assert_equal('reused', $reused['action'] ?? null, 'reported as reused');
+assert_true((bool)wait_until(static fn (): bool => status_of($name) === 'idle' && has_result($m, 'echo: second words')), 'and the process answers it');
+$noPrompt = launch(['agent_session_id' => $conversationId]);
+assert_equal(true, $noPrompt['ok'] ?? null, 'reusing without a prompt is fine');
+assert_equal(false, $noPrompt['prompt_sent'] ?? null, 'and sends nothing');
+assert_equal(1, count(SidecarStore::list_runtime_sidecars('headless')), 'no second session was opened on the conversation');
+
+echo "Resume\n";
+$transcriptDir = $root . '/home/.claude/projects/' . preg_replace('/[^A-Za-z0-9]/', '-', $workdir);
+@mkdir($transcriptDir, 0700, true);
+file_put_contents("{$transcriptDir}/{$conversationId}.jsonl", json_encode(['type' => 'user', 'cwd' => $workdir, 'message' => ['role' => 'user', 'content' => 'x']]) . "\n");
+assert_true((dispatch_action(['action' => 'kill', 'session' => $name])['ok'] ?? false) === true, 'the first session is killed');
+$resumed = launch(['agent_session_id' => $conversationId, 'prompt' => 'third words']);
+assert_true(($resumed['ok'] ?? false) === true, 'the archived conversation resumes with no workdir given' . (($resumed['ok'] ?? false) === true ? '' : ' - got ' . json_encode($resumed)));
+$resumedName = (string)($resumed['name'] ?? '');
+$made[] = $resumedName;
+assert_equal('resumed', $resumed['action'] ?? null, 'reported as resumed');
+assert_equal($workdir, SidecarStore::read_sidecar($resumedName)['workdir'] ?? null, 'in the directory its transcript recorded');
+assert_true((bool)wait_until(static fn (): bool => has_result($m, "echo: third words [spawn=resume id={$conversationId}")), 'continuing the SAME conversation (--resume)');
+
+echo "List\n";
+assert_true((bool)wait_until(static fn (): bool => status_of($resumedName) === 'idle'), 'the resumed session settles');
+$listed = dispatch_action(['action' => 'launch_list']);
+assert_equal(true, $listed['ok'] ?? null, 'listing succeeds');
+$row = array_values(array_filter($listed['sessions'] ?? [], static fn (array $s): bool => $s['name'] === $resumedName))[0] ?? [];
+assert_equal($conversationId, $row['agent_session_id'] ?? null, 'the session is listed with its conversation id');
+assert_equal('idle', $row['status'] ?? null, 'and its status');
+assert_equal($workdir, $row['workdir'] ?? null, 'and its directory');
+assert_contains('not supported for agent', (string)dispatch_action(['action' => 'launch_list', 'agent' => 'codex'])['message'], 'listing an agent with no launcher is a handled failure');
+
+echo "Kill\n";
+assert_contains('needs a session name', (string)dispatch_action(['action' => 'launch_kill', 'target' => ' '])['message'], 'a blank target is refused');
+assert_contains('No headless Claude session found', (string)dispatch_action(['action' => 'launch_kill', 'target' => 'no-such-session'])['message'], 'an unknown target is a handled failure');
+assert_contains('not supported for agent', (string)dispatch_action(['action' => 'launch_kill', 'agent' => 'codex', 'target' => $resumedName])['message'], 'an agent with no launcher is refused');
+SessionStatusStore::update_status($resumedName, ['status' => 'working']);
+$busy = dispatch_action(['action' => 'launch_kill', 'target' => $resumedName]);
+assert_equal(false, $busy['ok'] ?? null, 'a working session is not stopped');
+assert_contains('is working', (string)$busy['message'], 'with a message saying why');
+assert_contains('--force', (string)$busy['message'], 'and how to override');
+assert_true(SidecarStore::read_sidecar($resumedName) !== null, 'the session is still there');
+SessionStatusStore::update_status($resumedName, ['status' => 'idle']);
+$byId = dispatch_action(['action' => 'launch_kill', 'target' => $conversationId]);
+assert_true(($byId['ok'] ?? false) === true, 'an idle session is stopped by conversation id' . (($byId['ok'] ?? false) === true ? '' : ' - got ' . json_encode($byId)));
+assert_equal($resumedName, $byId['name'] ?? null, 'naming the session it stopped');
+assert_equal(null, SidecarStore::read_sidecar($resumedName), 'and the session is gone');
+$again = launch(['agent_session_id' => $conversationId, 'prompt' => 'fourth words']);
+assert_equal('resumed', $again['action'] ?? null, 'its conversation is still resumable');
+$resumedName = (string)($again['name'] ?? '');
+$made[] = $resumedName;
+assert_true((bool)wait_until(static fn (): bool => status_of($resumedName) === 'idle' && has_result($m, 'echo: fourth words')), 'and answers');
+SessionStatusStore::update_status($resumedName, ['status' => 'blocked']);
+assert_contains('is blocked', (string)dispatch_action(['action' => 'launch_kill', 'target' => $resumedName])['message'], 'a blocked session is refused too');
+$forced = dispatch_action(['action' => 'launch_kill', 'target' => $resumedName, 'force' => true]);
+assert_equal(true, $forced['ok'] ?? null, '--force stops it anyway');
+assert_equal(null, SidecarStore::read_sidecar($resumedName), 'and removes it');
+$last = launch(['agent_session_id' => $conversationId, 'prompt' => 'fifth words']);
+$resumedName = (string)($last['name'] ?? '');
+$made[] = $resumedName;
+assert_true((bool)wait_until(static fn (): bool => status_of($resumedName) === 'idle' && has_result($m, 'echo: fifth words')), 'a session to leave running for the next section');
+
+echo "Failure: manager down\n";
+proc_terminate($m['proc'], SIGTERM);
+wait_until(static fn (): bool => !proc_get_status($m['proc'])['running'], 12.0);
+$down = launch(['agent_session_id' => $conversationId, 'prompt' => 'anyone?']);
+assert_equal(false, $down['ok'] ?? null, 'delivering with the manager down fails');
+assert_contains('Cannot reach Claude headless manager', (string)$down['message'], 'with the named, handled error');
+assert_equal($resumedName, $down['name'] ?? null, 'and still names the session so the caller can find it');
+$downNew = launch(['prompt' => 'anyone?', 'workdir' => $workdir]);
+assert_equal(false, $downNew['ok'] ?? null, 'a new launch with the manager down fails');
+assert_contains('Cannot reach Claude headless manager', (string)$downNew['message'], 'with the same error');
+assert_equal(1, count(SidecarStore::list_runtime_sidecars('headless')), 'and leaves no half-created session');
+
+test_exit();

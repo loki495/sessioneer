@@ -1,0 +1,152 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Starts, resumes or reuses a Sessioneer session from the command line, so a
+ * script, subagent or running session can spawn a continuation the owner can
+ * then watch and answer in the dashboard. Host-side only: it talks to the
+ * host agent's UNIX socket (the same one the web container uses), so access
+ * is whatever that socket's permissions allow.
+ *
+ *   sessioneer [options] [PROMPT | -]
+ *
+ * See usage() below, or docs/cli.md.
+ */
+
+if (PHP_SAPI !== 'cli') {
+    exit(1);
+}
+
+// __DIR__ is the real path even when this file is reached through a symlink.
+require_once __DIR__ . '/../vendor/autoload.php';
+
+use App\AgentClient;
+
+function usage(): string
+{
+    return <<<'TXT'
+    Usage: sessioneer [options] [PROMPT | -]
+
+      New session:       sessioneer --workdir DIR "do the thing"
+      Resume / reuse:    sessioneer --resume CONVERSATION_ID ["next message"]
+      Stop a session:    sessioneer --kill NAME_OR_CONVERSATION_ID [--force]
+      List sessions:     sessioneer --list [--json]
+
+    PROMPT is the message to deliver; "-" reads it from stdin. A new session
+    requires one; a resume does not.
+
+    Options:
+      --agent NAME      agent to launch (default: claude)
+      --resume ID       existing conversation id. A session Sessioneer already
+                        tracks on that id receives the prompt; otherwise it is
+                        resumed headless.
+      --workdir DIR     working directory (default: current directory; for
+                        --resume, the directory recorded in the transcript)
+      --model NAME      model for a new session
+      --mode MODE       permission mode for a new session (e.g. plan)
+      --profile NAME    account profile
+      --task-tools      enable the task tools in a new session
+      --kill TARGET     stop a headless session by name or conversation id; its
+                        conversation stays resumable (archived). Refuses a
+                        working or blocked session unless --force.
+      --force           with --kill, stop a working or blocked session anyway
+      --list            list headless sessions: name, status, conversation id,
+                        directory
+      --json            print the full reply as JSON instead of the plain output
+      -h, --help        this text
+
+    Prints the session name on success (the dashboard opens it at
+    session.php?session=NAME). Exit status 0 on success, 1 otherwise.
+
+    TXT;
+}
+
+function fail(string $message): never
+{
+    fwrite(STDERR, "sessioneer: {$message}\n");
+    exit(1);
+}
+
+$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'mode:', 'profile:', 'task-tools', 'json', 'help', 'kill:', 'force', 'list'], $restIndex);
+
+if ($opts === false) {
+    fail("bad options\n\n" . usage());
+}
+
+if (isset($opts['h']) || isset($opts['help'])) {
+    echo usage();
+    exit(0);
+}
+
+$positional = array_slice($argv, $restIndex);
+
+/** One scalar string option, or null. */
+$opt = static function (string $name) use ($opts): ?string {
+    $value = $opts[$name] ?? null;
+
+    if (is_array($value)) {
+        fail("--{$name} given more than once");
+    }
+
+    return is_string($value) && $value !== '' ? $value : null;
+};
+
+$prompt = implode(' ', $positional);
+
+if ($prompt === '-') {
+    $prompt = (string)stream_get_contents(STDIN);
+}
+
+$resume = $opt('resume');
+$workdir = $opt('workdir') ?? ($resume === null ? getcwd() : null);
+
+if ($workdir !== null && $workdir[0] !== '/') {
+    $real = realpath($workdir);
+    $workdir = $real !== false ? $real : $workdir;
+}
+
+if (getenv('SESSIONEER_AGENT_SOCKET') === false || getenv('SESSIONEER_AGENT_SOCKET') === '') {
+    putenv('SESSIONEER_AGENT_SOCKET=' . (getenv('XDG_RUNTIME_DIR') ?: '/run/user/' . posix_getuid()) . '/sessioneer-agent.sock');
+}
+
+$kill = $opt('kill');
+$list = isset($opts['list']);
+
+if ($kill !== null && $list) {
+    fail('--kill and --list cannot be combined');
+}
+
+$action = $kill !== null ? 'launch_kill' : ($list ? 'launch_list' : 'launch');
+
+$reply = AgentClient::agent_call(array_filter([
+    'action' => $action,
+    'agent' => $opt('agent'),
+    'prompt' => $prompt,
+    'agent_session_id' => $resume,
+    'workdir' => $workdir,
+    'model' => $opt('model'),
+    'starting_mode' => $opt('mode'),
+    'profile' => $opt('profile'),
+    'enable_task_tools' => isset($opts['task-tools']) ? true : null,
+    'target' => $kill,
+    'force' => isset($opts['force']) ? true : null,
+], static fn ($v): bool => $v !== null && $v !== ''));
+
+$ok = ($reply['ok'] ?? false) === true;
+
+if (isset($opts['json'])) {
+    echo json_encode($reply, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
+} elseif ($ok && $list) {
+    foreach ($reply['sessions'] ?? [] as $s) {
+        echo implode("\t", [(string)$s['name'], (string)$s['status'], (string)($s['agent_session_id'] ?? '-'), (string)($s['workdir'] ?? '-')]), "\n";
+    }
+} elseif ($ok) {
+    echo (string)($reply['name'] ?? ''), "\n";
+    fwrite(STDERR, (string)($reply['message'] ?? '') . "\n");
+} else {
+    fwrite(STDERR, 'sessioneer: ' . (string)($reply['message'] ?? 'launch failed') . "\n");
+}
+
+exit($ok ? 0 : 1);

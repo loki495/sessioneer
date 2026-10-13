@@ -39,6 +39,7 @@ use HostAgent\Runtimes\RuntimeType;
 use HostAgent\Runtimes\ClaudeHeadlessRuntime;
 use HostAgent\Runtimes\OpenCodeServeClient;
 use HostAgent\Agents\AgentRegistry;
+use HostAgent\Launch\LaunchService;
 
 /**
  * @return array
@@ -264,6 +265,17 @@ function dispatch_action(array $request): array
                 $modelId,
                 $profile
             );
+
+        // Start/resume/reuse a session from outside the web UI (bin/sessioneer);
+        // HostAgent\Launch\SessionLauncher documents the request/reply contract.
+        case 'launch':
+            return LaunchService::launch($request);
+
+        case 'launch_kill':
+            return LaunchService::kill($request);
+
+        case 'launch_list':
+            return LaunchService::list_sessions($request);
 
         case 'resume':
             $resumeWorkdir = (string)($request['workdir'] ?? '');
