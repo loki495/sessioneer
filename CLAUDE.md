@@ -7,8 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A personal, single-user web UI for managing Claude Code, Codex, OpenCode
 and Antigravity sessions (tmux sessions `cc-*`, `oc-*`, `ag-*`, plus
 headless ones) on this dev box — list sessions, see blocked prompts, answer them, send
-messages, view transcripts, kill sessions. No database, no user accounts;
-access control is the network binding (LAN-only), not a login.
+messages, view transcripts, kill sessions. No database server; state lives in a local SQLite file; no user accounts.
+Access control is the network binding (LAN-only), not a login.
 
 ## Commands
 
@@ -438,7 +438,7 @@ that only `create_agent_session()`-spawned sessions have).
   front-controller/router migrations) are done in a separate git worktree.
   Once merged, delete the branch, local and remote. This repo does not use
   the generic global `master → local → feature` model.
-- Andres may open-source this repo. When a design choice could go either
+- Prefer the portable shape. This repo is public (MIT licensed, with releases). When a design choice could go either
   toward "simplest for the one deployment this runs today" or "the
   standard/portable shape," default to the portable one, even if it's a
   bit more setup now. Concrete precedent: `public/index.php` is a
