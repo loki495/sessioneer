@@ -1,6 +1,6 @@
 # Sessioneer
 
-[![CI](https://github.com/loki495/sessioneer/actions/workflows/ci.yml/badge.svg)](https://github.com/loki495/sessioneer/actions/workflows/ci.yml)
+[![CI](https://github.com/loki495/sessioneer/actions/workflows/ci.yml/badge.svg)](https://github.com/loki495/sessioneer/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A self-hosted, LAN-only web UI for managing coding-agent sessions - Claude
 Code (headless with no terminal by default, or `cc-*` in tmux), Antigravity
