@@ -26,7 +26,7 @@
             <input type="radio" name="<?= $inputName ?>" value="<?= $freetextValue ?>" class="freetext-toggle accent-indigo-600">
             <span>Type something&hellip;</span>
           </label>
-          <!-- text-base (16px), not text-sm - iOS Safari auto-zooms the
+          <?php /* text-base (16px), not text-sm - iOS Safari auto-zooms the
                whole viewport in on focusing any text input rendered under
                16px, no way to opt out of that short of the font size
                itself (see sidebar.php's own copy of this comment).
@@ -44,7 +44,7 @@
                an early Enter, submitting partial text and desyncing every
                answer after it - never actually sent this way, "textarea for
                comfortable typing" and "single-line answer on the wire" both
-               hold at once. -->
+               hold at once. */ ?>
           <div class="relative mt-1">
             <textarea class="freetext-input hidden w-full resize-none rounded-lg bg-slate-800 border border-slate-700 text-base text-slate-100 px-2 py-1.5" rows="2" placeholder="Type your answer&hellip;"></textarea>
             <button type="button" class="expand-edit-fullscreen-btn hidden absolute top-1 right-1 w-6 h-6 flex items-center justify-center rounded text-slate-500 active:text-slate-300 text-base leading-none" aria-label="Expand to full screen" tabindex="-1">&#10530;</button>

@@ -129,7 +129,7 @@ class TranscriptService
      * `cwd` field Claude Code stamps on every real message-type JSONL line,
      * NOT decoded from the encoded project directory name. That decoding is
      * lossy (verified live: a real directory name like
-     * "-home-andres--claude" is ambiguous - a literal "-" inside a real
+     * "-home-user--claude" is ambiguous - a literal "-" inside a real
      * path segment and the "/" separator both become "-"), so this is the
      * only reliable source. Streams the file line-by-line (fgets, not a
      * full file() read) and stops at the first hit, capped at

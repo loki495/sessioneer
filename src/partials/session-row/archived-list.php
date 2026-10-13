@@ -6,8 +6,8 @@
     <button type="button" data-agent-filter="opencode" class="archived-agent-filter-btn select-none text-xs font-medium px-3 py-1 rounded-full border bg-slate-800 text-slate-400 border-slate-700">OpenCode</button>
     <button type="button" data-agent-filter="codex" class="archived-agent-filter-btn select-none text-xs font-medium px-3 py-1 rounded-full border bg-slate-800 text-slate-400 border-slate-700">Codex</button>
   </div>
-  <!-- text-base (16px), not text-sm - iOS Safari auto-zooms the whole
-       viewport in on focusing any text input rendered under 16px. -->
+  <?php /* text-base (16px), not text-sm - iOS Safari auto-zooms the whole
+       viewport in on focusing any text input rendered under 16px. */ ?>
   <div class="relative mb-3">
     <input type="text" id="archived-search" placeholder="Filter by title, folder, or name&hellip;" class="select-none w-full rounded-lg border border-slate-700 bg-slate-800 pl-3 pr-9 py-2 text-base text-slate-200 placeholder-slate-500" autocomplete="off">
     <button type="button" id="archived-search-clear-btn" aria-label="Clear filter" tabindex="-1"

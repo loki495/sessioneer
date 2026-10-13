@@ -9,12 +9,12 @@ if ($found): ?>
     $composeBlocked = !empty($detail['blocked_reason']);
     $composeReadOnly = ($detail['writable'] ?? true) === false;
   ?>
-  <!-- A normal (non-fixed) flex item, last child of #app-shell (see
+  <?php /* A normal (non-fixed) flex item, last child of #app-shell (see
        session.php) - position:fixed here used to visually detach mid-
        scroll on iOS Safari (found live 2026-08-17, a known-buggy pairing
        with the page-level scroll that used to drive this whole page), so
        the fix was to stop relying on fixed positioning for this element
-       at all rather than patch around it. -->
+       at all rather than patch around it. */ ?>
   <div id="compose-bar" class="select-none flex-none bg-slate-950/95 border-t border-slate-800 px-4 py-3">
     <div class="max-w-2xl lg:max-w-4xl mx-auto">
       <div id="compose-input-row" class="<?= ($composeBlocked || $composeReadOnly) ? 'hidden' : '' ?>">
@@ -28,13 +28,13 @@ if ($found): ?>
           <div class="relative flex-1">
             <textarea id="compose-textarea" rows="1" placeholder="Message&hellip;"
               class="w-full resize-none rounded-lg bg-slate-800 border border-slate-700 text-base text-slate-100 pl-3 pr-14 py-2 max-h-32 overflow-y-auto overscroll-contain focus:outline-none focus:border-slate-500"></textarea>
-            <!-- Sits left of the clear button (both top-1, right-8/right-1)
+            <?php /* Sits left of the clear button (both top-1, right-8/right-1)
                  rather than replacing it - Andres asked for a way to expand
                  to full screen while typing, not instead of clearing.
                  Always visible (unlike the clear button, which only shows
                  once there's text) - expanding an empty compose box is
                  harmless, and gating it the same way would just be an extra
-                 state to track for no real benefit. -->
+                 state to track for no real benefit. */ ?>
             <button type="button" id="compose-textarea-expand-btn" class="expand-edit-fullscreen-btn absolute top-1 right-8 w-6 h-6 flex items-center justify-center rounded text-slate-500 active:text-slate-300 text-base leading-none" aria-label="Expand to full screen" tabindex="-1">&#10530;</button>
             <button type="button" id="compose-textarea-clear-btn" aria-label="Clear message" tabindex="-1"
               class="hidden absolute top-1 right-1 w-6 h-6 flex items-center justify-center rounded text-slate-500 active:text-slate-300 text-lg leading-none">&times;</button>

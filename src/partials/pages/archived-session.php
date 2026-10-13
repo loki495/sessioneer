@@ -62,12 +62,12 @@ $this->layout('layout', [
     </div>
 
     <div class="select-none mb-4">
-      <!-- text-base (16px), not text-sm - iOS Safari auto-zooms the whole
+      <?php /* text-base (16px), not text-sm - iOS Safari auto-zooms the whole
            viewport in on focusing any text input rendered under 16px
            (found live 2026-08-20: this one was missed in the same pass
            that fixed sidebar.php's/index.php's own search inputs).
            appearance-none suppresses the native WebKit search-cancel
-           button - see sidebar.php's own copy of this comment for why. -->
+           button - see sidebar.php's own copy of this comment for why. */ ?>
       <div class="relative">
         <input type="search" id="session-search-input" placeholder="Search this conversation&hellip;" autocomplete="off"
           class="appearance-none w-full rounded-lg border border-slate-700 bg-slate-800 pl-3 pr-9 py-2 text-base text-slate-200 placeholder:text-slate-500">
@@ -78,8 +78,8 @@ $this->layout('layout', [
     </div>
 
     <?php if ($jumpLine !== null): ?>
-      <!-- See session.php's own jump_line banner for the full reasoning -
-           same idea, minus any live-poll follow-up (there is none here). -->
+      <?php /* See session.php's own jump_line banner for the full reasoning -
+           same idea, minus any live-poll follow-up (there is none here). */ ?>
       <div class="select-none mb-4 rounded-lg border border-sky-800/40 bg-sky-950/20 px-3 py-2 flex items-center justify-between gap-2 text-xs text-sky-300">
         <span>Showing a search result</span>
         <a href="/archived_session.php?agent_session_id=<?= urlencode($agentSessionId) ?>" class="text-sky-400 active:text-sky-200 font-medium">Back to latest &rarr;</a>
