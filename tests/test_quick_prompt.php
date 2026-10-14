@@ -236,6 +236,45 @@ $codex->pending = ['request_id' => 'approval'];
 assert_equal('blocked', $host->status(['session_id' => $codexId, 'turn_id' => 'turn-quick'])['status'], 'Codex approval never auto-approved');
 assert_equal('invalid_session', $start(['prompt' => 'next', 'agent' => 'codex', 'session_id' => $codexId, 'model' => 'configured-model'])['code'], 'unverifiable Codex continuation refused');
 
+echo "Error causes\n";
+$causeKey = hash('sha256', 'cause');
+$causeSession = $start(['prompt' => 'cause'], $causeKey);
+$cause = static function (string $raw, string $agent = 'claude') use (&$manager, $host, $causeSession, $causeKey): array {
+    $manager->status = ['ok' => true, 'state' => 'idle', 'last_turn_error' => $raw, 'last_result' => ['request_id' => $causeKey, 'failed' => true, 'text' => '', 'has_tools' => false]];
+    return $host->status(['session_id' => $causeSession['session_id'], 'request_id' => $causeKey]);
+};
+foreach ([
+    ["You've hit your usage limit. Resets at 5pm (America/New_York).", 'quota_exhausted', 'Usage limit reached'],
+    ['API Error: 429 rate limit exceeded', 'quota_exhausted', 'Usage limit reached'],
+    ['Not logged in · Please run /login', 'auth_failed', 'Authentication failed'],
+    ['API Error: 529 overloaded_error', 'service_unavailable', 'The model service is unavailable'],
+    ["Requested permission mode 'auto' was not applied (Claude reports 'default')", 'mode_not_applied', 'The permission mode could not be applied'],
+    ['Claude process exited unexpectedly (code 1): boom', 'agent_crashed', 'The agent process crashed'],
+    ['something odd happened', 'agent_error', 'The agent could not complete the prompt'],
+] as [$raw, $reason, $headline]) {
+    $err = $cause($raw);
+    assert_equal('agent_failed', $err['code'], 'failure code stays stable for: ' . $reason);
+    assert_equal($reason, $err['reason'], 'cause classified as ' . $reason);
+    assert_true(str_starts_with($err['message'], $headline . ': '), 'message leads with what happened: ' . $reason);
+    assert_true(str_contains($err['detail'], explode(' ', $raw)[0] === '' ? $raw : substr($raw, 0, 8)), 'and carries the agent\'s own words: ' . $reason);
+    SidecarStore::write_sidecar($causeSession['session_id'], ['workdir' => $root . '/project', 'profile' => null, 'agent' => 'claude', 'runtime' => 'headless']);
+}
+$leaky = $cause("Failed reading /home/andres/.claude/credentials.json with token=sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123 for me@example.com");
+assert_true(!preg_match('~andres|credentials|sk-ant|ABCDEFGH|example\.com~', json_encode($leaky)), 'paths, tokens and addresses never reach the response');
+SidecarStore::write_sidecar($causeSession['session_id'], ['workdir' => $root . '/project', 'profile' => null, 'agent' => 'claude', 'runtime' => 'headless']);
+assert_true(mb_strlen($cause(str_repeat('word ', 200))['detail']) <= 241, 'long agent output is bounded');
+SidecarStore::write_sidecar($causeSession['session_id'], ['workdir' => $root . '/project', 'profile' => null, 'agent' => 'claude', 'runtime' => 'headless']);
+$manager->failSend = true;
+$unreachable = $start(['prompt' => 'unreachable']);
+$manager->failSend = false;
+assert_equal('delivery_failed', $unreachable['code'], 'delivery failure keeps its code');
+$codex->pending = null;
+$codex->thread = ['turns' => [['id' => 'turn-fail', 'status' => 'failed', 'error' => ['message' => 'out of credits', 'codexErrorInfo' => 'usageLimitExceeded'], 'items' => []]]];
+$codexFailed = $start(['prompt' => 'codex quota', 'agent' => 'codex', 'model' => 'configured-model']);
+$codexErr = $host->status(['session_id' => $codexFailed['session_id'], 'turn_id' => 'turn-fail', 'request_id' => hash('sha256', 'codex-quota')]);
+assert_equal('quota_exhausted', $codexErr['reason'], 'a Codex quota failure is reported as quota');
+assert_contains('out of credits', $codexErr['detail'], 'with Codex\'s own explanation');
+
 echo "Router and disposal\n";
 class QuickPromptFakeRouterPost
 {
@@ -308,8 +347,9 @@ assert_equal(null, SidecarStore::read_sidecar($answerSession['session_id']), 'an
 assert_equal($finalAnswer, $start(['prompt' => 'dispose'], $answerKey), 'a retry returns the answer, not a link to the archived session');
 $codexAnswer = $start(['prompt' => 'codex dispose', 'agent' => 'codex', 'model' => 'configured-model']);
 $codex->pending = null;
+$codexKillsBefore = $codex->kills;
 assert_equal(true, $host->dispose(['session_id' => $codexAnswer['session_id'], 'request_id' => hash('sha256', 'codex-dispose-key'), 'response' => $finalAnswer])['archived'], 'Codex one-off threads are archived too');
-assert_equal(1, $codex->kills, 'through the thread archive call');
+assert_equal($codexKillsBefore + 1, $codex->kills, 'through the thread archive call');
 
 $killsAtWebStart = $runtime->kills;
 $clock = 0.0; $calls = [];
@@ -377,5 +417,14 @@ assert_equal('safe-id', $kept['session_id'], 'when the host declines to archive,
 $probe['has_tools'] = true; $disposeCalls = [];
 assert_equal('session', $disposing->submit('{"prompt":"x"}', $server)['type'], 'tool output stays a session');
 assert_equal([], $disposeCalls, 'and is not archived');
+
+$withCause = new WebQuickPrompt(static fn(array $request, float $seconds): array => ['type' => 'error', 'code' => 'agent_failed', 'reason' => 'quota_exhausted', 'message' => 'Usage limit reached: resets at 5pm', 'detail' => 'resets at 5pm', '_http' => 502, 'secret' => 'x']);
+$causeReply = $withCause->submit('{"prompt":"x"}', $server);
+assert_equal('quota_exhausted', $causeReply['reason'], 'the web tier passes the cause through');
+assert_equal('Usage limit reached: resets at 5pm', $causeReply['message'], 'and the readable message');
+assert_equal(502, $causeReply['_http'], 'with the host status');
+assert_true(!isset($causeReply['secret']), 'but only the known fields');
+$badReason = new WebQuickPrompt(static fn(array $request, float $seconds): array => ['type' => 'error', 'code' => 'agent_failed', 'reason' => "x\n<script>", 'message' => 'm', '_http' => 502]);
+assert_true(!isset($badReason->submit('{"prompt":"x"}', $server)['reason']), 'a malformed reason is dropped');
 
 test_exit();

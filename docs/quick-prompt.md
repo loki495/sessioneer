@@ -76,6 +76,16 @@ The first line is stripped before delivery. Its space-separated `key=value` fiel
 
 With `QUICK_PROMPT_ROUTER_URL` set, the host asks a small local Ollama model (structured JSON output) before any session exists: which agent, Claude account, model and project the request names or implies, and whether it is a one-off question (`answer`) or real work (`session`). So “use codex to explain this” or “with the work profile, check the dibs tests” launches the right session without a Claude turn. The model only chooses among the configured agents, accounts, models and project **names**; it never sees paths and never chooses permissions, so a hostile prompt can at worst select a different allowed option. Fields you set in the JSON body or the `@sessioneer` line always win, a value the chosen agent cannot use is dropped, and a router that is off, slow or returns nonsense falls back to the defaults. The prompt is delivered unchanged. Pull a model first (`ollama pull qwen3:4b`) and run `ollama serve` on the host; if the router is down, “use codex” is ignored and the default agent starts, which may spend Claude quota.
 
+## Errors
+
+An error says what happened, in the agent's own words after scrubbing:
+
+```json
+{"type":"error","code":"agent_failed","reason":"quota_exhausted","message":"Usage limit reached: You've hit your usage limit. Resets at 5pm (America/New_York).","detail":"You've hit your usage limit. Resets at 5pm (America/New_York)."}
+```
+
+`code` is the stable category (`agent_failed`, `delivery_failed`, `agent_unavailable`, ...). `reason` is one of `quota_exhausted`, `auth_failed`, `service_unavailable`, `model_unavailable`, `mode_not_applied`, `agent_crashed`, `host_unavailable` or `agent_error`, guessed from the agent's text. `message` leads with the reason and is ready to show in a Shortcut. `detail` is the agent's own text with absolute paths, secrets and long token-like strings, e-mail addresses and control characters removed, cut to 240 characters. Unexpected exceptions inside Sessioneer never contribute text, only the generic message.
+
 ## Cleanup
 
 A session this endpoint created is archived (stopped; its transcript stays in the Archived list and can be resumed) in two cases:

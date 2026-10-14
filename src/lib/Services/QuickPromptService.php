@@ -131,7 +131,10 @@ final class QuickPromptService
             ? ['session_id' => $id, 'session_url' => rtrim($base, '/') . '/session.php?session=' . rawurlencode($id)] : [];
         if (($result['type'] ?? null) === 'error') {
             // Only accept the fixed public error contract from our host action.
-            return ['type' => 'error', 'code' => $result['code'] ?? 'agent_unavailable', 'message' => $result['message'] ?? 'Unable to start the agent', '_http' => $result['_http'] ?? 503] + $reference;
+            $why = [];
+            if (is_string($result['reason'] ?? null) && preg_match('/^[a-z_]{1,40}$/D', $result['reason']) === 1) $why['reason'] = $result['reason'];
+            if (is_string($result['detail'] ?? null) && $result['detail'] !== '') $why['detail'] = mb_strimwidth($result['detail'], 0, 240, '…', 'UTF-8');
+            return ['type' => 'error', 'code' => $result['code'] ?? 'agent_unavailable', 'message' => $result['message'] ?? 'Unable to start the agent'] + $why + ['_http' => $result['_http'] ?? 503] + $reference;
         }
         if ($reference === []) return self::error('agent_unavailable', 'Unable to start the agent', 503);
         $text = $result['text'] ?? null;
