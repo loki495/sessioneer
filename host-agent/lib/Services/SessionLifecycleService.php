@@ -109,6 +109,7 @@ class SessionLifecycleService
             'new-session', '-d', '-s', $name,
             '-c', $workdir,
             '-e', "SESSIONEER_SESSION_NAME={$name}",
+            '-e', "SESSIONEER_SELF={$name}",
         ], $envFlags, [
             '-x', (string)Config::new_session_pane_width(),
             '-y', (string)Config::new_session_pane_height(),
@@ -318,6 +319,7 @@ class SessionLifecycleService
                 'new-session', '-d', '-s', $name,
                 '-c', $workdir,
                 '-e', "SESSIONEER_SESSION_NAME={$name}",
+                '-e', "SESSIONEER_SELF={$name}",
             ], $envFlags, [
                 '-x', (string)Config::new_session_pane_width(),
                 '-y', (string)Config::new_session_pane_height(),

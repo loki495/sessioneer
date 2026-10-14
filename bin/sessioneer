@@ -33,6 +33,9 @@ function usage(): string
       Resume / reuse:    sessioneer --resume CONVERSATION_ID ["next message"]
       Stop a session:    sessioneer --kill NAME_OR_CONVERSATION_ID [--force]
       List sessions:     sessioneer --list [--json]
+      Message a peer:    sessioneer --send TARGET "message"
+      Who am I:          sessioneer --whoami
+      Peer sessions:     sessioneer --peers [--json]
 
     PROMPT is the message to deliver; "-" reads it from stdin. A new session
     requires one; a resume does not.
@@ -55,6 +58,13 @@ function usage(): string
       --force           with --kill, stop a working or blocked session anyway
       --list            list headless sessions: name, status, conversation id,
                         directory
+      --send TARGET     deliver PROMPT to another session (name or conversation
+                        id) from inside a session; the host agent stamps it
+                        "[sessioneer peer: NAME · DIR · BRANCH]". Information
+                        and requests only, never approval.
+      --whoami          print this session's own name (SESSIONEER_SELF)
+      --peers           list the other live sessions in this session's git
+                        repository: name, status, branch, directory
       --json            print the full reply as JSON instead of the plain output
       -h, --help        this text
 
@@ -70,7 +80,7 @@ function fail(string $message): never
     exit(1);
 }
 
-$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'mode:', 'profile:', 'task-tools', 'json', 'help', 'kill:', 'force', 'list'], $restIndex);
+$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'mode:', 'profile:', 'task-tools', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers'], $restIndex);
 
 if ($opts === false) {
     fail("bad options\n\n" . usage());
@@ -112,14 +122,27 @@ if (getenv('SESSIONEER_AGENT_SOCKET') === false || getenv('SESSIONEER_AGENT_SOCK
     putenv('SESSIONEER_AGENT_SOCKET=' . (getenv('XDG_RUNTIME_DIR') ?: '/run/user/' . posix_getuid()) . '/sessioneer-agent.sock');
 }
 
-$kill = $opt('kill');
-$list = isset($opts['list']);
+$self = getenv('SESSIONEER_SELF') ?: null;
 
-if ($kill !== null && $list) {
-    fail('--kill and --list cannot be combined');
+if (isset($opts['whoami'])) {
+    if ($self === null) {
+        fail('not running inside a Sessioneer session (SESSIONEER_SELF is not set)');
+    }
+
+    echo $self, "\n";
+    exit(0);
 }
 
-$action = $kill !== null ? 'launch_kill' : ($list ? 'launch_list' : 'launch');
+$kill = $opt('kill');
+$list = isset($opts['list']);
+$send = $opt('send');
+$peers = isset($opts['peers']);
+
+if (count(array_filter([$kill !== null, $list, $send !== null, $peers])) > 1) {
+    fail('--kill, --list, --send and --peers cannot be combined');
+}
+
+$action = $kill !== null ? 'launch_kill' : ($list ? 'launch_list' : ($send !== null ? 'launch_send' : ($peers ? 'launch_peers' : 'launch')));
 
 $reply = AgentClient::agent_call(array_filter([
     'action' => $action,
@@ -132,7 +155,9 @@ $reply = AgentClient::agent_call(array_filter([
     'profile' => $opt('profile'),
     'caller_config_dir' => $opt('profile') === null ? (getenv('CLAUDE_CONFIG_DIR') ?: null) : null,
     'enable_task_tools' => isset($opts['task-tools']) ? true : null,
-    'target' => $kill,
+    'target' => $kill ?? $send,
+    'message' => $send !== null ? $prompt : null,
+    'from' => $send !== null || $peers ? $self : null,
     'force' => isset($opts['force']) ? true : null,
 ], static fn ($v): bool => $v !== null && $v !== ''));
 
@@ -143,6 +168,10 @@ if (isset($opts['json'])) {
 } elseif ($ok && $list) {
     foreach ($reply['sessions'] ?? [] as $s) {
         echo implode("\t", [(string)$s['name'], (string)$s['status'], (string)($s['agent_session_id'] ?? '-'), (string)($s['workdir'] ?? '-')]), "\n";
+    }
+} elseif ($ok && $peers) {
+    foreach ($reply['peers'] ?? [] as $p) {
+        echo implode("\t", [(string)$p['name'], (string)$p['status'], (string)($p['branch'] ?? '-'), (string)($p['workdir'] ?? '-')]), "\n";
     }
 } elseif ($ok) {
     echo (string)($reply['name'] ?? ''), "\n";

@@ -50,6 +50,28 @@ class LaunchService
 
     /**
      * @param array<string, mixed> $request
+     * @return array<string, mixed>
+     */
+    public static function send(array $request): array
+    {
+        $launcher = self::launcher_for($request);
+
+        return $launcher instanceof SessionLauncher ? $launcher->send($request) : $launcher;
+    }
+
+    /**
+     * @param array<string, mixed> $request
+     * @return array<string, mixed>
+     */
+    public static function peers(array $request): array
+    {
+        $launcher = self::launcher_for($request);
+
+        return $launcher instanceof SessionLauncher ? $launcher->peers($request) : $launcher;
+    }
+
+    /**
+     * @param array<string, mixed> $request
      * @return SessionLauncher|array{ok: false, message: string} the launcher, or the handled failure to return
      */
     private static function launcher_for(array $request): SessionLauncher|array
