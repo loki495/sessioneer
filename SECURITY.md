@@ -21,8 +21,8 @@ Sessioneer is early-access software. Fixes land on `master` and in the next rele
 Sessioneer is a personal, self-hosted, LAN-only application with **no built-in authentication**: whoever can reach it can control your agent sessions. The network binding is the access control (see the README's "Network binding" section). Within that model, every request is checked in layers:
 
 - **Host allowlist:** requests whose `Host` isn't `localhost`, `127.0.0.1`, `::1`, `BIND_ADDR` or an `ALLOWED_HOSTS` entry are refused before any route runs, which blocks DNS rebinding.
-- **Same-origin and CSRF:** every state-changing request must be a POST whose `Origin`/`Referer` matches the host, and must carry a session-bound CSRF token.
-- **Fresh revalidation:** session names, prompt options and paths are re-checked against fresh state on each request; directory browsing is confined to the configured home root.
+- **Same-origin and CSRF:** every state-changing request must be a POST whose `Origin`/`Referer`, when present, matches the host (a request with neither still needs the CSRF token), and must carry a session-bound CSRF token.
+- **Fresh revalidation:** session names, prompt options and paths are re-checked against fresh state on each request; directory browsing (`browse_dir`/`create_dir`) is confined to the configured home root. Creating or resuming a session accepts any absolute directory the caller picks, consistent with the no-login model.
 - **No shell strings:** the host agent runs every command as an argument array, never through a shell.
 - **Container isolation:** the web container has no access to tmux, the host process table or the filesystem beyond its own code. It only talks to the host agent over a UNIX socket.
 
@@ -32,5 +32,5 @@ Reports are especially welcome for anything that lets a request from outside the
 
 Known and accepted, given the model above:
 
-- Anyone who can reach the app on the network can use it fully. Put an authenticated reverse proxy in front if that's not acceptable.
+- Anyone who can reach the app on the network can use it fully: launch agents in any directory, approve their tool calls and read their transcripts, which amounts to code execution as the host user. Put an authenticated reverse proxy in front if that's not acceptable.
 - The app may be framed (so it can be embedded in a dashboard). A hostile page on a host you allowed could therefore try clickjacking; this only matters if you allow-list hosts you don't control.

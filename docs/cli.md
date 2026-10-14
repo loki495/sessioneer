@@ -1,6 +1,6 @@
 # `sessioneer` command line
 
-`bin/sessioneer` starts, resumes or reuses a Sessioneer session from a shell, so a script, a subagent or a running session can spawn a continuation that you then watch and answer in the dashboard like any other session. It is host-side only: it talks to the host agent's socket (`$XDG_RUNTIME_DIR/sessioneer-agent.sock`, or `SESSIONEER_AGENT_SOCKET`), so access is whatever that socket's permissions allow. No login, no token.
+`bin/sessioneer` starts, resumes or reuses a Sessioneer session from a shell, so a script, a subagent or a running session can spawn a continuation that you then watch and answer in the dashboard like any other session. It is host-side only: it talks to the host agent's socket (`$XDG_RUNTIME_DIR/sessioneer-agent.sock`, or `SESSIONEER_AGENT_SOCKET`), so access is whatever that socket's permissions allow: any process running as the same user (or in the socket's group) can launch sessions. No login, no token.
 
 ```bash
 # a new headless Claude session with a first prompt
@@ -20,7 +20,7 @@ echo "Summarise the open TODOs" | sessioneer --json -
 | `--resume ID` | Existing conversation id. |
 | `--workdir DIR` | Working directory. Default for a new session: the current directory. With `--resume`: the directory recorded in the transcript. |
 | `--model NAME` | Model for a new session. |
-| `--mode MODE` | Permission mode for a new session (for example `plan`). |
+| `--mode MODE` | Permission mode for a new session (for example `plan`). Not validated by the CLI: a value that isn't a known Claude permission mode is ignored and the session starts in the default mode. |
 | `--profile NAME` | Claude account profile (see `host-agent/config/agents.php`). |
 | `--task-tools` | Enable the task tools in a new session. |
 | `--kill TARGET` | Stop a headless session, by session name or conversation id. Its conversation stays resumable (it moves to the archived list). A working or blocked session is refused. |

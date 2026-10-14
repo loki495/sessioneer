@@ -4,7 +4,7 @@ Sessioneer's web container never touches tmux, the process table or an agent dir
 
 ## The host agent socket
 
-`host-agent/systemd/sessioneer-agent.socket` listens on `%t/sessioneer-agent.sock`, which is `/run/user/<uid>/sessioneer-agent.sock`. systemd starts one `sessioneer-agent@<connection>.service` (running `host-agent/agent.php`) per connection, with the socket as its stdin and stdout, so the agent needs no long-running process of its own.
+`host-agent/systemd/sessioneer-agent.socket` listens on `%t/sessioneer-agent.sock`, which is `/run/user/<uid>/sessioneer-agent.sock` (`$XDG_RUNTIME_DIR/sessioneer-agent.sock` where that is set, as `bin/sessioneer` assumes). The socket is created with `SocketMode=0660` and the `SocketGroup` the installer writes into the unit (the installing user's primary group); those file permissions are the only access control on it. systemd starts one `sessioneer-agent@<connection>.service` (running `host-agent/agent.php`) per connection, with the socket as its stdin and stdout, so the agent needs no long-running process of its own.
 
 **Protocol:** the client writes one JSON object, `{"action": "<name>", ...parameters}`, half-closes its write side and reads one JSON reply until end of stream. Replies carry `"ok": true|false` and, on failure, a `"message"`. An empty or malformed request gets `{"ok": false, "message": "Malformed request"}`. `src/lib/AgentClient.php` is the client the web UI uses; `bin/sessioneer` ([cli.md](cli.md)) is a second client, sending the `launch`, `launch_kill` and `launch_list` actions to start, resume, reuse, stop or list sessions.
 
