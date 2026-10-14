@@ -165,6 +165,13 @@ assert_true(!str_contains(json_encode($failed), 'SECRET'), 'runtime errors sanit
 $runtime->failCreate = true;
 assert_equal('agent_unavailable', $start(['prompt' => 'new'])['code'], 'unavailable runtime handled');
 $runtime->failCreate = false; $manager->failSend = false;
+putenv('SESSIONEER_DEBUG=1');
+$runtime->duringCreate = static function (): void { throw new RuntimeException('/secret/path token=SECRET'); };
+$debugFailure = $start(['prompt' => 'debug failure']);
+assert_equal('agent_unavailable', $debugFailure['code'], 'debug mode still returns sanitized host failure');
+assert_true(!str_contains(json_encode($debugFailure), 'SECRET'), 'debug mode never leaks exception diagnostics');
+$runtime->duringCreate = null;
+putenv('SESSIONEER_DEBUG=0');
 $manager->status = ['ok' => true, 'process' => 'running', 'state' => 'idle'];
 SidecarStore::write_sidecar($id, ['workdir' => $root . '/project', 'profile' => null, 'agent' => 'claude', 'runtime' => 'headless']);
 SessionStatusStore::update_status($id, ['mode' => 'plan', 'status' => 'idle', 'model' => 'sonnet']);
