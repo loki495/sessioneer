@@ -1,8 +1,8 @@
 # State storage
 
-Conversations live in each agent's own transcript files. Sessioneer itself keeps only small SQLite stores about *which sessions it tracks* and their live status, plus one persistent store for push and quota state. There is no user table, no archive table and no retention setting: an "archived" session is just a transcript Sessioneer is not currently tracking, and killing a session deletes its rows.
+Conversations live in each agent's own transcript files. Sessioneer itself keeps only small SQLite stores about *which sessions it tracks* and their live status, plus one persistent store for push and quota state. There is no user table, no archive table and no retention setting: an "archived" session is just a transcript Sessioneer is not currently tracking, and killing a session deletes its normal tracking/status rows. Optional Quick Prompt reservations and compatibility metadata have their own lifetime (below).
 
-## The two SQLite files
+## Core SQLite files
 
 | File | Default location | Lifetime | Tables |
 | --- | --- | --- | --- |
@@ -55,3 +55,16 @@ The row is the truth and the process is a cache: a session with no running proce
 A write that throws (SQLITE_BUSY under WAL contention is the known case - a real incident, not a hypothetical) is queued and retried every housekeeping tick rather than lost, and `session_detail` cross-checks the manager's own live state for the one session on screen and self-heals the row on a mismatch, so a lost write can never leave a session looking dead forever.
 
 Claude's account-wide rate-limit windows are kept in `global_state` (`quota_live_state`, plus `quota_live_state:<profile>` per extra account). Two writers feed it through one merge rule: the statusLine script of a tmux session, and the headless manager from its processes' rate-limit events (a headless process renders no status line).
+
+## Quick Prompt state
+
+The optional Quick Prompt API adds two small SQLite stores:
+
+| File | Location | Lifetime | Tables |
+| --- | --- | --- | --- |
+| `quick-prompt.sqlite` | `$SIDECAR_DIR/quick-prompt.sqlite` | Same storage lifetime as SIDECAR_DIR; no automatic reservation expiration | `requests` (hashed idempotency key, request fingerprint, saved result/reference), `sessions` (compatibility settings for Quick Prompt-created sessions) |
+| `rate.sqlite` | `$QUICK_PROMPT_STATE_DIR/rate.sqlite`; Compose mounts a persistent named volume at `/var/www/quick-prompt-state` | Retained across web container recreation; old request timestamps pruned on each request | `requests` (rolling-minute authenticated request timestamps) |
+
+`QuickPromptStore` uses the shared WAL connection helper. Reservations are atomic inserts, and each response/reference update is a short independent write; no transaction remains open during agent dispatch or completion waiting. Reusing a key never automatically repeats an uncertain dispatch. Quick Prompt records survive a normal session kill, so an old retry returns its saved reference instead of creating a duplicate session; this does not recreate a deleted conversation. Preserve SIDECAR_DIR if idempotency must survive reboot. The web limiter uses a brief `BEGIN IMMEDIATE` reservation and a one-second busy timeout, without storing credentials or prompts.
+
+The Claude manager also holds a bounded terminal-result preview, request correlation ID, and tool-use flag in memory for the latest submitted turn. Sending another message clears the snapshot. Manager restart loses it, and Quick Prompt returns the session link when it cannot prove completion. Codex completion requires the native submission turn ID. See [Quick Prompt](quick-prompt.md) for schema and deployment configuration.

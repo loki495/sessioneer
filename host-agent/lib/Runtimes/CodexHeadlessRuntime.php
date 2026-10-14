@@ -40,7 +40,7 @@ class CodexHeadlessRuntime implements RuntimeProvider
             return ['ok' => false, 'message' => 'create() requires an absolute workdir'];
         }
 
-        $params = ['cwd' => $workdir, 'approvalPolicy' => 'on-request', 'sandbox' => 'workspace-write'];
+        $params = ['cwd' => $workdir, 'approvalPolicy' => 'on-request', 'sandbox' => ($options['read_only'] ?? false) === true ? 'read-only' : 'workspace-write'];
         foreach (['model', 'serviceTier'] as $key) {
             if (is_string($options[$key] ?? null) && $options[$key] !== '') {
                 $params[$key] = $options[$key];
@@ -187,7 +187,9 @@ class CodexHeadlessRuntime implements RuntimeProvider
         }
 
         $result = $this->client->request('sessioneer/sendInput', ['threadId' => $sessionRef, 'input' => $input]);
-        return $result['ok'] === true ? ['ok' => true, 'message' => 'Message sent'] : $result;
+        return $result['ok'] === true
+            ? ['ok' => true, 'message' => 'Message sent', 'turn_id' => $result['result']['turn']['id'] ?? null]
+            : $result;
     }
 
     /**

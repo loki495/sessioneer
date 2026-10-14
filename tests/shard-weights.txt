@@ -57,3 +57,5 @@ test_transcript.php 25
 test_turn_error_view.php 1
 test_ui_smoke.php 15
 test_worker_session_tag.php 1
+test_quick_prompt.php 1
+test_quick_prompt_transport.php 6

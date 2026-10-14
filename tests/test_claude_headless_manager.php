@@ -192,7 +192,7 @@ assert_equal(0, call($m1, 'sessioneer/health')['children'], 'no process was star
 
 echo "Lifecycle: lazy spawn, status, credentials\n";
 assert_equal('dormant', process_of($m1, $sn(1)), 'a tracked session with no process is dormant');
-$sent = call($m1, 'sessioneer/sendInput', ['session' => $sn(1), 'content' => 'hello there']);
+$sent = call($m1, 'sessioneer/sendInput', ['session' => $sn(1), 'content' => 'hello there', 'quick_prompt_id' => 'fixture-request']);
 assert_true(($sent['ok'] ?? false) === true, 'first message spawns the process and is delivered');
 assert_true((bool)wait_until(static fn (): bool => status_is($sn(1), 'idle') && has_result($m1, 'echo: hello there')), 'the turn completes and status returns to idle');
 $status = SessionStatusStore::read_status($sn(1));
@@ -200,6 +200,12 @@ assert_equal('manual', $status['mode'], 'Claude\'s default permission mode is re
 assert_equal('claude-fake-1', $status['model'], 'the model from init is recorded');
 assert_equal(null, $status['last_turn_error'], 'a successful turn leaves no error');
 assert_true(is_array($status['token_usage']), 'result usage is recorded');
+$quickResult = call($m1, 'sessioneer/status', ['session' => $sn(1)])['last_result'];
+assert_equal('fixture-request', $quickResult['request_id'], 'terminal result correlated with Quick Prompt submission');
+assert_contains('echo: hello there [spawn=fresh', $quickResult['text'], 'only terminal event provides inline preview');
+assert_equal(false, $quickResult['has_tools'], 'plain answer has no tools');
+assert_equal(false, call($m1, 'sessioneer/sendInput', ['session' => $sn(1), 'content' => 'must not run', 'require_plan' => true])['ok'], 'Quick Prompt refuses manual-mode delivery inside the manager');
+assert_true(!has_result($m1, 'must not run'), 'rejected Quick Prompt never reaches the fake process');
 assert_equal('running', process_of($m1, $sn(1)), 'the process is now running');
 
 $quota = wait_until(static fn (): array|false => GlobalStateStore::read(Config::quota_live_state_key()) ?? false);
@@ -272,6 +278,7 @@ assert_true((bool)wait_until(static fn (): bool => status_is($sn(1), 'idle')), '
 echo "Turns: interrupt and queued messages\n";
 call($m1, 'sessioneer/sendInput', ['session' => $sn(1), 'content' => 'SLOW work']);
 assert_true((bool)wait_until(static fn (): bool => status_is($sn(1), 'working')), 'a slow turn shows as working');
+assert_equal(null, call($m1, 'sessioneer/status', ['session' => $sn(1)])['last_result'], 'new turn clears previous terminal result immediately');
 $queued = call($m1, 'sessioneer/sendInput', ['session' => $sn(1), 'content' => 'follow-up while busy']);
 assert_true(($queued['ok'] ?? false) === true && ($queued['queued'] ?? false) === true, 'a message sent mid-turn is accepted and reported as queued');
 assert_equal(2, call($m1, 'sessioneer/status', ['session' => $sn(1)])['open_turns'], 'two turns are open');

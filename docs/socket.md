@@ -37,3 +37,7 @@ If the manager is not running, the host agent returns a handled "Cannot reach Cl
 ## Other services
 
 The Codex bridge listens on `CODEX_BRIDGE_SOCKET` (default `/run/user/<uid>/sessioneer-codex-bridge.sock`) with the same one-request, one-reply JSON shape as the Claude manager. OpenCode is reached over HTTP at `OPENCODE_SERVE_URL` (default `http://localhost:4096`), not a socket.
+
+## Quick Prompt actions
+
+`quick_prompt_start` accepts `input` (the validated HTTP JSON schema) and `key` (a SHA-256 idempotency identifier). Host project/default/model restrictions are revalidated here. It creates through existing RuntimeProvider implementations and delivers the first prompt; it returns a fixed public error or `type: session`, `status`, `session_id`, and internal `request_id` / native Codex `turn_id`. `quick_prompt_status` accepts `session_id`, `request_id`, and Codex `turn_id`; only tracked Quick Prompt sessions can be inspected. It reports terminal completion (`completed`, bounded `text`, `has_tools`) from the Claude manager's result snapshot or Codex's completed native turn. No action waits for the agent to finish or approves operations. See [quick-prompt.md](quick-prompt.md).

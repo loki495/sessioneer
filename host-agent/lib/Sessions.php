@@ -47,6 +47,12 @@ use HostAgent\Launch\LaunchService;
 function dispatch_action(array $request): array
 {
     switch ($request['action'] ?? '') {
+        case 'quick_prompt_start':
+            return (new \HostAgent\Services\QuickPromptService())->start($request);
+
+        case 'quick_prompt_status':
+            return (new \HostAgent\Services\QuickPromptService())->status($request);
+
         case 'list':
             $list = ['ok' => true] + SessionService::list_all_sessions();
             $list['sessions'] = sessioneer_merge_headless_sessions($list['sessions']);

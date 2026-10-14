@@ -53,8 +53,8 @@ final class ClaudeHeadlessManager
 
     private const RESTART_MESSAGE = 'Claude headless manager restarted while this session was busy; retry the interrupted turn.';
 
-    /** Environment variables that would silently switch a child from the subscription login to an API key. */
-    private const STRIPPED_ENV = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'SESSIONEER_SESSION_NAME'];
+    /** API-key overrides, hook identity, and the web-only Quick Prompt credential never reach a child. */
+    private const STRIPPED_ENV = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'SESSIONEER_SESSION_NAME', 'QUICK_PROMPT_API_TOKEN'];
 
     /** @var resource|null */
     private $server = null;
@@ -472,12 +472,26 @@ final class ClaudeHeadlessManager
             $child = $this->children[$session];
         }
 
+        // Enforce Quick Prompt's permission and idle requirements in the
+        // manager's own event loop, closing the validation/dispatch race.
+        if (($params['require_plan'] ?? false) === true) {
+            $mode = SessionStatusStore::read_status($session)['mode']
+                ?? PermissionMode::normalize_hook_permission_mode($child->requestedMode);
+            if ($mode !== 'plan' || $child->modeWarning !== null || $child->openTurns > 0
+                || !in_array($child->state, ['starting', 'idle'], true)) {
+                return ['ok' => false, 'message' => 'Quick Prompt requires an idle plan session'];
+            }
+        }
+
         if (!$child->write(['type' => 'user', 'message' => ['role' => 'user', 'content' => $content]])) {
             $this->finalize_child($child);
 
             return ['ok' => false, 'message' => 'Could not write to the Claude process; it has been stopped, send the message again to resume'];
         }
 
+        $child->quickPromptId = is_string($params['quick_prompt_id'] ?? null) ? $params['quick_prompt_id'] : null;
+        $child->lastResult = null;
+        $child->turnUsedTools = false;
         $child->openTurns++;
         $child->lastActivity = time();
 
@@ -668,6 +682,8 @@ final class ClaudeHeadlessManager
             'pid' => $child?->pid,
             'agent_session_id' => $child->agentSessionId ?? ($tracked['sidecar']['agent_session_id'] ?? null),
             'open_turns' => $child->openTurns ?? 0,
+            'last_result' => $child?->lastResult,
+            'last_turn_error' => SessionStatusStore::read_status($session)['last_turn_error'] ?? null,
             'stopping' => $child->stopping ?? false,
         ];
     }
@@ -1008,6 +1024,14 @@ final class ClaudeHeadlessManager
         $type = $event['type'] ?? null;
         $child->lastActivity = time();
 
+        if ($type === 'assistant') {
+            foreach (is_array($event['message']['content'] ?? null) ? $event['message']['content'] : [] as $block) {
+                if (is_array($block) && ($block['type'] ?? null) === 'tool_use') {
+                    $child->turnUsedTools = true;
+                }
+            }
+        }
+
         if ($type === 'system') {
             match ($event['subtype'] ?? null) {
                 'init' => $this->on_init($child, $event),
@@ -1015,6 +1039,9 @@ final class ClaudeHeadlessManager
                 default => null,
             };
         } elseif ($type === 'control_request') {
+            if (($event['request']['subtype'] ?? null) === 'can_use_tool') {
+                $child->turnUsedTools = true;
+            }
             $this->on_control_request($child, $event);
         } elseif ($type === 'control_cancel_request') {
             $this->on_control_cancel_request($child, $event);
@@ -1234,6 +1261,16 @@ final class ClaudeHeadlessManager
         // A successful turn clears the previous turn's error, but not a
         // still-true "your requested mode was ignored" warning.
         $error ??= $child->modeWarning;
+
+        // Quick Prompt consumes only this authoritative terminal event. Keep
+        // a bounded preview; anything involving tools belongs in the dashboard.
+        $text = is_string($event['result'] ?? null) ? trim($event['result']) : '';
+        $child->lastResult = [
+            'request_id' => $child->quickPromptId,
+            'failed' => $error !== null || str_starts_with((string)($event['terminal_reason'] ?? ''), 'aborted'),
+            'text' => ($event['subtype'] ?? null) === 'success' && strlen($text) <= 8192 ? $text : '',
+            'has_tools' => $child->turnUsedTools,
+        ];
 
         $fields = [
             'status' => $child->state,

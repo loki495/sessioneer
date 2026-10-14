@@ -107,6 +107,11 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
 
         $profile = is_string($options['profile'] ?? null) && $options['profile'] !== '' ? $options['profile'] : null;
         $name = HeadlessSessionName::generate(self::AGENT_ID);
+        // Separate concurrent Quick Prompt submissions before any sidecar
+        // exists; a check-then-write timestamp suffix alone can race.
+        if (($options['unique_name'] ?? false) === true) {
+            $name .= '-' . bin2hex(random_bytes(16));
+        }
 
         // Sidecar first: it is the truth the manager validates against.
         SidecarStore::write_sidecar($name, [
@@ -135,7 +140,7 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
             return ['ok' => false, 'message' => self::message($reply, 'Could not start the Claude session')];
         }
 
-        return ['ok' => true, 'id' => $name, 'name' => $name, 'session' => $this->session_entry($name) ?? []];
+        return ['ok' => true, 'id' => $name, 'name' => $name, 'session' => ($options['include_session'] ?? true) === false ? [] : ($this->session_entry($name) ?? [])];
     }
 
     /**

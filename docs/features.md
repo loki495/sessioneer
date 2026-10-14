@@ -433,3 +433,7 @@ Implementation entry points:
     an abort, so that clear is a guess at the CLI's behavior; a request that
     stays shown after Claude stopped waiting can be answered harmlessly or
     dismissed by interrupting the session.
+
+## iOS Quick Prompt
+
+The optional bearer-token `POST /api/quick-prompt` uses the existing Claude headless manager and Codex bridge, returns only terminal short answers inline, and otherwise returns a session link (including approval waits). It supports allowlisted project/model/profile choices, deterministic `@sessioneer` hints, bounded waiting, shared rate limiting, and optional idempotency keys. Continuation is restricted to compatible live idle Quick Prompt Claude plan sessions; Codex requests create fresh threads. See [quick-prompt.md](quick-prompt.md) for configuration and Shortcuts setup.

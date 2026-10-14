@@ -362,11 +362,13 @@ slower.
 
 ## State storage (SQLite)
 
-The host agent keeps its state in two SQLite files, `sessions.sqlite`
-(tracked sessions and their live status, on tmpfs) and `push.sqlite`
-(push and quota state, persistent). They need the `pdo_sqlite` extension
-on the **host**, not in the container: every Store is a host-agent class,
-never touched from `src/`. Check with `php -m | grep sqlite`; the `.so` is
+The host agent keeps tracked sessions/status in `sessions.sqlite` (tmpfs),
+push/quota state in persistent `push.sqlite`, and optional Quick Prompt retry
+and compatibility metadata in `SIDECAR_DIR/quick-prompt.sqlite`. These Stores
+run on the **host**. Quick Prompt also uses a separate web-side `rate.sqlite`
+in its dedicated state volume, so `pdo_sqlite` is required in both the host
+PHP runtime and the web container when that endpoint is enabled. Check with
+`php -m | grep sqlite` and `docker exec sessioneer-app php -m`; the `.so` is
 often present but not loaded (Arch:
 `echo "extension=pdo_sqlite.so" | sudo tee /etc/php/conf.d/pdo_sqlite.ini`).
 

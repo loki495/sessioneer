@@ -8,7 +8,7 @@ A personal, single-user web UI for managing Claude Code, Codex, OpenCode
 and Antigravity sessions (tmux sessions `cc-*`, `oc-*`, `ag-*`, plus
 headless ones) on this dev box — list sessions, see blocked prompts, answer them, send
 messages, view transcripts, kill sessions. No database server; state lives in a local SQLite file; no user accounts.
-Access control is the network binding (LAN-only), not a login.
+Dashboard access control is the network binding (LAN-only); the optional Quick Prompt API additionally requires a dedicated bearer token.
 
 ## Commands
 
@@ -451,19 +451,27 @@ that only `create_agent_session()`-spawned sessions have).
 
 ## Feature atlas
 
-`.ai/feature-atlas/` (gitignored, maintainer-local — not published; run
-`/feature-atlas` to regenerate it if you need one) is the source of truth
-for this project's feature/subsystem inventory when present: one
-`DETAILS.md` + `AUDIT.md` per subsystem, plus `SUMMARY.md` (registry +
-digest) and `REPORT.md` (ranked, cross-subsystem findings). Read it before
-re-deriving feature boundaries from scratch, and run `/feature-atlas`
-after adding/removing or substantially changing a feature, or at minimum
-before a refactor spanning multiple subsystems.
-`/feature-atlas-subsystem <id>` refreshes one subsystem; `/feature-atlas-report`
-re-ranks existing audits without rescanning. Note that the atlas only reports
-feature attribution across files (a file can be listed under several
-subsystems); it does not imply or require any physical file split.
+The authoritative Format v2 atlas is the Dibs issue **Feature atlas: Sessioneer**
+(found with `todo_list` label `feature atlas`), with one comment per subsystem.
+`.ai/feature-atlas/` is a gitignored fallback when Dibs is unreachable. Read the
+atlas before re-deriving feature boundaries. Refresh touched entries after a
+commit and re-stamp them after a rebase merge; the parent's Verified at advances
+only when every subsystem is current or its owned files are unchanged.
+`docs/features.md` remains the canonical public capability list.
 
-`docs/features.md` is the canonical, exhaustive capability list for the tool
-(what it can do), plus a per-agent coverage matrix and the known parity gaps —
-read it with `REPORT.md` when planning "same features for each agent" work.
+## Shipping
+
+Use a short-lived feature branch and PR from `origin` (`git@github.com:loki495/sessioneer.git`)
+into protected `master`; **Core tests (PHP 8.3)** must pass and the branch must be
+up to date. Confirm the exact remote/branch before pushing. Merge through GitHub,
+then fetch and fast-forward the clean main checkout to `origin/master`. Never
+rewrite another agent's branch or worktree. Refresh the Dibs atlas at the feature
+commit and merged SHA. The main checkout is the live bind-mounted deployment:
+prepare required private environment values before updating code, rebuild the web
+image when its inline Dockerfile changes, and inspect HTTP response bodies after
+deployment. Restart the Claude headless manager only when idle or with explicit
+approval to interrupt its live sessions.
+
+## Quick Prompt boundary
+
+`POST /api/quick-prompt` is a narrowly scoped bearer-token endpoint; it bypasses browser cookie/CSRF authentication only for this route and rejects Origin submissions. Keep it opt-in and fail-closed. `App\Services\QuickPromptService` handles HTTP limits, routing hints and bounded wait; `HostAgent\Services\QuickPromptService` validates host alias/model/account configuration and dispatches through existing headless runtimes. `QuickPromptStore` owns short SQLite idempotency reservations and session metadata in SIDECAR_DIR. No paid model calls in tests. Claude inline answers require the manager's terminal result correlated to `quick_prompt_id`, never mere idle status or partial transcript text. Codex creates with read-only sandbox and on-request approvals; its continuation is deliberately refused. Normal dashboard/CLI behavior is unchanged. See docs/quick-prompt.md for environment placement and deployment requirements.
