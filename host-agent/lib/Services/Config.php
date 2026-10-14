@@ -209,8 +209,7 @@ class Config
      * Same reasoning as claude_bin() above - no safe universal guess for
      * where the Antigravity CLI (binary name `agy`) was installed, so this
      * is empty until ANTIGRAVITY_BIN is set explicitly. Run `which agy` to
-     * find the real path. Added 2026-08-24 for AntigravityAdapter, see
-     * docs/history/antigravity-adapter-plan.md.
+     * find the real path. Added 2026-08-24 for AntigravityAdapter.
      */
     public static function antigravity_bin(): string
     {
@@ -415,8 +414,7 @@ class Config
 
     /**
      * An Antigravity conversation's real, confirmed-live transcript file
-     * path (docs/history/antigravity-adapter-plan.md's "Transcript format"
-     * research) - unlike Claude Code's find_transcript_path() (a glob
+     * path - unlike Claude Code's find_transcript_path() (a glob
      * against an encoded-cwd directory Claude Code names itself), this is
      * a direct, deterministic path from the conversationId alone, no
      * search needed. See AntigravityTranscriptService::find_transcript_path()
@@ -608,8 +606,7 @@ class Config
     }
 
     /**
-     * Antigravity's real hooks config file (see
-     * docs/history/antigravity-adapter-plan.md's "Hooks" research section) - the
+     * Antigravity's real hooks config file: the
      * SHARED global location (confirmed via the CLI's own embedded
      * changelog: a past bug wrote to the wrong, non-shared path and was
      * fixed to write here instead), not the per-workspace

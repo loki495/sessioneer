@@ -123,7 +123,7 @@ $this->layout('layout', [
            find_current_task_list(), cascaded alongside the older TodoWrite
            reader in SessionDetailService::session_detail() - see that method's
            own docblock. */ ?>
-      <?php /* AgentAdapter picker (docs/history/antigravity-adapter-plan.md Phase 2) -
+      <?php /* AgentAdapter picker -
            Claude Code stays the pre-selected default so an untouched
            dropdown behaves exactly as before this existed. Antigravity
            sessions currently only get as far as spawning - status

@@ -5,9 +5,8 @@ declare(strict_types=1);
 namespace HostAgent\Services;
 
 /**
- * Read-only access to Antigravity's own transcript_full.jsonl files (see
- * docs/history/antigravity-adapter-plan.md's "Transcript format" research,
- * live-verified 2026-08-24) - the Antigravity counterpart to
+ * Read-only access to Antigravity's own transcript_full.jsonl files (live-verified
+ * 2026-08-24) - the Antigravity counterpart to
  * TranscriptService, not a shared base class with it. Deliberately a
  * separate, much smaller class rather than teaching TranscriptService a
  * second JSONL schema inline - Antigravity's own entry shape
@@ -22,7 +21,7 @@ namespace HostAgent\Services;
  * change for this class to work, only TranscriptRouter (the dispatcher
  * between the two backends).
  *
- * MVP scope only (docs/history/antigravity-adapter-plan.md Phase 4): renders
+ * MVP scope only: renders
  * USER_INPUT/PLANNER_RESPONSE/GENERIC(tool result) entries with real
  * pagination/incremental-poll support, matching TranscriptService's own
  * read_transcript_page()/read_transcript_page_since() contracts exactly.
@@ -182,7 +181,7 @@ class AntigravityTranscriptService
         // CHECKPOINT (a context-truncation summary) is skipped for v1 - no
         // Claude Code equivalent, and it's internal bookkeeping text aimed
         // at the model, not something Andres needs to read - see this
-        // class's own docblock and docs/history/antigravity-adapter-plan.md Phase 4.
+        // class's own docblock.
         if ($type === '' || $type === 'CHECKPOINT') {
             return null;
         }

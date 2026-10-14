@@ -36,8 +36,7 @@ class SessionLifecycleService
     }
 
     /**
-     * $agentId picks which AgentAdapter governs the new session (see
-     * docs/history/antigravity-adapter-plan.md Phase 2) - whitelisted against
+     * $agentId picks which AgentAdapter governs the new session - whitelisted against
      * AgentRegistry::known_agent_ids() rather than trusted from the
      * caller, same discipline $startingMode already uses below; null,
      * empty, or unrecognized all fall back to AgentRegistry::
@@ -48,7 +47,7 @@ class SessionLifecycleService
      * resolved adapter's build_spawn_argv() (see ClaudeCodeAdapter's own
      * docblock for --allowedTools/--permission-mode's exact reasoning -
      * this method used to build that argv inline until the AgentAdapter
-     * extraction, 2026-08-24, see docs/history/antigravity-adapter-plan.md Phase 1;
+     * extraction, 2026-08-24;
      * behavior is unchanged for Claude Code, only where the logic lives
      * moved). $startingMode is this app's own manual/accept edits/plan/auto
      * vocabulary (TranscriptView::MODE_OPTIONS) - each adapter whitelists

@@ -113,8 +113,7 @@ systemctl --user daemon-reload
 
 echo
 echo "Antigravity quota-poll timer units installed but NOT enabled - only"
-echo "useful if you've set ANTIGRAVITY_BIN in .env (see"
-echo "docs/history/antigravity-adapter-plan.md), then run:"
+echo "useful if you've set ANTIGRAVITY_BIN in .env, then run:"
 echo "  systemctl --user enable --now sessioneer-antigravity-quota-check.timer"
 
 # OpenCode headless server: unlike the two timers above, this one IS

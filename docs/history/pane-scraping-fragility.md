@@ -68,8 +68,7 @@ changed their API" risk, not this doc's risk.
   parsing site - but it still means a real feature silently stops working
   with no error surfaced anywhere except the one rejected user action.
 - **No CLI version pinning/probing exists for the tmux-runtime Claude Code parsing**, unlike Codex
-  (`docs/history/headless-runtime-plan.md`'s "pinning a tested minimum CLI version
-  and probing capabilities at startup") or the dated, "verified live
+  (which pins a tested minimum CLI version and probes capabilities at startup) or the dated, "verified live
   YYYY-MM-DD against version X" comments scattered through this file. There
   is no single place that records "this pane-scraping code was last
   verified against Claude Code CLI version N," and no code path that

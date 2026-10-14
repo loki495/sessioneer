@@ -3,8 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Registered as Antigravity's PreToolUse hook (see AntigravityHookService
- * and docs/history/antigravity-adapter-plan.md Phase 3) - fires right before
+ * Registered as Antigravity's PreToolUse hook (see AntigravityHookService) - fires right before
  * every tool call, whether or not it ends up needing user approval.
  * Records the full tool_name/tool_input to PendingToolStore, same purpose
  * as Claude Code's own host-agent/hooks/pre_tool_use.php.
@@ -12,8 +11,7 @@ declare(strict_types=1);
  * ALWAYS returns {"decision":"ask"} - Antigravity's own docs mark
  * `decision` as REQUIRED, unlike Claude Code's hooks (where writing
  * nothing means "no opinion"). "ask" (not "allow") is deliberate:
- * confirmed LIVE 2026-08-24 (see docs/history/antigravity-adapter-plan.md's "Open
- * questions" finding) that "allow" does NOT actually suppress
+ * confirmed LIVE 2026-08-24 that "allow" does NOT actually suppress
  * Antigravity's own interactive approval UI in this version - the real
  * "Do you want to proceed?" prompt shows regardless. "ask" is the
  * decision that matches what ALREADY happens with no hook installed at
@@ -24,7 +22,7 @@ declare(strict_types=1);
  * invocation on the machine, not just Sessioneer-spawned ones), so "allow" would
  * silently auto-approve every tool call everywhere the moment that bug
  * got fixed, which nobody asked for. Detecting/answering the real prompt
- * from the web UI is a later phase (see that plan doc's Phase 6).
+ * from the web UI is a later phase.
  *
  * SESSIONEER_SESSION_NAME gate: same convention as every Claude Code hook script
  * - this hook fires globally regardless, so untracked (non-Sessioneer) sessions

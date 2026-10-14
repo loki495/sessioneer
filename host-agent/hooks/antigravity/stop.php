@@ -3,8 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Registered as Antigravity's Stop hook (see AntigravityHookService and
- * docs/history/antigravity-adapter-plan.md Phase 3) - fires once the execution
+ * Registered as Antigravity's Stop hook (see AntigravityHookService) - fires once the execution
  * loop terminates. Marks the session idle and clears any blocked state,
  * the third leg of the working/blocked/idle inference host-agent/hooks/
  * user_prompt_submit.php's own docblock describes for Claude Code -
@@ -41,8 +40,7 @@ use HostAgent\Stores\SessionStatusStore;
  * own docblock) - only reads the file's last TAIL_SCAN_BYTES, not the
  * whole thing, since Antigravity's transcript can grow across a whole
  * long session. Takes the LAST PLANNER_RESPONSE entry with real text
- * content - a tool-calls-only turn has content: null (confirmed live,
- * see docs/history/antigravity-adapter-plan.md), so those are skipped in favor of
+ * content - a tool-calls-only turn has content: null (confirmed live), so those are skipped in favor of
  * an earlier or later entry that actually has text.
  */
 function antigravity_find_last_planner_response(string $path): ?string

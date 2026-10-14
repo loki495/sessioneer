@@ -752,8 +752,7 @@ class PromptInteractionService
      *
      * Rejects while the session is busy (status 'working') rather than
      * 'blocked' the way set_mode()/set_model() do - Antigravity has no
-     * blocked-prompt detection built yet (see docs/history/antigravity-adapter-plan.md
-     * Phase 6, still open), so 'blocked' never actually occurs for an
+     * blocked-prompt detection built yet (still open), so 'blocked' never actually occurs for an
      * antigravity-agent session; a slash command typed while genuinely busy
      * gets silently QUEUED behind other input instead of failing (confirmed
      * live), which would desync this method's own key sequence from
