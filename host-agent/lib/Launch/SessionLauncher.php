@@ -18,6 +18,8 @@ namespace HostAgent\Launch;
  *   model             string   optional
  *   starting_mode     string   optional permission mode
  *   profile           string   optional account/profile
+ *   caller_config_dir string   optional; the caller's CLAUDE_CONFIG_DIR, used to
+ *                              pick the profile when `profile` is absent
  *   enable_task_tools bool     optional
  *
  * Reply: ['ok' => bool, 'message' => string] plus, once a session exists,

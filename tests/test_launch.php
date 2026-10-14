@@ -184,6 +184,30 @@ $resumedName = (string)($last['name'] ?? '');
 $made[] = $resumedName;
 assert_true((bool)wait_until(static fn (): bool => status_of($resumedName) === 'idle' && has_result($m, 'echo: fifth words')), 'a session to leave running for the next section');
 
+echo "Caller profile\n";
+@mkdir($root . '/home/.claude-work/projects', 0700, true);
+$before = count(SidecarStore::list_runtime_sidecars('headless'));
+$unknownDir = launch(['prompt' => 'hi', 'workdir' => $workdir, 'caller_config_dir' => $root . '/home/.claude-other']);
+assert_equal(false, $unknownDir['ok'] ?? null, 'a caller config dir matching no profile is refused');
+assert_contains('matches no profile', (string)$unknownDir['message'], 'naming why');
+assert_contains('--profile', (string)$unknownDir['message'], 'and how to override');
+assert_equal($before, count(SidecarStore::list_runtime_sidecars('headless')), 'without starting a session');
+$profileOf = static function (array $reply) use (&$made): ?string {
+    $name = (string)($reply['name'] ?? '');
+    $made[] = $name;
+    $profile = SidecarStore::read_sidecar($name)['profile'] ?? null;
+    dispatch_action(['action' => 'launch_kill', 'target' => $name, 'force' => true]);
+
+    return $profile;
+};
+$work = launch(['prompt' => 'hi', 'workdir' => $workdir, 'caller_config_dir' => $root . '/home/.claude-work/']);
+assert_true(($work['ok'] ?? false) === true, 'a work-account caller launches' . (($work['ok'] ?? false) === true ? '' : ' - got ' . json_encode($work)));
+assert_equal('work', $profileOf($work), 'under the work profile (trailing slash ignored)');
+assert_equal(null, $profileOf(launch(['prompt' => 'hi', 'workdir' => $workdir, 'caller_config_dir' => $root . '/home/.claude'])), 'a default-account caller gets the default account');
+assert_equal(null, $profileOf(launch(['prompt' => 'hi', 'workdir' => $workdir])), 'so does a caller with no config dir');
+assert_equal('personal', $profileOf(launch(['prompt' => 'hi', 'workdir' => $workdir, 'profile' => 'personal', 'caller_config_dir' => $root . '/home/.claude-work'])), 'an explicit profile wins over the caller dir');
+assert_equal($before, count(SidecarStore::list_runtime_sidecars('headless')), 'the profile sessions are cleaned up');
+
 echo "Failure: manager down\n";
 proc_terminate($m['proc'], SIGTERM);
 wait_until(static fn (): bool => !proc_get_status($m['proc'])['running'], 12.0);

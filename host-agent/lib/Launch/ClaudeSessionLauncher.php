@@ -8,6 +8,7 @@ use HostAgent\Runtimes\ClaudeHeadlessRuntime;
 use HostAgent\Runtimes\RuntimeRegistry;
 use HostAgent\Runtimes\RuntimeType;
 use HostAgent\Services\BareProcessService;
+use HostAgent\Services\Config;
 use HostAgent\Services\PromptInteractionService;
 use HostAgent\Services\TranscriptRouter;
 use HostAgent\Services\TranscriptService;
@@ -34,6 +35,16 @@ class ClaudeSessionLauncher implements SessionLauncher
         $prompt = is_string($request['prompt'] ?? null) ? trim($request['prompt']) : '';
         $conversationId = is_string($request['agent_session_id'] ?? null) ? trim($request['agent_session_id']) : '';
         $profile = is_string($request['profile'] ?? null) && $request['profile'] !== '' ? $request['profile'] : null;
+
+        if ($profile === null) {
+            $resolved = $this->profile_for_caller($request);
+
+            if (is_array($resolved)) {
+                return $resolved;
+            }
+
+            $profile = $resolved;
+        }
 
         $runtime = RuntimeRegistry::runtime_for(self::AGENT_ID, RuntimeType::HEADLESS);
 
@@ -153,6 +164,32 @@ class ClaudeSessionLauncher implements SessionLauncher
         }
 
         return ['ok' => true, 'sessions' => $sessions];
+    }
+
+    /**
+     * With no explicit profile, a launch runs under the caller's own account
+     * (its CLAUDE_CONFIG_DIR), so a session started from a work-account session
+     * doesn't silently land on the default account. A dir that matches no
+     * configured profile is refused rather than guessed.
+     *
+     * @param array<string, mixed> $request
+     * @return string|null|array{ok: false, message: string} the profile, or the handled failure to return
+     */
+    private function profile_for_caller(array $request): string|null|array
+    {
+        $callerDir = is_string($request['caller_config_dir'] ?? null) ? rtrim(trim($request['caller_config_dir']), '/') : '';
+
+        if ($callerDir === '') {
+            return null;
+        }
+
+        $profile = Config::claude_profile_for_config_dir($callerDir);
+
+        if ($profile === null && $callerDir !== Config::claude_config_dir(null)) {
+            return ['ok' => false, 'message' => "The caller runs under CLAUDE_CONFIG_DIR {$callerDir}, which matches no profile in host-agent/config/agents.php; pass --profile"];
+        }
+
+        return $profile;
     }
 
     /** @return array{name:string, runtime:string}|null */
