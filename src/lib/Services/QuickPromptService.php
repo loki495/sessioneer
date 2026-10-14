@@ -101,6 +101,7 @@ final class QuickPromptService
         if ($result['type'] === 'error' || !is_string($id)) return $this->public_result($result, $base);
         $requestId = $result['request_id'] ?? null;
         $turnId = $result['turn_id'] ?? null;
+        $disposable = !empty($result['created']) && ($result['intent'] ?? null) === 'answer';
         $deadline = ($this->now)() + self::integer('QUICK_PROMPT_WAIT_SECONDS', 6, 0, 15);
         while (($remaining = $deadline - ($this->now)()) > 0) {
             $probe = ($this->call)(['action' => 'quick_prompt_status', 'session_id' => $id, 'request_id' => $requestId, 'turn_id' => $turnId], min(2.0, $remaining));
@@ -110,7 +111,14 @@ final class QuickPromptService
             $remaining = $deadline - ($this->now)();
             if ($remaining > 0) ($this->sleep)(min(1.0, $remaining));
         }
-        return $this->public_result($result, $base);
+        $public = $this->public_result($result, $base);
+        if ($disposable && ($public['type'] ?? null) === 'answer' && is_string($requestId)) {
+            // A short answer the router judged a one-off: archive its session, keeping the transcript.
+            $answer = ['type' => 'answer', 'text' => $public['text'], 'archived' => true];
+            $done = ($this->call)(['action' => 'quick_prompt_dispose', 'session_id' => $id, 'request_id' => $requestId, 'response' => $answer], 5.0);
+            if (($done['archived'] ?? false) === true) return $answer;
+        }
+        return $public;
     }
 
     /** @param array<string, mixed> $result

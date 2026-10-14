@@ -81,7 +81,7 @@ assert_equal(200, $answer['status'], 'real HTTP authenticated session dispatch s
 assert_equal('answer', $body['type'], 'terminal fake-Claude result returns immediate answer');
 assert_equal(call($manager, 'sessioneer/status', ['session' => $body['session_id']])['last_result']['text'], $body['text'] ?? null, 'answer equals authoritative terminal result');
 assert_contains('echo: hello quick prompt [spawn=fresh', $body['text'], 'fake terminal answer belongs to fresh requested prompt');
-assert_contains('mode=plan', $body['text'], 'fake agent confirms plan mode applied');
+assert_contains('mode=auto', $body['text'], 'the real manager applies auto mode after spawn and the fake agent confirms it');
 assert_equal('https://trusted.example/session.php?session=' . $body['session_id'], $body['session_url'], 'trusted configured HTTPS session URL');
 assert_true(!array_key_exists('_http', $body) && !array_key_exists('request_id', $body) && !array_key_exists('completed', $body), 'internal transport fields omitted');
 $again = $request(['prompt' => 'hello quick prompt'], 'answer-key');

@@ -19,10 +19,12 @@ final class QuickPromptService
     /** @var \Closure(string):RuntimeProvider */
     private \Closure $runtime;
     private ClaudeHeadlessManagerClient $manager;
+    private QuickPromptRouter $router;
 
     /** @param callable(string):RuntimeProvider|null $runtime */
-    public function __construct(?callable $runtime = null, ?ClaudeHeadlessManagerClient $manager = null)
+    public function __construct(?callable $runtime = null, ?ClaudeHeadlessManagerClient $manager = null, ?QuickPromptRouter $router = null)
     {
+        $this->router = $router ?? new QuickPromptRouter();
         $this->manager = $manager ?? new ClaudeHeadlessManagerClient(null, 2, false);
         $this->runtime = $runtime !== null ? \Closure::fromCallable($runtime) : function (string $agent): RuntimeProvider {
             return $agent === 'claude'
@@ -50,13 +52,21 @@ final class QuickPromptService
         $finish = static fn(array $result): array => QuickPromptStore::finish($key, $result);
 
         $id = $data['session_id'] ?? null;
+        $intent = null;
+        if ($id === null) {
+            // After the reservation, so a retry never asks the router again.
+            $routed = $this->route($data, $settings);
+            $settings = $routed['settings'];
+            $intent = $routed['intent'];
+        }
         $lock = null;
+        $isNew = false;
         try {
             $runtime = ($this->runtime)($settings['agent']);
             if ($id !== null) {
                 if (!is_string($id) || preg_match('/^[a-zA-Z0-9_-]{1,128}$/D', $id) !== 1) return $finish(self::error('invalid_session', 422));
                 // Continuation is deliberately limited to tracked, idle Claude
-                // plan sessions. Codex's queue may override sandbox settings;
+                // sessions still in their original permission mode. Codex's queue may override sandbox settings;
                 // its continuation is refused until that boundary is verifiable.
                 $stored = QuickPromptStore::settings($id);
                 $session = SidecarStore::read_sidecar($id);
@@ -64,7 +74,7 @@ final class QuickPromptService
                 if ($stored !== $settings || ($session['agent'] ?? null) !== 'claude' || ($session['runtime'] ?? null) !== 'headless'
                     || ($session['workdir'] ?? null) !== $settings['workdir']
                     || ($session['profile'] ?? null) !== $settings['profile']
-                    || ($state['mode'] ?? null) !== 'plan'
+                    || ($state['mode'] ?? null) !== $settings['mode']
                     || ($state['status'] ?? null) !== 'idle'
                     || ($settings['model'] !== null && ($state['model'] ?? null) !== $settings['model']
                         && SelectableModel::family_from_raw_model(is_string($state['model'] ?? null) ? $state['model'] : '') !== $settings['model'])) return $finish(self::error('invalid_session', 422));
@@ -76,10 +86,19 @@ final class QuickPromptService
             } else {
                 $created = $runtime->create([
                     'workdir' => $settings['workdir'], 'model' => $settings['model'],
-                    'profile' => $settings['profile'], 'starting_mode' => 'plan', 'read_only' => true, 'include_session' => false, 'unique_name' => true,
+                    'profile' => $settings['profile'], 'starting_mode' => $settings['mode'] === 'plan' || $settings['agent'] === 'codex' ? 'plan' : null, 'read_only' => true, 'include_session' => false, 'unique_name' => true,
                 ]);
                 $id = $created['ok'] === true ? ($created['id'] ?? $created['name'] ?? null) : null;
                 if (!is_string($id) || preg_match('/^[a-zA-Z0-9_-]{1,128}$/D', $id) !== 1) return $finish(self::error('agent_unavailable', 503));
+                // `claude -p --permission-mode auto` is silently ignored (the manager reports
+                // that as a mode warning), so auto is applied after spawn like the dashboard does.
+                if ($settings['agent'] === 'claude' && $settings['mode'] === 'auto') {
+                    $applied = $runtime->set_mode($id, 'auto');
+                    if ($applied['ok'] !== true) {
+                        $this->discard('claude', $id);
+                        return $finish(self::error('agent_unavailable', 503));
+                    }
+                }
                 if ($settings['agent'] === 'codex') {
                     SidecarStore::write_sidecar($id, [
                         'workdir' => $settings['workdir'], 'spawned_at' => time(), 'agent_session_id' => $id,
@@ -90,19 +109,99 @@ final class QuickPromptService
             }
             // Save the reference before sending: an ambiguous socket failure
             // must never cause a retry to create or deliver a duplicate turn.
+            $isNew = ($data['session_id'] ?? null) === null;
             $reference = ['type' => 'session', 'status' => 'unknown', 'session_id' => $id, 'request_id' => $key];
+            if ($isNew) $reference += ['created' => true, 'intent' => $intent];
             $finish($reference);
             $sent = $settings['agent'] === 'claude'
-                ? $this->manager->request('sessioneer/sendInput', ['session' => $id, 'content' => trim($data['prompt']), 'quick_prompt_id' => $key, 'require_plan' => true])
+                ? $this->manager->request('sessioneer/sendInput', ['session' => $id, 'content' => trim($data['prompt']), 'quick_prompt_id' => $key, 'require_mode' => $settings['mode']])
                 : $runtime->send_message($id, trim($data['prompt']));
-            if (($sent['ok'] ?? false) !== true) return $finish(self::error('delivery_failed', 503) + ['session_id' => $id]);
-            return $finish(['type' => 'session', 'status' => 'running', 'session_id' => $id, 'request_id' => $key, 'turn_id' => $sent['turn_id'] ?? null]);
+            if (($sent['ok'] ?? false) !== true) {
+                // A session this request created and could not feed is only clutter.
+                return $finish(self::error('delivery_failed', 503) + ($isNew ? [] : ['session_id' => $id]) + ($isNew && !$this->discard($settings['agent'], $id) ? ['session_id' => $id] : []));
+            }
+            return $finish(['type' => 'session', 'status' => 'running', 'session_id' => $id, 'request_id' => $key, 'turn_id' => $sent['turn_id'] ?? null] + ($isNew ? ['created' => true, 'intent' => $intent] : []));
         } catch (\Throwable $e) {
             error_log('Quick Prompt host dispatch failed: ' . $e::class);
-            return $finish(self::error('agent_unavailable', 503) + (is_string($id) ? ['session_id' => $id] : []));
+            $kept = is_string($id) && !($isNew && $this->discard($settings['agent'], $id));
+            return $finish(self::error('agent_unavailable', 503) + ($kept ? ['session_id' => $id] : []));
         } finally {
             if (is_resource($lock)) { flock($lock, LOCK_UN); fclose($lock); }
         }
+    }
+
+    /** Fills the fields the client left out from the local router; explicit fields always win.
+     * @param array<string, mixed> $data
+     * @param array<string, mixed> $settings
+     * @return array{settings: array<string, mixed>, intent: ?string}
+     */
+    private function route(array $data, array $settings): array
+    {
+        if (!QuickPromptRouter::enabled()) return ['settings' => $settings, 'intent' => null];
+        $models = json_decode(Config::sessioneer_config('QUICK_PROMPT_MODELS', '{"claude":["sonnet","haiku","opus","fable"],"codex":[]}'), true);
+        $projects = json_decode(Config::sessioneer_config('QUICK_PROMPT_PROJECTS', '{}'), true);
+        $picked = $this->router->route(trim($data['prompt']), [
+            'agent' => array_values(array_intersect(['claude', 'codex'], array_map('trim', explode(',', Config::sessioneer_config('QUICK_PROMPT_AGENTS', 'claude'))))),
+            'profile' => Config::claude_profile_names(),
+            'project' => is_array($projects) ? array_map('strval', array_keys($projects)) : [],
+            'models' => is_array($models) ? $models : [],
+        ]);
+        $intent = $picked['intent'] ?? null;
+        unset($picked['intent']);
+        $picked = array_diff_key($picked, $data);
+        // A model or account the chosen agent cannot use is dropped, never an error.
+        foreach ([$picked, array_diff_key($picked, ['model' => 1, 'profile' => 1])] as $candidate) {
+            if ($candidate === []) break;
+            $routed = $this->validate($candidate + $data);
+            if (!isset($routed['type'])) return ['settings' => $routed, 'intent' => $intent];
+        }
+        return ['settings' => $settings, 'intent' => $intent];
+    }
+
+    /** Stops and archives a session this feature created; its conversation stays resumable. */
+    private function discard(string $agent, string $id): bool
+    {
+        try {
+            $stopped = ($this->runtime)($agent)->kill($id);
+        } catch (\Throwable $e) {
+            error_log('Quick Prompt cleanup failed: ' . $e::class);
+            return false;
+        }
+        SidecarStore::delete_sidecar($id);
+        SessionStatusStore::delete_status($id);
+        return $stopped['ok'] === true;
+    }
+
+    /** @return array<string, mixed> */
+    private function failed(string $id, string $agent, mixed $requestId): array
+    {
+        $error = self::error('agent_failed', 502);
+        if (!$this->discard($agent, $id)) $error += ['session_id' => $id];
+        if (is_string($requestId) && preg_match('/^[a-f0-9]{64}$/D', $requestId) === 1) QuickPromptStore::finish($requestId, $error);
+        return $error;
+    }
+
+    /** Archives the session of a short answer already delivered, only while it is idle.
+     * @param array<string, mixed> $request
+     * @return array<string, mixed>
+     */
+    public function dispose(array $request): array
+    {
+        $id = $request['session_id'] ?? null;
+        $requestId = $request['request_id'] ?? null;
+        $settings = is_string($id) && preg_match('/^[a-zA-Z0-9_-]{1,128}$/D', $id) === 1 ? QuickPromptStore::settings($id) : null;
+        if ($settings === null || !is_string($requestId) || preg_match('/^[a-f0-9]{64}$/D', $requestId) !== 1) return ['ok' => false, 'archived' => false];
+        if (Config::sessioneer_config('QUICK_PROMPT_ARCHIVE_ANSWERS', '1') !== '1') return ['ok' => true, 'archived' => false];
+        if ($settings['agent'] === 'claude') {
+            $live = $this->manager->request('sessioneer/status', ['session' => $id]);
+            $idle = ($live['ok'] ?? false) === true && ($live['state'] ?? null) === 'idle' && ($live['open_turns'] ?? 0) === 0;
+        } else {
+            $idle = ($this->runtime)('codex')->pending_prompt($id) === null && (($this->runtime)('codex')->status($id)['status']) === 'idle';
+        }
+        if (!$idle) return ['ok' => true, 'archived' => false];
+        $archived = $this->discard($settings['agent'], $id);
+        if ($archived && is_array($request['response'] ?? null)) QuickPromptStore::finish($requestId, $request['response']);
+        return ['ok' => true, 'archived' => $archived];
     }
 
     /** @param array<string, mixed> $input
@@ -123,13 +222,16 @@ final class QuickPromptService
         $projects = json_decode(Config::sessioneer_config('QUICK_PROMPT_PROJECTS', '{}'), true);
         $path = is_array($projects) && is_string($project) ? ($projects[$project] ?? null) : null;
         if (!is_string($path) || $path === '' || $path[0] !== '/' || !is_dir($path) || realpath($path) === false) return self::error('invalid_project', 422);
-        $mode = $input['mode'] ?? ($agent === 'claude' ? 'plan' : 'read-only');
-        if ($mode !== ($agent === 'claude' ? 'plan' : 'read-only')) return self::error('invalid_mode', 422);
-        $profile = $input['profile'] ?? (Config::sessioneer_config('QUICK_PROMPT_DEFAULT_PROFILE', '') ?: null);
+        $modes = $agent === 'claude' ? ['plan', 'auto'] : ['read-only'];
+        $defaultMode = $agent === 'claude' ? Config::sessioneer_config('QUICK_PROMPT_DEFAULT_MODE', 'auto') : 'read-only';
+        $mode = $input['mode'] ?? (in_array($defaultMode, $modes, true) ? $defaultMode : $modes[0]);
+        if (!in_array($mode, $modes, true)) return self::error('invalid_mode', 422);
+        $profile = $input['profile'] ?? ($agent === 'claude' ? (Config::sessioneer_config('QUICK_PROMPT_DEFAULT_PROFILE', '') ?: null) : null);
         if ($profile !== null && ($agent !== 'claude' || !in_array($profile, Config::claude_profile_names(), true))) return self::error('invalid_profile', 422);
-        $model = $input['model'] ?? (Config::sessioneer_config('QUICK_PROMPT_DEFAULT_MODEL', '') ?: null);
         $models = json_decode(Config::sessioneer_config('QUICK_PROMPT_MODELS', '{"claude":["sonnet","haiku","opus","fable"],"codex":[]}'), true);
         $allowed = is_array($models) && is_array($models[$agent] ?? null) ? $models[$agent] : [];
+        $defaultModel = Config::sessioneer_config('QUICK_PROMPT_DEFAULT_MODEL', '');
+        $model = $input['model'] ?? (in_array($defaultModel, $allowed, true) ? $defaultModel : null);
         if ($model !== null && !in_array($model, $allowed, true)) return self::error('invalid_model', 422);
         return ['agent' => $agent, 'project' => $project, 'workdir' => realpath($path), 'mode' => $mode, 'model' => $model, 'profile' => $profile];
     }
@@ -151,11 +253,11 @@ final class QuickPromptService
             if (($reply['state'] ?? null) === 'working' || ($reply['open_turns'] ?? 0) > 0) return array_replace($reference, ['status' => 'running']);
             $result = $reply['last_result'] ?? null;
             if (!is_array($result)) {
-                if (!empty($reply['last_turn_error'])) return self::error('agent_failed', 502) + ['session_id' => $id];
+                if (!empty($reply['last_turn_error'])) return $this->failed($id, 'claude', $request['request_id'] ?? null);
                 return $reference;
             }
             if (($result['request_id'] ?? null) !== ($request['request_id'] ?? null)) return $reference;
-            if (!empty($result['failed'])) return self::error('agent_failed', 502) + ['session_id' => $id];
+            if (!empty($result['failed'])) return $this->failed($id, 'claude', $request['request_id'] ?? null);
             return array_replace($reference, [
                 'status' => 'completed', 'completed' => true,
                 'text' => is_string($result['text'] ?? null) ? $result['text'] : '', 'has_tools' => !empty($result['has_tools']),
@@ -172,7 +274,7 @@ final class QuickPromptService
         // Without the submission's native turn id, a dashboard turn could
         // be mistaken for our answer. Queued/uncorrelated delivery stays a link.
         if (!is_string($request['turn_id'] ?? null) || ($turn['id'] ?? null) !== $request['turn_id']) return $reference;
-        if (($turn['status'] ?? null) === 'failed') return self::error('agent_failed', 502) + ['session_id' => $id];
+        if (($turn['status'] ?? null) === 'failed') return $this->failed($id, 'codex', $request['request_id'] ?? null);
         if (($turn['status'] ?? null) !== 'completed') return array_replace($reference, ['status' => ($turn['status'] ?? null) === 'interrupted' ? 'interrupted' : 'running']);
         $text = ''; $hasTools = false;
         foreach (is_array($turn['items'] ?? null) ? $turn['items'] : [] as $item) {
