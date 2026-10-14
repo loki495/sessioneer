@@ -252,7 +252,7 @@ Docker-spawned, makes that impossible by construction — not by convention.
    freshness).
 
    `bin/sessioneer` (docs/cli.md) is a second socket client besides the web
-   container: it sends the `launch`, `launch_kill` and `launch_list` actions, which `HostAgent\Launch\
+   container: it sends the `launch`, `launch_kill`, `launch_list`, `launch_send` and `launch_peers` actions (peer messaging: the host agent stamps the sender from `SESSIONEER_SELF`, which every spawned session carries), which `HostAgent\Launch\
    LaunchService` routes to a per-agent `SessionLauncher` (the interface
    documents the request/reply keys; only `ClaudeSessionLauncher` exists).
    A new agent's launch support is one class plus one line in

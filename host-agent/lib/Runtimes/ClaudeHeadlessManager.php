@@ -768,7 +768,7 @@ final class ClaudeHeadlessManager
             return ['ok' => false, 'message' => 'CLAUDE_BIN is not configured'];
         }
 
-        $child = ClaudeHeadlessChild::spawn($session, $spec['assigned_id'], $spec['argv'], $this->child_env($spec['env'] ?? []), $workdir);
+        $child = ClaudeHeadlessChild::spawn($session, $spec['assigned_id'], $spec['argv'], $this->child_env(($spec['env'] ?? []) + ['SESSIONEER_SELF' => $session]), $workdir);
 
         if ($child === null) {
             return ['ok' => false, 'message' => 'Could not start the Claude process'];

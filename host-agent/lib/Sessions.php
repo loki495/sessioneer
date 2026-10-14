@@ -277,6 +277,12 @@ function dispatch_action(array $request): array
         case 'launch_list':
             return LaunchService::list_sessions($request);
 
+        case 'launch_send':
+            return LaunchService::send($request);
+
+        case 'launch_peers':
+            return LaunchService::peers($request);
+
         case 'resume':
             $resumeWorkdir = (string)($request['workdir'] ?? '');
             $resumeId = (string)($request['agent_session_id'] ?? '');

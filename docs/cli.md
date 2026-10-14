@@ -26,6 +26,9 @@ echo "Summarise the open TODOs" | sessioneer --json -
 | `--kill TARGET` | Stop a headless session, by session name or conversation id. Its conversation stays resumable (it moves to the archived list). A working or blocked session is refused. |
 | `--force` | With `--kill`, stop a working or blocked session anyway (its in-flight work is lost). |
 | `--list` | List headless sessions as tab-separated name, status, conversation id and directory. |
+| `--send TARGET` | Deliver the prompt to another session (name or conversation id) from inside a session. The host agent prepends `[sessioneer peer: <name> · <workdir> · <branch>]` from its own records of the sender, so the message body cannot set it. A blocked peer accepts it and sees it when it resumes. Refused outside a session, for an unknown target, a blank message, or a message to yourself. |
+| `--whoami` | Print this session's own name (`SESSIONEER_SELF`); exits 1 outside a session. |
+| `--peers` | List the other live sessions in this session's git repository (worktrees included) as tab-separated name, status, branch and directory. |
 | `--json` | Print the full reply as JSON instead of the plain output. |
 
 On success it prints the session name (the dashboard opens it at `session.php?session=NAME`) and exits 0; any refusal prints `sessioneer: <message>` on stderr and exits 1.
@@ -38,10 +41,14 @@ On success it prints the session name (the dashboard opens it at `session.php?se
 
 A session that is created but cannot take its prompt (for example the headless manager stopped) is reported as a failure that still names the session.
 
+## Peer messaging
+
+Every session Sessioneer spawns (headless or tmux) gets `SESSIONEER_SELF=<its name>`, separate from `SESSIONEER_SESSION_NAME`, which headless children deliberately lack because it is what the hooks key off. `--send` and `--peers` read it to identify the caller. A message is information or a request, never approval: it does not replace the owner's confirmation for pushes or other real-world actions. `--send` takes a session name or conversation id, not a task id. Any same-user process can name any `SESSIONEER_SELF`, which matches the socket's trust model (permissions on the socket are the boundary).
+
 ## Design
 
 There is no separate "archive": stopping a session archives its conversation, exactly like the dashboard's Kill. `--kill` only manages headless Claude sessions; a terminal (tmux) session or a bare process is refused, and is stopped from the dashboard.
 
-The CLI sends one `launch`, `launch_kill` or `launch_list` request to the host agent. `HostAgent\Launch\LaunchService` picks a `SessionLauncher` by agent id; the interface documents the request and reply keys for all three. Supporting another agent means one new class implementing `SessionLauncher` and one line in `LaunchService::LAUNCHERS`; the CLI and the action do not change. Not yet offered: a thinking/effort level (the stream-json protocol is unconfirmed for it) and agents other than Claude.
+The CLI sends one `launch`, `launch_kill`, `launch_list`, `launch_send` or `launch_peers` request to the host agent. `HostAgent\Launch\LaunchService` picks a `SessionLauncher` by agent id; the interface documents the request and reply keys for all five. Supporting another agent means one new class implementing `SessionLauncher` and one line in `LaunchService::LAUNCHERS`; the CLI and the action do not change. Not yet offered: a thinking/effort level (the stream-json protocol is unconfirmed for it) and agents other than Claude.
 
 Tests: `tests/test_launch.php`.
