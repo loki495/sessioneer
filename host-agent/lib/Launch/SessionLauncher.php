@@ -57,4 +57,28 @@ interface SessionLauncher
      * @return array<string, mixed>
      */
     public function list_sessions(array $request): array;
+
+    /**
+     * Delivers `message` to the session `target` (name or conversation id) on
+     * behalf of the session `from` (the caller's SESSIONEER_SELF). The host
+     * agent prepends the sender stamp `[sessioneer peer: <name> · <workdir> ·
+     * <branch>]` from its own records of `from`, so the message body cannot
+     * set it. A `from` that is not a tracked session is refused.
+     * Reply: like launch(), with action 'sent'.
+     *
+     * @param array<string, mixed> $request
+     * @return array<string, mixed>
+     */
+    public function send(array $request): array;
+
+    /**
+     * Live sessions in the same git repository (worktrees included) as the
+     * session `from` (or the `workdir`), excluding `from`. Reply: ['ok' =>
+     * true, 'self' => ?string, 'peers' => list of {name, status, workdir,
+     * branch, title}].
+     *
+     * @param array<string, mixed> $request
+     * @return array<string, mixed>
+     */
+    public function peers(array $request): array;
 }

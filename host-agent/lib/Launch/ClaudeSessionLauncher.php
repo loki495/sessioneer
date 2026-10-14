@@ -9,6 +9,7 @@ use HostAgent\Runtimes\RuntimeRegistry;
 use HostAgent\Runtimes\RuntimeType;
 use HostAgent\Services\BareProcessService;
 use HostAgent\Services\Config;
+use HostAgent\Services\ProcessRunner;
 use HostAgent\Services\PromptInteractionService;
 use HostAgent\Services\TranscriptRouter;
 use HostAgent\Services\TranscriptService;
@@ -164,6 +165,85 @@ class ClaudeSessionLauncher implements SessionLauncher
         }
 
         return ['ok' => true, 'sessions' => $sessions];
+    }
+
+    public function send(array $request): array
+    {
+        $target = is_string($request['target'] ?? null) ? trim($request['target']) : '';
+        $message = is_string($request['message'] ?? null) ? trim($request['message']) : '';
+        $from = is_string($request['from'] ?? null) ? trim($request['from']) : '';
+
+        if ($target === '' || $message === '') {
+            return ['ok' => false, 'message' => 'Send needs a target session and a message'];
+        }
+
+        $sender = $from !== '' ? SidecarStore::read_sidecar($from) : null;
+
+        if ($sender === null) {
+            return ['ok' => false, 'message' => 'Send must run inside a Sessioneer session (SESSIONEER_SELF names none that is tracked); use --resume to message a session as yourself'];
+        }
+
+        $name = SidecarStore::read_sidecar($target) !== null ? $target : SidecarStore::find_by_agent_session_id($target);
+        $receiver = $name !== null ? SidecarStore::read_sidecar($name) : null;
+
+        if ($name === null || $receiver === null || ($receiver['agent'] ?? self::AGENT_ID) !== self::AGENT_ID) {
+            return ['ok' => false, 'message' => "No tracked Claude session found for '{$target}'"];
+        }
+
+        if ($name === $from) {
+            return ['ok' => false, 'message' => 'A session cannot send a message to itself'];
+        }
+
+        $runtime = RuntimeRegistry::runtime_for(self::AGENT_ID, RuntimeType::HEADLESS);
+
+        if (!$runtime instanceof ClaudeHeadlessRuntime) {
+            return ['ok' => false, 'message' => 'Headless runtime unavailable for claude'];
+        }
+
+        $workdir = (string)($sender['workdir'] ?? '-');
+        $branch = $this->branch_of($workdir) ?? '-';
+        // The stamp comes from the host agent's own records of the sender, never from the message.
+        $stamp = "[sessioneer peer: {$from} · {$workdir} · {$branch}]";
+
+        return $this->deliver($name, 'sent', "{$stamp} {$message}", $runtime, (string)($receiver['runtime'] ?? RuntimeType::TMUX));
+    }
+
+    public function peers(array $request): array
+    {
+        $from = is_string($request['from'] ?? null) ? trim($request['from']) : '';
+        $sender = $from !== '' ? SidecarStore::read_sidecar($from) : null;
+        $workdir = is_string($sender['workdir'] ?? null) ? $sender['workdir'] : (is_string($request['workdir'] ?? null) ? $request['workdir'] : '');
+        $repo = $workdir !== '' ? $this->repo_of($workdir) : null;
+
+        if ($repo === null) {
+            return ['ok' => false, 'message' => 'Peers needs a session (SESSIONEER_SELF) or a workdir inside a git repository'];
+        }
+
+        $peers = [];
+
+        foreach ($this->list_sessions($request)['sessions'] ?? [] as $s) {
+            if ($s['name'] === $from || !is_string($s['workdir']) || $this->repo_of($s['workdir']) !== $repo) {
+                continue;
+            }
+
+            $peers[] = ['name' => $s['name'], 'status' => $s['status'], 'workdir' => $s['workdir'], 'branch' => $this->branch_of($s['workdir']), 'title' => $s['title']];
+        }
+
+        return ['ok' => true, 'self' => $from !== '' ? $from : null, 'peers' => $peers];
+    }
+
+    private function repo_of(string $dir): ?string
+    {
+        $r = is_dir($dir) ? ProcessRunner::run_process(['git', '-C', $dir, 'rev-parse', '--path-format=absolute', '--git-common-dir']) : null;
+
+        return $r !== null && $r['exit'] === 0 && trim($r['stdout']) !== '' ? trim($r['stdout']) : null;
+    }
+
+    private function branch_of(string $dir): ?string
+    {
+        $r = is_dir($dir) ? ProcessRunner::run_process(['git', '-C', $dir, 'branch', '--show-current']) : null;
+
+        return $r !== null && $r['exit'] === 0 && trim($r['stdout']) !== '' ? trim($r['stdout']) : null;
     }
 
     /**
