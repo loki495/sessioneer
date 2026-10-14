@@ -53,6 +53,9 @@ function dispatch_action(array $request): array
         case 'quick_prompt_status':
             return (new \HostAgent\Services\QuickPromptService())->status($request);
 
+        case 'quick_prompt_dispose':
+            return (new \HostAgent\Services\QuickPromptService())->dispose($request);
+
         case 'list':
             $list = ['ok' => true] + SessionService::list_all_sessions();
             $list['sessions'] = sessioneer_merge_headless_sessions($list['sessions']);

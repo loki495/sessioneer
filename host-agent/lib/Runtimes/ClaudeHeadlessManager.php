@@ -474,12 +474,12 @@ final class ClaudeHeadlessManager
 
         // Enforce Quick Prompt's permission and idle requirements in the
         // manager's own event loop, closing the validation/dispatch race.
-        if (($params['require_plan'] ?? false) === true) {
+        if (is_string($params['require_mode'] ?? null)) {
             $mode = SessionStatusStore::read_status($session)['mode']
                 ?? PermissionMode::normalize_hook_permission_mode($child->requestedMode);
-            if ($mode !== 'plan' || $child->modeWarning !== null || $child->openTurns > 0
+            if ($mode !== $params['require_mode'] || $child->modeWarning !== null || $child->openTurns > 0
                 || !in_array($child->state, ['starting', 'idle'], true)) {
-                return ['ok' => false, 'message' => 'Quick Prompt requires an idle plan session'];
+                return ['ok' => false, 'message' => 'Quick Prompt requires an idle session in its original permission mode'];
             }
         }
 

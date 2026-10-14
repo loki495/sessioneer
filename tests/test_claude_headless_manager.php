@@ -204,7 +204,7 @@ $quickResult = call($m1, 'sessioneer/status', ['session' => $sn(1)])['last_resul
 assert_equal('fixture-request', $quickResult['request_id'], 'terminal result correlated with Quick Prompt submission');
 assert_contains('echo: hello there [spawn=fresh', $quickResult['text'], 'only terminal event provides inline preview');
 assert_equal(false, $quickResult['has_tools'], 'plain answer has no tools');
-assert_equal(false, call($m1, 'sessioneer/sendInput', ['session' => $sn(1), 'content' => 'must not run', 'require_plan' => true])['ok'], 'Quick Prompt refuses manual-mode delivery inside the manager');
+assert_equal(false, call($m1, 'sessioneer/sendInput', ['session' => $sn(1), 'content' => 'must not run', 'require_mode' => 'plan'])['ok'], 'Quick Prompt refuses manual-mode delivery inside the manager');
 assert_true(!has_result($m1, 'must not run'), 'rejected Quick Prompt never reaches the fake process');
 assert_equal('running', process_of($m1, $sn(1)), 'the process is now running');
 

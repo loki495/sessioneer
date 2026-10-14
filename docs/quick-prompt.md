@@ -27,9 +27,14 @@ Host-agent environment (`host-agent/.env`, loaded by the existing systemd Enviro
 | `QUICK_PROMPT_DEFAULT_AGENT` | `claude`; must be in the enabled list. |
 | `QUICK_PROMPT_MODELS` | `{"claude":["sonnet","haiku","opus","fable"],"codex":[]}`; exact per-agent model allowlists. Add locally available Codex models before explicitly selecting one. No model field uses the existing agent default. |
 | `QUICK_PROMPT_DEFAULT_MODEL` | Empty; optional exact allowed model. This single default must work for the selected agent; prefer explicit fields when switching agents. |
-| `QUICK_PROMPT_DEFAULT_PROFILE` | Empty; optional Claude account name from `host-agent/config/agents.php`. Only Claude currently has account profiles. Leave empty when using Codex. |
+| `QUICK_PROMPT_DEFAULT_PROFILE` | Empty; optional Claude account name from `host-agent/config/agents.php`. Only Claude currently has account profiles; it is ignored for Codex. |
+| `QUICK_PROMPT_DEFAULT_MODE` | `auto`; Claude's starting permission mode, `auto` or `plan` (an invalid value falls back to `plan`). Codex is always `read-only`. |
+| `QUICK_PROMPT_ARCHIVE_ANSWERS` | `1`; set `0` to keep every session, see "Cleanup" below. |
+| `QUICK_PROMPT_ROUTER_URL` | Empty (router off); base URL of an Ollama server reachable from the host, e.g. `http://127.0.0.1:11434`. See "Routing from the prompt". |
+| `QUICK_PROMPT_ROUTER_MODEL` | `qwen3:4b`; any local model that supports Ollama structured output. |
+| `QUICK_PROMPT_ROUTER_TIMEOUT_SECONDS` | `5`; 1–30. A slow or unreachable router never blocks a prompt: the defaults apply. |
 
-Permissions are deliberately fixed: Claude `mode: "plan"`; Codex `mode: "read-only"`, with `approvalPolicy: "on-request"`. Other modes are rejected. Plan mode can use the agent's own planning facilities; this is a plan-like permission setting, not an OS filesystem sandbox for Claude. Quick Prompt never answers an approval automatically. Existing dashboard workflows retain their permission settings.
+Permissions come from a short allowlist: Claude `mode` is `auto` (the default, from `QUICK_PROMPT_DEFAULT_MODE`) or `plan`; Codex is `read-only` with `approvalPolicy: "on-request"`. Other modes are rejected. Auto mode lets Claude's own classifier approve routine actions without a human, so a Quick Prompt session can edit files and run commands inside its project; choose `plan` if that is too much. Neither is an OS filesystem sandbox for Claude. Quick Prompt itself never answers an approval, and a session waiting on one is returned as a link. A continuation must still be in the mode it started in. Existing dashboard workflows retain their permission settings.
 
 An example systemd environment-file line for project mapping is:
 
@@ -65,11 +70,24 @@ An explicit first line can organize a dictated or typed prompt without a model c
 Review the latest failing tests
 ```
 
-The first line is stripped before delivery. Its space-separated `key=value` fields support `agent`, `model`, `profile`, `project`, and `mode`; values contain letters, numbers, `_`, `.`, or `-`. Conflicting JSON fields or repeated/unknown hints are rejected. Ordinary prose such as “use Codex” remains agent input; it does **not** change the routing. There is no probabilistic natural-language inference or Ollama dependency.
+The first line is stripped before delivery. Its space-separated `key=value` fields support `agent`, `model`, `profile`, `project`, and `mode`; values contain letters, numbers, `_`, `.`, or `-`. Conflicting JSON fields or repeated/unknown hints are rejected. Without the router, ordinary prose such as “use Codex” remains agent input and does **not** change the routing.
 
-`session_id` is a **Sessioneer reference**, not necessarily the agent's conversation UUID. Explicit continuation currently accepts only a Quick Prompt-created Claude session with identical settings, canonical project path, account, and a live idle process still in plan mode. Other coding conversations, dormant sessions, busy/blocked sessions, and Codex continuation are refused. The existing Codex queue does not expose a sufficiently verifiable continuation permission boundary. Use a fresh Codex session instead.
+## Routing from the prompt
 
-Successful HTTP 200 responses are one of:
+With `QUICK_PROMPT_ROUTER_URL` set, the host asks a small local Ollama model (structured JSON output) before any session exists: which agent, Claude account, model and project the request names or implies, and whether it is a one-off question (`answer`) or real work (`session`). So “use codex to explain this” or “with the work profile, check the dibs tests” launches the right session without a Claude turn. The model only chooses among the configured agents, accounts, models and project **names**; it never sees paths and never chooses permissions, so a hostile prompt can at worst select a different allowed option. Fields you set in the JSON body or the `@sessioneer` line always win, a value the chosen agent cannot use is dropped, and a router that is off, slow or returns nonsense falls back to the defaults. The prompt is delivered unchanged. Pull a model first (`ollama pull qwen3:4b`) and run `ollama serve` on the host; if the router is down, “use codex” is ignored and the default agent starts, which may spend Claude quota.
+
+## Cleanup
+
+A session this endpoint created is archived (stopped; its transcript stays in the Archived list and can be resumed) in two cases:
+
+- **Errors:** an agent that fails, or a session that cannot take its prompt. The error carries no session link.
+- **One-off answers:** the router judged the request an `answer`, the agent finished with a short, tool-free reply, and the session is idle. The response is `{"type":"answer","text":"...","archived":true}` with no link, and a retry with the same idempotency key returns that same answer.
+
+A running session, one waiting on an approval, a continued session, and any answer when the router is off (no intent) are never archived. Set `QUICK_PROMPT_ARCHIVE_ANSWERS=0` to keep answer sessions.
+
+`session_id` is a **Sessioneer reference**, not necessarily the agent's conversation UUID. Explicit continuation currently accepts only a Quick Prompt-created Claude session with identical settings, canonical project path, account, and a live idle process still in its original permission mode. Other coding conversations, dormant sessions, busy/blocked sessions, and Codex continuation are refused. The existing Codex queue does not expose a sufficiently verifiable continuation permission boundary. Use a fresh Codex session instead.
+
+Successful HTTP 200 responses are one of (an archived one-off answer has `"archived":true` and no link, see Cleanup):
 
 ```json
 {"type":"answer","text":"The failing test is caused by...","session_url":"https://sessioneer.example/session.php?session=claude-headless-123","session_id":"claude-headless-123"}

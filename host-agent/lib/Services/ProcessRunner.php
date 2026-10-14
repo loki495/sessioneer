@@ -15,7 +15,7 @@ class ProcessRunner
      * @param string[] $cmd
      * @return array{exit:int,stdout:string,stderr:string}
      */
-    public static function run_process(array $cmd): array
+    public static function run_process(array $cmd, ?string $stdin = null): array
     {
         $descriptors = [
             0 => ['pipe', 'r'],
@@ -27,6 +27,10 @@ class ProcessRunner
 
         if (!is_resource($process)) {
             return ['exit' => -1, 'stdout' => '', 'stderr' => 'failed to start process'];
+        }
+
+        if ($stdin !== null) {
+            fwrite($pipes[0], $stdin);
         }
 
         fclose($pipes[0]);

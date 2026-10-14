@@ -464,4 +464,4 @@ structure, hook rationale, development workflow, and testing details.
 
 ## iOS Quick Prompt
 
-An optional token-authenticated `POST /api/quick-prompt` starts a new managed headless Claude (plan) or Codex (read-only) session. It returns a short terminal answer or a trusted dashboard link after a bounded wait, with shared rate limiting and optional idempotency keys. Explicit first-line hints can select validated agent/model/project/account settings. [Configuration, API schema, security boundaries, and exact iOS Shortcut actions](docs/quick-prompt.md).
+An optional token-authenticated `POST /api/quick-prompt` starts a new managed headless Claude (auto or plan mode) or Codex (read-only) session. It returns a short terminal answer or a trusted dashboard link after a bounded wait, with shared rate limiting and optional idempotency keys. Explicit first-line hints, or an optional local Ollama router reading the prompt, select validated agent/model/project/account settings; failed sessions and routed one-off answers are archived. [Configuration, API schema, security boundaries, and exact iOS Shortcut actions](docs/quick-prompt.md).
