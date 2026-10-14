@@ -46,7 +46,8 @@ function usage(): string
                         --resume, the directory recorded in the transcript)
       --model NAME      model for a new session
       --mode MODE       permission mode for a new session (e.g. plan)
-      --profile NAME    account profile
+      --profile NAME    account profile (default: the one matching this shell's
+                        CLAUDE_CONFIG_DIR, else the default account)
       --task-tools      enable the task tools in a new session
       --kill TARGET     stop a headless session by name or conversation id; its
                         conversation stays resumable (archived). Refuses a
@@ -129,6 +130,7 @@ $reply = AgentClient::agent_call(array_filter([
     'model' => $opt('model'),
     'starting_mode' => $opt('mode'),
     'profile' => $opt('profile'),
+    'caller_config_dir' => $opt('profile') === null ? (getenv('CLAUDE_CONFIG_DIR') ?: null) : null,
     'enable_task_tools' => isset($opts['task-tools']) ? true : null,
     'target' => $kill,
     'force' => isset($opts['force']) ? true : null,
