@@ -221,7 +221,7 @@ sessioneer/
 │   │   │                     # TmuxRuntime (a real pane) vs HeadlessRuntime, behind
 │   │   │                     # RuntimeProvider/RuntimeRegistry/RuntimeType, plus the two
 │   │   │                     # headless clients (OpenCodeServeClient, CodexBridgeClient) and
-│   │   │                     # CodexHeadlessRuntime. See docs/history/headless-runtime-plan.md.
+│   │   │                     # CodexHeadlessRuntime.
 │   │   ├── Services/         # the real logic - too many classes to list here; the
 │   │   │                     # load-bearing ones are Config, SessionService (listing +
 │   │   │                     # build_session_entry), SessionLifecycleService (create/resume/
@@ -351,7 +351,7 @@ prunes any subscription a real send reports as permanently expired (HTTP
 404/410) rather than retrying it forever.
 
 **IPv6 caveat**: `send_push_notification()` forces IPv4 for the actual send
-(`CURLOPT_IPRESOLVE`) - found live: on some networks, IPv6 to
+(`CURLOPT_IPRESOLVE`) - on some networks, IPv6 to
 `web.push.apple.com` silently times out after the full 30s while IPv4 to
 the exact same endpoint responds in well under a second.
 

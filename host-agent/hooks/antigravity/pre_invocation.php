@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 /**
  * Registered as Antigravity's PreInvocation hook (see
- * AntigravityHookService, host-agent/lib/Services/AntigravityHookService.php,
- * and docs/history/antigravity-adapter-plan.md Phase 3) - fires before every model
+ * AntigravityHookService, host-agent/lib/Services/AntigravityHookService.php) - fires before every model
  * turn, the closest available signal to Claude Code's UserPromptSubmit
  * (Antigravity has no direct equivalent). Marks the session working, same
  * "working/idle/blocked hook-sequence" convention host-agent/hooks/
@@ -15,8 +14,7 @@ declare(strict_types=1);
  *
  * ALSO does the reactive session-id binding create_agent_session() can't do
  * up front for Antigravity (no --session-id/--conversation-id equivalent
- * exists for a fresh interactive session - confirmed live, see the plan
- * doc's "CLI flags" section). The FIRST hook to fire after spawn is what
+ * exists for a fresh interactive session - confirmed live). The FIRST hook to fire after spawn is what
  * actually learns this session's real conversationId, so this is where
  * the sidecar's agent_session_id gets bound for the first time. Only
  * writes when the id actually needs to change (first binding, or a

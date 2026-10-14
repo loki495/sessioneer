@@ -6,9 +6,8 @@ namespace HostAgent\Agents;
 
 /**
  * One implementation per supported coding CLI agent (Claude Code first,
- * see ClaudeCodeAdapter; Antigravity next, see
- * docs/history/antigravity-adapter-plan.md for the research this interface is
- * shaped around). Deliberately narrow - covers only what genuinely differs
+ * see ClaudeCodeAdapter; Antigravity next).
+ * Deliberately narrow - covers only what genuinely differs
  * per agent (spawn argv, hook registration, permission-mode vocabulary),
  * not things like tmux plumbing or SQLite storage that are already
  * agent-agnostic (see SidecarStore/SessionStatusStore/PendingToolStore).
@@ -26,8 +25,7 @@ interface AgentAdapter
 {
     /**
      * Stable machine identifier - 'claude', 'antigravity', etc. Stored in
-     * the sidecars table's `agent` column (see docs/history/antigravity-adapter-plan.md
-     * Phase 0) so a session's own row says which adapter governs it.
+     * the sidecars table's `agent` column so a session's own row says which adapter governs it.
      */
     public function id(): string;
 
@@ -54,8 +52,7 @@ interface AgentAdapter
      * session identifier if it can be chosen up front (Claude Code's
      * --session-id), or null if the agent has no such mechanism and the
      * real id can only be learned reactively, off whatever hook fires
-     * first after spawn (Antigravity - see docs/history/antigravity-adapter-plan.md's
-     * "CLI flags" section for why).
+     * first after spawn (Antigravity: its CLI has no flag to assign a conversation id up front).
      *
      * @param array<string, mixed> $options adapter-specific spawn options
      *   (e.g. Claude Code's enable_task_tools/starting_mode/profile) - each

@@ -11,12 +11,10 @@ use HostAgent\Services\Config;
 
 /**
  * Second AgentAdapter implementation, for Google's Antigravity CLI
- * (binary `agy`) - see docs/history/antigravity-adapter-plan.md for the research
- * this is built against (live-verified 2026-08-24 on a real `agy 1.1.19`
+ * (binary `agy`; live-verified 2026-08-24 on a real `agy 1.1.19`
  * install). Phase 2: spawn argv + identity. Phase 3: hook registration -
- * ships working/idle tracking; "blocked" detection is a later phase (see
- * that plan doc's "Open questions" finding on why a hook's own decision
- * doesn't suppress Antigravity's real approval UI).
+ * ships working/idle tracking; "blocked" detection is a later phase (a hook's own
+ * decision doesn't suppress Antigravity's real approval UI).
  */
 class AntigravityAdapter implements AgentAdapter
 {
@@ -59,14 +57,13 @@ class AntigravityAdapter implements AgentAdapter
      * discipline as the Claude adapter. $options['model']/$options['effort']
      * pass straight through to `--model`/`--effort` when given (Andres's
      * own model-select dropdown, mirrored per-agent once the New Session
-     * UI grows an agent picker - see docs/history/antigravity-adapter-plan.md
-     * Phase 2). $options['enable_task_tools'] (a Claude-Code-specific
+     * UI grows an agent picker).
+     * $options['enable_task_tools'] (a Claude-Code-specific
      * concept - Antigravity has no equivalent) is silently ignored if
      * present, per this interface's own "read only what you understand"
      * contract.
      *
-     * assigned_id is always null - confirmed live (see
-     * docs/history/antigravity-adapter-plan.md's "CLI flags" section) that no
+     * assigned_id is always null - confirmed live that no
      * --session-id/--conversation-id equivalent exists for starting a
      * fresh interactive session; `--conversation <id>` only RESUMES an
      * existing one. Real identity can only be learned reactively, off the
@@ -124,9 +121,8 @@ class AntigravityAdapter implements AgentAdapter
      * captured live during this research (PreToolUse, PreInvocation,
      * PostInvocation, Stop) carried any mode/permission field at all. This
      * map exists so the interface contract is satisfiable, but nothing
-     * calls normalize_hook_permission_mode()-style logic against it yet -
-     * see docs/history/antigravity-adapter-plan.md Phase 5 for the open item this
-     * flags.
+     * calls normalize_hook_permission_mode()-style logic against it yet
+     * (an open item).
      *
      * @return array<string, string>
      */

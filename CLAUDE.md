@@ -154,8 +154,8 @@ Docker-spawned, makes that impossible by construction — not by convention.
    assertions against every registered adapter), and `host-agent/lib/Runtimes/*` is HOW it
    runs, independently of which agent it is (`TmuxRuntime` vs
    `HeadlessRuntime` behind `RuntimeProvider`/`RuntimeRegistry`/`RuntimeType`,
-   plus `OpenCodeServeClient`, `CodexBridgeClient`, `CodexHeadlessRuntime` —
-   see `docs/history/headless-runtime-plan.md`). All PSR-4 autoloaded under
+   plus `OpenCodeServeClient`, `CodexBridgeClient`, `CodexHeadlessRuntime`).
+   All PSR-4 autoloaded under
    `HostAgent\Services`/`Stores`/`Agents`/`Runtimes`.
 
    Claude Code's headless runtime (no tmux pane) is a second persistent
@@ -337,8 +337,7 @@ that only `create_agent_session()`-spawned sessions have).
   everything possible from now on** (decided 2026-08-26). v1 `/session`
   only returns the tiny "currently live" set and is unreliable for
   enumeration (caused the headless sync to prune just-resumed sessions);
-  v2 is the fuller, canonical surface (see the "Convention" note in
-  `docs/history/headless-runtime-plan.md`). When touching any opencode-server
+  v2 is the fuller, canonical surface. When touching any opencode-server
   call, check whether a v2 endpoint exists and use it; fall back to v1
   only where v2 genuinely isn't available/working for that operation.
  - **OpenCode question events (1.18.21):** `GET /event` delivers

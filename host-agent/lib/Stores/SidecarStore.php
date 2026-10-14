@@ -81,8 +81,7 @@ class SidecarStore
                 // made that ?? see an already-"set" value and never fall
                 // through to the hook's own SESSIONEER_SESSION_NAME-based default).
                 'spawned_by_app' => $row['spawned_by_app'] !== null ? (bool)$row['spawned_by_app'] : null,
-                // Added 2026-08-24 (docs/history/antigravity-adapter-plan.md Phase
-                // 0) for multi-agent support - a row written before this
+                // Added 2026-08-24 for multi-agent support - a row written before this
                 // column existed reads back null here (add_column_if_missing()
                 // never backfills existing rows), which every real caller
                 // treats as "claude" (the only agent that existed before
