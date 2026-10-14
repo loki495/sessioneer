@@ -12,6 +12,9 @@ use App\Http\Router;
 
 $router = new Router();
 
+$router->post('/api/quick-prompt', [\App\Controllers\QuickPromptController::class, 'submit']);
+$router->get('/api/quick-prompt', [\App\Controllers\QuickPromptController::class, 'submit']);
+
 // Every endpoint that's POST-only in behavior also registers a GET route
 // to the same method - the method's own require_post_json() call is what
 // actually produces the 405, not the router. Keeps that 405 (rather than

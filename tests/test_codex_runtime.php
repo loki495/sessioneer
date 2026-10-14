@@ -15,6 +15,17 @@ use HostAgent\Stores\SessionStatusStore;
 use HostAgent\Stores\SidecarStore;
 use HostAgent\Stores\SqliteDb;
 
+// Direct invocation must be as isolated as tests/run.sh, including an
+// inherited SESSIONS_SQLITE_FILE from a managed coding session.
+$runtimeTestRoot = sys_get_temp_dir() . '/sessioneer-test-codex-runtime-' . getmypid();
+mkdir($runtimeTestRoot, 0700, true);
+putenv('SIDECAR_DIR=' . $runtimeTestRoot . '/sidecars');
+putenv('SESSIONS_SQLITE_FILE=' . $runtimeTestRoot . '/sessions.sqlite');
+register_shutdown_function(static function () use ($runtimeTestRoot): void {
+    SqliteDb::reset_connections_for_tests();
+    exec('rm -rf ' . escapeshellarg($runtimeTestRoot));
+});
+
 class FakeCodexBridgeClient extends CodexBridgeClient
 {
     /** @var array<int,array{method:string,params:array<string,mixed>}> */
@@ -145,6 +156,11 @@ assert_true($created['ok'] === true, 'Codex thread creation succeeds');
 assert_equal('codex-thread-1', $created['id'], 'Codex create returns the native thread id');
 assert_equal('thread/start', $fake->calls[0]['method'], 'Codex create uses thread/start');
 assert_equal('workspace-write', $fake->calls[0]['params']['sandbox'], 'Codex create uses the workspace-write sandbox');
+$restrictedFake = new FakeCodexBridgeClient();
+$restricted = new CodexHeadlessRuntime($restrictedFake, $queueRunner, '/usr/bin/codex');
+assert_equal(true, $restricted->create(['workdir' => '/tmp/project', 'read_only' => true])['ok'], 'Quick Prompt can create a read-only Codex thread');
+assert_equal('read-only', $restrictedFake->calls[0]['params']['sandbox'], 'Quick Prompt read-only option reaches native sandbox');
+assert_equal('on-request', $restrictedFake->calls[0]['params']['approvalPolicy'], 'Quick Prompt preserves Codex approval policy');
 
 assert_true($runtime->list()['ok'] === true, 'Codex thread list succeeds');
 $pagedFake = new FakePaginatedCodexBridgeClient();
@@ -194,7 +210,9 @@ assert_equal(true, $emptyDetail['session']['writable'], 'Codex brand-new unmater
 assert_equal(true, $emptyFake->calls[0]['params']['includeTurns'], 'Codex detail first requests retained turns');
 assert_true(!array_key_exists('includeTurns', $emptyFake->calls[1]['params']), 'Codex brand-new detail falls back to metadata-only thread/read');
 assert_equal(2, count($emptyFake->calls), 'Codex brand-new detail does not try to resume the unmaterialized thread');
-assert_true((new CodexHeadlessRuntime($emptyFake, $queueRunner, '/usr/bin/codex'))->send_message('codex-empty', 'first message')['ok'] === true, 'Codex brand-new thread sends its first message without a persisted rollout');
+$firstSend = (new CodexHeadlessRuntime($emptyFake, $queueRunner, '/usr/bin/codex'))->send_message('codex-empty', 'first message');
+assert_true($firstSend['ok'] === true, 'Codex brand-new thread sends its first message without a persisted rollout');
+assert_equal('turn-empty', $firstSend['turn_id'], 'first bridge submission retains its native turn correlation id');
 assert_equal('sessioneer/sendInput', $emptyFake->calls[3]['method'], 'Codex brand-new first message stays on the private bridge that created the thread');
 
 $unsupportedTurnsFake = new FakeUnsupportedTurnsCodexBridgeClient();

@@ -80,6 +80,7 @@ if (is_string($log) && $log !== '') {
             'ANTHROPIC_API_KEY' => getenv('ANTHROPIC_API_KEY'),
             'ANTHROPIC_AUTH_TOKEN' => getenv('ANTHROPIC_AUTH_TOKEN'),
             'SESSIONEER_SESSION_NAME' => getenv('SESSIONEER_SESSION_NAME'),
+        'QUICK_PROMPT_TOKEN_PRESENT' => getenv('QUICK_PROMPT_API_TOKEN') !== false,
             'CLAUDE_CONFIG_DIR' => getenv('CLAUDE_CONFIG_DIR'),
         ],
         'cwd' => getcwd(),

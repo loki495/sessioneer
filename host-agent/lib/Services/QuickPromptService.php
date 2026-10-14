@@ -1,0 +1,201 @@
+<?php
+
+declare(strict_types=1);
+
+namespace HostAgent\Services;
+
+use HostAgent\Runtimes\ClaudeHeadlessManagerClient;
+use HostAgent\Runtimes\ClaudeHeadlessRuntime;
+use HostAgent\Runtimes\CodexBridgeClient;
+use HostAgent\Runtimes\CodexHeadlessRuntime;
+use HostAgent\Runtimes\RuntimeProvider;
+use HostAgent\Stores\QuickPromptStore;
+use HostAgent\Stores\SidecarStore;
+use HostAgent\Stores\SessionStatusStore;
+
+/** Restricted facade over existing managed runtimes; no subprocess or shell execution here. */
+final class QuickPromptService
+{
+    /** @var \Closure(string):RuntimeProvider */
+    private \Closure $runtime;
+    private ClaudeHeadlessManagerClient $manager;
+
+    /** @param callable(string):RuntimeProvider|null $runtime */
+    public function __construct(?callable $runtime = null, ?ClaudeHeadlessManagerClient $manager = null)
+    {
+        $this->manager = $manager ?? new ClaudeHeadlessManagerClient(null, 2, false);
+        $this->runtime = $runtime !== null ? \Closure::fromCallable($runtime) : function (string $agent): RuntimeProvider {
+            return $agent === 'claude'
+                ? new ClaudeHeadlessRuntime($this->manager, $this->manager)
+                : new CodexHeadlessRuntime(new CodexBridgeClient(null, 2));
+        };
+    }
+
+    /** @param array<string, mixed> $request
+     * @return array<string, mixed>
+     */
+    public function start(array $request): array
+    {
+        $data = $request['input'] ?? null;
+        $key = $request['key'] ?? null;
+        if (!is_array($data) || !is_string($key) || preg_match('/^[a-f0-9]{64}$/D', $key) !== 1) return self::error('invalid_request', 422);
+        $settings = $this->validate($data);
+        if (isset($settings['type'])) return $settings;
+        $fingerprint = hash('sha256', json_encode([$settings, $data['prompt'], $data['session_id'] ?? null], JSON_THROW_ON_ERROR));
+        $previous = QuickPromptStore::reserve($key, $fingerprint);
+        if ($previous !== null) {
+            if ($previous['fingerprint'] !== $fingerprint) return self::error('idempotency_conflict', 409);
+            return is_array($previous['response']) ? $previous['response'] : self::error('dispatch_pending', 409);
+        }
+        $finish = static fn(array $result): array => QuickPromptStore::finish($key, $result);
+
+        $id = $data['session_id'] ?? null;
+        $lock = null;
+        try {
+            $runtime = ($this->runtime)($settings['agent']);
+            if ($id !== null) {
+                if (!is_string($id) || preg_match('/^[a-zA-Z0-9_-]{1,128}$/D', $id) !== 1) return $finish(self::error('invalid_session', 422));
+                // Continuation is deliberately limited to tracked, idle Claude
+                // plan sessions. Codex's queue may override sandbox settings;
+                // its continuation is refused until that boundary is verifiable.
+                $stored = QuickPromptStore::settings($id);
+                $session = SidecarStore::read_sidecar($id);
+                $state = SessionStatusStore::read_status($id);
+                if ($stored !== $settings || ($session['agent'] ?? null) !== 'claude' || ($session['runtime'] ?? null) !== 'headless'
+                    || ($session['workdir'] ?? null) !== $settings['workdir']
+                    || ($session['profile'] ?? null) !== $settings['profile']
+                    || ($state['mode'] ?? null) !== 'plan'
+                    || ($state['status'] ?? null) !== 'idle'
+                    || ($settings['model'] !== null && ($state['model'] ?? null) !== $settings['model']
+                        && SelectableModel::family_from_raw_model(is_string($state['model'] ?? null) ? $state['model'] : '') !== $settings['model'])) return $finish(self::error('invalid_session', 422));
+                // Only this short dispatch owns the lock, never completion wait.
+                $lock = fopen(Config::sidecar_dir() . '/quick-prompt-' . hash('sha256', $id) . '.lock', 'c');
+                if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) return $finish(self::error('session_busy', 409));
+                $live = $this->manager->request('sessioneer/status', ['session' => $id]);
+                if (($live['ok'] ?? false) !== true || ($live['state'] ?? null) !== 'idle' || ($live['process'] ?? null) !== 'running') return $finish(self::error('invalid_session', 422));
+            } else {
+                $created = $runtime->create([
+                    'workdir' => $settings['workdir'], 'model' => $settings['model'],
+                    'profile' => $settings['profile'], 'starting_mode' => 'plan', 'read_only' => true, 'include_session' => false, 'unique_name' => true,
+                ]);
+                $id = $created['ok'] === true ? ($created['id'] ?? $created['name'] ?? null) : null;
+                if (!is_string($id) || preg_match('/^[a-zA-Z0-9_-]{1,128}$/D', $id) !== 1) return $finish(self::error('agent_unavailable', 503));
+                if ($settings['agent'] === 'codex') {
+                    SidecarStore::write_sidecar($id, [
+                        'workdir' => $settings['workdir'], 'spawned_at' => time(), 'agent_session_id' => $id,
+                        'spawned_by_app' => true, 'agent' => 'codex', 'runtime' => 'headless',
+                    ]);
+                }
+                QuickPromptStore::track($id, $settings);
+            }
+            // Save the reference before sending: an ambiguous socket failure
+            // must never cause a retry to create or deliver a duplicate turn.
+            $reference = ['type' => 'session', 'status' => 'unknown', 'session_id' => $id, 'request_id' => $key];
+            $finish($reference);
+            $sent = $settings['agent'] === 'claude'
+                ? $this->manager->request('sessioneer/sendInput', ['session' => $id, 'content' => trim($data['prompt']), 'quick_prompt_id' => $key, 'require_plan' => true])
+                : $runtime->send_message($id, trim($data['prompt']));
+            if (($sent['ok'] ?? false) !== true) return $finish(self::error('delivery_failed', 503) + ['session_id' => $id]);
+            return $finish(['type' => 'session', 'status' => 'running', 'session_id' => $id, 'request_id' => $key, 'turn_id' => $sent['turn_id'] ?? null]);
+        } catch (\Throwable $e) {
+            error_log('Quick Prompt host dispatch failed: ' . $e::class);
+            if (Config::debug()) throw $e;
+            return $finish(self::error('agent_unavailable', 503) + (is_string($id) ? ['session_id' => $id] : []));
+        } finally {
+            if (is_resource($lock)) { flock($lock, LOCK_UN); fclose($lock); }
+        }
+    }
+
+    /** @param array<string, mixed> $input
+     * @return array<string, mixed>
+     */
+    private function validate(array $input): array
+    {
+        foreach (array_keys($input) as $field) {
+            if (!in_array($field, ['prompt', 'agent', 'project', 'mode', 'model', 'profile', 'session_id'], true)) return self::error('invalid_request', 422);
+        }
+        if (!is_string($input['prompt'] ?? null) || trim($input['prompt']) === '' || strlen($input['prompt']) > 16384 || preg_match('//u', $input['prompt']) !== 1 || str_contains($input['prompt'], "\0")) return self::error('invalid_prompt', 422);
+        foreach (['agent', 'project', 'mode', 'model', 'profile'] as $field) {
+            if (isset($input[$field]) && (!is_string($input[$field]) || $input[$field] === '')) return self::error('invalid_request', 422);
+        }
+        $agent = $input['agent'] ?? Config::sessioneer_config('QUICK_PROMPT_DEFAULT_AGENT', 'claude');
+        if (!in_array($agent, ['claude', 'codex'], true) || !in_array($agent, explode(',', Config::sessioneer_config('QUICK_PROMPT_AGENTS', 'claude')), true)) return self::error('invalid_agent', 422);
+        $project = $input['project'] ?? Config::sessioneer_config('QUICK_PROMPT_DEFAULT_PROJECT', '');
+        $projects = json_decode(Config::sessioneer_config('QUICK_PROMPT_PROJECTS', '{}'), true);
+        $path = is_array($projects) && is_string($project) ? ($projects[$project] ?? null) : null;
+        if (!is_string($path) || $path === '' || $path[0] !== '/' || !is_dir($path) || realpath($path) === false) return self::error('invalid_project', 422);
+        $mode = $input['mode'] ?? ($agent === 'claude' ? 'plan' : 'read-only');
+        if ($mode !== ($agent === 'claude' ? 'plan' : 'read-only')) return self::error('invalid_mode', 422);
+        $profile = $input['profile'] ?? (Config::sessioneer_config('QUICK_PROMPT_DEFAULT_PROFILE', '') ?: null);
+        if ($profile !== null && ($agent !== 'claude' || !in_array($profile, Config::claude_profile_names(), true))) return self::error('invalid_profile', 422);
+        $model = $input['model'] ?? (Config::sessioneer_config('QUICK_PROMPT_DEFAULT_MODEL', '') ?: null);
+        $models = json_decode(Config::sessioneer_config('QUICK_PROMPT_MODELS', '{"claude":["sonnet","haiku","opus","fable"],"codex":[]}'), true);
+        $allowed = is_array($models) && is_array($models[$agent] ?? null) ? $models[$agent] : [];
+        if ($model !== null && !in_array($model, $allowed, true)) return self::error('invalid_model', 422);
+        return ['agent' => $agent, 'project' => $project, 'workdir' => realpath($path), 'mode' => $mode, 'model' => $model, 'profile' => $profile];
+    }
+
+    /** @param array<string, mixed> $request
+     * @return array<string, mixed>
+     */
+    public function status(array $request): array
+    {
+        $id = $request['session_id'] ?? null;
+        if (!is_string($id) || preg_match('/^[a-zA-Z0-9_-]{1,128}$/D', $id) !== 1) return self::error('invalid_session', 422);
+        $settings = QuickPromptStore::settings($id);
+        if ($settings === null) return self::error('invalid_session', 422);
+        $reference = ['type' => 'session', 'status' => 'unknown', 'session_id' => $id];
+        if ($settings['agent'] === 'claude') {
+            $reply = $this->manager->request('sessioneer/status', ['session' => $id]);
+            if (($reply['ok'] ?? false) !== true) return $reference;
+            if (($reply['state'] ?? null) === 'blocked') return array_replace($reference, ['status' => 'blocked']);
+            if (($reply['state'] ?? null) === 'working' || ($reply['open_turns'] ?? 0) > 0) return array_replace($reference, ['status' => 'running']);
+            $result = $reply['last_result'] ?? null;
+            if (!is_array($result)) {
+                if (!empty($reply['last_turn_error'])) return self::error('agent_failed', 502) + ['session_id' => $id];
+                return $reference;
+            }
+            if (($result['request_id'] ?? null) !== ($request['request_id'] ?? null)) return $reference;
+            if (!empty($result['failed'])) return self::error('agent_failed', 502) + ['session_id' => $id];
+            return array_replace($reference, [
+                'status' => 'completed', 'completed' => true,
+                'text' => is_string($result['text'] ?? null) ? $result['text'] : '', 'has_tools' => !empty($result['has_tools']),
+            ]);
+        }
+        $runtime = ($this->runtime)('codex');
+        if ($runtime->pending_prompt($id) !== null) return array_replace($reference, ['status' => 'blocked']);
+        $reply = $runtime->detail($id);
+        if ($reply['ok'] !== true) return $reference;
+        $turns = $reply['session']['turns'] ?? [];
+        $turn = is_array($turns) && $turns !== [] ? $turns[array_key_last($turns)] : null;
+        if (is_array($turns) && count($turns) > 1) return $reference;
+        if (!is_array($turn)) return array_replace($reference, ['status' => 'running']);
+        // Without the submission's native turn id, a dashboard turn could
+        // be mistaken for our answer. Queued/uncorrelated delivery stays a link.
+        if (!is_string($request['turn_id'] ?? null) || ($turn['id'] ?? null) !== $request['turn_id']) return $reference;
+        if (($turn['status'] ?? null) === 'failed') return self::error('agent_failed', 502) + ['session_id' => $id];
+        if (($turn['status'] ?? null) !== 'completed') return array_replace($reference, ['status' => ($turn['status'] ?? null) === 'interrupted' ? 'interrupted' : 'running']);
+        $text = ''; $hasTools = false;
+        foreach (is_array($turn['items'] ?? null) ? $turn['items'] : [] as $item) {
+            if (!is_array($item)) { $hasTools = true; continue; }
+            if (($item['type'] ?? null) === 'agentMessage' && is_string($item['text'] ?? null)) $text = $item['text'];
+            elseif (($item['type'] ?? null) !== 'userMessage' && ($item['type'] ?? null) !== 'reasoning') $hasTools = true;
+        }
+        return array_replace($reference, ['status' => 'completed', 'completed' => true, 'text' => strlen($text) <= 8192 ? $text : '', 'has_tools' => $hasTools]);
+    }
+
+    /** Public errors are codes and fixed messages, never raw runtime diagnostics.
+     * @return array<string, mixed>
+     */
+    public static function error(string $code, int $http): array
+    {
+        return ['type' => 'error', 'code' => $code, 'message' => match ($code) {
+            'agent_unavailable' => 'Unable to start the agent',
+            'agent_failed' => 'The agent could not complete the prompt',
+            'delivery_failed' => 'Unable to deliver the prompt; check the session before retrying',
+            'dispatch_pending' => 'Dispatch is pending or uncertain; retry with the same idempotency key',
+            'idempotency_conflict' => 'Idempotency key was already used for another request',
+            default => 'Invalid or incompatible Quick Prompt request',
+        }, '_http' => $http];
+    }
+}

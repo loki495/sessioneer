@@ -36,13 +36,23 @@ require __DIR__ . '/../vendor/autoload.php';
 
 if (!App\Services\AuthService::request_host_allowed()) {
     http_response_code(421);
-    echo 'Host not allowed. Add it to ALLOWED_HOSTS in .env.';
+    if ($path === '/api/quick-prompt') {
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-store');
+        echo json_encode(['type' => 'error', 'code' => 'host_not_allowed', 'message' => 'Host not allowed']);
+    } else {
+        echo 'Host not allowed. Add it to ALLOWED_HOSTS in .env.';
+    }
 
     return;
 }
 
 $router = require __DIR__ . '/../src/routes.php';
 $handler = $router->match($_SERVER['REQUEST_METHOD'], $path);
+// This token API has a JSON 405 contract for every unsupported verb.
+if ($handler === null && $path === '/api/quick-prompt') {
+    $handler = $router->match('GET', $path);
+}
 
 if ($handler === null) {
     http_response_code(404);

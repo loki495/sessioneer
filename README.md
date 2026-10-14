@@ -73,7 +73,7 @@ an installable PWA, meant to be added to an iOS/Android home screen):
 
 ## Network binding (read this)
 
-There is **no login** - the network binding *is* the access control. This
+There is **no dashboard login** - the network binding *is* its access control. The optional Quick Prompt endpoint additionally requires its own bearer token. This
 app is intentionally **not** meant to be reachable from the public
 internet - it can create and kill agent sessions on your machine.
 
@@ -461,3 +461,7 @@ structure, hook rationale, development workflow, and testing details.
 ## License
 
 [MIT](LICENSE)
+
+## iOS Quick Prompt
+
+An optional token-authenticated `POST /api/quick-prompt` starts a new managed headless Claude (plan) or Codex (read-only) session. It returns a short terminal answer or a trusted dashboard link after a bounded wait, with shared rate limiting and optional idempotency keys. Explicit first-line hints can select validated agent/model/project/account settings. [Configuration, API schema, security boundaries, and exact iOS Shortcut actions](docs/quick-prompt.md).

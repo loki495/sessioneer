@@ -41,3 +41,7 @@ Every command the host agent runs goes through `proc_open()` with the command as
 ### Frontend Compatibility
 
 `public/js/*.js` is deliberately plain ES5 (no `const`/`let`/arrow functions/template literals) — mobile Safari compatibility issues were the repeated reason, since this is a PWA meant to be added to an iOS/Android home screen.
+
+### Quick Prompt API
+
+The token-authenticated `POST /api/quick-prompt` is a small additional socket client flow. The web service validates HTTP authentication/limits, parses explicit routing hints, and makes a bounded dispatch call. The host-side facade validates allowed project aliases and agent/model/account settings, reserves an optional idempotency key, and uses the existing Claude headless runtime/manager or Codex app-server runtime. HTTP completion probes are one-second state reads with per-call deadlines; the managed process outlives the HTTP response and disconnect. No new agent runner or queue is introduced. The container's only new state is its own SQLite rate-limit volume; host session and retry metadata remain host-side. Inline output requires a correlated terminal result and a short tool-free answer. See [Quick Prompt](quick-prompt.md).

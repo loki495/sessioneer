@@ -61,6 +61,15 @@ final class ClaudeHeadlessChild
         return $this->pending === [] ? null : reset($this->pending);
     }
 
+    /** Terminal result for the latest submitted turn; partial assistant messages never populate it.
+     * @var array<string, mixed>|null
+     */
+    public ?array $lastResult = null;
+
+    public ?string $quickPromptId = null;
+
+    public bool $turnUsedTools = false;
+
     public int $lastActivity;
 
     public bool $stopping = false;

@@ -9,8 +9,8 @@ use HostAgent\Services\Config;
 /** One-request/one-response client for Sessioneer's persistent Codex bridge. */
 class CodexBridgeClient extends UnixSocketJsonClient
 {
-    public function __construct(?string $socketPath = null)
+    public function __construct(?string $socketPath = null, int $timeoutSeconds = 30)
     {
-        parent::__construct($socketPath ?? Config::codex_bridge_socket(), 'Codex bridge');
+        parent::__construct($socketPath ?? Config::codex_bridge_socket(), 'Codex bridge', $timeoutSeconds, $timeoutSeconds === 30);
     }
 }

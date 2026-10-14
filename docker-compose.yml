@@ -29,6 +29,8 @@ services:
                 echo 'upload_max_filesize = 68M'; \
                 echo 'post_max_size = 70M'; \
             } > /usr/local/etc/php/conf.d/uploads.ini
+        RUN mkdir -p /var/www/quick-prompt-state \
+            && chown appuser:appgroup /var/www/quick-prompt-state
         WORKDIR /var/www/public
         USER appuser
         ENV HOME=/tmp
@@ -47,6 +49,12 @@ services:
       # expected ~60-80ms in parallel. This pre-forks worker processes so they
       # don't share one PHP thread. Supported since PHP 7.4.
       PHP_CLI_SERVER_WORKERS: 4
+      QUICK_PROMPT_API_TOKEN: ${QUICK_PROMPT_API_TOKEN:-}
+      QUICK_PROMPT_BASE_URL: ${QUICK_PROMPT_BASE_URL:-}
+      QUICK_PROMPT_WAIT_SECONDS: ${QUICK_PROMPT_WAIT_SECONDS:-6}
+      QUICK_PROMPT_MAX_ANSWER_BYTES: ${QUICK_PROMPT_MAX_ANSWER_BYTES:-2000}
+      QUICK_PROMPT_RATE_LIMIT: ${QUICK_PROMPT_RATE_LIMIT:-10}
+      QUICK_PROMPT_STATE_DIR: /var/www/quick-prompt-state
     volumes:
       # Code is mounted, not copied into the image, so edits show up on the
       # next request with no rebuild/restart needed. public/ (the docroot -
@@ -61,6 +69,7 @@ services:
       - ./public:/var/www/public
       - ./src:/var/www/src
       - ./vendor:/var/www/vendor
+      - quick-prompt-state:/var/www/quick-prompt-state
       # The ONLY thing the container can reach on the host: a UNIX socket
       # served by the host-native agent (see host-agent/). That agent must
       # already be installed and running (host-agent/install.sh) BEFORE
@@ -93,3 +102,6 @@ services:
     # networks:
     #   web:
     #     external: true
+
+volumes:
+  quick-prompt-state:

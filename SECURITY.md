@@ -18,13 +18,14 @@ Sessioneer is early-access software. Fixes land on `master` and in the next rele
 
 ## Security model
 
-Sessioneer is a personal, self-hosted, LAN-only application with **no built-in authentication**: whoever can reach it can control your agent sessions. The network binding is the access control (see the README's "Network binding" section). Within that model, every request is checked in layers:
+Sessioneer is a personal, self-hosted, LAN-only application with **no dashboard login**: whoever can reach the dashboard can control your agent sessions. The optional Quick Prompt endpoint additionally requires a dedicated bearer token. The network binding is the access control (see the README's "Network binding" section). Within that model, every request is checked in layers:
 
 - **Host allowlist:** requests whose `Host` isn't `localhost`, `127.0.0.1`, `::1`, `BIND_ADDR` or an `ALLOWED_HOSTS` entry are refused before any route runs, which blocks DNS rebinding.
-- **Same-origin and CSRF:** every state-changing request must be a POST whose `Origin`/`Referer`, when present, matches the host (a request with neither still needs the CSRF token), and must carry a session-bound CSRF token.
+- **Same-origin and CSRF:** browser state-changing requests must be a POST whose `Origin`/`Referer`, when present, matches the host (a request with neither still needs the CSRF token), and must carry a session-bound CSRF token.
+- **Quick Prompt:** `POST /api/quick-prompt` uses a dedicated environment-provided bearer token, compared with `hash_equals` over fixed-length hashes; it fails closed when unconfigured. Cookie/CSRF authentication is not used for this route. Origin submissions are rejected, JSON input is size-limited, and authenticated requests share an atomic rate limit. Projects are selected only through host-configured aliases; modes are Claude plan or Codex read-only with approvals preserved. Session links use trusted HTTPS configuration. This token protects only this endpoint, so the broader app must remain private. Ingress must also limit unauthenticated traffic. See [Quick Prompt](docs/quick-prompt.md).
 - **Fresh revalidation:** session names, prompt options and paths are re-checked against fresh state on each request; directory browsing (`browse_dir`/`create_dir`) is confined to the configured home root. Creating or resuming a session accepts any absolute directory the caller picks, consistent with the no-login model.
 - **No shell strings:** the host agent runs every command as an argument array, never through a shell.
-- **Container isolation:** the web container has no access to tmux, the host process table or the filesystem beyond its own code. It only talks to the host agent over a UNIX socket.
+- **Container isolation:** the web container has no access to tmux, the host process table or the host filesystem beyond its bind-mounted code and dedicated web rate-limit state volume. It only talks to the host agent over a UNIX socket.
 
 ## Scope
 

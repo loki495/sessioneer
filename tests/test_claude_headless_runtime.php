@@ -37,6 +37,7 @@ $root = sys_get_temp_dir() . '/sessioneer-test-claude-headless-runtime-' . getmy
 // a session locked and corrupted real session rows this way.
 $realSidecarDir = Config::sidecar_dir();
 putenv('SIDECAR_DIR=' . $root . '/sidecars');
+putenv('SESSIONS_SQLITE_FILE=' . $root . '/sessions.sqlite');
 @mkdir($root . '/sidecars', 0700, true);
 
 if (Config::sidecar_dir() === $realSidecarDir) {
@@ -368,5 +369,16 @@ assert_contains('unknown permission mode', $rt->set_mode($s1, 'yolo')['message']
 assert_equal(1, count($fake->calls), 'without reaching the manager');
 $fake->responses['sessioneer/setMode'] = ['ok' => false, 'message' => 'Session has no running Claude process'];
 assert_equal('Session has no running Claude process', $rt->set_mode($s1, 'plan')['message'], 'a session with no process is a handled error');
+
+$quickA = $rt->create(['workdir' => $root . '/work', 'include_session' => false, 'unique_name' => true]);
+$quickB = $rt->create(['workdir' => $root . '/work', 'include_session' => false, 'unique_name' => true]);
+assert_equal(true, $quickA['ok'], 'Quick Prompt managed creation succeeds');
+assert_equal(true, $quickB['ok'], 'a second Quick Prompt managed creation succeeds');
+assert_true($quickA['id'] !== $quickB['id'], 'distinct Quick Prompt submissions never reuse a managed reference');
+foreach ([$quickA, $quickB] as $quick) {
+    $made[] = $quick['name'];
+    assert_true(preg_match('/^claude-headless-\\d{8}-\\d{6}(?:-\\d+)?-[a-f0-9]{32}$/D', $quick['name']) === 1, 'Quick Prompt references have an independent nonce beyond the timestamp');
+    assert_equal([], $quick['session'], 'lightweight creation skips unrelated transcript enrichment');
+}
 
 test_exit();

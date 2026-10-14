@@ -50,4 +50,53 @@ class AgentClient
 
         return $decoded;
     }
+    /** A deadline across connect/write/read, used by Quick Prompt only.
+     * Closing this client socket never cancels a managed agent session.
+     * @param array<string, mixed> $request
+     * @return array<string, mixed>
+     */
+    public static function agent_call_bounded(array $request, float $seconds): array
+    {
+        if ($seconds <= 0) return ['ok' => false];
+        $deadline = microtime(true) + $seconds;
+        $socket = @stream_socket_client('unix://' . self::agent_socket_path(), $errno, $errstr, min(0.5, $seconds));
+        if ($socket === false) return ['ok' => false];
+        stream_set_blocking($socket, false);
+        $payload = json_encode($request, JSON_THROW_ON_ERROR);
+        $offset = 0;
+        $raw = '';
+        try {
+            while ($offset < strlen($payload)) {
+                if (!self::wait_socket($socket, $deadline, true)) return ['ok' => false];
+                $written = @fwrite($socket, substr($payload, $offset));
+                if ($written === false) return ['ok' => false];
+                $offset += $written;
+            }
+            stream_socket_shutdown($socket, STREAM_SHUT_WR);
+            while (!feof($socket)) {
+                if (!self::wait_socket($socket, $deadline, false)) return ['ok' => false];
+                $chunk = @fread($socket, 65536);
+                if ($chunk === false) return ['ok' => false];
+                $raw .= $chunk;
+                if (strlen($raw) > 1048576) return ['ok' => false];
+            }
+            $decoded = json_decode($raw, true);
+            return is_array($decoded) ? $decoded : ['ok' => false];
+        } finally {
+            fclose($socket);
+        }
+    }
+
+    /** @param resource $socket */
+    private static function wait_socket($socket, float $deadline, bool $writing): bool
+    {
+        $remaining = $deadline - microtime(true);
+        if ($remaining <= 0) return false;
+        $read = $writing ? null : [$socket];
+        $write = $writing ? [$socket] : null;
+        $except = null;
+        $seconds = (int)$remaining;
+        return @stream_select($read, $write, $except, $seconds, (int)(($remaining - $seconds) * 1000000)) > 0;
+    }
+
 }
