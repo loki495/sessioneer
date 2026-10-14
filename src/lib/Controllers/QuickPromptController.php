@@ -26,7 +26,6 @@ final class QuickPromptController extends Controller
             } catch (\Throwable $e) {
                 // No exception text: it may include paths or request contents.
                 error_log('Quick Prompt failed: ' . $e::class);
-                if (getenv('SESSIONEER_DEBUG') === '1') throw $e;
                 $result = QuickPromptService::error('service_unavailable', 'Quick Prompt is temporarily unavailable', 503);
             }
         }

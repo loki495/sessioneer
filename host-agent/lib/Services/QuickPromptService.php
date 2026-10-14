@@ -99,7 +99,6 @@ final class QuickPromptService
             return $finish(['type' => 'session', 'status' => 'running', 'session_id' => $id, 'request_id' => $key, 'turn_id' => $sent['turn_id'] ?? null]);
         } catch (\Throwable $e) {
             error_log('Quick Prompt host dispatch failed: ' . $e::class);
-            if (Config::debug()) throw $e;
             return $finish(self::error('agent_unavailable', 503) + (is_string($id) ? ['session_id' => $id] : []));
         } finally {
             if (is_resource($lock)) { flock($lock, LOCK_UN); fclose($lock); }
