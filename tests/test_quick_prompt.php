@@ -281,7 +281,8 @@ class QuickPromptFakeRouterPost
     public int $calls = 0;
     public ?array $reply = null;
     public ?array $body = null;
-    public function __invoke(string $url, array $body, float $timeout): ?array { $this->calls++; $this->body = $body; return $this->reply; }
+    public float $timeout = 0.0;
+    public function __invoke(string $url, array $body, float $timeout): ?array { $this->calls++; $this->body = $body; $this->timeout = $timeout; return $this->reply; }
 }
 $ask = static fn(array $picked): array => ['message' => ['content' => json_encode($picked)]];
 $post = new QuickPromptFakeRouterPost();
@@ -309,6 +310,18 @@ assert_equal(true, $codex->options['read_only'], 'which still starts read-only')
 $claudeCreates = $runtime->creates;
 $r = $routedStart(['prompt' => 'use codex to review the tests', 'agent' => 'claude']);
 assert_equal($claudeCreates + 1, $runtime->creates, 'an explicit client field beats the router');
+$post->reply = $ask(['agent' => 'codex', 'profile' => 'work', 'model' => 'sonnet', 'project' => 'dibs', 'intent' => 'session']);
+$claudeCreates = $runtime->creates; $codexCreates = count($codex->sent);
+$guarded = $routedStart(['prompt' => 'what is the capital of France']);
+assert_equal($claudeCreates + 1, $runtime->creates, 'values the prompt never mentions are ignored, even when the model offers them');
+assert_equal($codexCreates, count($codex->sent), 'so a prompt with no agent named never goes to Codex');
+assert_equal('session', $guarded['intent'], 'while the intent is still taken from the router');
+assert_equal(20.0, $post->timeout, 'the router gets a timeout long enough for a cold model load');
+assert_equal('1h', $post->body['keep_alive'], 'and asks Ollama to keep the model loaded');
+putenv('QUICK_PROMPT_ROUTER_TIMEOUT_SECONDS=99');
+$routedStart(['prompt' => 'timeout is capped']);
+assert_equal(60.0, $post->timeout, 'the timeout is capped');
+putenv('QUICK_PROMPT_ROUTER_TIMEOUT_SECONDS=');
 $post->reply = $ask(['agent' => 'shell', 'project' => '/etc', 'model' => '; rm -rf /'] + $none);
 $r = $routedStart(['prompt' => 'hostile router output']);
 assert_equal('session', $r['type'], 'values outside the allowlists are ignored, the defaults apply');

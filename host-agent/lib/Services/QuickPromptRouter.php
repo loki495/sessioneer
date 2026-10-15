@@ -60,7 +60,7 @@ final class QuickPromptRouter
             'required' => ['agent', 'profile', 'model', 'project', 'intent'],
         ];
         $system = "You route one request for a coding-assistant launcher. Reply with JSON only.\n"
-            . "Fields: agent, profile (account), model, project (starting directory name): use null unless the request names one or clearly implies one.\n"
+            . "Fields: agent, profile (account), model, project (starting directory name): use null unless the request literally names that value.\n"
             . 'intent: "answer" for a quick question or lookup needing a short reply and no file changes or long work; "session" for anything that needs tools, editing, investigation or several steps.' . "\n"
             . 'Allowed agents: ' . json_encode($agents) . '. Allowed profiles: ' . json_encode($profiles) . '. Allowed models: ' . json_encode($models)
             . '. Allowed projects: ' . json_encode($projects) . ".\n"
@@ -70,12 +70,13 @@ final class QuickPromptRouter
             'stream' => false,
             'think' => false,
             'format' => $schema,
+            'keep_alive' => Config::sessioneer_config('QUICK_PROMPT_ROUTER_KEEP_ALIVE', '1h'),
             'options' => ['temperature' => 0, 'num_predict' => 160],
             'messages' => [
                 ['role' => 'system', 'content' => $system],
                 ['role' => 'user', 'content' => mb_substr($prompt, 0, 2000)],
             ],
-        ], (float)max(1, min(30, (int)Config::sessioneer_config('QUICK_PROMPT_ROUTER_TIMEOUT_SECONDS', '5'))));
+        ], (float)max(1, min(60, (int)Config::sessioneer_config('QUICK_PROMPT_ROUTER_TIMEOUT_SECONDS', '20'))));
 
         $content = is_array($reply) ? ($reply['message']['content'] ?? null) : null;
         $picked = is_string($content) ? json_decode($content, true) : null;
@@ -88,7 +89,9 @@ final class QuickPromptRouter
         $result = [];
 
         foreach ($allowed as $field => $values) {
-            if (is_string($picked[$field] ?? null) && in_array($picked[$field], $values, true)) {
+            // Small models fill every field with a plausible value; only a name the prompt actually contains counts.
+            if (is_string($picked[$field] ?? null) && in_array($picked[$field], $values, true)
+                && preg_match('/(?<![\w-])' . preg_quote($picked[$field], '/') . '(?![\w-])/iu', $prompt) === 1) {
                 $result[$field] = $picked[$field];
             }
         }
