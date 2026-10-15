@@ -250,6 +250,7 @@ foreach ([
     ['API Error: 529 overloaded_error', 'service_unavailable', 'The model service is unavailable'],
     ["Requested permission mode 'auto' was not applied (Claude reports 'default')", 'mode_not_applied', 'The permission mode could not be applied'],
     ['Claude process exited unexpectedly (code 1): boom', 'agent_crashed', 'The agent process crashed'],
+    ['Cannot set permission mode to auto: auto mode unavailable for this model', 'mode_not_applied', 'The permission mode could not be applied'],
     ['something odd happened', 'agent_error', 'The agent could not complete the prompt'],
 ] as [$raw, $reason, $headline]) {
     $err = $cause($raw);
