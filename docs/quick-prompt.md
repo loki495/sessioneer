@@ -85,7 +85,7 @@ An error says what happened, in the agent's own words after scrubbing:
 {"type":"error","code":"agent_failed","reason":"quota_exhausted","message":"Usage limit reached: You've hit your usage limit. Resets at 5pm (America/New_York).","detail":"You've hit your usage limit. Resets at 5pm (America/New_York)."}
 ```
 
-`code` is the stable category (`agent_failed`, `delivery_failed`, `agent_unavailable`, ...). `reason` is one of `quota_exhausted`, `auth_failed`, `service_unavailable`, `model_unavailable`, `mode_not_applied`, `agent_crashed`, `host_unavailable` or `agent_error`, guessed from the agent's text. `message` leads with the reason and is ready to show in a Shortcut. `detail` is the agent's own text with absolute paths, secrets and long token-like strings, e-mail addresses and control characters removed, cut to 240 characters. Unexpected exceptions inside Sessioneer never contribute text, only the generic message.
+`code` is the stable category (`agent_failed`, `delivery_failed`, `agent_unavailable`, ...). `reason` is one of `quota_exhausted`, `auth_failed`, `service_unavailable`, `model_unavailable`, `mode_not_applied`, `agent_crashed`, `host_unavailable` or `agent_error`, guessed from the agent's text. `account` (Claude only) is the profile the session ran on, or `default`; a quota or login message names it, e.g. “Usage limit reached (work account)”. `message` leads with the reason and is ready to show in a Shortcut. `detail` is the agent's own text with absolute paths, secrets and long token-like strings, e-mail addresses and control characters removed, cut to 240 characters. Unexpected exceptions inside Sessioneer never contribute text, only the generic message.
 
 ## Cleanup
 

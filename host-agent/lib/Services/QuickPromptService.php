@@ -89,14 +89,14 @@ final class QuickPromptService
                     'profile' => $settings['profile'], 'starting_mode' => $settings['mode'] === 'plan' || $settings['agent'] === 'codex' ? 'plan' : null, 'read_only' => true, 'include_session' => false, 'unique_name' => true,
                 ]);
                 $id = $created['ok'] === true ? ($created['id'] ?? $created['name'] ?? null) : null;
-                if (!is_string($id) || preg_match('/^[a-zA-Z0-9_-]{1,128}$/D', $id) !== 1) return $finish(self::error('agent_unavailable', 503, is_string($created['message'] ?? null) ? $created['message'] : null));
+                if (!is_string($id) || preg_match('/^[a-zA-Z0-9_-]{1,128}$/D', $id) !== 1) return $finish(self::error('agent_unavailable', 503, is_string($created['message'] ?? null) ? $created['message'] : null, $this->account($settings)));
                 // `claude -p --permission-mode auto` is silently ignored (the manager reports
                 // that as a mode warning), so auto is applied after spawn like the dashboard does.
                 if ($settings['agent'] === 'claude' && $settings['mode'] === 'auto') {
                     $applied = $runtime->set_mode($id, 'auto');
                     if ($applied['ok'] !== true) {
                         $this->discard('claude', $id);
-                        return $finish(self::error('agent_unavailable', 503, is_string($applied['message'] ?? null) ? $applied['message'] : null));
+                        return $finish(self::error('agent_unavailable', 503, is_string($applied['message'] ?? null) ? $applied['message'] : null, $this->account($settings)));
                     }
                 }
                 if ($settings['agent'] === 'codex') {
@@ -118,7 +118,7 @@ final class QuickPromptService
                 : $runtime->send_message($id, trim($data['prompt']));
             if (($sent['ok'] ?? false) !== true) {
                 // A session this request created and could not feed is only clutter.
-                return $finish(self::error('delivery_failed', 503, is_string($sent['message'] ?? null) ? $sent['message'] : null) + ($isNew ? [] : ['session_id' => $id]) + ($isNew && !$this->discard($settings['agent'], $id) ? ['session_id' => $id] : []));
+                return $finish(self::error('delivery_failed', 503, is_string($sent['message'] ?? null) ? $sent['message'] : null, $this->account($settings)) + ($isNew ? [] : ['session_id' => $id]) + ($isNew && !$this->discard($settings['agent'], $id) ? ['session_id' => $id] : []));
             }
             return $finish(['type' => 'session', 'status' => 'running', 'session_id' => $id, 'request_id' => $key, 'turn_id' => $sent['turn_id'] ?? null] + ($isNew ? ['created' => true, 'intent' => $intent] : []));
         } catch (\Throwable $e) {
@@ -158,6 +158,12 @@ final class QuickPromptService
         return ['settings' => $settings, 'intent' => $intent];
     }
 
+    /** @param array<string, mixed> $settings */
+    private function account(array $settings): ?string
+    {
+        return $settings['agent'] === 'claude' ? (is_string($settings['profile']) ? $settings['profile'] : 'default') : null;
+    }
+
     /** Stops and archives a session this feature created; its conversation stays resumable. */
     private function discard(string $agent, string $id): bool
     {
@@ -175,7 +181,8 @@ final class QuickPromptService
     /** @return array<string, mixed> */
     private function failed(string $id, string $agent, mixed $requestId, mixed $raw = null): array
     {
-        $error = self::error('agent_failed', 502, is_string($raw) ? $raw : null);
+        $profile = QuickPromptStore::settings($id)['profile'] ?? null;
+        $error = self::error('agent_failed', 502, is_string($raw) ? $raw : null, $agent === 'claude' ? (is_string($profile) ? $profile : 'default') : null);
         if (!$this->discard($agent, $id)) $error += ['session_id' => $id];
         if (is_string($requestId) && preg_match('/^[a-f0-9]{64}$/D', $requestId) === 1) QuickPromptStore::finish($requestId, $error);
         return $error;
@@ -288,7 +295,7 @@ final class QuickPromptService
     /** Public errors are codes and fixed messages, never raw runtime diagnostics.
      * @return array<string, mixed>
      */
-    public static function error(string $code, int $http, ?string $raw = null): array
+    public static function error(string $code, int $http, ?string $raw = null, ?string $account = null): array
     {
         $message = match ($code) {
             'agent_unavailable' => 'Unable to start the agent',
@@ -299,7 +306,8 @@ final class QuickPromptService
             default => 'Invalid or incompatible Quick Prompt request',
         };
         $detail = $raw !== null ? self::scrub($raw) : '';
-        if ($detail === '') return ['type' => 'error', 'code' => $code, 'message' => $message, '_http' => $http];
+        $who = $account !== null ? ['account' => $account] : [];
+        if ($detail === '') return ['type' => 'error', 'code' => $code, 'message' => $message, '_http' => $http] + $who;
         $reason = self::classify($detail);
         $headline = [
             'quota_exhausted' => 'Usage limit reached',
@@ -310,7 +318,8 @@ final class QuickPromptService
             'agent_crashed' => 'The agent process crashed',
             'host_unavailable' => 'The agent host is unreachable',
         ][$reason] ?? $message;
-        return ['type' => 'error', 'code' => $code, 'reason' => $reason, 'message' => $headline . ': ' . $detail, 'detail' => $detail, '_http' => $http];
+        if ($account !== null && in_array($reason, ['quota_exhausted', 'auth_failed'], true)) $headline .= " ({$account} account)";
+        return ['type' => 'error', 'code' => $code, 'reason' => $reason, 'message' => $headline . ': ' . $detail, 'detail' => $detail, '_http' => $http] + $who;
     }
 
     /** What went wrong, as a stable machine-readable word.
