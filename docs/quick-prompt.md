@@ -75,7 +75,7 @@ The first line is stripped before delivery. Its space-separated `key=value` fiel
 
 ## Routing from the prompt
 
-With `QUICK_PROMPT_ROUTER_URL` set, the host asks a small local Ollama model (structured JSON output) before any session exists: which agent, Claude account, model and project the request names or implies, and whether it is a one-off question (`answer`) or real work (`session`). So “use codex to explain this” or “with the work profile, check the dibs tests” launches the right session without a Claude turn. The model only chooses among the configured agents, accounts, models and project **names**; it never sees paths and never chooses permissions, so a hostile prompt can at worst select a different allowed option. A chosen agent, account, model or project is accepted only if its name appears in the prompt (small models otherwise fill every field with a plausible value), so say “use codex”, “work profile”, “opus” or the project's name literally. Fields you set in the JSON body or the `@sessioneer` line always win, a value the chosen agent cannot use is dropped, and a router that is off, slow or returns nonsense falls back to the defaults. The prompt is delivered unchanged. Pull a model first (`ollama pull qwen3:4b`) and run `ollama serve` on the host; if the router is down, “use codex” is ignored and the default agent starts, which may spend Claude quota.
+With `QUICK_PROMPT_ROUTER_URL` set, the host asks a small local Ollama model (structured JSON output) before any session exists: which agent, Claude account, model and project the request names. So “use codex to explain this” or “with the work profile, check the dibs tests” launches the right session without a Claude turn. The model only chooses among the configured agents, accounts, models and project **names**; it never sees paths and never chooses permissions, so a hostile prompt can at worst select a different allowed option. A chosen agent, account, model or project is accepted only if its name appears in the prompt (small models otherwise fill every field with a plausible value), so say “use codex”, “work profile”, “opus” or the project's name literally. Fields you set in the JSON body or the `@sessioneer` line always win, a value the chosen agent cannot use is dropped, and a router that is off, slow or returns nonsense falls back to the defaults. The prompt is delivered unchanged. Pull a model first (`ollama pull qwen3:4b`) and run `ollama serve` on the host; if the router is down, “use codex” is ignored and the default agent starts, which may spend Claude quota.
 
 ## Errors
 
@@ -92,13 +92,13 @@ An error says what happened, in the agent's own words after scrubbing:
 A session this endpoint created is archived (stopped; its transcript stays in the Archived list and can be resumed) in two cases:
 
 - **Errors:** an agent that fails, or a session that cannot take its prompt. The error carries no session link.
-- **One-off answers:** the router judged the request an `answer`, the agent finished with a short, tool-free reply, and the session is idle. The response is `{"type":"answer","text":"...","archived":true}` with no link, and a retry with the same idempotency key returns that same answer.
+- **One-line answers:** the agent finished with a short, tool-free reply (the same test as returning an inline answer) and the session is idle. The response is `{"type":"answer","text":"...","archived":true}` with no link, and a retry with the same idempotency key returns that same answer.
 
-A running session, one waiting on an approval, a continued session, and any answer when the router is off (no intent) are never archived. Set `QUICK_PROMPT_ARCHIVE_ANSWERS=0` to keep answer sessions.
+The test is the outcome, not a prediction, so it works with the router off. A session still running, one waiting on an approval, a long or tool-using reply (these come back as `type: session`) and a continued session are never archived. Set `QUICK_PROMPT_ARCHIVE_ANSWERS=0` to keep answer sessions.
 
 `session_id` is a **Sessioneer reference**, not necessarily the agent's conversation UUID. Explicit continuation currently accepts only a Quick Prompt-created Claude session with identical settings, canonical project path, account, and a live idle process still in its original permission mode. Other coding conversations, dormant sessions, busy/blocked sessions, and Codex continuation are refused. The existing Codex queue does not expose a sufficiently verifiable continuation permission boundary. Use a fresh Codex session instead.
 
-Successful HTTP 200 responses are one of (an archived one-off answer has `"archived":true` and no link, see Cleanup):
+Successful HTTP 200 responses are one of (an archived one-line answer has `"archived":true` and no link, see Cleanup):
 
 ```json
 {"type":"answer","text":"The failing test is caused by...","session_url":"https://sessioneer.example/session.php?session=claude-headless-123","session_id":"claude-headless-123"}

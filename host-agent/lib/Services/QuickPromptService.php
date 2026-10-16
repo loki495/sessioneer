@@ -52,12 +52,9 @@ final class QuickPromptService
         $finish = static fn(array $result): array => QuickPromptStore::finish($key, $result);
 
         $id = $data['session_id'] ?? null;
-        $intent = null;
         if ($id === null) {
             // After the reservation, so a retry never asks the router again.
-            $routed = $this->route($data, $settings);
-            $settings = $routed['settings'];
-            $intent = $routed['intent'];
+            $settings = $this->route($data, $settings);
         }
         $lock = null;
         $isNew = false;
@@ -111,7 +108,7 @@ final class QuickPromptService
             // must never cause a retry to create or deliver a duplicate turn.
             $isNew = ($data['session_id'] ?? null) === null;
             $reference = ['type' => 'session', 'status' => 'unknown', 'session_id' => $id, 'request_id' => $key];
-            if ($isNew) $reference += ['created' => true, 'intent' => $intent];
+            if ($isNew) $reference += ['created' => true];
             $finish($reference);
             $sent = $settings['agent'] === 'claude'
                 ? $this->manager->request('sessioneer/sendInput', ['session' => $id, 'content' => trim($data['prompt']), 'quick_prompt_id' => $key, 'require_mode' => $settings['mode']])
@@ -120,7 +117,7 @@ final class QuickPromptService
                 // A session this request created and could not feed is only clutter.
                 return $finish(self::error('delivery_failed', 503, is_string($sent['message'] ?? null) ? $sent['message'] : null, $this->account($settings)) + ($isNew ? [] : ['session_id' => $id]) + ($isNew && !$this->discard($settings['agent'], $id) ? ['session_id' => $id] : []));
             }
-            return $finish(['type' => 'session', 'status' => 'running', 'session_id' => $id, 'request_id' => $key, 'turn_id' => $sent['turn_id'] ?? null] + ($isNew ? ['created' => true, 'intent' => $intent] : []));
+            return $finish(['type' => 'session', 'status' => 'running', 'session_id' => $id, 'request_id' => $key, 'turn_id' => $sent['turn_id'] ?? null] + ($isNew ? ['created' => true] : []));
         } catch (\Throwable $e) {
             error_log('Quick Prompt host dispatch failed: ' . $e::class);
             $kept = is_string($id) && !($isNew && $this->discard($settings['agent'], $id));
@@ -133,11 +130,11 @@ final class QuickPromptService
     /** Fills the fields the client left out from the local router; explicit fields always win.
      * @param array<string, mixed> $data
      * @param array<string, mixed> $settings
-     * @return array{settings: array<string, mixed>, intent: ?string}
+     * @return array<string, mixed> the settings to use
      */
     private function route(array $data, array $settings): array
     {
-        if (!QuickPromptRouter::enabled()) return ['settings' => $settings, 'intent' => null];
+        if (!QuickPromptRouter::enabled()) return $settings;
         $models = json_decode(Config::sessioneer_config('QUICK_PROMPT_MODELS', '{"claude":["sonnet","haiku","opus","fable"],"codex":[]}'), true);
         $projects = json_decode(Config::sessioneer_config('QUICK_PROMPT_PROJECTS', '{}'), true);
         $picked = $this->router->route(trim($data['prompt']), [
@@ -146,16 +143,14 @@ final class QuickPromptService
             'project' => is_array($projects) ? array_map('strval', array_keys($projects)) : [],
             'models' => is_array($models) ? $models : [],
         ]);
-        $intent = $picked['intent'] ?? null;
-        unset($picked['intent']);
         $picked = array_diff_key($picked, $data);
         // A model or account the chosen agent cannot use is dropped, never an error.
         foreach ([$picked, array_diff_key($picked, ['model' => 1, 'profile' => 1])] as $candidate) {
             if ($candidate === []) break;
             $routed = $this->validate($candidate + $data);
-            if (!isset($routed['type'])) return ['settings' => $routed, 'intent' => $intent];
+            if (!isset($routed['type'])) return $routed;
         }
-        return ['settings' => $settings, 'intent' => $intent];
+        return $settings;
     }
 
     /** @param array<string, mixed> $settings */
