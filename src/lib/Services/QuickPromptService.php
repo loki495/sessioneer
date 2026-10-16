@@ -97,11 +97,13 @@ final class QuickPromptService
         if ($key !== null && (!is_string($key) || preg_match('/^[a-zA-Z0-9_.:-]{1,128}$/D', $key) !== 1)) return self::error('invalid_idempotency_key', 'Invalid idempotency key', 422);
         $result = ($this->call)(['action' => 'quick_prompt_start', 'input' => $input, 'key' => hash('sha256', $key ?? bin2hex(random_bytes(32)))], 10.0);
         if (!isset($result['type'])) return self::error('agent_unavailable', 'Unable to reach the host agent; retry with the same idempotency key', 503);
+        // A retry of an answer whose session was already archived: the stored answer is the whole reply.
+        if ($result['type'] === 'answer' && !empty($result['archived']) && is_string($result['text'] ?? null)) return ['type' => 'answer', 'text' => $result['text'], 'archived' => true];
         $id = $result['session_id'] ?? null;
         if ($result['type'] === 'error' || !is_string($id)) return $this->public_result($result, $base);
         $requestId = $result['request_id'] ?? null;
         $turnId = $result['turn_id'] ?? null;
-        $disposable = !empty($result['created']) && ($result['intent'] ?? null) === 'answer';
+        $disposable = !empty($result['created']);
         $deadline = ($this->now)() + self::integer('QUICK_PROMPT_WAIT_SECONDS', 6, 0, 15);
         while (($remaining = $deadline - ($this->now)()) > 0) {
             $probe = ($this->call)(['action' => 'quick_prompt_status', 'session_id' => $id, 'request_id' => $requestId, 'turn_id' => $turnId], min(2.0, $remaining));
@@ -113,7 +115,7 @@ final class QuickPromptService
         }
         $public = $this->public_result($result, $base);
         if ($disposable && ($public['type'] ?? null) === 'answer' && is_string($requestId)) {
-            // A short answer the router judged a one-off: archive its session, keeping the transcript.
+            // A finished, short, tool-free reply is a one-liner: archive its session, keeping the transcript.
             $answer = ['type' => 'answer', 'text' => $public['text'], 'archived' => true];
             $done = ($this->call)(['action' => 'quick_prompt_dispose', 'session_id' => $id, 'request_id' => $requestId, 'response' => $answer], 5.0);
             if (($done['archived'] ?? false) === true) return $answer;
