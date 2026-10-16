@@ -246,6 +246,7 @@ $cause = static function (string $raw, string $agent = 'claude') use (&$manager,
 foreach ([
     ["You've hit your usage limit. Resets at 5pm (America/New_York).", 'quota_exhausted', 'Usage limit reached'],
     ['API Error: 429 rate limit exceeded', 'quota_exhausted', 'Usage limit reached'],
+    ["You've hit your session limit · resets 6pm (America/Los_Angeles)", 'quota_exhausted', 'Usage limit reached'],
     ['Not logged in · Please run /login', 'auth_failed', 'Authentication failed'],
     ['API Error: 529 overloaded_error', 'service_unavailable', 'The model service is unavailable'],
     ["Requested permission mode 'auto' was not applied (Claude reports 'default')", 'mode_not_applied', 'The permission mode could not be applied'],
