@@ -320,7 +320,7 @@ final class QuickPromptService
     {
         foreach ([
             'mode_not_applied' => '/permission mode/i',
-            'quota_exhausted' => '/usage limit|rate.?limit|quota|limit (?:reached|exceeded)|too many requests|\b429\b/i',
+            'quota_exhausted' => '/(?:usage|session|weekly|daily) limit|rate.?limit|quota|limit (?:reached|exceeded)|too many requests|\b429\b/i',
             'auth_failed' => '/not logged in|log ?in|unauthori[sz]ed|authenticat|credential|api key|\b40[13]\b/i',
             'model_unavailable' => '/model[^.]{0,60}(?:not found|unavailable|not available|access|does not exist)/i',
             'service_unavailable' => '/overloaded|\b(?:500|502|503|529)\b|timed? ?out|connection|network|unavailable/i',
