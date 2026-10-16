@@ -256,11 +256,14 @@ foreach ([
 ] as [$raw, $reason, $headline]) {
     $err = $cause($raw);
     assert_equal('agent_failed', $err['code'], 'failure code stays stable for: ' . $reason);
+    assert_equal('default', $err['account'], 'the error names the account the session ran on: ' . $reason);
     assert_equal($reason, $err['reason'], 'cause classified as ' . $reason);
-    assert_true(str_starts_with($err['message'], $headline . ': '), 'message leads with what happened: ' . $reason);
+    assert_true(str_starts_with($err['message'], $headline), 'message leads with what happened: ' . $reason);
     assert_true(str_contains($err['detail'], explode(' ', $raw)[0] === '' ? $raw : substr($raw, 0, 8)), 'and carries the agent\'s own words: ' . $reason);
     SidecarStore::write_sidecar($causeSession['session_id'], ['workdir' => $root . '/project', 'profile' => null, 'agent' => 'claude', 'runtime' => 'headless']);
 }
+assert_contains('Usage limit reached (default account)', $cause("You've hit your session limit")['message'], 'a quota message says which account hit it');
+SidecarStore::write_sidecar($causeSession['session_id'], ['workdir' => $root . '/project', 'profile' => null, 'agent' => 'claude', 'runtime' => 'headless']);
 $leaky = $cause("Failed reading /home/andres/.claude/credentials.json with token=sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123 for me@example.com");
 assert_true(!preg_match('~andres|credentials|sk-ant|ABCDEFGH|example\.com~', json_encode($leaky)), 'paths, tokens and addresses never reach the response');
 SidecarStore::write_sidecar($causeSession['session_id'], ['workdir' => $root . '/project', 'profile' => null, 'agent' => 'claude', 'runtime' => 'headless']);

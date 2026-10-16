@@ -133,6 +133,7 @@ final class QuickPromptService
             // Only accept the fixed public error contract from our host action.
             $why = [];
             if (is_string($result['reason'] ?? null) && preg_match('/^[a-z_]{1,40}$/D', $result['reason']) === 1) $why['reason'] = $result['reason'];
+            if (is_string($result['account'] ?? null) && preg_match('/^[a-zA-Z0-9_-]{1,64}$/D', $result['account']) === 1) $why['account'] = $result['account'];
             if (is_string($result['detail'] ?? null) && $result['detail'] !== '') $why['detail'] = mb_strimwidth($result['detail'], 0, 240, '…', 'UTF-8');
             return ['type' => 'error', 'code' => $result['code'] ?? 'agent_unavailable', 'message' => $result['message'] ?? 'Unable to start the agent'] + $why + ['_http' => $result['_http'] ?? 503] + $reference;
         }
