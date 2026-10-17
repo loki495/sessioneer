@@ -45,6 +45,9 @@ assert_equal(null, TranscriptService::parse_transcript_line('{"type":"system","s
 assert_equal(null, TranscriptService::parse_transcript_line('{"type":"queue-operation","operation":"enqueue","content":"do the thing"}'), 'parse_transcript_line: queue-operation -> null');
 assert_equal(null, TranscriptService::parse_transcript_line('{"type":"file-history-snapshot","messageId":"x","snapshot":{}}'), 'parse_transcript_line: file-history-snapshot -> null');
 assert_equal(null, TranscriptService::parse_transcript_line('{"type":"file-history-delta","messageId":"x","trackingPath":"a.php"}'), 'parse_transcript_line: file-history-delta -> null');
+// 2.1.300+ api-request-blob lines carry a `message` (system prompt/tools) and must never render as chat
+assert_equal(null, TranscriptService::parse_transcript_line('{"type":"api-request-blob","hash":"ab","message":{"role":"user","content":[{"type":"text","text":"<system-reminder>secret</system-reminder>"}]}}'), 'parse_transcript_line: api-request-blob with a message -> null');
+assert_equal(null, TranscriptService::parse_transcript_line('{"type":"mystery","message":{"role":"user","content":"x"}}'), 'parse_transcript_line: an unknown type with a message is not rendered');
 assert_equal(null, TranscriptService::parse_transcript_line('{"type":"user","message":{"role":"user","content":[]}}'), 'parse_transcript_line: empty content -> null');
 
 $userLine = TranscriptService::parse_transcript_line('{"type":"user","timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":"Fix the bug"}}');
