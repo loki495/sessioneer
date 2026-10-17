@@ -1,0 +1,18 @@
+[Unit]
+Description=Ollama for Sessioneer Quick Prompt routing
+After=network-online.target
+
+[Service]
+Type=simple
+# Loopback only by design: Ollama has no authentication.
+Environment=OLLAMA_HOST=@OLLAMA_HOST@
+Environment=OLLAMA_KEEP_ALIVE=1h
+Environment=OLLAMA_MAX_LOADED_MODELS=1
+Environment=OLLAMA_NUM_PARALLEL=1
+ExecStart=@OLLAMA_BIN@ serve
+Nice=10
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

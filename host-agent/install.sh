@@ -58,6 +58,11 @@ OPENCODE_BIN="$(grep -E '^OPENCODE_BIN=\S' "$SCRIPT_DIR/.env" 2>/dev/null | head
 if [ -z "$OPENCODE_BIN" ]; then
     OPENCODE_BIN="$(command -v opencode || true)"
 fi
+OLLAMA_BIN="$(command -v ollama || true)"
+# Quick Prompt's optional router model, served on the address QUICK_PROMPT_ROUTER_URL names.
+OLLAMA_HOST="$(grep -E '^QUICK_PROMPT_ROUTER_URL=\S' "$SCRIPT_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+OLLAMA_HOST="${OLLAMA_HOST#*://}"
+OLLAMA_HOST="${OLLAMA_HOST%%/*}"
 CODEX_BIN="$(grep -E '^CODEX_BIN=\S' "$SCRIPT_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2- || true)"
 if [ -z "$CODEX_BIN" ]; then
     CODEX_BIN="$(command -v codex || true)"
@@ -70,6 +75,8 @@ render_unit() {
         -e "s|@SOCKET_GROUP@|$SOCKET_GROUP|g" \
         -e "s|@OPENCODE_BIN@|$OPENCODE_BIN|g" \
         -e "s|@CODEX_BIN@|$CODEX_BIN|g" \
+        -e "s|@OLLAMA_BIN@|$OLLAMA_BIN|g" \
+        -e "s|@OLLAMA_HOST@|$OLLAMA_HOST|g" \
         -e "s|@HOME@|$HOME|g" \
         "$SCRIPT_DIR/systemd/$1" > "$UNIT_DIR/$1"
 }
@@ -140,6 +147,29 @@ else
     echo "opencode-serve.service NOT installed. Run \`which opencode\` and"
     echo "set OPENCODE_BIN in host-agent/.env, then re-run install.sh."
 fi
+
+# Quick Prompt's optional prompt router (docs/quick-prompt.md) needs a local
+# Ollama. It is installed and started only when QUICK_PROMPT_ROUTER_URL is set
+# to a loopback address (Ollama has no authentication) and `ollama` exists.
+case "$OLLAMA_HOST" in
+    127.0.0.1:*|localhost:*|'[::1]:'*)
+        if [ -n "$OLLAMA_BIN" ]; then
+            render_unit sessioneer-ollama.service
+            systemctl --user daemon-reload
+            systemctl --user enable --now sessioneer-ollama.service
+            echo
+            echo "sessioneer-ollama.service installed and enabled on $OLLAMA_HOST (pull the router model: ollama pull qwen3:4b)."
+        else
+            echo
+            echo "WARNING: QUICK_PROMPT_ROUTER_URL is set but 'ollama' is not on PATH - the prompt router will be inactive."
+        fi
+        ;;
+    '') ;;
+    *)
+        echo
+        echo "QUICK_PROMPT_ROUTER_URL is not a loopback address: sessioneer-ollama.service NOT installed (run your own Ollama there)."
+        ;;
+esac
 
 # Codex is always headless in Sessioneer. The bridge owns the long-lived
 # bidirectional app-server connection needed for approvals and questions;
