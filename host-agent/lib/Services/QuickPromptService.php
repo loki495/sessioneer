@@ -83,19 +83,10 @@ final class QuickPromptService
             } else {
                 $created = $runtime->create([
                     'workdir' => $settings['workdir'], 'model' => $settings['model'],
-                    'profile' => $settings['profile'], 'starting_mode' => $settings['mode'] === 'plan' || $settings['agent'] === 'codex' ? 'plan' : null, 'read_only' => true, 'include_session' => false, 'unique_name' => true,
+                    'profile' => $settings['profile'], 'starting_mode' => $settings['agent'] === 'codex' ? 'plan' : $settings['mode'], 'read_only' => true, 'include_session' => false, 'unique_name' => true,
                 ]);
                 $id = $created['ok'] === true ? ($created['id'] ?? $created['name'] ?? null) : null;
                 if (!is_string($id) || preg_match('/^[a-zA-Z0-9_-]{1,128}$/D', $id) !== 1) return $finish(self::error('agent_unavailable', 503, is_string($created['message'] ?? null) ? $created['message'] : null, $this->account($settings)));
-                // `claude -p --permission-mode auto` is silently ignored (the manager reports
-                // that as a mode warning), so auto is applied after spawn like the dashboard does.
-                if ($settings['agent'] === 'claude' && $settings['mode'] === 'auto') {
-                    $applied = $runtime->set_mode($id, 'auto');
-                    if ($applied['ok'] !== true) {
-                        $this->discard('claude', $id);
-                        return $finish(self::error('agent_unavailable', 503, is_string($applied['message'] ?? null) ? $applied['message'] : null, $this->account($settings)));
-                    }
-                }
                 if ($settings['agent'] === 'codex') {
                     SidecarStore::write_sidecar($id, [
                         'workdir' => $settings['workdir'], 'spawned_at' => time(), 'agent_session_id' => $id,
