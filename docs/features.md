@@ -376,6 +376,10 @@ Implementation entry points:
   Sessioneer creates the tag itself.
 - Archived sessions are read-only until resumed. Transcript routing, cwd/title
   resolution, paging, and resume routing cover all four agents.
+- A Claude session's title is, in order: a rename (`/rename` or `--name`, stored
+  as `custom-title`/`agent-name`), Claude's own `ai-title`, the first prompt
+  (shortened to 80 characters), then the working directory's name. Headless
+  `claude -p` sessions never get an `ai-title`, so they show their first prompt.
 - Plan/handoff/todo files are read-only views; todo Markdown is rendered in the
   sidebar.
 - Web Push can notify on blocked and sufficiently long working-to-idle

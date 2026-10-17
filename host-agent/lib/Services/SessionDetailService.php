@@ -236,7 +236,7 @@ class SessionDetailService
             : TranscriptService::find_first_cwd($path);
         $aiTitle = $isOpenCodePath
             ? OpenCodeTranscriptService::find_session_title($agentSessionId)
-            : TranscriptService::find_latest_ai_title($path);
+            : TranscriptService::find_display_title($path);
         $mtime = @filemtime($path);
 
         return [

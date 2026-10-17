@@ -77,7 +77,7 @@ class SessionService
         $aiTitle = null;
 
         if ($transcriptPath !== null && !TranscriptRouter::is_antigravity_path($transcriptPath) && !TranscriptRouter::is_opencode_path($transcriptPath)) {
-            $aiTitle = TranscriptService::find_latest_ai_title($transcriptPath);
+            $aiTitle = TranscriptService::find_display_title($transcriptPath);
         } elseif ($transcriptPath !== null && TranscriptRouter::is_opencode_path($transcriptPath)) {
             $aiTitle = OpenCodeTranscriptService::find_session_title($agentSessionId);
         }
