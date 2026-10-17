@@ -97,11 +97,10 @@ class TranscriptService
      * JSONL line types that carry no `message` payload (mode switches,
      * permission-mode changes, bridge/queue bookkeeping, file-history
      * snapshots, stop-hook summaries, ...) - skipped when rendering history.
-     * Verified against a real, 700+-message transcript that none of these
-     * (nor any other observed type) ever carry a `message` key, so
-     * parse_transcript_line()'s own `!is_array($message)` check would filter
-     * them out regardless - this list exists for clarity/intent, not as the
-     * only thing standing between them and getting rendered as garbage.
+     * Documentation of what gets skipped, not the gate: Claude Code 2.1.300
+     * added `api-request-blob` records that DO carry a `message` (a request's
+     * system prompt/tools), so parse_transcript_line() renders only `user` and
+     * `assistant` lines instead of excluding known meta types.
      *
      * @return string[]
      */
@@ -110,6 +109,7 @@ class TranscriptService
         return [
             'mode', 'permission-mode', 'bridge-session', 'last-prompt', 'attachment', 'ai-title',
             'system', 'queue-operation', 'file-history-snapshot', 'file-history-delta',
+            'api-request', 'api-request-shape', 'api-request-blob', 'atis', 'atis-latch', 'cost-state',
         ];
     }
 
@@ -1634,7 +1634,7 @@ class TranscriptService
 
         $type = (string)($decoded['type'] ?? '');
 
-        if ($type === '' || in_array($type, self::transcript_meta_only_types(), true)) {
+        if (!in_array($type, ['user', 'assistant'], true)) {
             return null;
         }
 
