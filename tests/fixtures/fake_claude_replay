@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /**
  * Replays a captured Claude Code stream-json stdout (tests/fixtures/
- * claude_stream_json_*_v2_1_278.ndjson) to ClaudeHeadlessManager, so the
+ * claude_stream_json_*.ndjson, v2_1_278 and v2_1_302) to ClaudeHeadlessManager, so the
  * manager's event handling is exercised against what the real CLI actually
  * emitted rather than only against hand-scripted events. Never touches the
  * network, never costs anything.
