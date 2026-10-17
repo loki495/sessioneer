@@ -55,9 +55,11 @@ final class QuickPromptService
         if ($id === null) {
             // After the reservation, so a retry never asks the router again.
             $settings = $this->route($data, $settings);
+            $longRunning = $this->router->classify(trim($data['prompt'])) === 'long_running';
         }
         $lock = null;
         $isNew = false;
+        $longRunning ??= false;
         try {
             $runtime = ($this->runtime)($settings['agent']);
             if ($id !== null) {
@@ -100,6 +102,7 @@ final class QuickPromptService
             $isNew = ($data['session_id'] ?? null) === null;
             $reference = ['type' => 'session', 'status' => 'unknown', 'session_id' => $id, 'request_id' => $key];
             if ($isNew) $reference += ['created' => true];
+            if ($longRunning) $reference += ['kind' => 'long_running'];
             $finish($reference);
             $sent = $settings['agent'] === 'claude'
                 ? $this->manager->request('sessioneer/sendInput', ['session' => $id, 'content' => trim($data['prompt']), 'quick_prompt_id' => $key, 'require_mode' => $settings['mode']])
@@ -108,7 +111,7 @@ final class QuickPromptService
                 // A session this request created and could not feed is only clutter.
                 return $finish(self::error('delivery_failed', 503, is_string($sent['message'] ?? null) ? $sent['message'] : null, $this->account($settings)) + ($isNew ? [] : ['session_id' => $id]) + ($isNew && !$this->discard($settings['agent'], $id) ? ['session_id' => $id] : []));
             }
-            return $finish(['type' => 'session', 'status' => 'running', 'session_id' => $id, 'request_id' => $key, 'turn_id' => $sent['turn_id'] ?? null] + ($isNew ? ['created' => true] : []));
+            return $finish(['type' => 'session', 'status' => 'running', 'session_id' => $id, 'request_id' => $key, 'turn_id' => $sent['turn_id'] ?? null] + ($isNew ? ['created' => true] : []) + ($longRunning ? ['kind' => 'long_running'] : []));
         } catch (\Throwable $e) {
             error_log('Quick Prompt host dispatch failed: ' . $e::class);
             $kept = is_string($id) && !($isNew && $this->discard($settings['agent'], $id));

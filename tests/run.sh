@@ -13,8 +13,9 @@
 #              M parallel runners. Every runner is a separate machine, so the
 #              fixed ports and /tmp paths the tests bind never collide.
 #   --live     the ONLY way to run a *_live.php test file (matched by filename,
-#              currently test_claude_trust_prompt_live.php and
-#              test_claude_headless_live.php) - every other
+#              currently test_claude_trust_prompt_live.php,
+#              test_claude_headless_live.php and
+#              test_quick_prompt_router_live.php) - every other
 #              flag combination, including the plain default run, always
 #              excludes them. Unlike every other test file here, a *_live.php
 #              file spawns a REAL agent binary (never fake_claude), so it

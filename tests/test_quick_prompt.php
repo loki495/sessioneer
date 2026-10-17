@@ -28,6 +28,8 @@ putenv('QUICK_PROMPT_DEFAULT_MODEL=');
 putenv('QUICK_PROMPT_DEFAULT_PROFILE=');
 putenv('QUICK_PROMPT_AGENTS=claude,codex');
 putenv('QUICK_PROMPT_MODELS={"claude":["sonnet"],"codex":["configured-model"]}');
+putenv('QUICK_PROMPT_ROUTER_URL=');
+putenv('QUICK_PROMPT_ROUTER_MODEL=');
 putenv('QUICK_PROMPT_BASE_URL=https://sessioneer.example');
 putenv('QUICK_PROMPT_API_TOKEN=' . str_repeat('x', 64));
 putenv('QUICK_PROMPT_WAIT_SECONDS=6');
@@ -276,7 +278,15 @@ class QuickPromptFakeRouterPost
     public ?array $reply = null;
     public ?array $body = null;
     public float $timeout = 0.0;
-    public function __invoke(string $url, array $body, float $timeout): ?array { $this->calls++; $this->body = $body; $this->timeout = $timeout; return $this->reply; }
+    public ?array $kindReply = null;
+    /** @var list<array<string, mixed>> */
+    public array $kindBodies = [];
+    public function __invoke(string $url, array $body, float $timeout): ?array
+    {
+        if (in_array('kind', $body['format']['required'] ?? [], true)) { $this->kindBodies[] = $body; return $this->kindReply; }
+        $this->calls++; $this->body = $body; $this->timeout = $timeout;
+        return $this->reply;
+    }
 }
 $ask = static fn(array $picked): array => ['message' => ['content' => json_encode($picked)]];
 $post = new QuickPromptFakeRouterPost();
@@ -327,6 +337,33 @@ assert_equal('session', $routedStart(['prompt' => 'router down'])['type'], 'an u
 $post->reply = ['message' => ['content' => 'not json']];
 assert_equal('session', $routedStart(['prompt' => 'router garbage'])['type'], 'neither does garbage output');
 putenv('QUICK_PROMPT_ROUTER_URL=');
+
+echo "Router: one-off versus long-running\n";
+putenv('QUICK_PROMPT_ROUTER_URL=http://router.test');
+$post->reply = $ask($none);
+$kindOf = static fn(string $kind): array => ['message' => ['content' => json_encode(['kind' => $kind])]];
+$post->kindReply = $kindOf('one_off');
+$r = $routedStart(['prompt' => 'what is 2+2']);
+assert_true(!isset($r['kind']), 'a one-off prompt gets the ordinary reply');
+assert_equal('what is 2+2', $post->kindBodies[array_key_last($post->kindBodies)]['messages'][1]['content'], 'the second call sees the prompt as data too');
+assert_true(!str_contains($post->kindBodies[array_key_last($post->kindBodies)]['messages'][0]['content'], $root), 'and no path');
+$post->kindReply = $kindOf('long_running');
+$r = $routedStart(['prompt' => 'refactor the whole billing module and add tests']);
+assert_equal('long_running', $r['kind'], 'a long-running prompt is marked, for the web tier to skip the inline answer');
+assert_equal('running', $r['status'], 'the session still starts and receives the prompt');
+$mark = count($post->kindBodies);
+$routedStart(['prompt' => 'continue', 'session_id' => $r['session_id']]);
+assert_equal($mark, count($post->kindBodies), 'a continuation is never classified again');
+foreach ([null, ['message' => ['content' => 'not json']], $kindOf('forever'), ['message' => ['content' => json_encode(['kind' => ['long_running']])]]] as $bad) {
+    $post->kindReply = $bad;
+    $r = $routedStart(['prompt' => 'classifier misbehaves']);
+    assert_equal('session', $r['type'], 'an unusable classifier reply never blocks a prompt');
+    assert_true(!isset($r['kind']), 'and marks nothing');
+}
+putenv('QUICK_PROMPT_ROUTER_URL=');
+$post->kindBodies = [];
+$routedStart(['prompt' => 'router off']);
+assert_equal([], $post->kindBodies, 'with the router off nothing is classified');
 
 $manager->status = ['ok' => true, 'process' => 'running', 'state' => 'idle', 'open_turns' => 0];
 $answerKey = hash('sha256', 'dispose-me');
@@ -427,6 +464,20 @@ assert_equal([], $disposeCalls, 'a continued session is never archived');
 $startReply['created'] = true; $disposeReply = ['ok' => true, 'archived' => false];
 $kept = $disposing->submit('{"prompt":"x"}', $server);
 assert_equal('safe-id', $kept['session_id'], 'when the host declines to archive, the answer still links to the live session');
+$startReply['kind'] = 'long_running'; $disposeCalls = []; $disposeClock = 0.0; $disposeReply = ['ok' => true, 'archived' => true];
+$probes = 0;
+$longRunning = new WebQuickPrompt(static function (array $request, float $seconds) use (&$disposeCalls, &$startReply, &$probes): array {
+    if ($request['action'] === 'quick_prompt_dispose') { $disposeCalls[] = $request; return ['ok' => true, 'archived' => true]; }
+    if ($request['action'] === 'quick_prompt_status') { $probes++; return ['type' => 'session', 'status' => 'completed', 'completed' => true, 'text' => 'Four', 'session_id' => 'safe-id']; }
+    return $startReply;
+}, static function () use (&$disposeClock): float { return $disposeClock; }, static function (float $seconds) use (&$disposeClock): void { $disposeClock += $seconds; });
+$long = $longRunning->submit('{"prompt":"build the whole thing"}', $server);
+assert_equal('session', $long['type'], 'a prompt judged long-running returns the session link, not an inline answer');
+assert_equal('safe-id', $long['session_id'], 'with the session to open');
+assert_true(!isset($long['kind']), 'the internal kind is not part of the public reply');
+assert_equal(0, $probes, 'it does not wait for the turn');
+assert_equal([], $disposeCalls, 'and never archives the session');
+unset($startReply['kind']);
 $retried = new WebQuickPrompt(static fn(array $request, float $seconds): array => ['type' => 'answer', 'text' => 'Four', 'archived' => true], static fn(): float => 0.0, static function (float $seconds): void {});
 assert_equal(['type' => 'answer', 'text' => 'Four', 'archived' => true], $retried->submit('{"prompt":"x"}', $server), 'a retry of an archived answer gets the answer, not an error');
 $probe['has_tools'] = true; $disposeCalls = [];
