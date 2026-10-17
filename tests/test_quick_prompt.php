@@ -71,8 +71,7 @@ class QuickPromptFakeRuntime extends ClaudeHeadlessRuntime
     public function detail(string $sessionRef): array { return ['ok' => true, 'session' => $this->entry]; }
     public function kill(string $sessionRef): array { $this->kills++; return ['ok' => true]; }
     public array $modes = [];
-    public bool $failSetMode = false;
-    public function set_mode(string $sessionRef, string $mode): array { $this->modes[] = $mode; return ['ok' => !$this->failSetMode]; }
+    public function set_mode(string $sessionRef, string $mode): array { $this->modes[] = $mode; return ['ok' => true]; }
 }
 class QuickPromptFakeCodex extends CodexHeadlessRuntime
 {
@@ -124,13 +123,11 @@ assert_equal(0, $runtime->creates, 'invalid requests never create a session');
 $key = hash('sha256', 'retry');
 $created = $start(['prompt' => '  hello  ', 'model' => 'sonnet'], $key);
 assert_equal('session', $created['type'], 'new session launched');
-assert_equal(null, $runtime->options['starting_mode'], 'Claude is not spawned with the flag that is silently ignored for auto');
-assert_equal('auto', $runtime->modes[array_key_last($runtime->modes)], 'auto mode is applied after spawn, like the dashboard does it');
+assert_equal('auto', $runtime->options['starting_mode'], 'auto is requested with the spawn flag (honoured under -p since 2.1.302)');
+assert_equal([], $runtime->modes, 'no mode change after spawn');
 assert_equal(true, $created['created'], 'a new session is marked as created by this request');
 $start(['prompt' => 'planning', 'mode' => 'plan']);
 assert_equal('plan', $runtime->options['starting_mode'], 'plan mode stays selectable');
-$modesBefore = count($runtime->modes);
-assert_equal($modesBefore, count($runtime->modes), 'plan mode needs no later mode change');
 putenv('QUICK_PROMPT_DEFAULT_MODE=plan');
 $start(['prompt' => 'configured default']);
 assert_equal('plan', $runtime->options['starting_mode'], 'the default mode is configurable');
@@ -138,13 +135,6 @@ putenv('QUICK_PROMPT_DEFAULT_MODE=bogus');
 $start(['prompt' => 'bad configured default']);
 assert_equal('plan', $runtime->options['starting_mode'], 'an invalid configured default falls back to the first allowed mode');
 putenv('QUICK_PROMPT_DEFAULT_MODE=');
-$killsBeforeModeFailure = $runtime->kills;
-$runtime->failSetMode = true;
-$modeFailed = $start(['prompt' => 'mode cannot be applied']);
-$runtime->failSetMode = false;
-assert_equal('agent_unavailable', $modeFailed['code'], 'a session whose auto mode cannot be applied is an error');
-assert_true(!isset($modeFailed['session_id']) && $runtime->kills === $killsBeforeModeFailure + 1, 'and is stopped, not handed out');
-assert_true(!in_array('mode cannot be applied', array_column($manager->sent, 'content'), true), 'and never received the prompt');
 $firstCreates = $runtime->creates; $firstSent = count($manager->sent);
 assert_equal(true, $runtime->options['unique_name'], 'distinct submissions request collision-safe session references');
 assert_equal($root . '/project', $runtime->options['workdir'], 'project resolves only from configuration');
@@ -299,7 +289,7 @@ putenv('QUICK_PROMPT_ROUTER_URL=http://router.test');
 $post->reply = $ask($none);
 $r = $routedStart(['prompt' => 'what is 2+2']);
 assert_equal(true, $r['created'], 'a routed new session is marked created');
-assert_equal('auto', $runtime->modes[array_key_last($runtime->modes)], 'defaults still apply for fields it leaves null');
+assert_equal('auto', $runtime->options['starting_mode'], 'defaults still apply for fields it leaves null');
 assert_equal('what is 2+2', $post->body['messages'][1]['content'], 'the router sees the prompt as data in its own message');
 assert_true(str_contains($post->body['messages'][0]['content'], '"dibs"'), 'and is told only the configured project names');
 assert_true(!str_contains($post->body['messages'][0]['content'], $root), 'never a filesystem path');
