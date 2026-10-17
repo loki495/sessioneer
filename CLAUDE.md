@@ -211,7 +211,11 @@ Docker-spawned, makes that impossible by construction — not by convention.
    drains, a `control_cancel_request` drops just its entry, a normal `result`
    keeps open requests (a subagent may still be waiting) while an `aborted_*`
    one or process exit clears the whole queue.
-   `tests/fixtures/claude_stream_json_*_v2_1_278.ndjson`
+   `tests/fixtures/claude_stream_json_*_v2_1_278.ndjson` (the full set) and
+   `*_v2_1_302.ndjson` (basic, tool_permission, tool_denied; captured with
+   `--setting-sources project` so no user plugins/hooks/paths leak, home
+   rewritten to `/home/user`; 2.1.302 only adds `safety_stops` to `result`
+   and four keys to `init`)
    are the captured stream-json events and `tests/fixtures/fake_claude_stream`
    is the scripted stand-in the tests drive. `ClaudeHeadlessRuntime` is the
    `RuntimeProvider` face of it: a `create` request with `runtime=headless`

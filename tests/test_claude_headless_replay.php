@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /**
  * Replays every captured Claude Code stream-json stdout
- * (tests/fixtures/claude_stream_json_*_v2_1_278.ndjson) through a REAL
+ * (tests/fixtures/claude_stream_json_*.ndjson, v2_1_278 and v2_1_302) through a REAL
  * ClaudeHeadlessManager via tests/fixtures/fake_claude_replay, and asserts the
  * manager digests what the real CLI actually emitted: every prompt is surfaced
  * with its exact request id and untruncated input, answers go back under that
