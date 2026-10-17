@@ -49,6 +49,7 @@ if (Config::sidecar_dir() === $realSidecarDir) {
 }
 
 $realPushSqliteFile = Config::push_sqlite_path();
+putenv('FAKE_CLAUDE_IGNORE_AUTO=1'); // the only auto spawn here is the old-CLI "flag ignored" case
 putenv('PUSH_SQLITE_FILE=' . $root . '/push.sqlite');
 
 if (Config::push_sqlite_path() === $realPushSqliteFile) {

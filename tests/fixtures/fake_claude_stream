@@ -139,8 +139,8 @@ function read_message(float $timeout): ?array
 function init(): void
 {
     global $sid, $mode, $model, $requestedMode, $forceApiKey;
-    // Live-observed: `--permission-mode auto` is silently not applied.
-    $reported = $mode === 'auto' && $requestedMode === 'auto' ? 'default' : $mode;
+    // Claude Code < 2.1.302 silently ignored `--permission-mode auto` under -p; opt in to that.
+    $reported = getenv('FAKE_CLAUDE_IGNORE_AUTO') !== false && $mode === 'auto' && $requestedMode === 'auto' ? 'default' : $mode;
     emit([
         'type' => 'system', 'subtype' => 'init', 'session_id' => $sid, 'model' => $model,
         'permissionMode' => $reported, 'apiKeySource' => $forceApiKey ? 'ANTHROPIC_API_KEY' : 'none',
