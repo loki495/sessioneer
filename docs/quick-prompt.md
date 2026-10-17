@@ -1,6 +1,6 @@
 # iOS Quick Prompt
 
-`POST /api/quick-prompt` accepts JSON and a dedicated `Authorization: Bearer TOKEN` header. It creates a **new** Sessioneer-managed headless conversation by default. Quick Prompt Claude references carry a random suffix so simultaneous submissions cannot reuse the same timestamp-based name. Claude uses its existing headless manager; Codex uses its existing app-server bridge. The `sessioneer` CLI remains Claude-only. No extra queue, agent runner, Ollama service, or UI is required.
+`POST /api/quick-prompt` accepts JSON and a dedicated `Authorization: Bearer TOKEN` header. It creates a **new** Sessioneer-managed headless conversation by default. Quick Prompt Claude references carry a random suffix so simultaneous submissions cannot reuse the same timestamp-based name. Claude uses its existing headless manager; Codex uses its existing app-server bridge. The `sessioneer` CLI remains Claude-only. No extra queue, agent runner, Ollama service, or UI is required, unless you enable the optional prompt router (see "Routing from the prompt"), which uses a local Ollama.
 
 ## Configuration
 
