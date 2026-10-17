@@ -103,8 +103,10 @@ final class QuickPromptService
         if ($result['type'] === 'error' || !is_string($id)) return $this->public_result($result, $base);
         $requestId = $result['request_id'] ?? null;
         $turnId = $result['turn_id'] ?? null;
-        $disposable = !empty($result['created']);
-        $deadline = ($this->now)() + self::integer('QUICK_PROMPT_WAIT_SECONDS', 6, 0, 15);
+        // The router judged this an ongoing job: hand back the session link at once, no inline answer, nothing archived.
+        $longRunning = ($result['kind'] ?? null) === 'long_running';
+        $disposable = !empty($result['created']) && !$longRunning;
+        $deadline = ($this->now)() + ($longRunning ? 0 : self::integer('QUICK_PROMPT_WAIT_SECONDS', 6, 0, 15));
         while (($remaining = $deadline - ($this->now)()) > 0) {
             $probe = ($this->call)(['action' => 'quick_prompt_status', 'session_id' => $id, 'request_id' => $requestId, 'turn_id' => $turnId], min(2.0, $remaining));
             if (isset($probe['type'])) $result = $probe;
