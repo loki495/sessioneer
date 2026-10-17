@@ -65,6 +65,12 @@ class TranscriptService
     // margin without risking a read anywhere near the size of a whole file.
     public const FIRST_CWD_SCAN_LINES = 20;
 
+    // Headless `claude -p` sessions never get an ai-title, so the title falls
+    // back to their first prompt: how many leading lines are searched for it
+    // (hook/attachment lines come first) and how long the shortened title is.
+    public const FIRST_PROMPT_SCAN_LINES = 200;
+    public const TITLE_MAX_CHARS = 80;
+
     // Safety cap for read_transcript_page()'s $untilRealUserMessage mode -
     // "load until the last user message" (session.js's #load-until-user-btn,
     // Andres's own ask 2026-08-24) has no other natural stopping point if a
@@ -242,7 +248,7 @@ class TranscriptService
             $result[] = [
                 'agent_session_id' => basename($path, '.jsonl'),
                 'cwd' => self::find_first_cwd($path),
-                'ai_title' => self::find_latest_ai_title($path),
+                'ai_title' => self::find_display_title($path),
                 'last_activity' => $mtime !== false ? $mtime : 0,
                 'path' => $path,
             ];
@@ -963,6 +969,7 @@ class TranscriptService
         }
 
         $latest = null;
+        $renamed = null;
 
         // The read may start mid-line when $tailBytes < $size - a truncated
         // leading fragment simply fails json_decode below and is skipped,
@@ -971,24 +978,98 @@ class TranscriptService
         foreach (explode("\n", $chunk) as $line) {
             // Cheap short-circuit before paying for a full json_decode, same
             // reasoning as find_exit_plan_mode_tool_use_ids() above.
-            if (!str_contains($line, '"ai-title"')) {
+            if (!str_contains($line, '-title"') && !str_contains($line, '"agent-name"')) {
                 continue;
             }
 
             $decoded = json_decode($line, true);
 
-            if (!is_array($decoded) || ($decoded['type'] ?? null) !== 'ai-title') {
+            if (!is_array($decoded)) {
                 continue;
             }
 
-            $aiTitle = is_string($decoded['aiTitle'] ?? null) ? trim($decoded['aiTitle']) : '';
+            $type = $decoded['type'] ?? null;
+            $key = ['ai-title' => 'aiTitle', 'custom-title' => 'customTitle', 'agent-name' => 'agentName'][$type] ?? null;
+            $title = $key !== null && is_string($decoded[$key] ?? null) ? self::shorten_title($decoded[$key]) : '';
 
-            if ($aiTitle !== '') {
-                $latest = $aiTitle;
+            if ($title === '') {
+                continue;
+            }
+
+            if ($type === 'ai-title') {
+                $latest = $title;
+            } else {
+                $renamed = $title;
             }
         }
 
-        return $latest;
+        return $renamed ?? $latest;
+    }
+
+    /**
+     * What a session is called in the UI: its transcript title (ai-title, or a
+     * /rename), else a shortened first prompt - headless `claude -p` sessions
+     * never write an ai-title, so without this they all show the directory name.
+     */
+    public static function find_display_title(string $path): ?string
+    {
+        return self::find_latest_ai_title($path) ?? self::find_first_prompt_title($path);
+    }
+
+    public static function find_first_prompt_title(string $path): ?string
+    {
+        $handle = @fopen($path, 'rb');
+
+        if ($handle === false) {
+            return null;
+        }
+
+        $title = null;
+
+        for ($i = 0; $i < self::FIRST_PROMPT_SCAN_LINES && $title === null; $i++) {
+            $line = fgets($handle);
+
+            if ($line === false) {
+                break;
+            }
+
+            if (!str_contains($line, '"type":"user"')) {
+                continue;
+            }
+
+            $decoded = json_decode($line, true);
+
+            if (!is_array($decoded) || ($decoded['type'] ?? null) !== 'user' || !empty($decoded['isMeta']) || !empty($decoded['isSidechain'])) {
+                continue;
+            }
+
+            $content = $decoded['message']['content'] ?? null;
+
+            if (is_array($content)) {
+                $content = implode(' ', array_map(
+                    static fn($b) => is_array($b) && ($b['type'] ?? null) === 'text' && is_string($b['text'] ?? null) ? $b['text'] : '',
+                    $content,
+                ));
+            }
+
+            $text = is_string($content) ? self::shorten_title($content) : '';
+
+            // Injected wrappers (<command-name>, <local-command-stdout>, ...) are not a prompt.
+            if ($text !== '' && $text[0] !== '<') {
+                $title = $text;
+            }
+        }
+
+        fclose($handle);
+
+        return $title;
+    }
+
+    private static function shorten_title(string $text): string
+    {
+        $text = trim((string)preg_replace('/\s+/u', ' ', $text));
+
+        return mb_strlen($text) > self::TITLE_MAX_CHARS ? mb_substr($text, 0, self::TITLE_MAX_CHARS - 1) . '…' : $text;
     }
 
     /**

@@ -465,7 +465,7 @@ foreach ($allTranscripts as $t) {
 }
 
 assert_equal('/home/user/www/some-project', $byId[$uuid]['cwd'] ?? null, 'list_all_transcripts: cwd read via find_first_cwd()');
-assert_equal(null, $byId[$uuid]['ai_title'], 'list_all_transcripts: no ai-title line -> null, not a placeholder string');
+assert_equal('hi', $byId[$uuid]['ai_title'], 'list_all_transcripts: no ai-title line -> the first prompt, not a placeholder string');
 assert_equal('/home/user/www/another-project', $byId[$uuid2]['cwd'] ?? null, 'list_all_transcripts: finds the second project dir too');
 assert_equal('Fix the widget', $byId[$uuid2]['ai_title'] ?? null, 'list_all_transcripts: ai_title is the raw value, not yet cascaded');
 assert_true(($byId[$uuid2]['last_activity'] ?? 0) > 0, 'list_all_transcripts: last_activity is the file\'s own mtime');
@@ -477,7 +477,7 @@ $archived = ArchivedSessionService::list_archived_sessions([$uuid2]);
 assert_equal(1, count($archived), 'list_archived_sessions: excludes the given agent_session_id, leaving just the other one');
 assert_equal($uuid, $archived[0]['agent_session_id'] ?? null, 'list_archived_sessions: the non-excluded transcript is the one returned');
 assert_equal('/home/user/www/some-project', $archived[0]['cwd'] ?? null, 'list_archived_sessions: cwd carried through');
-assert_equal('some-project', $archived[0]['title'] ?? null, 'list_archived_sessions: no ai-title -> falls back to the workdir basename, via the same title_cascade() a live session uses');
+assert_equal('hi', $archived[0]['title'] ?? null, 'list_archived_sessions: no ai-title -> the first prompt, via the same title_cascade() a live session uses (the workdir basename applies only when there is no prompt either; see the title_cascade tests)');
 
 $archivedNoExclusions = ArchivedSessionService::list_archived_sessions([]);
 assert_equal(2, count($archivedNoExclusions), 'list_archived_sessions: an empty exclude list returns every known transcript');
@@ -955,6 +955,33 @@ assert_equal(null, TranscriptService::find_latest_ai_title($aiTitleFixture), 'fi
 
 file_put_contents($aiTitleFixture, '{"type":"ai-title","aiTitle":"Title inside the window","sessionId":"abc"}' . "\n", FILE_APPEND);
 assert_equal('Title inside the window', TranscriptService::find_latest_ai_title($aiTitleFixture), 'find_latest_ai_title: an ai-title within the tail scan window is still found in a file larger than the window');
+
+// --- /rename (custom-title / agent-name) beats an ai-title; a headless session
+// with neither falls back to its first real prompt, shortened. ---
+file_put_contents($aiTitleFixture, implode("\n", [
+    '{"type":"ai-title","aiTitle":"Generated","sessionId":"abc"}',
+    '{"type":"custom-title","customTitle":"My rename","sessionId":"abc"}',
+    '{"type":"ai-title","aiTitle":"Generated later","sessionId":"abc"}',
+]) . "\n");
+assert_equal('My rename', TranscriptService::find_latest_ai_title($aiTitleFixture), 'find_latest_ai_title: a custom-title (rename) wins over a later ai-title');
+
+file_put_contents($aiTitleFixture, implode("\n", [
+    '{"type":"queue-operation","operation":"enqueue","content":"ignored"}',
+    '{"type":"user","isMeta":true,"message":{"role":"user","content":"meta caveat"}}',
+    '{"type":"user","message":{"role":"user","content":"<command-name>/clear</command-name>"}}',
+    '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"  Fix the\n   login   bug  ' . str_repeat('x', 200) . '"}]}}',
+    '{"type":"user","message":{"role":"user","content":"second prompt"}}',
+]) . "\n");
+$firstPrompt = TranscriptService::find_display_title($aiTitleFixture);
+assert_true(str_starts_with((string)$firstPrompt, 'Fix the login bug xxx'), 'find_display_title: no ai-title -> first real prompt, whitespace collapsed, meta/wrapper lines skipped');
+assert_equal(TranscriptService::TITLE_MAX_CHARS, mb_strlen((string)$firstPrompt), 'find_display_title: a long prompt is cut to TITLE_MAX_CHARS');
+
+file_put_contents($aiTitleFixture, '{"type":"ai-title","aiTitle":"Real title","sessionId":"abc"}' . "\n" . '{"type":"user","message":{"role":"user","content":"a prompt"}}' . "\n");
+assert_equal('Real title', TranscriptService::find_display_title($aiTitleFixture), 'find_display_title: an ai-title beats the first prompt');
+
+file_put_contents($aiTitleFixture, '{"type":"assistant","message":{"role":"assistant","content":"hi"}}' . "\n" . "not json\n");
+assert_equal(null, TranscriptService::find_display_title($aiTitleFixture), 'find_display_title: no title and no prompt -> null (caller falls back to the workdir)');
+assert_equal(null, TranscriptService::find_display_title('/does/not/exist.jsonl'), 'find_display_title: missing file -> null');
 
 @unlink($aiTitleFixture);
 

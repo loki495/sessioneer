@@ -685,7 +685,7 @@ class BareProcessService
 
             $path = TranscriptRouter::find_transcript_path_any_profile($agentSessionId);
             $cwd = is_string($b['cwd'] ?? null) ? $b['cwd'] : null;
-            $title = $path !== null ? SessionService::title_cascade(TranscriptService::find_latest_ai_title($path), null, $cwd, $agentSessionId) : null;
+            $title = $path !== null ? SessionService::title_cascade(TranscriptService::find_display_title($path), null, $cwd, $agentSessionId) : null;
 
             return $b + ['resolved_agent_session_id' => $agentSessionId, 'resolved_title' => $title];
         }, $bare);
@@ -840,7 +840,7 @@ class BareProcessService
         }
 
         $path = TranscriptRouter::find_transcript_path_any_profile($agentSessionId);
-        $title = $path !== null ? SessionService::title_cascade(TranscriptService::find_latest_ai_title($path), null, $cwd, $agentSessionId) : null;
+        $title = $path !== null ? SessionService::title_cascade(TranscriptService::find_display_title($path), null, $cwd, $agentSessionId) : null;
 
         return ['ok' => true, 'agent_session_id' => $agentSessionId, 'confidence' => $confidence, 'title' => $title];
     }
