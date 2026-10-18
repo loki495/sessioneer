@@ -272,6 +272,16 @@ try {
         'push_blocked_body: an AskUserQuestion prompt keeps showing the real question text'
     );
     assert_equal(
+        'Approval required in Codex Remote.',
+        NotificationContentBuilder::push_blocked_body(['blocked_reason' => 'Approval required in Codex Remote.', 'prompt_tool_name' => 'external_input', 'prompt_tool_input' => [], 'prompt_external' => true]),
+        'push_blocked_body: a Codex Remote-owned block shows the notice naming Codex Remote, not "Run external_input"'
+    );
+    assert_equal(
+        'Waiting on input',
+        NotificationContentBuilder::push_blocked_body(['prompt_tool_name' => 'external_input', 'prompt_tool_input' => [], 'prompt_external' => true]),
+        'push_blocked_body: a Remote-owned block with no reason text falls back to the generic wording'
+    );
+    assert_equal(
         'Do you trust the files in this folder?',
         NotificationContentBuilder::push_blocked_body(['blocked_reason' => 'Do you trust the files in this folder?', 'prompt_tool_name' => null, 'prompt_tool_input' => null]),
         'push_blocked_body: no matched pending tool at all (trust dialog, stale/missing PreToolUse record) falls back to the pane-scraped question'
