@@ -5,8 +5,7 @@
 // common.js/scroll.js/highlights.js. Own independent
 // document.getElementById() lookups and reads window.SESSIONEER_BOOTSTRAP
 // directly (same as session.js's own sessionName/csrfToken derivation)
-// rather than depending on session.js's locals. Extracted from session.js
-// 2026-08-24, fifth cut of the "split session.js into modules" pass.
+// rather than depending on session.js's locals. Extracted from session.js.
 var sessionName = window.SESSIONEER_BOOTSTRAP.session;
 var csrfToken = window.SESSIONEER_BOOTSTRAP.csrfToken;
 
@@ -53,7 +52,7 @@ if (confirmBeforeAnswerToggle) {
 // choice silently applied to every other session too, which read as
 // broken when a different session's own output just wasn't showing.
 // Regular (non-subagent) tool calls/outputs don't use this any more -
-// since 2026-08-08 those are always grouped into a collapsible "N tool
+// those are always grouped into a collapsible "N tool
 // calls" run instead (see groupToolCalls() in session.js), whose own
 // <details> is its own show/hide affordance. The two separate call/output
 // toggles this used to be also merged into this one, same date - a
@@ -74,7 +73,7 @@ function shouldShowSubagent() {
 // added, rather than starting visible and being hidden by a hide-
 // subagent class - avoids a flash of real subagent content for anyone
 // who's actually turned the toggle off, since this only ever runs after
-// first paint (found live 2026-08-08).
+// first paint.
 function applyShowSubagent(show) {
   document.body.classList.toggle('show-subagent', show);
 }
@@ -154,9 +153,9 @@ function otherSessionState(s) {
 
 // --- Per-row "done" badge: distinct from the aggregate sidebar-notify-
 // dot above, which clears the moment the sidebar is merely opened/
-// glanced at. This is Andres's own ask (2026-08-18): a session that just
+// glanced at. A session that just
 // finished (working/blocked -> idle) should read "done" instead of
-// "idle" in the list, and stay that way until he actually visits THAT
+// "idle" in the list, and stay that way until the user actually visits THAT
 // session's own page - not just sees it listed. Shared across every
 // session.php tab via localStorage (same mechanism as
 // SIDEBAR_SESSION_STATE_KEY above, just a separate key/clearing rule),
@@ -201,8 +200,7 @@ function updateSessionDoneState(others) {
   // page's own self-acknowledged entry (see acknowledgeThisSessionVisited()
   // above) never appears in "others" (that list always excludes
   // sessionName), so rebuilding from others alone would silently wipe it
-  // out on this page's very next poll cycle - found live 2026-08-18,
-  // confirmed via a real two-tab check (localStorage is shared across
+  // out on this page's very next poll cycle (localStorage is shared across
   // every session.php tab on the same origin). Only entries for sessions
   // actually present in this poll's data get overwritten below.
   var next = {};
@@ -306,7 +304,7 @@ function refreshSidebarNotification() {
 // as low as 1s). Riding that fast cycle meant every tick also re-ran the
 // full, expensive list_all_sessions() scan (a tmux capture-pane per
 // tracked session plus a /proc walk) purely to maybe flip a dot for
-// sessions this page isn't even showing. Found live 2026-08-11: with
+// sessions this page isn't even showing. With
 // several sessions/tabs open, that redundant scan on every fast tick was
 // visibly hanging the page for a second or two. Its own fixed, much
 // slower interval fixes that without losing any responsiveness that
@@ -367,8 +365,7 @@ function stopSidebarNotifyPolling() {
 // treat this the same as 'error', or it would stomp a correct,
 // already-rendered list with an error message any time a poll tick
 // happens to see the exact same state loadSidebarList()'s own fetch is
-// about to land too - found live 2026-09-28 running
-// test_sidebar_prompt_answer_browser.php: that exact conflation (both
+// about to land too: that exact conflation (both
 // were plain `false`) wiped out session C's fully-rendered row right
 // after answering B, because the poll-driven refresh had already
 // rendered the identical post-answer HTML a moment earlier), or 'error'
@@ -443,8 +440,7 @@ function loadSidebarList() {
 }
 
 // The other-sessions list used to only ever refresh when the sidebar was
-// (re)opened, or right after answering a prompt from within it (Andres's
-// own ask, 2026-09-28: with the sidebar left open across a real prompt
+// (re)opened, or right after answering a prompt from within it (with the sidebar left open across a real prompt
 // answered from it, the session's card stayed on "working" until the panel
 // was closed and reopened - a stale display, not a stale SessionStatusStore
 // row). Rides the same visibility-gated slot in pollOnce() that
@@ -472,8 +468,7 @@ function refreshSidebarList() {
 // delete. Refreshed on sidebar open (like the other-sessions list
 // above) AND on every regular poll cycle while the sidebar stays open
 // (see pollOnce() in session.js) - files can change from an upload
-// still in flight or a delete just clicked, and Andres wants to see
-// that reflected without having to close/reopen the sidebar. The
+// still in flight or a delete just clicked, and that should be reflected without having to close/reopen the sidebar. The
 // other-sessions list rides the same poll-cycle refresh now too (see
 // refreshSidebarList()'s own comment, above loadSidebarList()). ---
 var uploadedFilesList = document.getElementById('uploaded-files-list');
@@ -493,7 +488,7 @@ function numberFormatOneDecimal(n) {
   return parts.join('.');
 }
 
-// Found live 2026-08-22 (codebase audit): this used to format the KB/MB
+// This used to format the KB/MB
 // branches with plain toFixed(1), while TranscriptView::
 // format_attachment_size() (PHP) used number_format() - identical for a
 // small file, but a real drift for anything >= 1000 KB/MB (e.g.
@@ -554,7 +549,7 @@ function loadUploadedFiles() {
     });
 }
 
-// Sidebar "Plan/handoff files" glance (Andres's own idea, 2026-08-08) -
+// Sidebar "Plan/handoff files" glance -
 // a read-only listing of *.md files sitting directly in this session's
 // own cwd (README.md/CLAUDE.md excluded server-side - see
 // SessionService::list_plan_files()), so ad-hoc plan docs/handoff
@@ -596,7 +591,7 @@ function loadPlanFiles() {
     });
 }
 
-// Sidebar "Open todo file" link (Andres's own ask, 2026-08-25) - fetches
+// Sidebar "Open todo file" link - fetches
 // the session's cwd-level `todo` file and opens it in the shared fullscreen
 // text modal (openFullscreenTextModal, common.js) rather than a new tab like
 // plan-file content does, since a todo is a quick glance, not a document to
@@ -708,7 +703,7 @@ function isDesktopViewport() {
 function openSidebar() {
   // On desktop this is a lightweight always-visible panel, not a modal
   // drawer - no dark backdrop, and the main content underneath stays
-  // fully usable (Andres's own choice, 2026-08-18, over keeping the
+  // fully usable (rather than keeping the
   // overlay and just pre-opening it). Mobile keeps the existing
   // overlay/click-outside-to-close behavior unchanged.
   if (!isDesktopViewport()) {
@@ -717,8 +712,7 @@ function openSidebar() {
   sidebar.classList.remove('translate-x-full');
   // #sidebar is position:fixed (out of #app-shell's own flex flow), so
   // without this the opaque w-72 (18rem) panel simply renders ON TOP of
-  // whatever's underneath rather than making room for itself - found
-  // live 2026-08-18 that this fully covered the compose bar's Send
+  // whatever's underneath rather than making room for itself - this fully covered the compose bar's Send
   // button at both 1024px and 1280px widths (still 16px clipped even at
   // 1440px). lg:mr-72 (same 18rem as the sidebar's own w-72) shrinks the
   // content column by exactly the sidebar's width instead - lg: prefixed
@@ -757,8 +751,7 @@ if (sidebarToggleBtn) {
     }
   });
 
-  // Open by default on desktop/wide screens (Andres's own ask,
-  // 2026-08-18) - checked once at load, not kept in sync with later
+  // Open by default on desktop/wide screens - checked once at load, not kept in sync with later
   // window resizes (not asked for, and this app is never actually used
   // at a resized browser window in practice - always either a real
   // phone or a real desktop width).
@@ -905,8 +898,8 @@ function submitMultiQuestionAnswers(wrapper) {
 // its own to "absorb" the click - unlike the plain-option case (a real
 // <form method="post"> whose OWN submit is what ends up preventDefault()'d
 // above), a type="button" click's default bubbles straight past it. Found
-// on review (2026-08-31, real headless-browser click-through, not a code
-// read): sidebar-row.php wraps each row's ENTIRE card - including these
+// in a real headless-browser click-through, not a code
+// read: sidebar-row.php wraps each row's ENTIRE card - including these
 // buttons - in one `<a data-session>` (unlike row.php's own deliberately
 // separate absolute-overlay `<a>`, see that file's own docblock for why),
 // so with nothing stopping it, the click's default action walks past this

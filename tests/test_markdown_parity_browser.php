@@ -8,7 +8,7 @@ declare(strict_types=1);
  * both in sync") and test_markdown.php's own docblock, which candidly says
  * this exact gap existed: "verified byte-for-byte identical against every
  * case below during development (not re-checked here since there's no JS
- * test runner in this suite)". Found via the 2026-08-23 readability audit
+ * test runner in this suite)". Flagged by a readability audit
  * as a real risk - nothing previously caught a future PHP-side change
  * (e.g. adding blockquote support) shipping with no matching JS update.
  *
@@ -17,7 +17,7 @@ declare(strict_types=1);
  *
  * renderMarkdown() and its mdXxx() helpers live in their own file,
  * public/js/markdown.js (extracted out of session.js's page-scope IIFE
- * 2026-08-24, specifically because they're pure and have no DOM/session
+ * specifically because they're pure and have no DOM/session
  * dependencies - see that file's own header comment), as plain top-level
  * functions, same convention as common.js. This loads that file's real
  * shipped source verbatim (plus escapeHtml() from common.js, extracted by

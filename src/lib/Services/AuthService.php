@@ -91,7 +91,7 @@ class AuthService
      * combination.
      *
      * session_cache_expire(1) pins the resulting max-age to 1 minute, not
-     * PHP's 180-minute default - found live that the default let a browser
+     * PHP's 180-minute default - the default let a browser
      * serve a 3-hour-stale copy of session.php (old HTML/JS) on a plain
      * navigation after a code change, no reload needed to trigger it. A short
      * max-age keeps normal navigations fresh while still avoiding no-store,
@@ -99,11 +99,11 @@ class AuthService
      *
      * Also overrides PHP's default 24-minute session.gc_maxlifetime (and
      * matches the cookie's own lifetime to it, via SESSION_LIFETIME_SECONDS)
-     * - found live: a tab left open past that (e.g. backgrounded on a
+     * - a tab left open past that (e.g. backgrounded on a
      * phone, polling paused) still holds the CSRF token from its original
      * page load, but the server-side session backing it had already been
      * garbage-collected, so the next POST 403'd with "invalid or missing
-     * CSRF token" for no reason visible to Andres. As this class's own doc
+     * CSRF token" for no reason visible to the user. As this class's own doc
      * comment notes, there's no login here - the real access boundary is
      * the LAN-only network binding, and CSRF just blocks a stray cross-site
      * POST - so there's no security reason for a short-lived session.

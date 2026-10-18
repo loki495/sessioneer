@@ -6,7 +6,7 @@ namespace HostAgent\Stores;
 
 /**
  * Shared PDO/SQLite connection helper for every Store class that moved off
- * hand-rolled JSON files (2026-08-24) - SidecarStore/SessionStatusStore/
+ * hand-rolled JSON files - SidecarStore/SessionStatusStore/
  * PendingToolStore (sessions_sqlite_path(), tmpfs) and
  * PushSubscriptionStore/PushSessionStateStore/PushQuotaStateStore/
  * GlobalStateStore (push_sqlite_path(), persistent). See
@@ -22,8 +22,7 @@ namespace HostAgent\Stores;
  * statusLine script instead of that script writing JSON directly - see
  * that file's own docblock for why). Everything this app's own PHP/hooks
  * write now goes through SQLite, full stop - no plain JSON state files
- * left anywhere under this app's control (Andres's own call, 2026-08-24:
- * simpler to reason about than a permanent legacy-file fallback, and this
+ * left anywhere under this app's control (simpler to reason about than a permanent legacy-file fallback, and this
  * app has no other real installs yet for such a fallback to actually
  * protect).
  *
@@ -78,7 +77,7 @@ class SqliteDb
     /**
      * One-off transitional migration for a column added to an existing
      * table after real rows already exist (sidecars.agent, added
-     * 2026-08-24 for multi-agent support) - CREATE TABLE IF NOT
+     * for multi-agent support) - CREATE TABLE IF NOT
      * EXISTS alone never retroactively adds a column to a table that was
      * already created under the old schema. sidecars is tmpfs (wiped on
      * reboot, see Config::sessions_sqlite_path()), so this self-resolves

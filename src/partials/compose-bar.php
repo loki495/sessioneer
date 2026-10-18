@@ -11,7 +11,7 @@ if ($found): ?>
   ?>
   <?php /* A normal (non-fixed) flex item, last child of #app-shell (see
        session.php) - position:fixed here used to visually detach mid-
-       scroll on iOS Safari (found live 2026-08-17, a known-buggy pairing
+       scroll on iOS Safari (a known-buggy pairing
        with the page-level scroll that used to drive this whole page), so
        the fix was to stop relying on fixed positioning for this element
        at all rather than patch around it. */ ?>
@@ -29,8 +29,8 @@ if ($found): ?>
             <textarea id="compose-textarea" rows="1" placeholder="Message&hellip;"
               class="w-full resize-none rounded-lg bg-slate-800 border border-slate-700 text-base text-slate-100 pl-3 pr-14 py-2 max-h-32 overflow-y-auto overscroll-contain focus:outline-none focus:border-slate-500"></textarea>
             <?php /* Sits left of the clear button (both top-1, right-8/right-1)
-                 rather than replacing it - Andres asked for a way to expand
-                 to full screen while typing, not instead of clearing.
+                 rather than replacing it - expanding to full screen while
+                 typing is offered in addition to clearing, not instead of it.
                  Always visible (unlike the clear button, which only shows
                  once there's text) - expanding an empty compose box is
                  harmless, and gating it the same way would just be an extra

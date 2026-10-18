@@ -8,7 +8,7 @@ namespace App\Views;
  * A deliberately small markdown-to-HTML renderer for 'text'-kind transcript
  * blocks (assistant replies and real user-typed messages both share this
  * one rendering path - see TranscriptView::render_transcript_block()) -
- * Andres's own framing: "a simple markdown parser" for bold/lists/code
+ * "a simple markdown parser" for bold/lists/code
  * spans, not a full CommonMark implementation. Deliberately does NOT touch
  * headings, links, images, blockquotes, or tables - out of scope for what
  * was actually asked, and each adds its own escaping/edge-case surface.

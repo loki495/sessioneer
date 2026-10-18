@@ -31,7 +31,7 @@ interface AgentAdapter
 
     /**
      * Human-readable name for the New Session UI's agent picker and
-     * anywhere else this needs to be shown to Andres.
+     * anywhere else this needs to be shown to the user.
      */
     public function label(): string;
 

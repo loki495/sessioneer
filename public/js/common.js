@@ -8,8 +8,7 @@
 // (layout.php, only on $fixedShell pages - session.php/index.php) defaults
 // to the CSS 100dvh unit, which is SUPPOSED to already track the visible
 // area shrinking/growing as iOS Safari's on-screen keyboard opens/closes,
-// no JS needed - and does, for the OPEN direction. Found live 2026-08-22
-// (Andres): closing the keyboard (or just blurring the compose textarea)
+// no JS needed - and does, for the OPEN direction. Closing the keyboard (or just blurring the compose textarea)
 // left the page stuck at the shorter, keyboard-open height - #app-shell's
 // header snapped back down correctly (it's sized off #app-shell's own
 // flex-column height, not the keyboard-relative body height directly),
@@ -29,7 +28,7 @@
 // device yet - based on the well-established visualViewport workaround for
 // this exact class of bug, not guessed from nothing.
 if (window.visualViewport) {
-  // Found live 2026-08-22 (Andres): the previous version of this also
+  // The previous version of this also
   // called syncAppViewportHeight() once synchronously here, at script-load
   // time, to cover the (rare) case of loading the page while the keyboard
   // was already open. That synchronous first reading turned out to be
@@ -57,7 +56,7 @@ if (window.visualViewport) {
 
     document.documentElement.style.setProperty('--app-vh', newHeight + 'px');
 
-    // Found live 2026-08-22 (Andres, two related reports): focusing the
+    // Two related symptoms: focusing the
     // compose textarea "scrolls way up past the viewport until I start
     // typing", and sending a message (sendComposedMessage()'s own
     // .focus() call in session.js) "scrolls up to the first loaded
@@ -78,8 +77,7 @@ if (window.visualViewport) {
     // be pointless and could fight with an unrelated intentional scroll
     // position.
     //
-    // Gated on a real keyboard-sized delta (found live 2026-08-22,
-    // Andres): correcting on EVERY resize, however small, meant a small
+    // Gated on a real keyboard-sized delta (correcting on EVERY resize, however small, meant a small
     // incidental viewport-settling adjustment (e.g. iOS chrome finishing
     // its own layout shortly after a fresh page load) could yank an
     // already-focused textarea back into view even after the user had
@@ -100,8 +98,7 @@ if (window.visualViewport) {
 
 // --- fixed-shell outer-window scroll trap: keyboard focus panning the
 // WHOLE PAGE off-screen on iOS Safari
-// Found live 2026-08-22 (Andres, confirmed via a real iOS Safari screen
-// recording): focusing the compose textarea didn't just misscroll - the
+// Focusing the compose textarea didn't just misscroll - the
 // ENTIRE page content vanished for several seconds, leaving nothing but
 // blank body background and the floating #go-to-bottom-btn hanging alone
 // in empty space. This is a DIFFERENT, longstanding iOS Safari quirk from
@@ -168,8 +165,8 @@ function shouldShowWorkerSessions() {
 // this app (session.php's compose box and freetext prompt reply,
 // index.php's dashboard freetext prompt reply) needs to know Shift is
 // GENUINELY held, not just trust event.shiftKey on the Enter keydown
-// itself - found live 2026-08-08, Andres reported a second Enter press
-// on his phone sending instead of adding a newline (Enter should always
+// itself - a second Enter press
+// on a phone was seen sending instead of adding a newline (Enter should always
 // just insert a newline; only Shift+Enter submits, everywhere text gets
 // typed in this app). Best-guess cause: some mobile virtual keyboards
 // auto-capitalize the next letter after a newline and appear to leak
@@ -219,7 +216,7 @@ function parseJsonResponse(r, label) {
 // layers its own local "pending" transcript-entry UI on top of these) and
 // index.js (which just swaps the dashboard row for a confirmation note) -
 // see each file's own call sites for what's still page-specific enough to
-// stay there. Extracted here 2026-08-23 after a bug (stray
+// stay there. Extracted here after a bug (stray
 // data-question-index attribute breaking BOTH files' own copies of
 // collectMultiQuestionAnswers() the same way - see CONTRIBUTING.md) made
 // the duplication itself the risk, not just the repetition.
@@ -383,7 +380,7 @@ function escapeHtml(text) {
 }
 
 // Shared by every text input/textarea in the app that has its own clear
-// (x) button (Andres's own explicit ask, 2026-08-20: every text field
+// (x) button (every text field
 // needs one, not just relying on browser-native type="search" clear
 // icons - inconsistently styled/positioned across browsers, and
 // textareas never get one at all). Only visible while there's something
@@ -392,7 +389,7 @@ function escapeHtml(text) {
 // disable, a debounced search) fires exactly as if the user had deleted
 // the text by hand, not left stale by a raw .value assignment.
 //
-// confirmMessage (optional, added 2026-08-23 per Andres's ask): when
+// confirmMessage (optional): when
 // given, clicking asks confirm(confirmMessage) first and does nothing on
 // Cancel. Only passed for fields where clearing can destroy real typed
 // content worth protecting against a stray tap (the compose box, a
@@ -427,8 +424,7 @@ function wireClearButton(fieldEl, buttonEl, confirmMessage) {
 // hover - iOS Safari (and touch browsers generally) never show a native
 // title="..." tooltip on tap at all, so anything relying on it alone as
 // the "see the full untruncated text" affordance (a truncated header
-// title/cwd, say) is effectively inaccessible on a touch device (Andres's
-// own report, 2026-08-20). Shows a small floating bubble with the same
+// title/cwd, say) is effectively inaccessible on a touch device. Shows a small floating bubble with the same
 // text, centered under the element, dismissed by tapping anywhere else or
 // after a few seconds either way.
 function wireTouchTooltip(el) {
@@ -492,7 +488,7 @@ function wireTouchTooltip(el) {
 // Mirrors App\Views\SessionRowView::relative_time() so a poll-refreshed
 // timestamp reads the same as the server-rendered one. Shared by
 // session.js's own live updates and index.js's search results (moved here
-// from session.js 2026-08-20 - a pure function, no reason it couldn't
+// from session.js - a pure function, no reason it couldn't
 // serve both).
 function relativeTimeLabel(timestamp) {
   var diff = Math.floor(Date.now() / 1000) - timestamp;
@@ -515,8 +511,8 @@ function relativeTimeLabel(timestamp) {
 // appears in the escaped snippet text. $& in the replacement re-inserts
 // the exact matched text (preserving its original casing) rather than the
 // query's own casing. Shared by session.js's own sidebar search and
-// index.js's dashboard-wide search (Andres's own ask, 2026-08-20:
-// "highlight the match").
+// index.js's dashboard-wide search
+// (highlights the match).
 function highlightSnippet(snippet, query) {
   var escapedSnippet = escapeHtml(snippet);
   var escapedQuery = escapeHtml(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -619,7 +615,7 @@ document.addEventListener('click', function (e) {
 // nearest "details, .copy-block" ancestor's "pre.copy-source" instead of a
 // data attribute, so there's no risk of the modal ever showing something
 // different from what was actually expanded on the page - same lookup as
-// the ".copy-btn" handler above (found live 2026-08-22: this used to look
+// the ".copy-btn" handler above (this used to look
 // for `details` alone, which was fine when every collapsible block had its
 // own <details> wrapper, but render_full_block()'s expandable branch
 // deliberately has none - nested inside a tool-call entry's own outer
@@ -666,8 +662,7 @@ if (fullscreenTextModal && fullscreenTextModalContent && fullscreenTextModalClos
     }
   }
 
-  // $html (Andres's own ask, 2026-08-23 - "we need markdown in all the full
-  // size modals"): the block's own already-rendered .markdown-body HTML,
+  // $html: the block's own already-rendered .markdown-body HTML,
   // when the expanded block is markdown-kind - see the click handler below,
   // which is the only caller that ever passes it. Reuses that SAME
   // rendering (server-side MarkdownRenderer::render_html() or its
@@ -781,10 +776,8 @@ if (fullscreenTextModal && fullscreenTextModalContent && fullscreenTextModalClos
     }
   });
 
-  // --- swipe-right to close (touch devices) - Andres's own ask 2026-08-22
-  // (reversed from an initial swipe-LEFT the same day, per Andres's
-  // follow-up correction), the close button/Escape were the only ways out
-  // before this. Same
+  // --- swipe-right to close (touch devices) - the close button/Escape
+  // were the only other ways out. Same
   // distance/ratio thresholds as session.js's own sidebar swipe gesture
   // (SWIPE_MIN_DISTANCE_PX/SWIPE_MAX_VERTICAL_RATIO there), deliberately
   // NOT duplicated as shared constants - this modal's gesture is
@@ -835,8 +828,8 @@ if (fullscreenTextModal && fullscreenTextModalContent && fullscreenTextModalClos
     closeFullscreenTextModal();
   }, { passive: true });
 
-  // Found live 2026-08-22 (Andres): swipe-to-close worked for some
-  // fullscreen views but not others - reported specifically for a
+  // Swipe-to-close worked for some
+  // fullscreen views but not others - notably for a
   // subagent's report, which tends to be long/prose-heavy (real
   // paragraphs, often long unbroken lines with "Wrap: Off" the default)
   // and so is more likely than typical short tool output to actually need
@@ -860,10 +853,10 @@ if (fullscreenTextModal && fullscreenTextModalContent && fullscreenTextModalClos
 // inside the DOM-guard block above (a block scope, not the top-level one
 // parseJsonResponse()/escapeHtml() live in), so it would NOT otherwise be
 // reachable from sidebar.js/session.js as a plain global. Sidebar's "Open
-// todo file" link (Andres 2026-08-25) calls this directly.
+// todo file" link calls this directly.
 window.openFullscreenTextModal = openFullscreenTextModal;
 
-// --- Editable fullscreen text editor (Andres's own ask, 2026-08-24: a way
+// --- Editable fullscreen text editor (a way
 // to expand a text area to full screen while typing, both compose and
 // answering a blocked prompt) - triggered by any .expand-edit-fullscreen-btn
 // (compose-textarea, blocked-prompt/options.php's freetext-reply-textarea,
@@ -961,7 +954,7 @@ if (fullscreenEditModal && fullscreenEditModalTextarea && fullscreenEditModalClo
 // appear or disappear). A static CSS padding-bottom guess (the class list's
 // own pb-* is only the no-ResizeObserver CSS fallback) left the last
 // history entries/dashboard rows tucked behind the footer whenever it grew
-// taller than that guess - found live on the dashboard too, not just
+// taller than that guess - this also affected the dashboard, not just
 // session.php, which is why this moved here instead of staying a
 // session.js-only fix. ---
 function watchFixedFooterHeight(footerEl, onHeightChange) {
@@ -981,9 +974,7 @@ function watchFixedFooterHeight(footerEl, onHeightChange) {
 // but not actually rendered while its <details> stays closed, so its own
 // getBoundingClientRect() comes back as if it doesn't exist at all
 // (browsers never lay out a closed <details>'s children), making any
-// scroll-to-it calculation land on the wrong spot entirely - found live
-// 2026-08-20 (Andres: "clicking on a result doesn't go to the right
-// one"). Opens every ancestor <details>, not just the immediate one, in
+// scroll-to-it calculation land on the wrong spot entirely (clicking a search result missed its target). Opens every ancestor <details>, not just the immediate one, in
 // case of nesting.
 function openAncestorDetails(target) {
   var el = target.parentElement;
@@ -998,7 +989,7 @@ function openAncestorDetails(target) {
 }
 
 // --- navigation-away loading blanket: covers the iOS edge-swipe-back
-// gesture (Andres, 2026-08-08) - going from session.php to the dashboard
+// gesture - going from session.php to the dashboard
 // via that gesture left the old page's content sitting frozen on screen
 // for however long the browser actually took to swap in the next page,
 // unlike a real native-app transition. There's no click handler to hook
@@ -1054,13 +1045,13 @@ if (navigationBlanket) {
 // --- shared horizontal-swipe detector (touch devices) - the guard logic
 // (ignore touches inside a horizontally-scrollable block, an active text
 // selection, or a textarea) used to live duplicated per page; extracted
-// 2026-09-30 so archived_session.php could get its own swipe-right-to-
+// so archived_session.php could get its own swipe-right-to-
 // dashboard gesture without copying it a second time. archived_session.php
 // previously had NO swipe-gesture JS of its own at all and relied entirely
 // on the browser/OS's native edge-swipe-back - which isn't available in
 // every context (e.g. a home-screen-installed iOS PWA running in standalone
 // display mode has no browser chrome to swipe from at all), so swiping
-// right there could do nothing (Andres, 2026-09-30). sidebar.js (session.php)
+// right there could do nothing. sidebar.js (session.php)
 // uses this for its open/close-sidebar-or-navigate gesture; archived-
 // session.js uses it for a plain swipe-right-to-dashboard, matching
 // session.php's behavior. Ignored for anything that isn't a clearly

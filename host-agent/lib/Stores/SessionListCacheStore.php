@@ -10,7 +10,7 @@ use HostAgent\Services\Config;
  * Very-short-TTL cache for SessionService::list_all_sessions() - that scan
  * spawns a tmux subprocess (list-panes + capture-pane) per tracked session
  * plus a full /proc walk, and is the single most expensive thing this
- * agent does. Found live 2026-08-11: every open session.php tab was
+ * agent does. Every open session.php tab was
  * independently re-running the whole scan on its own poll timer, and with
  * several sessions/tabs open the redundant, concurrent scans were visibly
  * hanging the page for a second or two.

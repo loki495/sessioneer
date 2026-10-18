@@ -4,8 +4,8 @@ declare(strict_types=1);
 /**
  * Exercises AntigravityPromptParser::parse_blocking_prompt() against real
  * captured pane shapes (see fixtures/antigravity_permission_prompt_pane.txt,
- * a byte-for-byte real `tmux capture-pane` output from a live reproduction
- * 2026-08-24), plus PromptInteractionService::answer_prompt()'s agent
+ * a byte-for-byte real `tmux capture-pane` output from a live reproduction),
+ * plus PromptInteractionService::answer_prompt()'s agent
  * routing end to end against a real fixture tmux pane.
  */
 
@@ -33,7 +33,7 @@ mkdir($fixtureSidecarDir, 0700, true);
 
 try {
     // --- a real captured pane, including a label that wraps across 2 printed lines ---
-    // (found live 2026-08-24: "Yes, and always allow in this conversation for
+    // ("Yes, and always allow in this conversation for
     // commands that start with 'echo'" prints as two lines - this fixture
     // file is that exact real capture, not hand-written)
 

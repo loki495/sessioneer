@@ -9,7 +9,7 @@ use HostAgent\Stores\GlobalStateStore;
 
 /**
  * "Is everything this app needs actually installed/configured" - backs
- * the dashboard's health box, instead of leaving Andres to discover each
+ * the dashboard's health box, instead of leaving the user to discover each
  * missing piece separately (a stale/never-set VAPID key, tmux's socket
  * dir wiped by a reboot, whether the sessioneer-push-check timer is actually
  * ticking, etc).
@@ -219,7 +219,7 @@ class PushHealthService
     /**
      * "Is everything this app needs actually installed/configured" - one
      * combined check for the dashboard's health box, instead of leaving
-     * Andres to discover each missing piece separately (a stale/never-set
+     * the user to discover each missing piece separately (a stale/never-set
      * VAPID key, tmux's socket dir wiped by a reboot, etc.). Lives here rather than Sessions.php despite covering
      * plenty of non-push things, since it needs PushDeliveryService::push_configured()
      * and Sessions.php can't require this file back without a cycle - same

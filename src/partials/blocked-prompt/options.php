@@ -4,7 +4,7 @@
       <?php if (stripos((string)$opt['label'], 'type something') !== false): ?>
         <?php // break-words + max-w-full: an AskUserQuestion option label has no length limit imposed by
         // the tool itself - a long unbroken one (a pasted identifier/URL, say) would otherwise widen this
-        // button (and the whole page with it) instead of wrapping. Verified live that break-words ALONE
+        // button (and the whole page with it) instead of wrapping. break-words ALONE
         // isn't enough: a flex item's width is still its own shrink-to-fit content size unless something
         // caps it, so overflow-wrap never gets a narrower box to actually wrap within - max-w-full is
         // what forces that cap, matching the button's flex-wrap row. ?>

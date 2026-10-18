@@ -12,14 +12,13 @@ $this->layout('layout', [
      blocks rendered later by the poll too, without needing to walk/re-tag
      the DOM on every render. Regular (non-subagent) tool_use/tool_result
      entries don't use this at all any more (see render_transcript_entries_
-     html() in TranscriptView.php) - since 2026-08-08 those are always
+     html() in TranscriptView.php) - those are always
      grouped into a collapsible "N tool calls" run instead, whose own
      <details> is its own show/hide affordance, scoped to just that run
      rather than the whole session.
      Hidden by DEFAULT, revealed only once body.show-subagent is added -
      the opposite of the naive "visible by default, hidden by a body.hide-
-     subagent class" version this replaced (x-cloak-style fix, found live
-     2026-08-08). The stored preference lives in localStorage, which PHP
+     subagent class" version this replaced (x-cloak-style fix). The stored preference lives in localStorage, which PHP
      can't see at render time - session.js only adds/removes this class
      AFTER its own script runs, near the end of the page, well after first
      paint. The old hide-* version could therefore only ever hide subagent
@@ -64,21 +63,19 @@ $this->layout('layout', [
   }
   /* A free-flowing assistant entry (see entry_wrapper_class()/entry-free-
      flowing) has no padding of its own, so the plain .new-content-highlight
-     ring above sits flush against the text with no room to breathe (found
-     live 2026-08-08).
-     Two things were tried and rejected before this, both confirmed live
-     against the real running app:
+     ring above sits flush against the text with no room to breathe.
+     Two things were tried and rejected before this:
      - Widening box-shadow's spread: doesn't work AT ALL - a shadow's
        visible edge always starts exactly at the box's own border edge no
        matter how large its spread is; spread only changes how far OUT it
-       reaches, not whether it touches. Confirmed live: widening it just
+       reaches, not whether it touches. Widening it just
        made the ring thicker, still flush against the text.
      - outline + outline-offset: DOES create real separation (outline never
-       affects box size/layout, unlike padding - confirmed live that a flex
+       affects box size/layout, unlike padding - a flex
        `gap`-based sibling distance was unchanged by it, unlike the
        equivalent padding+negative-margin trick, which visibly ate into
        that gap). But a crisp offset outline reads as a hard rectangular
-       BOX suddenly appearing around the text (confirmed live via
+       BOX suddenly appearing around the text (as seen in a
        screenshot) - defeating the entire point of "free-flowing, no
        border/box" in the first place.
      What actually works: a ::before pseudo-element, inset OUTSIDE the real
@@ -92,8 +89,7 @@ $this->layout('layout', [
      first attempt's -6px) plus near-zero spread (relying on blur radius
      alone for the glow's spatial extent, not spread's hard-edged band) is
      what actually reads as a diffuse ambient halo rather than a
-     soft-edged-but-still-rectangular box - confirmed live via a zoomed
-     screenshot crop, after an initial smaller-inset/higher-spread attempt
+     soft-edged-but-still-rectangular box - a smaller inset with higher spread
      still looked too close to a box at normal viewing size on a real
      phone. */
   .new-content-highlight.entry-free-flowing {
@@ -115,7 +111,7 @@ $this->layout('layout', [
   /* Landing on a search result (see highlightJumpTarget() in the <script>
      below) - a distinct green ring/glow, on purpose, so it doesn't read as
      "new message" (the amber ring above) when what actually happened is
-     "you searched and jumped here" (Andres's own ask, 2026-08-20). Same
+     "you searched and jumped here". Same
      box-shadow/fade shape as .new-content-highlight, just a different
      color and lit immediately (no NEW_CONTENT_VISIBLE_DELAY_MS wait -
      there's no risk of an intersection-observer race here, the scroll
@@ -151,7 +147,7 @@ $this->layout('layout', [
      isn't used anywhere else in this app's transcript palette (user=rose,
      assistant=emerald, tool_use=sky, tool_result=violet, subagent/task-
      notification=fuchsia, plan=amber), so it can't be mistaken for any of
-     those either (Andres's own ask 2026-08-22). Same box-shadow/fade shape
+     those either. Same box-shadow/fade shape
      as .new-content-highlight/.jump-target-highlight, just a different color. */
   .older-content-highlight {
     box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.8), 0 0 8px 4px rgba(34, 211, 238, 0.5), 0 0 16px 8px rgba(34, 211, 238, 0.25);
@@ -230,13 +226,13 @@ $this->layout('layout', [
          far) used to leave `list` permanently null for the rest of the
          page's life once either container was missing, crashing the very
          first appendPendingEntry() call (list.appendChild() on null) the
-         moment a message was actually sent - found live 2026-08-08. The
+         moment a message was actually sent. The
          "nothing here yet" messaging now lives INSIDE #history-list as a
          plain placeholder note instead, which session.js's own
          appendPendingEntry()/pollHistory() already remove the moment any
          real content (optimistic or polled) actually lands - see
          removeHistoryEmptyNote() there. */ ?>
-    <?php /* Two buttons, not one - Andres asked 2026-08-24 for a faster way to
+    <?php /* Two buttons, not one - a faster way to
          back-page through history than clicking "Load older messages"
          repeatedly, when what's actually wanted is "get back to the start
          of the most recent real exchange." #load-until-user-btn shares
@@ -295,8 +291,7 @@ $this->layout('layout', [
 </div>
 </div>
 
-<?php /* #scroll-toolbar: docked flat scroll-control strip (Andres's own ask,
-     2026-09-06) - replaced the four position:fixed circles that hovered
+<?php /* #scroll-toolbar: docked flat scroll-control strip - replaced the four position:fixed circles that hovered
      over the right edge and covered chat text on mobile. A real flex child
      of #app-shell between #page-content and #compose-bar, so it takes
      layout space instead of overlaying content - no position:fixed, no

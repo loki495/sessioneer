@@ -297,9 +297,8 @@ function dispatch_action(array $request): array
             $resumeId = (string)($request['agent_session_id'] ?? '');
             // Same meaning as 'create' above - the archived-list row and the
             // archived-session viewer's own Resume/Unarchive forms both send
-            // this as a hidden field now (found live 2026-09-19: neither did
-            // at first, so resuming a work-profile archived session silently
-            // resumed under the default account, or failed to resolve at all
+            // this as a hidden field (without it, resuming a work-profile archived session silently
+            // resumes under the default account, or fails to resolve at all
             // - see archived-row.php's own comment).
             $resumeProfile = is_string($request['profile'] ?? null) && $request['profile'] !== '' ? $request['profile'] : null;
 
@@ -803,7 +802,7 @@ function sessioneer_headless_sync(): void
     // Populate a status row for EVERY adopted session - GET /session/status
     // only lists sessions it considers "live" (busy/retry), silently omitting
     // idle ones, so relying on it alone left sessions with no status row at
-    // all (observed live 2026-08-26: sidecars populated, session_status
+    // all (sidecars populated, session_status
     // empty). Default to 'idle' for anything it didn't report, so status is
     // deterministic across every headless session. Clearing `blocked` here
     // (then re-set below for genuinely-blocked ones) prevents a stale prompt

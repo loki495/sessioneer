@@ -132,20 +132,20 @@ class TranscriptView extends View
      * alongside the always-present tool-use-block/tool-detail) that the
      * single "Show subagent calls and outputs" sidebar toggle targets - see
      * session.php's <style> block. A regular (non-subagent) tool_use/
-     * tool_result block carries no such marker at all, since 2026-08-08 it's
+     * tool_result block carries no such marker at all, it's
      * never rendered standalone any more (see render_transcript_entries_html()) -
      * it's always inside its own standalone tool-call entry instead, whose
      * own <details> is the only show/hide affordance it needs.
      *
      * $forceFullBlock is true only when called from
-     * render_tool_call_entry_html() (added 2026-08-22, see that method's own
+     * render_tool_call_entry_html() (see that method's own
      * docblock) - the CALL half (tool_use) already sitting inside that
      * entry's own outer <details> renders its full content directly
      * (BlockedPromptView::render_full_block()) rather than behind a SECOND
      * nested collapse toggle, since the outer one already IS the click-to-
      * expand affordance for the call itself. The RESULT half (tool_result)
-     * deliberately does NOT follow $forceFullBlock - Andres's own call
-     * 2026-08-22: tool output should collapse-by-default the same way a
+     * deliberately does NOT follow $forceFullBlock:
+     * tool output should collapse-by-default the same way a
      * subagent's report already does (BlockedPromptView::
      * render_collapsible_block()/render_collapsible_markdown_block()),
      * even once the outer entry is open - a command is usually short
@@ -161,7 +161,7 @@ class TranscriptView extends View
         $attachmentsHtml = !empty($block['attachments']) ? self::render_transcript_attachments_html($block['attachments'], $sessionIdentifier, $line, $isArchived) : '';
 
         // The image/attachments are SIBLINGS of .tool-detail, not nested
-        // inside it - unlike the raw text output, Andres wants a
+        // inside it - unlike the raw text output, a
         // screenshot or a shared file visible regardless of the
         // show/hide-subagent toggle, since it's often the whole point of
         // having run the tool in the first place.
@@ -593,7 +593,7 @@ class TranscriptView extends View
             // Deliberately not indigo/blue - tool_use (below) is sky to match
             // the existing tool_use block-border convention, and indigo sits
             // too close to sky on the color wheel to reliably tell apart at a
-            // glance (found live: they read as "the same color").
+            // glance (they read as "the same color").
             'user' => ['border' => 'border-rose-800/60', 'bg' => 'bg-rose-950/40', 'label' => 'text-rose-300'],
             'assistant' => ['border' => 'border-emerald-800/60', 'bg' => 'bg-emerald-950/40', 'label' => 'text-emerald-300'],
             'tool_use' => ['border' => 'border-sky-800/60', 'bg' => 'bg-sky-950/40', 'label' => 'text-sky-300'],
@@ -624,8 +624,7 @@ class TranscriptView extends View
      * through render_transcript_entry() unchanged.
      *
      * Replaced the old "bundle a whole run of consecutive tool calls under
-     * one shared 'N tool calls' toggle" design (Andres's own call
-     * 2026-08-22, see git history for render_tool_group_html()/tool-
+     * one shared 'N tool calls' toggle" design (see git history for render_tool_group_html()/tool-
      * group.php if that ever needs resurrecting) - a long run used to hide
      * behind one opaque breadcrumb with no way to scan it without opening
      * the whole thing; now each call is its own scannable one-line summary
@@ -677,7 +676,7 @@ class TranscriptView extends View
 
     /**
      * A subagent call/report is deliberately excluded (kept as its own
-     * standalone card, unaffected by pairing - Andres's own call: those
+     * standalone card, unaffected by pairing: those
      * stay on the older per-kind "Show subagent calls"/"Show subagent
      * outputs" toggle instead, see entry_color_kind()/render_transcript_
      * entry()'s $isSubagent handling), same as an image or file attachment
@@ -707,8 +706,8 @@ class TranscriptView extends View
 
     /**
      * One standalone <details> per tool call (a call+its own result, paired
-     * the same way the old render_tool_pair_html() did) - Andres's own call
-     * 2026-08-22: stop bundling consecutive tool calls into one shared "N
+     * the same way the old render_tool_pair_html() did)
+     * - stop bundling consecutive tool calls into one shared "N
      * tool calls" toggle in favor of each call being its own individually
      * expandable entry, right in the transcript flow, collapsed to ONE
      * summary line by default (see tool_call_entry_summary()) rather than a
@@ -752,8 +751,7 @@ class TranscriptView extends View
      * The one-line label shown on a tool-call entry's closed <summary>:
      *
      * - Write/Edit/Read: "Write relative/path.php" / "Edit ..." / "Read ..."
-     *   - natural language, not "ToolName(args)" (Andres's own call
-     *   2026-08-22) - the raw file_path TranscriptService::
+     *   - natural language, not "ToolName(args)" - the raw file_path TranscriptService::
      *   summarize_content_block() stashed on the block, relativized against
      *   $cwd (see relativize_path()) - a bare filename alone could be
      *   ambiguous (which of several same-named files?), but the full
@@ -924,9 +922,8 @@ class TranscriptView extends View
         // paired into its own standalone tool-call entry instead (see
         // render_transcript_entries_html()), never rendered standalone. The
         // marker never applies to an entry carrying an image or a file
-        // attachment either, regardless of who it came from (found live:
-        // this was missing on the first pass, so an entry with a screenshot
-        // still vanished entirely instead of just its text) - a shared file
+        // attachment either, regardless of who it came from (otherwise an entry with a screenshot
+        // would vanish entirely instead of just its text) - a shared file
         // is always worth keeping visible on its own.
         $hasAttachment = false;
 
@@ -966,15 +963,14 @@ class TranscriptView extends View
      * BlockedPromptView::render_collapsible_block() regardless of the
      * entry wrapper around them. Every other kind (tool call/output alone,
      * subagent, plan, system) keeps today's boxed-card treatment
-     * unchanged - Andres's own call: those stay "as they are".
+     * unchanged: those stay "as they are".
      *
      * A free-flowing assistant entry also gets a bit of extra top margin
      * (on top of #history-list's own flex gap-2) - without a border/bg to
      * separate it from whatever's above, consecutive entries read as too
      * cramped without it. The entry-free-flowing marker class carries no
      * styling of its own - it's what session.php's <style> block hooks the
-     * new-content glow's wider ring onto specifically for this kind (found
-     * live 2026-08-08: with no padding of its own, the glow's crisp inner
+     * new-content glow's wider ring onto specifically for this kind (with no padding of its own, the glow's crisp inner
      * ring sat flush against the text, looking like a stray outline rather
      * than a glow with room to breathe).
      *

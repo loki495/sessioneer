@@ -10,8 +10,8 @@ use HostAgent\Services\Config;
  * The most recent PreToolUse hook payload recorded for a session (see
  * host-agent/hooks/pre_tool_use.php) - one row per session in the
  * `pending_tools` table of Config::sessions_sqlite_path() (see
- * SidecarStore's own docblock for why this migrated off a plain JSON file
- * 2026-08-24, and why its lazy legacy-file importer was later removed),
+ * SidecarStore's own docblock for why this migrated off a plain JSON file,
+ * and why its lazy legacy-file importer was later removed),
  * always overwritten by the latest tool call, never appended. Only
  * meaningful alongside a pane-detected blocking prompt (see PromptParser::
  * augment_prompt_with_pending_tool()); by itself this says nothing about

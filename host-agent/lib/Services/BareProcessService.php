@@ -11,8 +11,7 @@ use HostAgent\Stores\SessionListCacheStore;
 
 /**
  * Untracked ("bare") claude process discovery and take-over. Split out of
- * SessionService.php (2026-08-24 readability audit - see the plan this
- * followed) - the one cluster with real fan-out, depending on core
+ * SessionService.php - the one cluster with real fan-out, depending on core
  * SessionService::list_all_sessions(), ArchivedSessionService::
  * list_archived_sessions(), and SessionLifecycleService::resume_agent_session()
  * - inherent to what "take over a bare process" does (search archived
@@ -111,10 +110,9 @@ class BareProcessService
      * agent_session_id - more certain than the statusline marker below,
      * since it needs no tmux pane to read at all: the exact value passed
      * to --resume/--session-id, straight from ProcessInspector::
-     * find_claude_processes()'s own argv read. Found live 2026-09-11
-     * (Andres: a real `claude --resume <path-to-transcript>.jsonl` process,
-     * launched by a different tool entirely - claude-code-ui - was still
-     * showing up in the archived list): a resumed conversation's transcript
+     * find_claude_processes()'s own argv read. A real `claude --resume <path-to-transcript>.jsonl` process,
+     * launched by a different tool entirely, would otherwise still
+     * show up in the archived list: a resumed conversation's transcript
      * can be arbitrarily older than the resuming process's own start time,
      * which is exactly what makes bare_process_take_over_candidates()'s
      * closest-start-time heuristic unreliable for this shape specifically -
@@ -147,13 +145,12 @@ class BareProcessService
     }
 
     /**
-     * The Claude Code CLI's own background daemon (`claude daemon run`,
-     * confirmed live 2026-09-12) keeps a real-time roster of every
+     * The Claude Code CLI's own background daemon (`claude daemon run`)
+     * keeps a real-time roster of every
      * "spare"/pty-host worker pair it manages - a warm pool used to make
      * new/resumed sessions start instantly - at
-     * ~/.claude/daemon/roster.json. Found live the same day (Andres: his
-     * own live session, running entirely through this pool, kept showing
-     * up as archived): a worker dispatched this way has NO --resume/
+     * ~/.claude/daemon/roster.json. A session running entirely through this pool would
+     * otherwise keep showing up as archived: a worker dispatched this way has NO --resume/
      * --session-id in its own process's argv at all (the daemon hands it
      * the target transcript over a private rendezvous socket instead), so
      * neither agent_session_id_from_resume_arg() nor the statusline-marker
@@ -183,8 +180,7 @@ class BareProcessService
     }
 
     /**
-     * A plain is_dir("/proc/{$pid}") isn't enough - found live 2026-09-12
-     * writing take_over_bare_process()'s own daemon-worker test: a process
+     * A plain is_dir("/proc/{$pid}") isn't enough: a process
      * that's just been sent SIGTERM becomes a ZOMBIE (state "Z") the
      * instant it actually exits, not gone from /proc entirely - that only
      * happens once its parent reaps it via wait()/proc_close(), which can
@@ -318,7 +314,7 @@ class BareProcessService
      *
      * Per pid, prefers that SAME live process's own --resume/--session-id
      * (if its argv happens to carry one) over the roster's own `sessionId`
-     * field for the WORKER as a whole - found live 2026-09-12 that these
+     * field for the WORKER as a whole - these
      * can genuinely disagree: one worker's roster `sessionId` pointed at a
      * transcript untouched in days, while that exact same live process had
      * since been asked to serve a completely different, actually-current
@@ -401,12 +397,11 @@ class BareProcessService
      * that back out of the pane's own rendered text - the same capture-
      * pane mechanism already used for quota scraping, just pointed at
      * whatever tmux pane this pid happens to live in rather than a
-     * tracked session's own pane. Requires (a) Andres has opted into
+     * tracked session's own pane. Requires (a) the user has opted into
      * installing the marker and (b) the pid actually has an owning tmux
      * pane at all - a truly bare process (no tmux, e.g. a plain terminal/
      * SSH session with no wrapper) can never be matched this way, since
-     * there is no pane to capture from in the first place (checked
-     * 2026-08-08: a pty has no scrollback of its own - only whatever's
+     * there is no pane to capture from in the first place (a pty has no scrollback of its own - only whatever's
      * rendering it, a real terminal emulator or a multiplexer like tmux,
      * holds that state, and this app has no access to a foreign terminal
      * emulator's memory). Returns null rather than a phantom id if the
@@ -443,7 +438,7 @@ class BareProcessService
      * own session" suggestion - the picker-fallback half of take_over_
      * bare_process(), used when bare_process_live_agent_session_id()
      * can't produce a confident match. The suggestion is a heuristic, not
-     * a guarantee (Andres's own idea, 2026-08-08): a bare process's OS
+     * a guarantee: a bare process's OS
      * pid is never recorded in the transcript itself (see
      * TranscriptService::find_first_timestamp()'s own doc comment), but
      * comparing the process's own start time (from /proc, via
@@ -474,7 +469,7 @@ class BareProcessService
         // Also exclude any OTHER bare (untracked) process's own live
         // session, when its id happens to be confidently resolvable via
         // the same statusline-marker match used for the pid actually
-        // being taken over (Andres's own concern, 2026-08-08): resume_
+        // being taken over: resume_
         // cc_session()'s own already-live guard only checks TRACKED
         // sessions (it reads sidecars), since an untracked bare process
         // has no sidecar to check against - without this, a candidate
@@ -528,16 +523,16 @@ class BareProcessService
 
     /**
      * Every agent_session_id currently live via a BARE (untracked) claude
-     * process on the host - found live 2026-09-11 (Andres: his own actual,
-     * currently-open terminal session showed up in the dashboard's
-     * "archived" list, and "resuming" it from there wouldn't have made
-     * sense - it was never dormant in the first place). Neither
+     * process on the host. A currently-open terminal session would
+     * otherwise show up in the dashboard's
+     * "archived" list, and "resuming" it from there wouldn't make
+     * sense - it was never dormant in the first place. Neither
      * ArchivedSessionService::list_archived_dashboard() nor
      * SessionLifecycleService::resume_agent_session() checked bare
      * processes at all before this - only TRACKED (tmux+sidecar) sessions
      * were ever excluded from "archived"/guarded against a duplicate
      * resume, so a plain `claude` typed by hand in a real terminal (no
-     * tmux, no sidecar - exactly how this app's own live session runs)
+     * tmux, no sidecar)
      * was invisible to both checks.
      *
      * Prefers the argv-derived id above (certain, needs no tmux pane at
@@ -565,8 +560,8 @@ class BareProcessService
      * front instead.
      *
      * Two categories of bare pid never reach the heuristic fallback at
-     * all, found live 2026-09-13 (Andres: "show archived sessions" taking
-     * ~3s - 83% of it was this one method): bare_process_take_over_
+     * all (otherwise "show archived sessions" takes
+     * seconds, nearly all in this one method): bare_process_take_over_
      * candidates() is not cheap (a full ArchivedSessionService::
      * list_archived_sessions() re-scan of every archived transcript on
      * every call - see its own docblock), and calling it once per
@@ -587,8 +582,7 @@ class BareProcessService
      *
      * Also checks each bare pid against the SAME roster pid map the union
      * above is built from (not just adding the union once and separately
-     * re-deriving each pid's own tier from scratch) - found live
-     * 2026-09-13 alongside the fix above: a pid the roster union already
+     * re-deriving each pid's own tier from scratch): a pid the roster union already
      * covers (e.g. a claimed daemon worker with no --resume in its own
      * argv, no tmux pane for the marker tier to read) would otherwise
      * still fall through to the expensive heuristic for itself,
@@ -644,10 +638,9 @@ class BareProcessService
     /**
      * Attaches `resolved_agent_session_id`/`resolved_title` to every bare
      * row this app can identify with CERTAINTY, with no extra clicking -
-     * Andres's own ask (2026-09-12), once "Other claude processes on host"
-     * started regularly showing over a dozen daemon-managed workers and he
-     * wanted their titles visible by default to actually review/clean them
-     * up, rather than clicking "Identify" on each one by one.
+     * "Other claude processes on host" can regularly show over a dozen
+     * daemon-managed workers, and their titles should be visible by default
+     * to review/clean them up, rather than clicking "Identify" on each one by one.
      *
      * Deliberately only the two CHEAP, CERTAIN tiers - the row's own
      * argv-derived --resume/--session-id (already sitting on $b['resume_arg']
@@ -695,8 +688,8 @@ class BareProcessService
      * Filters the daemon's own noise out of an already-enriched bare[]
      * batch (see enrich_bare_with_confirmed_ids() - MUST run first, this
      * reads the `resolved_agent_session_id`/`is_daemon_supervisor` fields
-     * it/ProcessInspector attach) - Andres's own ask (2026-09-12), once
-     * "Other claude processes on host" started regularly showing over a
+     * it/ProcessInspector attach) - "Other claude processes on host"
+     * can regularly show over a
      * dozen rows that were really just the daemon's own internals, not
      * distinct conversations to review:
      *
@@ -772,8 +765,8 @@ class BareProcessService
 
     /**
      * Best-effort identification for one bare (untracked) process's dashboard
-     * row - Andres's own ask (2026-09-11), after finding that "Other claude
-     * processes on host" gave no way to tell whether a row duplicated
+     * row - "Other claude
+     * processes on host" otherwise gives no way to tell whether a row duplicated
      * something already in the archived list. Reuses the exact same
      * resolution this class already relies on elsewhere (never invented
      * fresh for this): the certain argv-derived id
@@ -851,9 +844,8 @@ class BareProcessService
      *
      * 1. A confident match (the argv-derived id, see
      *    agent_session_id_from_resume_arg(); the daemon roster, see
-     *    resolve_via_daemon_roster() - added 2026-09-12, Andres explicitly
-     *    accepted the plain-kill-then-resume approach for this shape once
-     *    it could be resolved with certainty; or bare_process_live_agent_
+     *    resolve_via_daemon_roster() - the plain-kill-then-resume approach is
+     *    accepted for this shape since it is resolved with certainty; or bare_process_live_agent_
      *    session_id()'s statusline marker): kills the pid (AND, for a
      *    daemon-managed worker, its sibling pid too - see
      *    daemon_roster_sibling_pids()'s own docblock for why a worker is
@@ -931,8 +923,8 @@ class BareProcessService
             // refuses a conversation whose process is still running, so wait
             // for the exit itself instead of guessing a delay - a fixed
             // 300ms left the conversation stranded whenever the old process
-            // was slower (found live 2026-09-21; a daemon worker was the
-            // first case, 2026-09-12).
+            // was slower (a daemon worker was the
+            // first case).
             $unsettled = self::settle_after_stop(array_merge([$pid], $siblingPids));
 
             if ($unsettled !== null) {

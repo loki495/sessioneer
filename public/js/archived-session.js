@@ -14,9 +14,8 @@
   // sidebar to open/close (session.php's own version of this gesture, in
   // sidebar.js, also handles that), so it's a plain one-way navigation.
   // Registered unconditionally, before the load-more guard below, since it
-  // has nothing to do with whether the transcript itself loaded (found live
-  // 2026-09-30: this page previously had no swipe-gesture JS at all and
-  // relied entirely on the browser/OS's own native edge-swipe-back gesture,
+  // has nothing to do with whether the transcript itself loaded (this page has no other swipe-gesture JS and
+  // relies entirely on the browser/OS's own native edge-swipe-back gesture,
   // which isn't available in every context - a home-screen-installed iOS
   // PWA running in standalone display mode has no browser chrome to swipe
   // from, so swipe-right did nothing there).
@@ -97,13 +96,13 @@
     // Reveal it first - a jump target hidden inside a collapsed tool-call
     // entry <details> gets a meaningless zeroed-out rect while closed, landing
     // the scroll on the wrong spot (see openAncestorDetails() in
-    // common.js for the full explanation; found live 2026-08-20).
+    // common.js for the full explanation).
     openAncestorDetails(jumpTarget);
 
     // A plain window.scrollTo() computed from the element's own rect, not
     // scrollIntoView() - see session.js's own jump-scroll comment for why
-    // (found live 2026-08-09: scrollIntoView() silently no-op'd in at
-    // least one real headless-Chrome automation context).
+    // (scrollIntoView() silently no-ops in at
+    // least one headless-Chrome automation context).
     var jumpTargetRect = jumpTarget.getBoundingClientRect();
     var jumpScrollTop = window.scrollY + jumpTargetRect.top - (window.innerHeight / 2) + (jumpTargetRect.height / 2);
     window.scrollTo({ top: Math.max(0, jumpScrollTop), behavior: 'auto' });

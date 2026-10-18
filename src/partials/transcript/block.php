@@ -1,7 +1,7 @@
 <?php
 // break-words (not break-all, used elsewhere for compact collapsed summary lines) - this is
 // prose, so only a genuinely too-long token (a long constant name, URL, hash, ...) should ever
-// break mid-word; normal short words shouldn't. Found live: a message containing
+// break mid-word; normal short words shouldn't. a message containing
 // "FILTER_FLAG_NO_PRIV_RANGE|FILTER_FLAG_NO_RES_RANGE" (no spaces, 51 chars) widened the whole
 // page horizontally without this.
 ?>

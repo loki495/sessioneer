@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 /**
  * Real, headless-Chrome, click-through coverage for Task 7 of the
- * 2026-08-30 "ui-parity-stop-bug" orchestration ("wire up sidebar
+ * "ui-parity-stop-bug" orchestration ("wire up sidebar
  * prompt-answer submission" - public/js/sidebar.js's document-level
  * submit/click/change/keydown handlers, ported from index.js's dashboard
  * pattern). Same fixture stack as test_session_replay_browser.php (real
@@ -96,8 +96,8 @@ if (getenv('TMUX_SOCKET') === $realTmuxSocket || getenv('TMUX_SOCKET') === false
  * shared between browser test files today - kept local, same as that
  * file's own precedent).
  */
-// Default bumped from 10.0 to 20.0 (2026-08-31, found live debugging this
-// file): under real load, php -S's single-threaded dev server serializes
+// Default bumped from 10.0 to 20.0:
+// under real load, php -S's single-threaded dev server serializes
 // every request this test's own page + fetches + the sidebar's own
 // /sidebar_sessions.php round trip all compete for, and 10s wasn't always
 // enough headroom - confirmed directly (see the matching note on
@@ -400,7 +400,7 @@ try {
         // localStorage is per-origin, seeded before session.php's own script
         // (which reads poll-interval/confirm-toggle synchronously at load) runs.
         //
-        // Found live debugging this file (2026-08-31): cdp_navigate()'s own
+        // cdp_navigate()'s own
         // completion signal (document.readyState === 'complete') is too
         // strict a gate for THIS page under this test's load - session.php
         // now pulls in several separate <script src> files (sidebar.js,
@@ -578,7 +578,7 @@ try {
         // false-positive on that placeholder text too (nothing matches
         // ANY selector then, including C's), letting the test race ahead
         // and try to click C's reveal button before the real refreshed
-        // HTML had actually landed - found live running this test.
+        // HTML had actually landed.
         $bNoLongerBlocked = browser_wait_until(function () use (&$page, $sessionBName, $sessionCName) {
             $js = 'document.querySelector(\'#sidebar-list a[data-session="' . $sessionBName . '"] .prompt-options-wrapper\') === null'
                 . ' && document.querySelector(\'#sidebar-list a[data-session="' . $sessionCName . '"] .reveal-freetext-btn\') !== null';

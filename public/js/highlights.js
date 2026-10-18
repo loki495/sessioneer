@@ -6,8 +6,7 @@
 // own independent document.getElementById() lookups for #history-list/
 // #jump-to-new-btn (session.js holds its own separate references to the
 // same real elements for its own, unrelated purposes). Extracted from
-// session.js 2026-08-24, fourth cut of the "split session.js into modules"
-// pass.
+// session.js.
 
 // Minimum time the "New" divider/highlight must actually be on screen
 // before it starts fading - without this, a poll that lands while the
@@ -29,8 +28,8 @@ var JUMP_TARGET_HIGHLIGHT_FADE_MS = 1200;
 
 // Landing on a search result - a distinct green ring (see .jump-target-
 // highlight in <style> above), not the amber .new-content-highlight
-// used for freshly-polled content, so the two read as different things
-// (Andres's own ask, 2026-08-20). Reuses NEW_CONTENT_VISIBLE_DELAY_MS as
+// used for freshly-polled content, so the two read as different things.
+// Reuses NEW_CONTENT_VISIBLE_DELAY_MS as
 // a plain minimum-visible-before-fading timer (not IntersectionObserver-
 // gated like markNewContent() below) - the scroll that brings this
 // target into view already happened by the time this is called, so it's
@@ -57,10 +56,9 @@ var OLDER_CONTENT_HIGHLIGHT_FADE_MS = 1200;
 // NEW_CONTENT_VISIBLE_DELAY_MS" ring - used for both the amber
 // .new-content-highlight (fresh poll content) and the cyan
 // .older-content-highlight ("Load older messages"/"Load until last
-// message" - Andres's own ask 2026-08-22 for a visually distinct ring).
-// Per-element, IntersectionObserver-gated fade (changed 2026-08-24, was
-// a flat setTimeout batch-fade for the older-content ring specifically -
-// Andres's own bug report: a large loaded batch can insert MOSTLY off-
+// message" - a visually distinct ring).
+// Per-element, IntersectionObserver-gated fade (a flat setTimeout
+// batch-fade for the older-content ring would be wrong: a large loaded batch can insert MOSTLY off-
 // screen above the button just tapped, e.g. right after scrolling to the
 // very top, or once "Show subagent calls and outputs" reveals entries
 // that were display:none at insertion time - a fixed timer faded all of
@@ -123,7 +121,7 @@ function highlightLoadedOlderContent(entryElements) {
 //    stuff starts here" landmark, and once a newer batch has arrived,
 //    that's no longer where new stuff starts. This also sidesteps a real
 //    bug the per-batch version this replaced had: if a batch's entries
-//    are ALL currently hidden (Andres toggles "Show subagent calls and
+//    are ALL currently hidden (the user toggles "Show subagent calls and
 //    outputs" off, or just hasn't loaded yet - see the default-hidden
 //    .entry-subagent-only rule in the <style> above - which sets
 //    display:none on whole entries, not just a class), a
@@ -154,15 +152,14 @@ function highlightLoadedOlderContent(entryElements) {
 // observed" could miss the very first paint.
 var currentDivider = null;
 
-// #jump-to-new-btn (Andres's own ask, 2026-08-22): shown only while
+// #jump-to-new-btn: shown only while
 // there's a "New" divider AND it's actually scrolled out of view right
 // now - checked directly against live geometry (getBoundingClientRect(),
 // not IntersectionObserver) rather than piggybacking on
 // newEntryObserver/dividerObserver below, which are deliberately DELAYED
 // (NEW_CONTENT_VISIBLE_DELAY_MS, ~2.5s) before they act - that delay
 // exists to give the highlight RING time to be visually noticed before
-// it fades, which is the wrong timing for this button: found live
-// 2026-08-22 (Andres) that reusing it left the button incorrectly shown
+// it fades, which is the wrong timing for this button: reusing it left the button incorrectly shown
 // for that whole ~2.5s window even when the new content was already on
 // screen (e.g. already scrolled to the bottom when it arrived). Also
 // decides which way the button points - up if the divider is above the
@@ -205,8 +202,8 @@ if (jumpToNewBtn) {
 
 // Jumps straight to the current "New" divider - same manual scrollTo()
 // pattern the search-result jump uses (see the jumpLine handling further
-// down), not scrollIntoView() (found live 2026-08-09: silently a no-op
-// in at least one real headless-Chrome context there). Lands the
+// down), not scrollIntoView() (silently a no-op
+// in at least one headless-Chrome context). Lands the
 // divider near the TOP of the viewport rather than centered - unlike a
 // search result (an isolated point of interest), this is the START of a
 // run of new content meant to be read downward from here, so centering

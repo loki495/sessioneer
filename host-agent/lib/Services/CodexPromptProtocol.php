@@ -9,7 +9,7 @@ namespace HostAgent\Services;
  * protocol (item/tool/requestUserInput, item/*RequestApproval) and Sessioneer's own
  * blocked-prompt shape (BlockedPromptView/session.js's `question`/`options`/
  * `tool_input`/`prompt_questions` fields). Extracted out of
- * host-agent/codex_bridge.php (2026-08-29) - that script spawns a real
+ * host-agent/codex_bridge.php - that script spawns a real
  * `codex app-server --stdio` process and binds a UNIX socket the instant it's
  * required, so these two functions had no way to be unit-tested while they
  * lived there as bare functions. No behavior change from the original

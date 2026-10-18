@@ -14,8 +14,8 @@ use HostAgent\Stores\SessionStatusStore;
  * class owning the create/list/detail/kill/status/drive endpoints a
  * headless opencode session needs.
  *
- * Endpoint-generation note (verified live against opencode 1.18.21's
- * /doc, Phase 0 of the headless-runtime plan): create uses the richer
+ * Endpoint-generation note (per opencode 1.18.21's
+ * /doc): create uses the richer
  * `/api/session` (its `location.directory` is what makes arbitrary-workdir
  * spawn work); reads/status/todo use the reliable `/session` and global
  * `/question` surface; the v2 `/api/session/:id/{history,question,
@@ -66,7 +66,7 @@ class OpenCodeServeClient
      * session - POST /api/session with the session's own `id` (+ location),
      * so the SAME conversation id is continued rather than a fork created
      * (that v2 create body's `id` is what makes this a resume, not a new
-     * session; verified live 2026-08-26 that the returned id equals the one
+     * session; the returned id equals the one
      * passed in). The reconcile then adopts it headless.
      *
      * @return array{ok:bool, id?:string, session?:array<string,mixed>, message?:string, http?:int}

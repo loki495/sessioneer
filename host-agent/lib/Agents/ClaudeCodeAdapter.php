@@ -16,9 +16,9 @@ use HostAgent\Services\SessionLifecycleService;
  * The first (and, until Antigravity ships, only) AgentAdapter
  * implementation - a thin wrapper around this app's existing
  * Claude-Code-specific code (Config::claude_bin(), HookService,
- * PermissionMode), not a rewrite of any of it. Extracted 2026-08-24 as
- * a pure refactor, byte-for-byte identical spawn argv/hook behavior to what SessionLifecycleService
- * built inline before this existed.
+ * PermissionMode), not a rewrite of any of it. Spawn argv/hook behavior is
+ * identical to what SessionLifecycleService
+ * once built inline.
  */
 class ClaudeCodeAdapter implements AgentAdapter
 {
@@ -85,7 +85,7 @@ class ClaudeCodeAdapter implements AgentAdapter
      * vocabulary, but a `claude -p` process that speaks NDJSON on
      * stdin/stdout and routes permission prompts to its client
      * (--permission-prompt-tool stdio). Never --bare: bare mode ignores the
-     * subscription login (live-verified).
+     * subscription login.
      *
      * $options['resume'] (?string) is an existing Claude session id to
      * continue (`--resume <id>`); absent/empty starts a fresh session with a

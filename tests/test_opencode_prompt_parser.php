@@ -8,7 +8,7 @@ declare(strict_types=1);
  * captured pane fixtures.
  *
  * NOTE on scope: the app does NOT trust the pane for PERMISSION surfacing any
- * more (a pane footer can be a STALE resolved dialog - found live 2026-08-25,
+ * more (a pane footer can be a STALE resolved dialog,
  * the "feasibility" session showed a permission footer while actively
  * working). Permissions come authoritatively from the Sessioneer OpenCode plugin via
  * PermissionStore (see test_opencode_permission_store.php). This test covers

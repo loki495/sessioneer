@@ -94,7 +94,7 @@ try {
     assert_contains('2 active', $result['body'], 'GET /: session count from canned agent');
     assert_true(
         preg_match('/<body class="[^"]*\boverscroll-y-none\b/', $result['body']) === 1,
-        'GET /: body has overscroll-y-none, so the page never rubber-bands/bounces past its own top/bottom (found live: this app had no overscroll-behavior anywhere, reading as a plain webpage rather than a tight, native-app-like one) - Y-axis only (not the both-axes overscroll-none this replaced, 2026-08-09), so X-axis overscroll-behavior stays free for the iOS edge-swipe-back gesture'
+        'GET /: body has overscroll-y-none, so the page never rubber-bands/bounces past its own top/bottom (this app had no overscroll-behavior anywhere, reading as a plain webpage rather than a tight, native-app-like one) - Y-axis only (not the both-axes overscroll-none this replaced, 2026-08-09), so X-axis overscroll-behavior stays free for the iOS edge-swipe-back gesture'
     );
     assert_contains('Fix the login redirect bug', $result['body'], 'GET /: canned pane title shown as the primary label');
     assert_contains('cc-20260101-1200', $result['body'], 'GET /: raw session name still shown (secondary, since a title is present)');
@@ -152,7 +152,7 @@ try {
     assert_true($csrfToken !== null, 'GET /: page includes a csrf_token field');
 
     // --- POST new: redirects straight to the new session's own view, same
-    // as resume/switch_runtime below - Andres's own ask, 2026-09-30: a
+    // as resume/switch_runtime below: a
     // dashboard flash meant an extra tap to actually see the session just
     // created, unlike resume's already-instant redirect. ---
     $result = curl_request('POST', "{$baseUrl}/", [
@@ -260,7 +260,7 @@ try {
     assert_contains('/home/user/www/old-project', $archivedFragmentBody['archived_html'] ?? '', 'GET /archived_sessions_fragment.php: archived_html carries the canned archived session\'s cwd');
     assert_true(
         preg_match('#<form method="post" action="/"[^>]*>\s*<input type="hidden" name="action" value="resume">\s*<input type="hidden" name="csrf_token"[^>]*>\s*<input type="hidden" name="agent_session_id" value="' . CANNED_ARCHIVED_CLAUDE_SESSION_ID . '">\s*<input type="hidden" name="workdir" value="/home/user/www/old-project">\s*<input type="hidden" name="profile" value="' . CANNED_ARCHIVED_CLAUDE_PROFILE . '">\s*<button type="submit"[^>]*>\s*Terminal#', $archivedFragmentBody['archived_html'] ?? '') === 1,
-        'GET /archived_sessions_fragment.php: archived_html carries a Terminal-resume form with the row\'s agent_session_id, cwd, AND profile (found live 2026-09-19: the profile field was missing entirely, so resuming a work-profile archived session silently resumed under the default account)'
+        'GET /archived_sessions_fragment.php: archived_html carries a Terminal-resume form with the row\'s agent_session_id, cwd, AND profile (the profile field was missing entirely, so resuming a work-profile archived session silently resumed under the default account)'
     );
     assert_contains('id="archived-load-more-btn"', $archivedFragmentBody['archived_html'] ?? '', 'GET /archived_sessions_fragment.php: archived_html ships the Load-more button that paginates the (potentially long) row list client-side');
 
@@ -283,7 +283,7 @@ try {
         // start_app_session() sets Cache-Control: private, max-age=60 by
         // default (tuned for session.php's own HTML page's bfcache
         // behavior) - each of these 4 polling endpoints must override that
-        // with no-store, or a browser (confirmed live: iOS Safari) can
+        // with no-store, or a browser can
         // legally serve a stale cached response to this exact fetch() URL
         // for up to a minute, no matter how fast the page polls.
         assert_equal('no-store', $pollResult['headers']['cache-control'] ?? null, "GET /{$pollEndpoint}: Cache-Control: no-store (never a stale cached poll response)");
@@ -313,7 +313,7 @@ try {
         'GET /session.php: cache-control max-age is short (1 minute), not PHP\'s 180-minute session default - a stale copy (old HTML/JS after a code change) was being served on plain navigation, no reload needed'
     );
     assert_contains('h-[var(--app-vh,100dvh)] overflow-hidden', $result['body'], 'GET /session.php: fixed-shell body height references the JS-synced --app-vh custom property (falling back to plain 100dvh) rather than the bare unit - works around a WebKit bug where 100dvh alone does not reliably recompute when the on-screen keyboard closes');
-    assert_contains('<html lang="en" class="h-full overflow-hidden">', $result['body'], 'GET /session.php: <html> itself also gets h-full+overflow-hidden on a fixed-shell page - found live 2026-08-22 (real iOS Safari screen recording): <html>, not <body>, is the actual root scrolling element in standards mode, so body\'s own overflow-hidden alone never stopped the page from scrolling/panning on focus');
+    assert_contains('<html lang="en" class="h-full overflow-hidden">', $result['body'], 'GET /session.php: <html> itself also gets h-full+overflow-hidden on a fixed-shell page (real iOS Safari screen recording): <html>, not <body>, is the actual root scrolling element in standards mode, so body\'s own overflow-hidden alone never stopped the page from scrolling/panning on focus');
     assert_contains('Fix the login redirect bug', $result['body'], 'GET /session.php: canned title shown');
     assert_true(
         preg_match('/id="header-title"[^>]*>\s*Fix the login redirect bug/', $result['body']) === 1,
@@ -353,7 +353,7 @@ try {
     // User entries are filled bubbles (rounded-2xl, own border/bg) - see
     // TranscriptView::entry_wrapper_class(). Assistant text entries are
     // free-flowing instead (no border/bg/max-width) - Claude-app-style,
-    // added 2026-08-08 - so they're identified by that literal prefix
+    // - so they're identified by that literal prefix
     // rather than the "rounded-lg border" anchor used for boxed kinds.
     assert_true(
         preg_match('/<div class="rounded-2xl border ([^"]*)"[^>]*>(?:(?!<div class="rounded-(?:lg|2xl) border).)*?Fix the login redirect bug/s', $result['body'], $userEntryMatch) === 1
@@ -376,7 +376,7 @@ try {
     );
     assert_true(
         preg_match('/<p class="whitespace-pre-wrap break-words">\s*Looking into it now\./', $result['body']) === 1,
-        'GET /session.php: text blocks get break-words, not just whitespace-pre-wrap - otherwise a long unbroken token (found live: a 51-char FILTER_FLAG_... constant name) widens the whole page horizontally instead of wrapping'
+        'GET /session.php: text blocks get break-words, not just whitespace-pre-wrap - otherwise a long unbroken token widens the whole page horizontally instead of wrapping'
     );
     assert_true(
         preg_match('/<span class="copy-source sr-only">\s*Looking into it now\./', $result['body']) === 1,
@@ -405,7 +405,7 @@ try {
     assert_contains('class="reveal-freetext-btn', $result['body'], 'GET /session.php: the "Type something." option renders as a reveal button, not an immediate-submit form');
     assert_true(
         preg_match('/<button type="submit" class="[^"]*\btext-left\b[^"]*">1\. Yes/', $result['body']) === 1,
-        'GET /session.php: an option button has text-left - a <button> defaults to text-align:center, invisible for a short label but centers each wrapped line of a long one (found live from a real phone screenshot 2026-08-08, e.g. a long "don\'t ask again for: <path>" option)'
+        'GET /session.php: an option button has text-left - a <button> defaults to text-align:center, invisible for a short label but centers each wrapped line of a long one (e.g. a long "don\'t ask again for: <path>" option)'
     );
     assert_true(
         preg_match('/<form[^>]*action="\/answer_prompt\.php"[^>]*>[^<]*<input[^>]*name="option"[^>]*value="3"/', $result['body']) !== 1,
@@ -430,9 +430,9 @@ try {
     );
     assert_contains('id="scroll-toolbar"', $result['body'], 'GET /session.php: docked #scroll-toolbar strip present (2026-09-06)');
     assert_contains('id="go-to-bottom-btn"', $result['body'], 'GET /session.php: docked go-to-bottom button present');
-    assert_contains('id="jump-to-new-btn"', $result['body'], 'GET /session.php: docked jump-to-new-content button present (Andres\'s own ask, 2026-08-22)');
-    assert_contains('id="go-to-top-btn"', $result['body'], 'GET /session.php: docked go-to-top button present (Andres\'s own ask, 2026-08-23)');
-    assert_contains('id="prev-user-btn"', $result['body'], 'GET /session.php: docked prev-user-message button present (Andres\'s own ask, 2026-08-30)');
+    assert_contains('id="jump-to-new-btn"', $result['body'], 'GET /session.php: docked jump-to-new-content button present');
+    assert_contains('id="go-to-top-btn"', $result['body'], 'GET /session.php: docked go-to-top button present');
+    assert_contains('id="prev-user-btn"', $result['body'], 'GET /session.php: docked prev-user-message button present');
     assert_true(
         strpos($result['body'], 'id="go-to-top-btn"') < strpos($result['body'], 'id="prev-user-btn"'),
         'GET /session.php: #go-to-top-btn appears LEFT of #prev-user-btn in the toolbar (Top, then Prev)'
@@ -484,7 +484,7 @@ try {
     assert_contains('id="show-subagent-toggle" class="rounded border-slate-600 bg-slate-800" checked', $result['body'], 'GET /session.php: show-subagent checkbox is checked (shown) by default');
     assert_contains('class="tool-detail"', $result['body'], 'GET /session.php: a plain (non-subagent) tool_result block carries no subagent-only marker at all - it is never rendered standalone hideable any more, only ever inside its own standalone tool-call entry');
     assert_contains('class="tool-use-block"', $result['body'], 'GET /session.php: a plain (non-subagent) tool_use block carries no subagent-only marker either');
-    // x-cloak-style (found live 2026-08-08): hidden by DEFAULT, only
+    // x-cloak-style: hidden by DEFAULT, only
     // revealed once body.show-subagent is added - the opposite of a naive
     // hide-on-toggle-off class, so there's no window where subagent
     // content renders visible before session.js's own script has even run
@@ -508,10 +508,10 @@ try {
     assert_contains('function parseJsonResponse(', $commonJs['body'], 'GET /js/common.js: parseJsonResponse() (shared between session.js and index.js) is shipped');
     assert_contains("window.visualViewport.addEventListener('resize'", $commonJs['body'], 'GET /js/common.js: the --app-vh custom property is kept synced to visualViewport.height (both keyboard-open and keyboard-close directions, unlike the WebKit 100dvh bug it works around)');
     assert_contains("focused.scrollIntoView({ block: 'nearest' })", $commonJs['body'], 'GET /js/common.js: a focused text input/textarea gets a corrective scrollIntoView() on a real keyboard-sized --app-vh change, fixing the native focus-scroll running against stale (pre-resize) layout on a real device');
-    assert_contains('KEYBOARD_RESIZE_MIN_DELTA_PX', $commonJs['body'], 'GET /js/common.js: the corrective scrollIntoView() is gated on a real keyboard-sized height delta, not every incidental visualViewport resize (found live 2026-08-22: correcting on tiny settling jitter snapped an already-focused textarea back into view even after the user deliberately scrolled away)');
+    assert_contains('KEYBOARD_RESIZE_MIN_DELTA_PX', $commonJs['body'], 'GET /js/common.js: the corrective scrollIntoView() is gated on a real keyboard-sized height delta, not every incidental visualViewport resize (correcting on tiny settling jitter snapped an already-focused textarea back into view even after the user deliberately scrolled away)');
     assert_true(
         strpos($commonJs['body'], 'syncAppViewportHeight();') === false,
-        'GET /js/common.js: --app-vh is NOT synced synchronously at script-load time anymore (found live 2026-08-22: that first reading could be inaccurate on a genuinely fresh page load, before iOS Safari\'s own chrome had settled, leaving an extra gap at the bottom of the fixed shell) - it relies purely on the visualViewport resize listener, falling back to plain 100dvh until the first real measurement lands'
+        'GET /js/common.js: --app-vh is NOT synced synchronously at script-load time anymore (that first reading could be inaccurate on a genuinely fresh page load, before iOS Safari\'s own chrome had settled, leaving an extra gap at the bottom of the fixed shell) - it relies purely on the visualViewport resize listener, falling back to plain 100dvh until the first real measurement lands'
     );
     assert_contains(
         "document.getElementById('app-shell')",
@@ -521,15 +521,15 @@ try {
     assert_contains(
         'window.scrollTo(0, 0)',
         $commonJs['body'],
-        'GET /js/common.js: a window scroll listener snaps the outer page back to (0,0) - found live 2026-08-22 (real iOS Safari screen recording, Andres): focusing the compose textarea panned the WHOLE layout viewport off-screen (not a DOM scroll, so overflow:hidden on body did not stop it), dragging position:fixed elements along with it and leaving the page entirely blank'
+        'GET /js/common.js: a window scroll listener snaps the outer page back to (0,0): focusing the compose textarea panned the WHOLE layout viewport off-screen (not a DOM scroll, so overflow:hidden on body did not stop it), dragging position:fixed elements along with it and leaving the page entirely blank'
     );
     assert_contains('function copyTextToClipboard(', $commonJs['body'], 'GET /js/common.js: copyTextToClipboard() (navigator.clipboard with an execCommand fallback for insecure-context LAN access) is shipped');
     assert_contains("closestEventTarget(e, '.copy-btn')", $commonJs['body'], 'GET /js/common.js: the delegated .copy-btn click handler is shipped through the safe event-target helper');
     assert_contains('fullscreen-text-modal-copy', $commonJs['body'], 'GET /js/common.js: the fullscreen text modal\'s own Copy button is wired up');
-    assert_contains('fullscreenTextModal.addEventListener(\'touchstart\'', $commonJs['body'], 'GET /js/common.js: the fullscreen text modal has its own swipe-to-close touch handling (Andres 2026-08-22), not just the close button/Escape');
+    assert_contains('fullscreenTextModal.addEventListener(\'touchstart\'', $commonJs['body'], 'GET /js/common.js: the fullscreen text modal has its own swipe-to-close touch handling, not just the close button/Escape');
     assert_contains('FULLSCREEN_SWIPE_MIN_DISTANCE_PX', $commonJs['body'], 'GET /js/common.js: the swipe-to-close gesture is shipped with its own distance/ratio thresholds');
-    assert_contains("fullscreenTextModal.addEventListener('touchcancel'", $commonJs['body'], 'GET /js/common.js: touchcancel resets the swipe start coordinates too (found live 2026-08-22: a cancelled touch sequence on tall/scrollable content, e.g. a subagent report, left stale start coordinates corrupting the NEXT swipe attempt\'s delta)');
-    // Found live 2026-08-22: the fullscreen handler used to look for the
+    assert_contains("fullscreenTextModal.addEventListener('touchcancel'", $commonJs['body'], 'GET /js/common.js: touchcancel resets the swipe start coordinates too (a cancelled touch sequence on tall/scrollable content, e.g. a subagent report, left stale start coordinates corrupting the NEXT swipe attempt\'s delta)');
+    // The fullscreen handler used to look for the
     // trigger's nearest `details` ancestor alone, which broke once a tool-
     // call entry's own call/result blocks stopped each having their OWN
     // <details> wrapper (BlockedPromptView::render_full_block(), nested
@@ -541,7 +541,7 @@ try {
     // outer element) is what actually stops the search at the right block.
     assert_contains("trigger.closest('details, .copy-block')", $commonJs['body'], 'GET /js/common.js: the fullscreen handler stops at the nearest details OR .copy-block ancestor, not just the nearest details (which could be an outer tool-call entry, not this specific block)');
 
-    // --- markdown-in-fullscreen-modal (Andres's own ask, 2026-08-23): a
+    // --- markdown-in-fullscreen-modal: a
     // markdown-kind expanded block's already-rendered .markdown-body HTML
     // is reused in the fullscreen view instead of always showing raw
     // preformatted text - see openFullscreenTextModal()'s own docblock. ---
@@ -577,7 +577,7 @@ try {
     assert_contains('function highlightLoadedOlderContent(', $highlightsJs['body'], 'GET /js/highlights.js: highlightLoadedOlderContent() (distinct cyan glow for "Load older messages" content, not the amber live-poll one) is shipped');
     assert_contains('function updateJumpToNewVisibility(', $highlightsJs['body'], 'GET /js/highlights.js: updateJumpToNewVisibility() (shows/hides #jump-to-new-btn and picks its arrow direction, based on live geometry) is shipped');
     assert_contains('function jumpToNewContent(', $highlightsJs['body'], 'GET /js/highlights.js: jumpToNewContent() (the click handler, scrolls to the current "New" divider) is shipped');
-    assert_contains('var alreadyVisible = dividerRect.bottom > pageContentRect.top && dividerRect.top < pageContentRect.bottom;', $highlightsJs['body'], 'GET /js/highlights.js: #jump-to-new-btn checks the divider\'s LIVE on-screen position directly, not the delayed newEntryObserver/dividerObserver fade timer - found live 2026-08-22 (Andres): reusing that delayed signal left the button shown for ~2.5s even when the new content was already visible (e.g. already scrolled to the bottom when it arrived)');
+    assert_contains('var alreadyVisible = dividerRect.bottom > pageContentRect.top && dividerRect.top < pageContentRect.bottom;', $highlightsJs['body'], 'GET /js/highlights.js: #jump-to-new-btn checks the divider\'s LIVE on-screen position directly, not the delayed newEntryObserver/dividerObserver fade timer: reusing that delayed signal left the button shown for ~2.5s even when the new content was already visible (e.g. already scrolled to the bottom when it arrived)');
     assert_contains("jumpToNewBtn.innerHTML = dividerRect.top < pageContentRect.top ? '&uarr; New' : '&darr; New'", $highlightsJs['body'], 'GET /js/highlights.js: #jump-to-new-btn points up (with the "New" text label) when the unread content is above the visible area, down when it\'s below - not hardcoded to always point down');
     assert_contains("pageContent.addEventListener('scroll', updateJumpToNewVisibility", $highlightsJs['body'], 'GET /js/highlights.js: #jump-to-new-btn\'s visibility/direction is rechecked on every scroll, not just when new content first arrives');
     assert_contains("jumpToNewBtn.addEventListener('click', jumpToNewContent)", $highlightsJs['body'], 'GET /js/highlights.js: #jump-to-new-btn is wired to jumpToNewContent()');
@@ -586,13 +586,13 @@ try {
     $sidebarJs = curl_request('GET', "{$baseUrl}{$sessionScriptMatch[5]}");
     assert_equal(200, $sidebarJs['status'], 'GET /js/sidebar.js?v=...: 200 (served as a static file, no 404)');
     assert_contains('function numberFormatOneDecimal(', $sidebarJs['body'], 'GET /js/sidebar.js: numberFormatOneDecimal() (mirrors PHP\'s number_format($n, 1) exactly, not toLocaleString()) is shipped');
-    assert_contains("numberFormatOneDecimal(bytes / 1024) + ' KB'", $sidebarJs['body'], 'GET /js/sidebar.js: formatFileSize() uses numberFormatOneDecimal() for its KB branch, matching TranscriptView::format_attachment_size() (PHP) - found live 2026-08-22 (codebase audit): a plain toFixed(1) here drifted from PHP\'s number_format() for any size >= 1000 KB/MB');
+    assert_contains("numberFormatOneDecimal(bytes / 1024) + ' KB'", $sidebarJs['body'], 'GET /js/sidebar.js: formatFileSize() uses numberFormatOneDecimal() for its KB branch, matching TranscriptView::format_attachment_size() (PHP) (codebase audit): a plain toFixed(1) here drifted from PHP\'s number_format() for any size >= 1000 KB/MB');
 
     $sessionJs = curl_request('GET', "{$baseUrl}{$sessionScriptMatch[7]}");
     assert_equal(200, $sessionJs['status'], 'GET /js/session.js?v=...: 200 (served as a static file, no 404)');
     assert_true(
         substr_count($sessionJs['body'], "class=\"mt-2 rounded-lg px-3 py-2 text-xs bg-amber-900/40 text-amber-200 border border-amber-700/60\"") === 2,
-        'GET /js/session.js: BOTH renderBlockedSection() branches (multi-question and regular) carry mt-2 on the card, matching blocked-prompt/rich.php\'s own top-level element - found live 2026-08-22 (codebase audit): missing here meant a session that only BECOMES blocked mid-poll rendered its card sitting closer to the wrapper edge than a fresh page load would'
+        'GET /js/session.js: BOTH renderBlockedSection() branches (multi-question and regular) carry mt-2 on the card, matching blocked-prompt/rich.php\'s own top-level element (codebase audit): missing here meant a session that only BECOMES blocked mid-poll rendered its card sitting closer to the wrapper edge than a fresh page load would'
     );
     assert_contains('function renderTodoList(', $sessionJs['body'], 'GET /js/session.js: renderTodoList() (sidebar live task checklist, mirrors TranscriptView::render_todo_list_html()) is shipped');
     assert_contains("todoListSection = document.getElementById('todo-list-section')", $sessionJs['body'], 'GET /js/session.js: renderTodoList() targets the same #todo-list-section wrapper the PHP side renders into on initial load');
@@ -601,11 +601,11 @@ try {
     assert_contains('function resetHistoryForRotatedTranscript(', $sessionJs['body'], 'GET /js/session.js: resetHistoryForRotatedTranscript() (clears the rendered history on /clear, /compact, --resume, --fork-session) is shipped');
     assert_contains("sessionHeader = document.getElementById('session-header')", $sessionJs['body'], 'GET /js/session.js: the iOS tap-header-to-scroll-to-top handler is shipped');
     assert_contains("closestEventTarget(e, 'a, #header-title, #sidebar-toggle-btn')", $sessionJs['body'], 'GET /js/session.js: the tap-to-scroll-to-top handler excludes the header\'s own real tap targets through the safe event-target helper');
-    assert_contains('sidebarCurrentlyOpen ? refreshSidebarList() : Promise.resolve()', $sessionJs['body'], 'GET /js/session.js: pollOnce() refreshes the sidebar\'s other-sessions list while the panel is open, not just on open/answer (found live 2026-09-28: a session\'s card stayed on "working" after being answered from the sidebar until the panel was closed and reopened)');
+    assert_contains('sidebarCurrentlyOpen ? refreshSidebarList() : Promise.resolve()', $sessionJs['body'], 'GET /js/session.js: pollOnce() refreshes the sidebar\'s other-sessions list while the panel is open, not just on open/answer (a session\'s card stayed on "working" after being answered from the sidebar until the panel was closed and reopened)');
     assert_contains('function refreshSidebarList(', $sidebarJs['body'], 'GET /js/sidebar.js: refreshSidebarList() (the poll-time other-sessions refresh) is shipped');
     assert_contains('if (html === lastRenderedSidebarHtml)', $sidebarJs['body'], 'GET /js/sidebar.js: the other-sessions list only actually re-renders when its HTML changed, so a poll tick never tears out an in-progress interaction (e.g. typing a free-text reply to another session\'s prompt) for nothing');
-    // renderStaticInfo() no longer carries a session-info card (removed
-    // 2026-08-20 - just title+cwd in the fixed header now, see header.php)
+    // renderStaticInfo() no longer carries a session-info card (removed:
+    // just title+cwd in the fixed header now, see header.php)
     // - only the header title/tooltip need live updating (cwd never
     // changes for a session's lifetime).
     assert_contains('headerTitle.title = title', $sessionJs['body'], 'GET /js/session.js: renderStaticInfo() keeps the header title\'s tooltip (title attribute) in sync too, not just its visible text');
@@ -614,7 +614,7 @@ try {
     assert_contains('"agentSessionId":"11111111-2222-4333-8444-555555555555"', $result['body'], 'GET /session.php: the real agent_session_id is embedded in SESSIONEER_BOOTSTRAP, so a poll-detected change can be told apart from "not known yet"');
     // --- standalone tool-call entries (TranscriptView::render_transcript_
     // entries_html()/render_tool_call_entry_html() - bundling under a
-    // shared "N tool calls" toggle removed 2026-08-22 in favor of each
+    // shared "N tool calls" toggle removed in favor of each
     // call being its own individually collapsed <details class="tool-call-
     // entry">, right in the flow, collapsed to a one-line summary by
     // default - no more standalone "Tool call"/"Tool output" labeled
@@ -630,7 +630,7 @@ try {
         preg_match('/<details class="tool-call-entry[^"]*"><summary[^>]*>Bash\(pwd\)<\/summary>.*?<div class="tool-call-result-slot"><\/div>.*?<\/details>/s', $result['body']) === 1,
         'GET /session.php: the canned "Bash(pwd)" tool call renders as its own standalone tool-call entry, collapsed to a "Bash(pwd)" summary line, with an EMPTY result slot - there is no groupable tool_result immediately following it in this fixture'
     );
-    // --- the two Read() call+result pairs (lines 11-14, added 2026-08-08
+    // --- the two Read() call+result pairs (lines 11-14
     // to exercise real pairing) - each is its OWN standalone tool-call
     // entry now (not swept into a shared group with each other), summary
     // line taken straight from the call's own text (no description in this
@@ -642,8 +642,7 @@ try {
         'GET /session.php: the first Read() call+result pair renders as its own standalone tool-call entry, containing its own real result'
     );
     // Tool output collapses by default the same way a subagent's report
-    // already does, even once the outer tool-call entry is open (Andres's
-    // own call 2026-08-22) - a NESTED <details> for the result specifically
+    // already does, even once the outer tool-call entry is open) - a NESTED <details> for the result specifically
     // (BlockedPromptView::render_collapsible_block(), not render_full_block()
     // any more), unlike the call half (still shown in full directly, no
     // nested collapse - a command is short enough to just read).
@@ -655,7 +654,7 @@ try {
         preg_match('/<details class="tool-call-entry[^"]*"><summary[^>]*>Read\(routes\/web\.php\)<\/summary>.*?Route::get.*?<\/details>/s', $result['body']) === 1,
         'GET /session.php: the second Read() call+result pair renders as its own SEPARATE standalone tool-call entry (not merged with the first), containing its own real result'
     );
-    // --- the Write/Bash pair (lines 15-18, added 2026-08-22) - carries the
+    // --- the Write/Bash pair (lines 15-18) - carries the
     // real tool_name/file_path/command fields TranscriptService::
     // summarize_content_block() stashes for these specific tools, so the
     // summary line is generated by TranscriptView::tool_call_entry_summary()
@@ -720,7 +719,7 @@ try {
     // screenshot, in practice) - excluded from grouping entirely (an
     // attachment/image must always stay visible on its own, never folded
     // into a collapsed-by-default group), so it still renders standalone
-    // with its original "Tool output" label, same as before 2026-08-08.
+    // with its original "Tool output" label, same as before.
     assert_true(
         preg_match('/<div class="rounded-lg border ([^"]*)">(?:(?!<div class="rounded-lg border).)*?<img src="data:image\/png;base64,' . preg_quote(CANNED_TEST_IMAGE_BASE64, '/') . '"[^>]*class="transcript-image/s', $result['body'], $imageEntryMatch) === 1
             && str_contains($imageEntryMatch[0], '>Tool output<'),
@@ -736,7 +735,7 @@ try {
     // transcript_attachments_from_tool_use_result()), not embedded content:
     // a plain download (notes.txt) and an image (screenshot.png), the same
     // mixed shape a real SendUserFile call sending a screenshot alongside a
-    // report can produce (verified live 2026-08-04 against this app's own
+    // report can produce (seen in this app's own
     // transcript).
     $attachmentUrl = '/session_attachment.php?session=cc-20260101-1200&line=8&file_uuid=canned-file-uuid-1';
     $imageAttachmentUrl = '/session_attachment.php?session=cc-20260101-1200&line=8&file_uuid=canned-file-uuid-2';
@@ -938,8 +937,7 @@ try {
     assert_contains(CANNED_VAPID_PUBLIC_KEY, $result['body'], 'GET /session.php: the actual VAPID public key is embedded for the frontend subscribe flow');
 
     // --- push-notify.js / sw.js: the CSRF-token-in-IndexedDB cache and the
-    // notification Approve/Deny action buttons (researched + built
-    // 2026-08-22) - see PushDeliveryService::approve_deny_actions() for
+    // notification Approve/Deny action buttons - see PushDeliveryService::approve_deny_actions() for
     // the host-agent side that decides when these show up at all. ---
     assert_true(
         preg_match('#<script src="(/js/push-notify\.js\?v=\d+)"></script>#', $result['body'], $pushNotifyScriptMatch) === 1,
@@ -1315,7 +1313,7 @@ try {
     assert_contains('Load older messages', $archivedResult['body'], 'GET /archived_session.php: load-more button shown when has_more=true');
     assert_true(
         preg_match('#<input type="hidden" name="agent_session_id" value="' . CANNED_ARCHIVED_CLAUDE_SESSION_ID . '">\s*<input type="hidden" name="workdir" value="/home/user/www/old-project">\s*<input type="hidden" name="profile" value="' . CANNED_ARCHIVED_CLAUDE_PROFILE . '">#', $archivedResult['body']) === 1,
-        'GET /archived_session.php: the Unarchive form carries the session\'s profile too, same field the archived-row Resume form carries (found live 2026-09-19: this form was missing it entirely)'
+        'GET /archived_session.php: the Unarchive form carries the session\'s profile too, same field the archived-row Resume form carries'
     );
     assert_true(
         preg_match('#<button type="submit"[^>]*>Terminal</button>\s*<button type="submit" name="runtime" value="headless"[^>]*>Headless</button>#', $archivedResult['body']) === 1,
@@ -1359,7 +1357,7 @@ try {
 
     // --- POST resume: unlike every other dashboard action, a successful
     // resume redirects straight to the now-live session.php view, not back
-    // to / with a flash - decided explicitly with Andres 2026-08-08 (see
+    // to / with a flash (an explicit decision; see
     // the unify-claude-sessions plan's phase 5). Own $archivedResume*
     // variables throughout, same reasoning as the rest of this
     // end-of-curl-only-tier block. ---
@@ -1382,7 +1380,7 @@ try {
 
     // --- POST resume: no profile sent at all - exactly the pre-fix shape
     // of both the archived-row Resume form and the archived-session
-    // Unarchive form (found live 2026-09-19), and what DashboardController
+    // Unarchive form, and what DashboardController
     // used to send regardless even after those forms were fixed to send
     // it. Otherwise identical to the successful resume above (same real
     // agent_session_id/workdir), so this only fails if DashboardController
@@ -1584,8 +1582,8 @@ try {
 
     // --- session.php: a brand-new session (found, but no transcript on
     // disk yet) must still render #history-list (with a placeholder note
-    // inside it), not omit the container entirely - found live
-    // 2026-08-08: session.js captures #history-list via a single
+    // inside it), not omit the container entirely.
+    // session.js captures #history-list via a single
     // getElementById() at load time, never re-queried, so a missing
     // container left `list` permanently null for the whole page's life,
     // crashing the very first compose send (list.appendChild() on null)

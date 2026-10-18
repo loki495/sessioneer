@@ -113,10 +113,9 @@ class HookService
      * PermissionRequest/UserPromptSubmit/Stop feed SessionStatusStore (see
      * that class and host-agent/hooks/{permission_request,user_prompt_submit,
      * stop}.php) - each appends its own matcher-group entry to
-     * ~/.claude/settings.json without touching whatever Andres's own
+     * ~/.claude/settings.json without touching whatever the user's own
      * personal hooks are already registered for those same events (multiple
-     * hook commands coexist per event there today - confirmed before this
-     * was written, see the todo file's research entry).
+     * hook commands coexist per event there today).
      *
      * @return array<int, array{event:string, command:string, present:bool}>
      */
@@ -176,7 +175,7 @@ class HookService
      * Adds every missing app_hooks_status() entry to ~/.claude/settings.json,
      * creating the file if it doesn't exist yet. Never overwrites an existing
      * file that fails to parse - a blind reset-to-empty-then-write would
-     * silently discard every other hook/setting Andres already has configured
+     * silently discard every other hook/setting the user already has configured
      * there. Idempotent per hook: each is only added if not already present,
      * so this is safe to call from a "just make sure it's there" dashboard
      * button without a separate check first, and safe to re-run after only

@@ -11,7 +11,7 @@ declare(strict_types=1);
  * ALWAYS returns {"decision":"ask"} - Antigravity's own docs mark
  * `decision` as REQUIRED, unlike Claude Code's hooks (where writing
  * nothing means "no opinion"). "ask" (not "allow") is deliberate:
- * confirmed LIVE 2026-08-24 that "allow" does NOT actually suppress
+ * "allow" does NOT actually suppress
  * Antigravity's own interactive approval UI in this version - the real
  * "Do you want to proceed?" prompt shows regardless. "ask" is the
  * decision that matches what ALREADY happens with no hook installed at

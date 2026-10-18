@@ -18,7 +18,7 @@ class AntigravityHookService
 {
     /**
      * The one top-level hook-group name this app writes everything under
-     * in hooks.json - never touches any OTHER named group Andres (or a
+     * in hooks.json - never touches any OTHER named group the user (or a
      * plugin) might already have configured for the same events, matching
      * HookService's own "never mistake a user's own unrelated hook for
      * ours" discipline, just via a distinct group name here instead of a

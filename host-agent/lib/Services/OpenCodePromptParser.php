@@ -7,12 +7,11 @@ namespace HostAgent\Services;
 /**
  * Detects a blocked OpenCode TUI prompt (a modal overlay) from a pane capture.
  *
- * Foolproof-first, per Andres 2026-08-25: string-scanning the WHOLE pane for
+ * Foolproof-first: string-scanning the WHOLE pane for
  * keywords is unreliable because the pane's scrollback/transcript can contain
  * arbitrary assistant output that happens to mention "Permission required",
- * "Allow once", or even a pasted source diff (found live: the feasibility
- * session had a git-diff paste sitting above the real dialog, which a naive
- * top-down scan turned into a nonsense "question"). So the approach is two
+ * "Allow once", or even a pasted source diff (a git-diff paste sitting above the real dialog is
+ * turned by a naive top-down scan into a nonsense "question"). So the approach is two
  * stage:
  *
  *   1. is_blocked(): decide from STRUCTURE whether a modal is up at all. The
@@ -25,7 +24,7 @@ namespace HostAgent\Services;
  *   2. Only once blocked, extract the modal text from the region between the
  *      modal's heading and that footer - never above it.
  *
- * Two modal shapes (verified live 2026-08-25):
+ * Two modal shapes:
  *   - permission: "△ Permission required"/"△ Always allow" dialog over a
  *     tab bar whose footer is "⇆ select  enter confirm", with the option
  *     labels (Allow once / Allow always / Reject, or Confirm / Cancel)

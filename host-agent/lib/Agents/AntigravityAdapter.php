@@ -11,8 +11,7 @@ use HostAgent\Services\Config;
 
 /**
  * Second AgentAdapter implementation, for Google's Antigravity CLI
- * (binary `agy`; live-verified 2026-08-24 on a real `agy 1.1.19`
- * install). Phase 2: spawn argv + identity. Phase 3: hook registration -
+ * (binary `agy`, as of `agy 1.1.19`). Phase 2: spawn argv + identity. Phase 3: hook registration -
  * ships working/idle tracking; "blocked" detection is a later phase (a hook's own
  * decision doesn't suppress Antigravity's real approval UI).
  */
@@ -55,15 +54,15 @@ class AntigravityAdapter implements AgentAdapter
      * unrecognized/unsupported values (e.g. 'auto', which this agent has
      * no equivalent for) are silently ignored, same whitelisting
      * discipline as the Claude adapter. $options['model']/$options['effort']
-     * pass straight through to `--model`/`--effort` when given (Andres's
-     * own model-select dropdown, mirrored per-agent once the New Session
+     * pass straight through to `--model`/`--effort` when given (mirroring the
+     * model-select dropdown, mirrored per-agent once the New Session
      * UI grows an agent picker).
      * $options['enable_task_tools'] (a Claude-Code-specific
      * concept - Antigravity has no equivalent) is silently ignored if
      * present, per this interface's own "read only what you understand"
      * contract.
      *
-     * assigned_id is always null - confirmed live that no
+     * assigned_id is always null - no
      * --session-id/--conversation-id equivalent exists for starting a
      * fresh interactive session; `--conversation <id>` only RESUMES an
      * existing one. Real identity can only be learned reactively, off the

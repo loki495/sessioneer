@@ -51,10 +51,9 @@ class TmuxService
      * list_tracked_tmux_sessions() below (sidecar-gated) can't answer it yet.
      *
      * 'activity' is sourced from #{window_activity}, NOT tmux's own
-     * #{session_activity} - found live 2026-08-08 on this app's own
-     * actual session (dogfooding: Andres noticed a live, actively-working
-     * session's dashboard row looked stale/"detached"), confirmed via
-     * tmux's own man page and a live A/B check: #{session_activity}
+     * #{session_activity}, since a live, actively-working
+     * session's dashboard row otherwise looks stale/"detached" (per
+     * tmux's own man page and a live A/B check): #{session_activity}
      * ("Time of session last activity") does NOT reliably update from
      * real, continuous pane output the way you'd expect - it stayed
      * frozen at this session's own spawn time for 8+ real hours of heavy
@@ -63,7 +62,7 @@ class TmuxService
      * being checked. Every session this app tracks is single-window (see
      * create_agent_session()), so the active window IS the session for this
      * purpose - #{window_activity} resolves to it directly even from a
-     * list-sessions format string (verified live), no per-window query
+     * list-sessions format string, no per-window query
      * needed.
      *
      * @return array<int, array{name:string, activity:int, attached:bool}>

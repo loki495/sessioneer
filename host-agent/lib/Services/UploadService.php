@@ -9,7 +9,7 @@ use HostAgent\Stores\SidecarStore;
 /**
  * Files uploaded from the compose bar's "+" button (see upload_file.php)
  * land inside a session's own project working dir under .claude/uploads/
- * (Andres's own suggestion) - naturally already something Claude Code can
+ * - naturally already something Claude Code can
  * Read() directly (relative to its own cwd) without needing to be told
  * about an app-specific location.
  */
@@ -22,9 +22,8 @@ class UploadService
 
     /**
      * A self-contained .gitignore ("*") inside the uploads dir itself,
-     * rather than touching the project's own root .gitignore - found live
-     * testing this feature that .claude/ is NOT reliably already gitignored
-     * (checked this very repo: it wasn't), so without this an uploaded file
+     * rather than touching the project's own root .gitignore -
+     * .claude/ is NOT reliably already gitignored, so without this an uploaded file
      * would show up as untracked in `git status` in any project that hasn't
      * already excluded .claude/ itself. Self-healing: called on every save
      * (cheap - just an is_file() check in the common case), not only when

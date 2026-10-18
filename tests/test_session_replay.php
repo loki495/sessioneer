@@ -159,10 +159,10 @@ try {
             // endpoint - not just a unit test of build_session_entry()'s
             // logic in isolation. Working-status used to come from the pane
             // title's spinner glyph instead (PromptParser::
-            // pane_title_is_working(), deleted 2026-08-22 once these hooks
+            // pane_title_is_working(), deleted once these hooks
             // became mandatory) - this same assertion covered THAT path
-            // end-to-end before the swap, catching a real regression live
-            // 2026-08-12 that a pure unit test of the string-matching
+            // end-to-end before the swap, catching a real regression
+            // that a pure unit test of the string-matching
             // function alone had missed (Claude Code switching its spinner
             // glyph set).
             $expectedWorking = $advanced['step']['expect_working'];

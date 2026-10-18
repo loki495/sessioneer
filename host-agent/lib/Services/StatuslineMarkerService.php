@@ -13,7 +13,7 @@ namespace HostAgent\Services;
  * everything else (blocked prompts, etc).
  *
  * This is a stronger signal than the SessionStart hook alone for the
- * exact corruption class found live 2026-08-08 (a `claude` process run
+ * exact corruption class (a `claude` process run
  * manually from inside a tracked pane's own Bash tool inherits
  * SESSIONEER_SESSION_NAME and fires its own genuine SessionStart, clobbering the
  * pane's sidecar with an unrelated session_id - see session_start.php's
@@ -23,7 +23,7 @@ namespace HostAgent\Services;
  * session and its own statusline redraws, self-correcting automatically
  * rather than depending on catching the right hook fire.
  *
- * Installs into Andres's own pre-existing statusline script (if he has
+ * Installs into the user's own pre-existing statusline script (if there is
  * one - see locate_statusline_script()) rather than replacing it, using
  * the same clearly-marked, idempotent, safe-to-delete block convention as
  * a merge-safe settings.json edit (see HookService), just for a plain
@@ -57,7 +57,7 @@ class StatuslineMarkerService
     // rollover; otherwise the higher pct wins, since usage only climbs
     // within one window) used to live here as a jq filter string, run via
     // a shell tmp-file-then-mv - moved to PHP (merge_quota_bucket() in
-    // host-agent/quota_live_state_write.php) 2026-08-24, see that file's
+    // host-agent/quota_live_state_write.php), see that file's
     // own docblock for why.
 
     /**
@@ -70,7 +70,7 @@ class StatuslineMarkerService
      * so a session with no context-window data yet, or outside a worktree,
      * still yields a usable session_id.
      *
-     * Takes the LAST match, not the first (found live 2026-08-23: with a
+     * Takes the LAST match, not the first (with a
      * tall pane - TMUX_PANE_HEIGHT=150 by default - and a session that
      * rotated its agent_session_id mid-conversation (/clear, /compact,
      * --resume), an OLDER statusline render from before the rotation can
@@ -113,9 +113,9 @@ class StatuslineMarkerService
 
     /**
      * Expands a bash-style `$HOME`/`${HOME}` reference in a statusLine
-     * command TOKEN to Config::home_root() - found live 2026-09-18: a
+     * command TOKEN to Config::home_root(): a
      * command string written the normal way a user would type it (e.g.
-     * "bash $HOME/.claude/statusline-command.sh", Andres's own real one)
+     * "bash $HOME/.claude/statusline-command.sh")
      * is never shell-evaluated here, so is_file() on the literal,
      * unexpanded token could never match a real file - every check below
      * silently reported "not installed" against an already-fully-installed
@@ -137,7 +137,7 @@ class StatuslineMarkerService
 
     /**
      * Finds the actual script file a `{"type":"command","command":"..."}`
-     * statusLine entry invokes, so the marker can be appended to Andres's
+     * statusLine entry invokes, so the marker can be appended to the user's
      * own script rather than this app owning/replacing the whole thing.
      * Deliberately conservative: only ever returns a path that (a) is an
      * existing, writable regular file and (b) looks like a path (contains
@@ -192,8 +192,8 @@ class StatuslineMarkerService
      * since an existing script may already carry the (older) session-id
      * marker without yet having this block appended. Also false for a
      * script that already has SOME quota-capture block but a STALE one
-     * (found live 2026-08-24: Andres's own already-installed script still
-     * had the old jq-merge-then-mv body from before the move to
+     * (e.g. an already-installed script still
+     * having the old jq-merge-then-mv body from before the move to
      * host-agent/quota_live_state_write.php/GlobalStateStore - block_installed()'s
      * plain str_contains($beginMarker) check alone would have reported
      * this as already installed forever, since the BEGIN/END marker text
@@ -483,7 +483,7 @@ class StatuslineMarkerService
      * Shells out to host-agent/quota_live_state_write.php (Config::
      * quota_live_state_write_command()) for the actual merge-and-write
      * (GlobalStateStore, SQLite - see that script's own docblock for why
-     * this moved off a jq-merge-then-mv plain-file dance 2026-08-24) -
+     * this moved off a jq-merge-then-mv plain-file dance) -
      * synchronous, same as the jq pipeline it replaces: one extra PHP
      * process (PHP startup + a single SQLite upsert) is not perceptibly
      * slower than the jq calls already happening on every render, and

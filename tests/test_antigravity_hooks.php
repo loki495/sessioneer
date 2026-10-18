@@ -115,7 +115,7 @@ try {
     assert_equal(1, count($afterSecond['sessioneer']['PreToolUse']), 'install_session_hook: calling twice does not duplicate the PreToolUse matcher group');
     assert_equal(1, count($afterSecond['sessioneer']['PreInvocation']), 'install_session_hook: calling twice does not duplicate the flat PreInvocation entry');
 
-    // --- preserves an unrelated hook-group Andres (or a plugin) already has ---
+    // --- preserves an unrelated hook-group a user (or a plugin) already has ---
 
     unlink($hooksPath);
     file_put_contents($hooksPath, json_encode([
@@ -190,7 +190,7 @@ try {
     $ptuNoEnvOut = run_antigravity_hook_script("{$hooksDir}/pre_tool_use.php", null, ['toolCall' => ['name' => 'run_command', 'args' => ['CommandLine' => 'ls']]]);
     assert_equal('{"decision":"ask"}', trim($ptuNoEnvOut), 'pre_tool_use.php: still returns a valid decision even with no SESSIONEER_SESSION_NAME (globally-registered, must never break an untracked session)');
 
-    // --- pre_tool_use.php: "ask", not "allow" - confirmed live 2026-08-24 that "allow" does not suppress the real approval UI ---
+    // --- pre_tool_use.php: "ask", not "allow": "allow" does not suppress the real approval UI ---
 
     $ptuName = 'ag-test-ptu-' . bin2hex(random_bytes(3));
     $ptuOut = run_antigravity_hook_script("{$hooksDir}/pre_tool_use.php", $ptuName, ['toolCall' => ['name' => 'run_command', 'args' => ['CommandLine' => 'echo hi']], 'stepIdx' => 3]);
@@ -239,7 +239,7 @@ try {
     unlink($fixtureTranscriptPath);
 
     // --- stop.php: a turn that got NO response at all (quota exhausted, etc.) - Antigravity itself
-    // writes nothing to the transcript for this (confirmed live 2026-08-24, see this function's own
+    // writes nothing to the transcript for this (confirmed, see this function's own
     // docblock in stop.php), so the only place the failure is ever visible is the live pane's own
     // "⚠ ..." banner text - last_turn_error captures it from there instead ---
 

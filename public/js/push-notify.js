@@ -20,7 +20,7 @@
   // readPushCsrfToken() comment for why (a service worker has no access
   // to server-rendered HTML or localStorage; IndexedDB is the only
   // storage both contexts share). Lets a tap on a push notification's
-  // Approve/Deny action (researched + built 2026-08-22) answer the prompt
+  // Approve/Deny action answer the prompt
   // directly via fetch(), with no page ever opening. Written on every
   // load, same reasoning as re-POSTing the subscription above - cheap,
   // and self-healing if IndexedDB ever got cleared independently of the

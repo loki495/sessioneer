@@ -12,8 +12,7 @@ use HostAgent\Stores\SessionStatusStore;
 
 /**
  * Create/resume/kill/cleanup of managed cc-* tmux sessions. Split out of
- * SessionService.php (2026-08-24 readability audit - see the plan this
- * followed) - fully self-contained, no dependency on core SessionService or
+ * SessionService.php - fully self-contained, no dependency on core SessionService or
  * any other new class. Methods/bodies moved verbatim, no behavior changes.
  */
 class SessionLifecycleService
@@ -47,7 +46,7 @@ class SessionLifecycleService
      * resolved adapter's build_spawn_argv() (see ClaudeCodeAdapter's own
      * docblock for --allowedTools/--permission-mode's exact reasoning -
      * this method used to build that argv inline until the AgentAdapter
-     * extraction, 2026-08-24;
+     * extraction;
      * behavior is unchanged for Claude Code, only where the logic lives
      * moved). $startingMode is this app's own manual/accept edits/plan/auto
      * vocabulary (TranscriptView::MODE_OPTIONS) - each adapter whitelists
@@ -79,8 +78,7 @@ class SessionLifecycleService
             return ['ok' => false, 'message' => 'Working directory must be an absolute path'];
         }
 
-        // Found live 2026-08-23 (writing a test that creates two sessions in
-        // quick succession): date('Ymd-Hi') has only MINUTE resolution, so
+        // date('Ymd-Hi') has only MINUTE resolution, so
         // two create_agent_session() calls within the same clock-minute
         // collide on an identical name and the second `tmux new-session`
         // fails outright ("duplicate session"). resume_agent_session() already
@@ -158,8 +156,7 @@ class SessionLifecycleService
      * live/tracked pane OTHER than $excludeSessionName - guards
      * resume_agent_session() against two panes fighting over the same
      * transcript file, and session_start.php's hook against rebinding a
-     * pane's sidecar onto a DIFFERENT pane's real live session (found live
-     * 2026-08-23: a nested `claude` child process inheriting the parent
+     * pane's sidecar onto a DIFFERENT pane's real live session (a nested `claude` child process inheriting the parent
      * pane's SESSIONEER_SESSION_NAME env var reported another pane's own real,
      * transcript-backed session id, which passed the hook's existing
      * transcript-exists check and clobbered the parent's sidecar onto it -
@@ -221,15 +218,14 @@ class SessionLifecycleService
      * Resumes a known, dormant `agent_session_id` (an archived-list row,
      * per the unify-claude-sessions plan's phase 5) in a fresh, app-managed
      * tmux pane - the exact same spawn shape as create_agent_session(), just
-     * `--resume <id>` instead of `--session-id <new-uuid>`. Verified live
-     * 2026-08-08: unlike the no-id form (which always drops into an
+     * `--resume <id>` instead of `--session-id <new-uuid>`. Unlike the no-id form (which always drops into an
      * interactive picker, even with a single candidate - see the plan
      * file's findings), `--resume <explicit-id>` goes straight to the
      * resumed conversation, no picker, so this needs no extra
      * picker-handling step the way a future bare-process Take-over will.
      *
-     * Found live 2026-08-22 (codebase audit): agent_session_id_already_live()
-     * only checked the sidecar store BEFORE spawning, but no sidecar exists
+     * agent_session_id_already_live()
+     * only checks the sidecar store BEFORE spawning, but no sidecar exists
      * for an in-flight resume until AFTER the tmux pane is up and the
      * 300ms settle sleep below elapses - a real TOCTOU window. Two
      * near-simultaneous resume requests for the SAME agent_session_id

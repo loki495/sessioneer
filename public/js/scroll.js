@@ -2,10 +2,9 @@
 // session.php's docked scroll-toolbar controls - go-to-bottom, go-to-top,
 // and previous-user-message (jump-to-new is owned by highlights.js) - plus
 // the compose-bar footer's stick-to-bottom behavior. Extracted from
-// session.js 2026-08-24 (second cut of the "split session.js into modules"
-// pass).
+// session.js.
 //
-// Swap 2026-09-06 (Andres's own report): these controls used to be
+// These controls used to be
 // position:fixed circles stacked over the page's right edge, which covered
 // chat text on mobile. They now live inside #scroll-toolbar (see
 // session.php), a real flex child of #app-shell between #page-content and
@@ -47,9 +46,8 @@ var lastFixedFooterHeight = 0;
 var footerHeightKnown = false;
 
 watchFixedFooterHeight(document.getElementById('compose-bar'), function (height) {
-  // Stick to bottom through footer resizes - found live 2026-08-30
-  // (Andres: iOS app-switch back to a session page "scrolls to top" and
-  // the footer "renders too tall"). #compose-bar is a normal flex
+  // Stick to bottom through footer resizes (on iOS, switching back to
+  // a session page otherwise "scrolls to top" and the footer "renders too tall"). #compose-bar is a normal flex
   // sibling of #page-content, not an overlay (see compose-bar.php's own
   // comment) - every px it grows by is a px #page-content's clientHeight
   // shrinks by, with no compensating scrollTop change. The initial "land
@@ -139,8 +137,7 @@ if (goToBottomBtn) {
   updateGoToBottomVisibility();
 }
 
-// --- scroll-to-top: the persistent counterpart above (Andres's own ask,
-// 2026-08-23) - same "disabled while already there" treatment as
+// --- scroll-to-top: the persistent counterpart above - same "disabled while already there" treatment as
 // #go-to-bottom-btn, its own dedicated threshold (SCROLL_TOP_THRESHOLD_PX,
 // not SCROLL_BOTTOM_THRESHOLD_PX reused under a top-facing name) even
 // though the two happen to share the same value today, since there's no
@@ -168,8 +165,8 @@ if (goToTopBtn) {
 // --- scroll to previous user message: jump to the nearest earlier user
 // message that's currently scrolled out of view (not visible in viewport).
 // If no such message exists, defer to the #load-until-user-btn fallback
-// to load more history. Always shown when history exists (unconditional,
-// per Andres's own ask, 2026-08-30). ---
+// to load more history. Always shown when history exists
+// (unconditional). ---
 
 var PREV_USER_TOP_OFFSET_PX = 16;
 

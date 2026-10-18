@@ -9,8 +9,7 @@ use HostAgent\Stores\SidecarStore;
 /**
  * Sidebar "plan/handoff files" glance: listing and reading ad-hoc markdown
  * files sitting directly in a session's own working directory. Split out of
- * SessionService.php (2026-08-24 readability audit - see the plan this
- * followed) - fully self-contained, no cross-class calls at all. Methods/
+ * SessionService.php - fully self-contained, no cross-class calls at all. Methods/
  * bodies moved verbatim, no behavior changes.
  */
 class PlanFileService
@@ -18,12 +17,11 @@ class PlanFileService
     /**
      * Every markdown file sitting directly in $sessionName's own working
      * directory (never subdirectories) - the sidebar's "plan/handoff
-     * files" glance (Andres's own idea, 2026-08-08): ad-hoc plan docs and
-     * handoff prompts a session or Andres drops straight into a
+     * files" glance: ad-hoc plan docs and
+     * handoff prompts a session or the user drops straight into a
      * project's root are otherwise invisible/easy to forget about once
      * stale. Deliberately read-only, no delete action here - cleanup
-     * stays a manual delete, this is purely a glance (Andres's own
-     * framing). README.md/CLAUDE.md are excluded - permanent, expected
+     * stays a manual delete, this is purely a glance. README.md/CLAUDE.md are excluded - permanent, expected
      * project docs, not the kind of ad-hoc scratch file this is meant to
      * surface. Workdir is resolved server-side from the session's own
      * sidecar, never trusted from the caller - same discipline as every
@@ -144,7 +142,7 @@ class PlanFileService
     }
 
     /**
-     * The sidebar "Todo" link (Andres's own ask, 2026-08-25): opens a
+     * The sidebar "Todo" link: opens a
      * session's own cwd-level `todo` file (the same convention this app's
      * own project keeps a `todo` file at its root for) in a fullscreen
      * modal. Deliberately separate from list_plan_files()/read_plan_file()

@@ -41,7 +41,7 @@
            viewport in on focusing any text input rendered under 16px, no
            way to opt out of that short of the font size itself.
            appearance-none suppresses the native WebKit search-cancel
-           button - Andres wants ONE consistent custom clear button
+           button - ONE consistent custom clear button
            everywhere (native ones vary in styling/position by browser and
            textareas never get one at all), not that plus a second,
            differently-styled native one alongside it. */ ?>
@@ -69,8 +69,7 @@
   </div>
   <div class="px-4 py-3 border-t border-slate-800 flex flex-col gap-2">
     <span class="block text-xs font-medium text-slate-500 mb-1">Settings</span>
-    <?php // Moved off the session page's own sticky header (Andres's own ask,
-          // 2026-09-28) - that header is cramped on mobile and this control
+    <?php // Moved off the session page's own sticky header - that header is cramped on mobile and this control
           // is looked at rarely, unlike the header's title/branch/workdir. ?>
     <label class="flex items-center justify-between gap-2 text-sm text-slate-300">
       Poll interval

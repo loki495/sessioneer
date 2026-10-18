@@ -4,7 +4,7 @@
   <a href="<?= $this->e($url) ?>" target="_blank" rel="noopener" class="block mt-0.5 max-w-24 truncate text-[11px] text-slate-500 active:text-slate-300"><?= $this->e($filename) ?></a>
 </div>
 <?php else: ?>
-<?php // download (not target="_blank") - found live: target="_blank" on a
+<?php // download (not target="_blank") - target="_blank" on a
       // Content-Disposition: attachment response opens a real but
       // permanently blank tab (it's a download, not a page load), and
       // refreshing that blank tab re-triggers the same non-page. download

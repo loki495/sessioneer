@@ -83,7 +83,7 @@ that an external `claude-quota`-shaped binary (a slow, 10-40s scrape of
 Claude Code's own `/usage` panel via a detached `screen` session, cached
 and background-refreshed via a `.refreshing` marker file with atomic
 exclusive-create locking to prevent duplicate scrapes). Both were deleted
-2026-08-22 as confirmed dead code: once any session had ever written the
+as dead code: once any session had ever written the
 statusline-state file even once, `quota_from_statusline_state()` never
 returns null again, so neither fallback could actually be reached anymore.
 See git history (`host-agent/lib/Services/QuotaService.php`,
@@ -522,7 +522,7 @@ above).
   do that) - only *why*, when it's genuinely non-obvious: a hidden
   constraint, a workaround for a specific bug, something that would
   surprise a future reader. Many existing comments in this codebase record
-  a specific bug "found live" and the reasoning that led to the fix - read
+  a specific bug and the reasoning that led to the fix - read
   them before assuming something is over-engineered.
 - Escaping in `src/partials/`: `$this->e($value)` (Plates' own
   `htmlspecialchars` wrapper, not a custom App method) for any value that
@@ -533,9 +533,8 @@ above).
   `View` class's own render method (`$rowsHtml`, `$footerHtml`,
   `$markdownHtml`, etc. - these come from code that already escaped
   whatever real data went into them; escaping again here would double-
-  encode it). Traced every current bare `<?= ?>` in `src/partials/` as of
-  the 2026-08-23 readability audit and confirmed all of them fall into one
-  of those categories - none are unsafe today - but that invariant only
+  encode it). Every current bare `<?= ?>` in `src/partials/` falls into one
+  of those categories, but that invariant only
   lives in each call site's own reasoning, not anywhere visibly enforced,
   so a new bare `<?= ?>` for a value that ISN'T provably one of the above
   needs `$this->e()`, not an assumption that the existing pattern makes it

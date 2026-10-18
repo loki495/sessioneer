@@ -10,8 +10,8 @@ declare(strict_types=1);
  * dir or the real tmux socket - see tests/.env.testing for the isolated
  * TMUX_SOCKET this whole suite runs against.
  *
- * Found live 2026-08-24 (Andres: "when I change the model on an agy
- * session, it immediately reverts to the old one"): an earlier version of
+ * Regression: changing the model on an agy session immediately reverted
+ * to the old one. An earlier version of
  * set_antigravity_model() sent a fixed-count blind Up-then-Down key
  * sequence, trusting it would always converge - reproduced live that
  * Antigravity's real picker silently drops some fraction of rapid
@@ -62,7 +62,7 @@ function spawn_fake_picker_session(string $sessionName, string $fakePickerPath, 
     // this fixture process is freshly spawned right here, and a key sent
     // before its stty call lands stays buffered in canonical/line mode
     // (delivered all at once on the next newline) instead of processed
-    // immediately - found live while writing this test: without this delay
+    // immediately - without this delay
     // the walk-to-row-1 phase intermittently reported it couldn't confirm
     // reaching the top row, timing-dependent on how fast PHP started up.
     usleep(300000);

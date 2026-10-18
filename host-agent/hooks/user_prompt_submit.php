@@ -12,7 +12,7 @@ declare(strict_types=1);
  * these three hook-SEQUENCE transitions are the ONLY source
  * SessionService::build_session_entry() uses for working/idle/blocked - no
  * pane-scraping fallback (PromptParser::pane_title_is_working(), matching a
- * rendered spinner glyph, was removed 2026-08-22 once these hooks became
+ * rendered spinner glyph, was removed once these hooks became
  * mandatory - see the health box and CONTRIBUTING.md).
  *
  * Deliberately writes nothing to stdout and always exits 0 - same

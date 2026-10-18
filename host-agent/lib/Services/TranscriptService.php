@@ -44,8 +44,8 @@ class TranscriptService
     public const ATTACHMENT_MAX_BYTES = 64 * 1024 * 1024;
 
     // How much of a transcript's TAIL find_latest_ai_title() reads, rather
-    // than the whole file. Verified live against real transcripts (one
-    // 50MB/~10k-line session): Claude Code re-writes the ai-title line
+    // than the whole file. In real transcripts (one
+    // 50MB/~10k-line session) Claude Code re-writes the ai-title line
     // repeatedly as a conversation goes on (605 occurrences in that one
     // file, not a one-time thing), always with the current value clustered
     // within the final ~100 lines - so the true latest is reliably found
@@ -59,7 +59,7 @@ class TranscriptService
     public const TODO_LIST_TAIL_SCAN_BYTES = 262144;
 
     // How many leading lines find_first_cwd() reads before giving up.
-    // Verified live: a real transcript's first "user" message (the first
+    // A real transcript's first "user" message (the first
     // real, non-meta line) carries `cwd` and shows up by line 3 (mode,
     // file-history-snapshot, then the real message) - this leaves a wide
     // margin without risking a read anywhere near the size of a whole file.
@@ -72,8 +72,8 @@ class TranscriptService
     public const TITLE_MAX_CHARS = 80;
 
     // Safety cap for read_transcript_page()'s $untilRealUserMessage mode -
-    // "load until the last user message" (session.js's #load-until-user-btn,
-    // Andres's own ask 2026-08-24) has no other natural stopping point if a
+    // "load until the last user message" (session.js's #load-until-user-btn)
+    // has no other natural stopping point if a
     // session genuinely has an exchange this long (a real, if unusual, agent
     // turn - dozens of tool calls in a row) or, in the pathological case, no
     // earlier real user message at all before hitting the start of the file.
@@ -134,13 +134,13 @@ class TranscriptService
      * The working directory a transcript's session ran in - read from the
      * `cwd` field Claude Code stamps on every real message-type JSONL line,
      * NOT decoded from the encoded project directory name. That decoding is
-     * lossy (verified live: a real directory name like
+     * lossy (a real directory name like
      * "-home-user--claude" is ambiguous - a literal "-" inside a real
      * path segment and the "/" separator both become "-"), so this is the
      * only reliable source. Streams the file line-by-line (fgets, not a
      * full file() read) and stops at the first hit, capped at
      * FIRST_CWD_SCAN_LINES - cwd shows up within the first few real lines
-     * in practice (verified live: line 3 of a real transcript, after a
+     * in practice (line 3 of a real transcript, after a
      * leading `mode` and `file-history-snapshot` meta line), so this is a
      * tiny read regardless of how large the rest of the file grows.
      */
@@ -271,7 +271,7 @@ class TranscriptService
      * did this first come up"). Two-stage matching per candidate line -
      * cheap stripos() against the RAW json line first (skips json_decode +
      * parse_transcript_line() entirely for the overwhelming majority of
-     * lines in a real transcript, which won't match at all - verified live
+     * lines in a real transcript, which won't match at all - measured
      * against a real 50MB/~10k-line session, see AI_TITLE_TAIL_SCAN_BYTES's
      * own doc comment), then a second stripos() against the PARSED block
      * text once a line clears the first check - a raw-line hit can land
@@ -375,13 +375,12 @@ class TranscriptService
      * covers MCP browser-automation tools (verified against a real capture of
      * an MCP Playwright browser_click call: {"element": "...", "target": "..."}).
      * `notebook_path` covers NotebookEdit specifically - the one single-file
-     * tool whose path argument isn't actually named `file_path` (found live:
-     * without this, its filename only happened to lead the summary when it
+     * tool whose path argument isn't actually named `file_path` (without this, its filename only happened to lead the summary when it
      * was already first in the input's own key order, not on the strength of
      * being the primary arg - the same "wherever it falls in normal param
      * order" problem this whole list exists to avoid).
      *
-     * `description` deliberately isn't in this list (removed 2026-08-21) -
+     * `description` deliberately isn't in this list -
      * summarize_tool_use() now promotes it onto the summary's head line
      * directly (format_tool_use_summary()'s $headSummary) whenever present,
      * ahead of and separate from whichever key here is picked as the
@@ -457,8 +456,7 @@ class TranscriptService
     }
 
     /**
-     * A subagent launch (Claude Code's own "Agent" tool - verified live
-     * 2026-08-02 against a real captured tool_use, not "Task" as the tool's
+     * A subagent launch (Claude Code's own "Agent" tool - not "Task" as the tool's
      * informal name might suggest) has real primary-arg candidates
      * (description, prompt) that already work fine individually via
      * tool_use_primary_arg_keys(), but showing both plus subagent_type and
@@ -485,19 +483,16 @@ class TranscriptService
      * The Agent tool's own tool_result always appends a second text block of
      * pure internal bookkeeping (an agentId to resume the subagent, token/
      * duration usage) that the tool's own instructions explicitly say must
-     * never be shown to or quoted in a user-facing reply - verified live
-     * 2026-08-02 against a real captured subagent result, not guessed. Kept
+     * never be shown to or quoted in a user-facing reply. Kept
      * out of the rendered text entirely rather than joined in as if it were
      * more of the subagent's actual output.
      *
      * The `^agentId:...<usage>` shape was the SYNCHRONOUS agent result
      * format; an async/backgrounded launch (`run_in_background`) instead
      * gets an immediate "Async agent launched successfully..." acknowledgment
-     * tool_result with none of that shape at all (no `<usage>` tag anywhere)
-     * - re-verified live 2026-08-22 against a real captured launch result
-     * after finding the original regex no longer matched it, letting this
-     * second internal-bookkeeping shape leak into the rendered transcript
-     * unfiltered too.
+     * tool_result with none of that shape at all (no `<usage>` tag anywhere).
+     * Both shapes are filtered, or the second
+     * internal-bookkeeping shape would leak into the rendered transcript.
      */
     public static function is_subagent_metadata_text(string $text): bool
     {
@@ -509,10 +504,9 @@ class TranscriptService
      * A completed/failed background subagent notifies the parent
      * conversation as a plain-string `<task-notification>...</task-notification>`-
      * wrapped "user" transcript entry (Claude Code's own SendMessage/fork
-     * mechanism, NOT a tool_result block at all) - verified live 2026-08-22
-     * against a real captured entry. Extracts the handful of tags actually
-     * worth showing rather than rendering the raw XML verbatim (found live:
-     * that's exactly what parse_transcript_line() used to do, since a plain
+     * mechanism, NOT a tool_result block at all). Extracts the handful of tags actually
+     * worth showing rather than rendering the raw XML verbatim (which is
+     * what parse_transcript_line() would otherwise do, since a plain
      * string $content with no special-casing just became a 'text' block).
      * A simple tag-by-tag regex rather than a real XML parser, matching
      * this file's existing is_subagent_metadata_text()-style pragmatism -
@@ -625,7 +619,7 @@ class TranscriptService
      * summarize_content_block()'s own 'description' field, rendered as its
      * own always-visible line (transcript/block.php), never subject to
      * collapsible_summary()'s first-line-only truncation the way the rest
-     * of the params are (found live 2026-08-21, Andres: wanted it visible
+     * of the params are (it should be visible
      * right alongside the "tool: ..." line, on its own line, not
      * competing with a long raw command for the single-line summary's
      * length budget or buried behind two levels of expansion).
@@ -726,8 +720,7 @@ class TranscriptService
                     // Bash/Write/Edit/Read - lets TranscriptView::tool_call_
                     // entry_summary() build a "Write(relative/path.php)" or
                     // "Bash(truncated command)" one-line summary for a
-                    // standalone tool-call entry's closed <summary> (Andres's
-                    // own ask 2026-08-22), instead of the generic collapsible-
+                    // standalone tool-call entry's closed <summary>, instead of the generic collapsible-
                     // summary()-truncated "tool: X - key: value" text every
                     // other tool falls back to. Bash's own `description` param
                     // (present on nearly every real Bash call, since Claude
@@ -814,8 +807,7 @@ class TranscriptService
     }
 
     /**
-     * A tool_result's real richer file metadata (SendUserFile, verified
-     * live 2026-08-04) lives on the outer JSONL line's toolUseResult field,
+     * A tool_result's real richer file metadata (SendUserFile) lives on the outer JSONL line's toolUseResult field,
      * not in the content blocks themselves - content only ever carries a
      * plain-text summary string ("Sent 2 file(s)..."), never a filename,
      * size, or a way to fetch the bytes back. Unlike an inline image block
@@ -886,8 +878,7 @@ class TranscriptService
      * read_transcript_page()) can still be recognized as "this was a plan"
      * regardless of which direction it's read in. Needed because a
      * rejected tool's outer toolUseResult is just the generic string "User
-     * rejected tool use" for ANY tool (verified live 2026-08-07 across
-     * several real transcripts) - nothing in the tool_result line itself
+     * rejected tool use" for ANY tool - nothing in the tool_result line itself
      * says WHICH tool was rejected, only tool_use_id, which has to be
      * cross-referenced against the matching tool_use block's own name.
      * An APPROVED plan doesn't need this (its own toolUseResult is a
@@ -1075,10 +1066,9 @@ class TranscriptService
     /**
      * The raw model ID (e.g. "claude-sonnet-5") off the most recent
      * assistant message in the transcript - backs session.php's "Select
-     * model" dropdown (Andres's own ask, 2026-08-24). Every real assistant
-     * message carries its own `message.model` field (confirmed live against
-     * a real transcript - far more reliable than pane-scraping a statusline,
-     * which is only ever present when Andres has personally configured one;
+     * model" dropdown. Every real assistant
+     * message carries its own `message.model` field (far more reliable than pane-scraping a statusline,
+     * which is only ever present when the user has personally configured one;
      * see StatuslineMarkerService's own docblock for why that's opt-in, not
      * something every user of this app has). Same tail-scan-then-keep-latest
      * shape as find_latest_ai_title() above - a model switch is rare enough
@@ -1136,8 +1126,7 @@ class TranscriptService
      * built-in, unrelated to this app's own todo/bugs.md files) for the
      * top-level agent's own conversation, sourced straight from the same
      * transcript this app already reads for everything else - no new hook
-     * needed, unlike live subagent status (see the 2026-08-22 hook
-     * reliability research in todo). Each TodoWrite call carries the FULL
+     * needed, unlike live subagent status. Each TodoWrite call carries the FULL
      * list, not a diff (same "rewritten in full, not appended" shape as
      * ai-title above), so only the latest one matters.
      *
@@ -1298,7 +1287,7 @@ class TranscriptService
      * Finds the CURRENT task list from the Task tool family (TaskCreate/
      * TaskGet/TaskUpdate/TaskList) - the TodoWrite REPLACEMENT on newer
      * models per https://code.claude.com/docs/en/tools-reference#task-tool-
-     * availability (confirmed live 2026-08-22, verbatim from that page: "In
+     * availability (verbatim from that page: "In
      * Claude Code v2.1.233 and later, [TodoWrite, TaskCreate, TaskGet,
      * TaskUpdate, and TaskList] aren't available on Opus 4.8, Sonnet 5,
      * Fable 5, Mythos 5, or later versions of those families unless you opt
@@ -1317,7 +1306,7 @@ class TranscriptService
      * UNLIKE TodoWrite (one call carries the FULL list every time, so only
      * the latest call matters), the Task family is CRUD: TaskCreate adds
      * exactly one task, TaskUpdate changes ONE task's fields, or removes it
-     * outright via status:"deleted" (confirmed live). There's no "latest
+     * outright via status:"deleted". There's no "latest
      * call has it all" shortcut, so the current list can only be
      * reconstructed by replaying every Task tool_use call across the WHOLE
      * file in order, keyed by task id - a cheap per-line substring
@@ -1327,7 +1316,7 @@ class TranscriptService
      * most of the file here - full history is genuinely needed.
      *
      * Reads the STRUCTURED `toolUseResult` field (a sibling of `message` on
-     * the tool_result line, confirmed live 2026-08-22 against a real
+     * the tool_result line, as seen in a real
      * Claude Code v2.1.241 transcript - NOT documented publicly, this app's
      * own capture is the source of truth) rather than regexing the
      * human-readable tool_result text, for two concrete reasons found by
@@ -1339,7 +1328,7 @@ class TranscriptService
      *   result line resolves the id.
      * - A TaskUpdate call can FAIL (`toolUseResult.success === false`,
      *   e.g. `{"error":"Task not found"}`) while still being a
-     *   well-formed, plausible-looking call - live-verified: two attempts
+     *   well-formed, plausible-looking call: two attempts
      *   to delete already-completed tasks both failed this way ("Task not
      *   found") while a delete of a still-pending task succeeded moments
      *   later, so failure isn't simply "invalid id". Blindly applying
@@ -1393,11 +1382,9 @@ class TranscriptService
             $isToolUseLine = str_contains($line, '"TaskCreate"') || str_contains($line, '"TaskUpdate"');
 
             // A tool_result line never contains the tool's NAME (only its
-            // tool_use_id + the result) - found live 2026-08-22 debugging why
-            // this method returned [] against a real transcript full of
-            // genuine Task calls: the substring pre-check above skipped
+            // tool_use_id + the result) - the substring pre-check above skips
             // every single tool_result line outright, so no staged call
-            // ever got resolved. Only bother decoding a candidate result
+            // would ever get resolved. Only bother decoding a candidate result
             // line when something is actually pending AND the line
             // mentions one of those specific tool_use_ids - keeps the
             // common case (a transcript with no Task calls, or between
@@ -1732,7 +1719,7 @@ class TranscriptService
                     // Plan:\n<plan again>"), already fully visible just
                     // above as its own 'plan'-kind block; the rejected one
                     // is pure "STOP what you are doing" internal wording
-                    // aimed at Claude, not Andres.
+                    // aimed at Claude, not the user.
                     $block['text'] = $planApproved ? 'Plan approved - starting work' : 'Plan not approved';
                 }
             }
@@ -1758,7 +1745,7 @@ class TranscriptService
      * against it, so a page always has up to $limit real entries regardless
      * of how many meta lines sit between them.
      *
-     * $untilRealUserMessage (Andres's own ask, 2026-08-24 - a faster way to
+     * $untilRealUserMessage (a faster way to
      * get back to "the start of the most recent real exchange" than
      * repeatedly clicking "Load older messages"): when true, $limit is
      * ignored in favor of UNTIL_USER_MESSAGE_MAX_ENTRIES, and the walk stops

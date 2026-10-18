@@ -16,7 +16,7 @@ class HealthBoxView extends View
 {
     /**
      * The push-check interval control - a small preset dropdown + Save button
-     * so Andres can adjust how often sessioneer-push-check.timer polls without
+     * to adjust how often sessioneer-push-check.timer polls without
      * editing/reinstalling the unit file by hand on the host (see
      * HostAgent\Services\PushTimerService::set_push_timer_interval() for the
      * actual mechanics). $currentSeconds is always included as an option even

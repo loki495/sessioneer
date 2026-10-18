@@ -4,8 +4,7 @@
 // in its own file, loaded before session.js/index.js/archived-session.js,
 // since it's pure text-to-HTML with zero DOM/session dependencies, unlike
 // almost everything else those files do. Extracted from session.js
-// 2026-08-24 (first cut of the "split session.js into modules" pass -
-// this one first because it has no shared state at all).
+// because it has no shared state at all.
 var MD_NUL = String.fromCharCode(0);
 
 function mdExtractFencedCodeBlocks(text) {

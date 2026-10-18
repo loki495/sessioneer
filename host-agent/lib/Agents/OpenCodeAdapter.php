@@ -11,8 +11,8 @@ use HostAgent\Stores\GlobalStateStore;
 
 /**
  * Third AgentAdapter implementation, for the OpenCode TUI CLI
- * (binary `opencode`), live-verified 2026-08-25 against a real `opencode`
- * 1.18.21 install. TUI positional arg is the project path
+ * (binary `opencode`), as of `opencode`
+ * 1.18.21. TUI positional arg is the project path
  * (`opencode [project]`), not `--session-id`; `--session` is resume-only
  * (confirmed: `opencode --session <nonexistent>` → "Session not found").
  * Plugin system (https://opencode.ai/docs/plugins/) provides
@@ -46,8 +46,8 @@ class OpenCodeAdapter implements AgentAdapter
      * --permission-mode / --effort equivalent, only --auto for
      * auto-approve (not wired here; Phase 7 stretch goal).
      *
-     * assigned_id is always null - confirmed live
-     * that no --session-id equivalent exists for starting a fresh TUI
+     * assigned_id is always null -
+     * no --session-id equivalent exists for starting a fresh TUI
      * session; `--session <id>` only RESUMES an existing one. Real identity
      * (`ses_*` from opencode.db) can only be learned reactively after the
      * first prompt creates a DB row - Phase 2 polls opencode.db for it.

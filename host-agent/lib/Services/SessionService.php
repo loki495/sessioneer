@@ -13,8 +13,7 @@ use HostAgent\Stores\SessionStatusStore;
 /**
  * Session listing (list_all_sessions, build_session_entry) and the shared
  * title cascade - the foundation layer everything else depends on. Split
- * out of what was originally one 1940-line, 43-method class (2026-08-24
- * readability audit - see the plan this followed): sending input to a live
+ * out of what was originally one 1940-line, 43-method class: sending input to a live
  * session's pane (messages, prompt answers, mode/model switches, escape)
  * now lives in PromptInteractionService, the sidebar's plan/handoff-file
  * glance now lives in PlanFileService, create/resume/kill/cleanup of
@@ -190,8 +189,7 @@ class SessionService
 
         // OpenCode: check opencode.db for a running `question` tool before
         // falling through to hook/pane paths — capture-pane is blank when
-        // idle but does show the question when blocked (verified live
-        // 2026-08-25 on ses_fc8124: question tool status=running, pane shows
+        // idle but does show the question when blocked (question tool status=running, pane shows
         // "↑↓ select  enter submit  esc dismiss" with numbered options).
         // This is the opencode equivalent of AskUserQuestion, but via DB
         // polling rather than a SessionStatusStore hook (plugin will
@@ -292,7 +290,7 @@ class SessionService
             }
         } else {
             // The only prompt shape that can still be showing here is the
-            // initial per-folder trust dialog - confirmed live to fire NONE
+            // initial per-folder trust dialog - fires NONE
             // of this app's hooks at all (a separate, pre-hook-system
             // startup safety check). Pane-scraping is scoped to exactly that
             // case now, never trusted as a stand-in for a PermissionRequest
@@ -310,8 +308,7 @@ class SessionService
         // a lone SINGLE-select question - no tab-bar ambiguity exists there,
         // so it keeps using the existing pane-scraped $prompt above via
         // answer_prompt()/answer_prompt_with_text() unchanged. A lone
-        // MULTISELECT question IS included here too, though - found live
-        // 2026-09-12 that shape gets a tab bar identical in every mechanical
+        // MULTISELECT question IS included here too, though - that shape gets a tab bar identical in every mechanical
         // respect to a real 2+-question call (see PromptParser::
         // build_multi_question_key_sequence()'s own docblock), so it was
         // wrongly falling through to the plain one-button-submits-
@@ -341,7 +338,7 @@ class SessionService
         // Read from the transcript, not any live-pane signal - see
         // TranscriptService::find_latest_model()'s own docblock for why
         // that's the only source portable to every user of this app (not
-        // just Andres's own personal statusline customization). Never
+        // just one user's personal statusline customization). Never
         // resolves to "default" - see SelectableModel::family_from_raw_model()
         // for why that's inherently undetectable from a raw model ID alone.
         //
@@ -351,9 +348,8 @@ class SessionService
         // the transcript's latest message still carries the OLD model until
         // the NEXT real turn completes, so a transcript-only read here
         // would show session.php's dropdown snapping straight back to the
-        // model the user just switched AWAY from - confirmed to be exactly
-        // this, the bug reported live 2026-08-30 ("changing the model on
-        // the session page doesn't work"). host-agent/hooks/stop.php clears
+        // model the user just switched AWAY from - exactly the
+        // "changing the model on the session page doesn't work" bug. host-agent/hooks/stop.php clears
         // the override once that next turn finishes, so this can never
         // permanently shadow the real transcript-derived value.
         $transcriptPathForModel = $agentSessionId !== null ? TranscriptService::find_transcript_path($agentSessionId, $profile) : null;
@@ -442,7 +438,7 @@ class SessionService
      * sidecar from this) and (b) the live id resolves to a real transcript
      * file, the same "don't trust an id nothing backs" rule
      * session_start.php's SessionStart hook itself now enforces (see its
-     * own docblock, added 2026-08-08) - applied here as a second,
+     * own docblock) - applied here as a second,
      * independent layer that self-corrects even if a bad write already
      * slipped past the hook, rather than depending on catching the right
      * hook fire in the first place.

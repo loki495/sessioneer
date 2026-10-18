@@ -15,9 +15,9 @@ use HostAgent\Services\Config;
  * rollover or a plan change, for near/over) rather than staying
  * permanently silenced from one earlier crossing. Lives in the
  * `push_quota_state` table of Config::push_sqlite_path() (see
- * PushSubscriptionStore's own docblock for the 2026-08-24 migration off a
+ * PushSubscriptionStore's own docblock for the migration off a
  * plain JSON file, and its later removal of the lazy legacy-file importer
- * - this fixes the exact double-notification bug Andres reported, via a
+ * - this avoids double notifications via a
  * single atomic write instead of a read-modify-write that a concurrent
  * tick could race).
  *

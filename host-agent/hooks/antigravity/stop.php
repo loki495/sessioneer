@@ -40,7 +40,7 @@ use HostAgent\Stores\SessionStatusStore;
  * own docblock) - only reads the file's last TAIL_SCAN_BYTES, not the
  * whole thing, since Antigravity's transcript can grow across a whole
  * long session. Takes the LAST PLANNER_RESPONSE entry with real text
- * content - a tool-calls-only turn has content: null (confirmed live), so those are skipped in favor of
+ * content - a tool-calls-only turn has content: null, so those are skipped in favor of
  * an earlier or later entry that actually has text.
  */
 function antigravity_find_last_planner_response(string $path): ?string
@@ -96,13 +96,12 @@ function antigravity_find_last_planner_response(string $path): ?string
 }
 
 /**
- * Found live 2026-08-24 (Andres: asked a real question in an Antigravity
- * session that had hit "Individual quota reached", waited for a reply,
- * never got one - not even an error - anywhere in this app): confirmed by
- * grepping the real transcript file that Antigravity writes NOTHING at all
+ * A question asked in an Antigravity session that has hit "Individual quota
+ * reached" would otherwise never get a reply or even an error anywhere in
+ * this app: Antigravity writes NOTHING at all
  * to transcript_full.jsonl for a turn that fails this way - only the
  * USER_INPUT line for the question itself, no PLANNER_RESPONSE, no error
- * entry, nothing (reproduced three times in the same live session). The
+ * entry. The
  * ONLY place the failure is ever shown is the live pane's own "⚠ ..."
  * banner text, and only ephemerally (scrolls away, gone once the session
  * exits) - so unlike find_last_planner_response() above (a pure file
@@ -116,15 +115,13 @@ function antigravity_find_last_planner_response(string $path): ?string
  * is reached first - that would mean walking back into an OLDER exchange
  * without finding a fresh error, so nothing genuinely failed just now.
  *
- * Found live 2026-08-24 (a real reproduction, not a hypothetical): the
- * FIRST version of this function took a single pre-captured $paneContent
- * and came back null even on a turn independently confirmed (moments
- * later, manually) to have the "⚠ Individual quota reached" banner sitting
- * right there in the pane - Stop fires the instant Antigravity's own
+ * A single pre-captured $paneContent can come back null even on a turn
+ * that does have the "⚠ Individual quota reached" banner sitting
+ * right there in the pane moments later - Stop fires the instant Antigravity's own
  * internal turn-handling concludes, which can beat its own TUI's re-render
  * of the error banner text by enough to matter, unlike
  * find_last_planner_response() above (a pure file read with no such race).
- * Fixed by re-capturing the pane fresh on up to 3 attempts, TMUX_KEY_STEP_
+ * So this re-captures the pane fresh on up to 3 attempts, TMUX_KEY_STEP_
  * DELAY_USEC (300ms, same delay unit PromptInteractionService's own
  * key-sequence pacing uses) apart - only ever reached on the rare
  * no-response path (the transcript-tail check above already short-circuits

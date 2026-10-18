@@ -111,12 +111,12 @@ $this->layout('layout', [
         </div>
         <ul id="browser_list" class="max-h-56 overflow-y-auto overscroll-contain divide-y divide-slate-700/60 text-sm"></ul>
       </div>
-      <?php /* Andres's own ask, 2026-08-23: --allowedTools naming the
+      <?php /* --allowedTools naming the
            TaskCreate/TaskGet/TaskList/TaskUpdate family (Claude Code's
            TodoWrite replacement, left out by default on newer models -
            see CLAUDE.md's "Claude Code tools/hooks questions" note) -
            opt-in and off by default, matching Anthropic's own opt-in
-           framing for these tools. Confirmed live: --allowedTools is
+           framing for these tools. --allowedTools is
            additive (Bash/Read/Write/Edit stay available too), unlike
            --tools which would replace the whole set. The sidebar's Tasks
            widget reads this family back out via TranscriptService::
@@ -176,8 +176,7 @@ $this->layout('layout', [
         <input type="checkbox" name="enable_task_tools" value="1" class="rounded border-slate-600 bg-slate-800">
         Enable task tracking tools
       </label>
-      <?php /* Andres's own ask, 2026-08-23, from the CLI-flags research pass in
-           the todo file: --permission-mode only sets the mode a NEW process
+      <?php /* From the CLI-flags research pass: --permission-mode only sets the mode a NEW process
            starts in (it has no effect on an already-running session - that's
            still exclusively SessionService::set_mode()'s Shift+Tab dance,
            driven by the #mode-select on session.php itself), so this is a
@@ -238,8 +237,8 @@ $this->layout('layout', [
 
 <?php /* A normal (non-fixed) flex item, last child of #app-shell - same fix as
      session.php's #compose-bar (see its own comment): position:fixed was
-     visually detaching mid-scroll on iOS Safari (Andres reported the
-     footer jumping to the middle of the screen mid-scroll on mobile), so
+     visually detaching mid-scroll on iOS Safari (the
+     footer jumped to the middle of the screen mid-scroll on mobile), so
      this stops relying on fixed positioning for it entirely. No
      backdrop-blur, kept from the original fixed-positioning mitigation -
      a plain (still translucent, bg-slate-950/90) background reads fine on

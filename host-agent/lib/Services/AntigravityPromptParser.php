@@ -6,7 +6,7 @@ namespace HostAgent\Services;
 
 /**
  * Antigravity equivalent of PromptParser::parse_blocking_prompt() - unlike
- * Claude Code, Antigravity has no PermissionRequest-style hook at all (confirmed live: no
+ * Claude Code, Antigravity has no PermissionRequest-style hook at all (no
  * such second hook exists), so a blocked prompt can ONLY ever be detected
  * by reading the live pane, for every prompt shape, not just the two
  * carve-outs SessionService::build_session_entry() needs for Claude Code.

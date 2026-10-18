@@ -4,8 +4,8 @@ declare(strict_types=1);
 /**
  * Live diagnostic: snapshots EVERY candidate "is this opencode session blocked"
  * source at a single instant, so we can determine which one matches a REAL
- * permission/question block (see the 2026-08-25 investigation - the pane and
- * the serve HTTP API disagreed, and each has its own documented failure mode:
+ * permission/question block (the pane and
+ * the serve HTTP API disagree, and each has its own documented failure mode:
  * the pane can show an ORPHANED/stale dialog, the serve's /permission and
  * /question can return [] for a block the TUI is genuinely waiting on).
  *

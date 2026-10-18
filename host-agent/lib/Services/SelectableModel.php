@@ -6,12 +6,12 @@ namespace HostAgent\Services;
 
 /**
  * The fixed 5-row vocabulary behind session.php's "Select model" dropdown
- * (Andres's own ask, 2026-08-24) - Default/Sonnet/Fable/Opus/Haiku, in the
- * EXACT order Claude Code's own `/model` picker renders them (verified live
+ * - Default/Sonnet/Fable/Opus/Haiku, in the
+ * EXACT order Claude Code's own `/model` picker renders them (checked
  * against a real running session, same discipline PromptParser's own
  * key-sequence docblocks already use). PromptInteractionService::set_model() relies
  * on this order directly: the picker's cursor never wraps past its first
- * row (also verified live), so pressing Up enough times always lands on
+ * row, so pressing Up enough times always lands on
  * row 1 regardless of where the cursor started, and Down (row - 1) times
  * from there reaches any target row deterministically - no need to read
  * the CURRENT model first the way set_mode()'s relative Shift+Tab cycling
