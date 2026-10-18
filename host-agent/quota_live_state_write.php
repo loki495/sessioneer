@@ -8,7 +8,7 @@ declare(strict_types=1);
  * Claude Code status-line render, instead of that script writing
  * QuotaService::quota_from_statusline_state()'s state directly via jq -
  * moved off a plain JSON file to GlobalStateStore (Config::
- * quota_live_state_key(), Config::push_sqlite_path()) 2026-08-24, same as
+ * quota_live_state_key(), Config::push_sqlite_path()), same as
  * every other piece of this app's own state (see SqliteDb's own
  * docblock). The merge logic (only move a bucket's pct DOWN when its
  * resets_at also moved forward - a genuine window rollover - rather than

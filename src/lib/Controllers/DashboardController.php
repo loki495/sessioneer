@@ -153,8 +153,7 @@ class DashboardController extends Controller
 
                 // Unlike every other action here, a successful resume redirects
                 // straight to the now-live session view rather than back to the
-                // dashboard with a flash - decided explicitly with Andres
-                // 2026-08-08, see the unify-claude-sessions plan's phase 5.
+                // dashboard with a flash - a deliberate choice.
                 if ($ok && is_string($result['name'] ?? null) && $result['name'] !== '') {
                     header('Location: /session.php?session=' . urlencode((string)$result['name']), true, 303);
 
@@ -323,7 +322,7 @@ class DashboardController extends Controller
     /**
      * GET-only JSON endpoint backing the dashboard's archived-sessions
      * toggle (see index.js's show-archived-btn handler) - fetched once,
-     * lazily, only when Andres actually opens it. Deliberately NOT part of
+     * lazily, only when the user actually opens it. Deliberately NOT part of
      * fragment()'s regular poll response - a full ~/.claude/projects scan on
      * every 3-15s tick would be real, unnecessary work for a list that only
      * changes when a session starts or ends (see SessionService::

@@ -16,12 +16,11 @@ use HostAgent\Services\Config;
  *
  * Backed by plain JSON files (one per session, plus separate .status.json/
  * .pending-tool.json siblings for SessionStatusStore/PendingToolStore)
- * until 2026-08-24 - migrated to SQLite to fix a real read-modify-write
- * race (SessionStatusStore::update_status() specifically, found live
- * 2026-08-23) with a proper atomic UPDATE instead. The migration shipped
+ * until a migration to SQLite, which fixed a real read-modify-write
+ * race (SessionStatusStore::update_status() specifically) with a proper
+ * atomic UPDATE instead. The migration shipped
  * with a lazy legacy-JSON-file importer for a live, no-downtime cutover;
- * removed once every real session on this machine had migrated (confirmed
- * live 2026-08-24, see CONTRIBUTING.md) - this store is SQLite-only now,
+ * removed once every real session on this machine had migrated - this store is SQLite-only now,
  * no file fallback.
  */
 class SidecarStore
@@ -77,18 +76,18 @@ class SidecarStore
                 // never written - callers like session_start.php's hook
                 // rely on `$existingSidecar['spawned_by_app'] ?? <default>`
                 // falling through when a sidecar was written without this
-                // key at all (found live 2026-08-24: coercing to false here
-                // made that ?? see an already-"set" value and never fall
+                // key at all (coercing to false here
+                // would make that ?? see an already-"set" value and never fall
                 // through to the hook's own SESSIONEER_SESSION_NAME-based default).
                 'spawned_by_app' => $row['spawned_by_app'] !== null ? (bool)$row['spawned_by_app'] : null,
-                // Added 2026-08-24 for multi-agent support - a row written before this
+                // Added for multi-agent support - a row written before this
                 // column existed reads back null here (add_column_if_missing()
                 // never backfills existing rows), which every real caller
                 // treats as "claude" (the only agent that existed before
                 // this column did), same convention as write_sidecar()'s
                 // own default below.
                 'agent' => $row['agent'],
-                // Added 2026-08-25 (headless-runtime plan Phase 2.5) - a
+                // Added for the headless runtime - a
                 // row written before this column existed reads back null,
                 // which callers treating a missing runtime as "tmux" rely
                 // on (every sidecar predating headless support is a tmux

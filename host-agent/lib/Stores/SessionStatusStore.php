@@ -12,13 +12,13 @@ use HostAgent\Services\Config;
  * permission_request.php, stop.php) instead of tmux pane-scraping - one
  * row per session in the `session_status` table of
  * Config::sessions_sqlite_path() (see SidecarStore's own docblock for why
- * this migrated off plain JSON files 2026-08-24, and why the migration's
+ * this migrated off plain JSON files, and why the migration's
  * lazy legacy-file importer was later removed once every real session had
  * cut over). Each hook only knows
  * its own event's fields, so update_status() does an atomic UPDATE that
  * only touches the columns it was actually given - the exact
  * read-modify-write race the old read-json-merge-write-json version of
- * this had (found live 2026-08-23: PreToolUse and PermissionRequest can
+ * this had (PreToolUse and PermissionRequest can
  * fire close enough together that both read the same "current" content
  * and each write their own merged version, silently losing whichever
  * wrote first) is now structurally impossible - SQLite serializes writers
@@ -50,8 +50,8 @@ class SessionStatusStore
     }
 
     /**
-     * `model` (added to fix the bug reported live 2026-08-30, "changing the
-     * model on the session page doesn't work") is an OPTIMISTIC OVERRIDE,
+     * `model` (added so "changing the
+     * model on the session page" works) is an OPTIMISTIC OVERRIDE,
      * unlike every other column here: PromptInteractionService::set_model()
      * writes the just-picked SelectableModel::PICKER_OPTIONS key here right
      * after driving the real /model picker, and SessionService::

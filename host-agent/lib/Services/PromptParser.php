@@ -17,8 +17,8 @@ class PromptParser
      * context, used only when no "●" tool-invocation marker (see
      * parse_blocking_prompt()) is found above the cursor - the trust dialog
      * is the one real prompt shape that has no such marker, and its own
-     * explanation fits in ~8 lines. Andres reported a long command/file-
-     * content preview showing truncated - found live: this used to be the
+     * explanation fits in ~8 lines. A long command/file-
+     * content preview would otherwise show truncated: this used to be the
      * ONLY boundary, a fixed 15-line window regardless of how tall the actual
      * preview was, silently cutting off anything longer (a multi-line script,
      * a large file being written) with no visible sign anything was missing.
@@ -30,12 +30,11 @@ class PromptParser
      * on Claude Code's pane title while actively working, e.g. "⠂ Fix login
      * bug" or "◐ Fix login bug". Deliberately matched by Unicode general
      * category (\p{So}, "Symbol, other") rather than a specific code-point
-     * range: found live 2026-08-12 that Claude Code had switched its
+     * range: Claude Code has switched its
      * spinner from Braille Patterns dots (U+2800-U+28FF, this app's
      * original and only match) to a rotating half-circle from the
-     * Geometric Shapes block (U+25D0 ◐/◑/..., confirmed against a real
-     * live pane title), silently breaking the working-status detection this
-     * pattern used to also back (removed 2026-08-22 - see
+     * Geometric Shapes block (U+25D0 ◐/◑/...), which silently broke the working-status detection this
+     * pattern used to also back (since removed - see
      * SessionStatusStore/build_session_entry(), which now gets
      * working/idle/blocked from hook SEQUENCE instead, with no glyph to
      * match at all - clean_pane_title() below is this pattern's only
@@ -115,12 +114,11 @@ class PromptParser
             }
         }
 
-        // Found live 2026-09-11 (Andres: couldn't start a session in a new
-        // folder - the app never saw the trust dialog as blocking at all,
-        // and a "confirm" click killed the whole session instead): Claude
+        // Without this the app never sees the trust dialog as blocking at all,
+        // and a "confirm" click kills the whole session instead: Claude
         // Code v2.1.269 dropped the leading digit from the initial
         // per-folder trust dialog specifically ("❯ No, exit" /
-        // "  Yes, I trust this folder" - verified against a live capture,
+        // "  Yes, I trust this folder" - per a real capture,
         // see tests/fixtures/claude_folder_trust_prompt_pane_v2_1_269.txt),
         // so the digit-anchored scan above never finds it - every other
         // prompt shape (tool permission, AskUserQuestion) kept its numbers.
@@ -163,13 +161,12 @@ class PromptParser
         // The scan never crosses a decorative separator line looking for
         // one, PROVIDED a multi-question tab bar ("←  ☐ Color  ☐ Animal
         // ✔ Submit  →") was already seen between the choice list and that
-        // separator (found live 2026-08-09) - Claude Code prefixes a plain
+        // separator - Claude Code prefixes a plain
         // assistant TEXT message with "● " too, not just a tool invocation,
         // and a decorative rule directly above a reshown tab bar is exactly
         // the boundary Claude Code itself draws between that unrelated
-        // preceding prose and the fresh prompt (verified against a real
-        // capture: a reshown AskUserQuestion tab has no tool-invocation
-        // marker of its own at all). Gated on the tab bar specifically,
+        // preceding prose and the fresh prompt (a reshown AskUserQuestion tab has no
+        // tool-invocation marker of its own at all). Gated on the tab bar specifically,
         // not on ANY separator, because a genuine tool invocation ALSO
         // uses one internally, between its own "● ToolName(...)" marker
         // and its own detail box (e.g. "Bash command") - stopping there
@@ -208,8 +205,7 @@ class PromptParser
         // indented "→ <answer>" line) - the nearest-● scan just above only
         // ever finds the LAST one, so context ended up missing every
         // earlier question's own bullet, and the tab's own "Review your
-        // answers" header, entirely (found live 2026-08-09: Andres
-        // reported what looked like a redundant second confirmation - it
+        // answers" header, entirely - which looked like a redundant second confirmation but
         // was actually this incomplete capture of a multi-answer review
         // screen, showing only its final bullet + "Ready to submit your
         // answers?", which read as its own separate already-answered
@@ -218,7 +214,7 @@ class PromptParser
         // this tab specifically - and use "Review your answers" as the
         // real top of the block if found among them, extending one step
         // further to the tab bar itself ("←  ☒ Visibility  ☒ Repo name
-        // ✔ Submit  →", verified live) when it's right above that header -
+        // ✔ Submit  →") when it's right above that header -
         // the multi_question detection below only ever looks WITHIN this
         // same context window, so without this the Submit tab specifically
         // would silently lose its own Prev/Next question navigation.
@@ -263,9 +259,8 @@ class PromptParser
         $contextLines = array_values(array_filter($contextLines, fn(string $l) => !self::is_decorative_pane_line($l)));
 
         // A multi-question tab's current question renders with a leading
-        // "│ " quote-marker (found live 2026-08-29, session blocked on
-        // an admin-tool-exposure prompt: "│ How do you want
-        // to handle adminer, redis-ui, and git..." vs the hook's raw
+        // "│ " quote-marker ("│ How do you want
+        // to handle ..." vs the hook's raw
         // "How do you want to..." with no marker) - a single leading
         // box-drawing glyph is never real content, only ever decoration
         // is_decorative_pane_line() didn't catch because the REST of the
@@ -378,7 +373,7 @@ class PromptParser
 
         // A multi-question AskUserQuestion call renders as a tab bar - one tab
         // per question plus a trailing "Submit" tab, cycled with the Left/Right
-        // arrow keys (verified live) - rather than one linear prompt. Detected
+        // arrow keys - rather than one linear prompt. Detected
         // so the frontend can offer prev/next-question navigation alongside
         // the normal numbered-option buttons for whichever tab is showing.
         $multiQuestion = false;
@@ -533,7 +528,7 @@ class PromptParser
      * Builds the numbered option list ("1. Yes" / an optional middle
      * suggestion-derived option / "N. No") for a hook-fed blocked prompt -
      * the PermissionRequest-payload equivalent of parse_blocking_prompt()'s
-     * own $options, confirmed live: when multiple suggestions are present in
+     * own $options: when multiple suggestions are present in
      * one payload, only the most specific one gets its own numbered option
      * (addDirectories/addRules over setMode) - the others aren't offered at
      * all. `addRules` and `addDirectories` have never been observed
@@ -593,7 +588,7 @@ class PromptParser
      * Used to compare a GUESSED label against a REAL pane-scraped one by
      * MEANING rather than exact text - see PromptInteractionService::
      * answer_prompt()'s cross-check for why exact text can't be required
-     * (Andres, 2026-09-02: real wording for the same suggestion can carry
+     * (real wording for the same suggestion can carry
      * extra detail the guess doesn't reproduce verbatim) while still
      * catching an actual menu mismatch (a guessed 'yes_always' landing on
      * a real 'no' is never a wording difference).
@@ -628,8 +623,7 @@ class PromptParser
      * check tool_name before reaching for this.
      *
      * "Do you want to proceed?" is Claude Code's own fixed question text for
-     * every plain Bash/Write/Edit permission prompt (confirmed live,
-     * verbatim - see tests/test_sessions_lifecycle.php's pane-scraped
+     * every plain Bash/Write/Edit permission prompt (verbatim - see tests/test_sessions_lifecycle.php's pane-scraped
      * equivalent), not a generic placeholder - there's no per-call question
      * text in the PermissionRequest payload to use instead, and downstream
      * consumers (e.g. NotificationContentBuilder::push_blocked_body())
@@ -673,10 +667,9 @@ class PromptParser
      * into the exact flat sequence of tmux actions needed to drive Claude
      * Code's real tab-bar UI to that same end state - letting
      * PromptInteractionService::answer_multi_question() send it without ever reading
-     * the CURRENT tab off the pane. Every step below is confirmed against a
-     * real, live multi-question call (3 questions: single-select,
-     * multiSelect, single-select-with-free-text - see the todo file's
-     * research entry, 2026-08-22), not assumed from the payload schema alone:
+     * the CURRENT tab off the pane. Every step below matches a
+     * real multi-question call (3 questions: single-select,
+     * multiSelect, single-select-with-free-text), not assumed from the payload schema alone:
      *
      * - A single-select question's real (non-free-text) option: sending its
      *   digit alone selects AND auto-advances to the next tab - no Enter.
@@ -707,14 +700,13 @@ class PromptParser
      * handled by the existing pane-scraped answer_prompt()/
      * answer_prompt_with_text() path - still rejected here, no "which tab"
      * ambiguity to begin with. A lone MULTISELECT question is different:
-     * found live 2026-09-12 (Andres: sessioneer's own dashboard rendered
-     * this shape via the plain one-button-submits-immediately options.php
-     * form, with no way to check several boxes then confirm, unlike Claude
-     * Code's own real TUI) - it DOES get a tab bar
+     * rendering it via the plain one-button-submits-immediately options.php
+     * form would leave no way to check several boxes then confirm, unlike Claude
+     * Code's own real TUI - it DOES get a tab bar
      * ("← ☐ <header>  ✔ Submit →"), and is mechanically identical in every
-     * respect verified live to a real 2+-question call: toggle the same way,
+     * respect to a real 2+-question call: toggle the same way,
      * then Right lands on the exact same "Review your answers" / "1. Submit
-     * answers" screen (confirmed against a real, disposable session, not
+     * answers" screen (not
      * assumed from the 2+-question mechanics alone). So this only rejects a
      * lone question when it's NOT multiSelect, not "fewer than 2" as a
      * blanket rule.
@@ -807,7 +799,7 @@ class PromptParser
      * and the pane-scraped context is kept instead.
      *
      * AskUserQuestion is the one exception to that marker check: it renders
-     * with no "●" line at all (verified live - a "☐ <header>" line instead),
+     * with no "●" line at all (a "☐ <header>" line instead),
      * so there's nothing to cross-check its identity against, and the
      * pane-scraped question/context (already exactly what a human reading the
      * prompt sees) is left untouched rather than being replaced by a raw

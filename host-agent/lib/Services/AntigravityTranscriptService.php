@@ -5,8 +5,7 @@ declare(strict_types=1);
 namespace HostAgent\Services;
 
 /**
- * Read-only access to Antigravity's own transcript_full.jsonl files (live-verified
- * 2026-08-24) - the Antigravity counterpart to
+ * Read-only access to Antigravity's own transcript_full.jsonl files - the Antigravity counterpart to
  * TranscriptService, not a shared base class with it. Deliberately a
  * separate, much smaller class rather than teaching TranscriptService a
  * second JSONL schema inline - Antigravity's own entry shape
@@ -112,7 +111,7 @@ class AntigravityTranscriptService
      * Extracts the real user-typed text from a USER_INPUT entry's raw
      * content, which wraps it in internal `<USER_REQUEST>...</USER_REQUEST>`
      * plus sibling `<ADDITIONAL_METADATA>`/`<USER_SETTINGS_CHANGE>` tags
-     * (confirmed live) - only the request itself is worth showing, the
+     * - only the request itself is worth showing, the
      * rest is bookkeeping never meant for display. Falls back to the raw
      * content if the wrapper tag isn't found (a shape not yet observed),
      * rather than silently dropping a real message.
@@ -133,7 +132,7 @@ class AntigravityTranscriptService
      * method's own docblock for why those specific keys exist: they feed
      * TranscriptView::tool_call_entry_summary()'s one-line collapsed
      * label). Prefers Antigravity's own toolSummary/toolAction fields
-     * (present on nearly every real call observed live) for the main
+     * (present on nearly every real call) for the main
      * text, rather than hand-formatting each tool name's own args the way
      * TranscriptService does for Claude Code's fixed Bash/Write/Edit/Read
      * vocabulary - Antigravity's own tool set hasn't been fully enumerated
@@ -180,7 +179,7 @@ class AntigravityTranscriptService
 
         // CHECKPOINT (a context-truncation summary) is skipped for v1 - no
         // Claude Code equivalent, and it's internal bookkeeping text aimed
-        // at the model, not something Andres needs to read - see this
+        // at the model, not something a user needs to read - see this
         // class's own docblock.
         if ($type === '' || $type === 'CHECKPOINT') {
             return null;
@@ -216,7 +215,7 @@ class AntigravityTranscriptService
                 }
             }
         } elseif ($type === 'GENERIC' && ($decoded['source'] ?? null) === 'MODEL') {
-            // A tool-result entry - confirmed live shape (see this class's
+            // A tool-result entry - the known shape (see this class's
             // own docblock). role:'user' matches Claude Code's own
             // tool_result-carries-role-user convention (TranscriptView::
             // entry_color_kind()'s own docblock) - harmless either way

@@ -19,7 +19,7 @@ declare(strict_types=1);
 /**
  * Kills whatever process currently has $socketPath open (almost always a
  * previous, now-orphaned instance of this same script) before this
- * instance unlinks and rebinds it. Found live 2026-08-08: unlinking the
+ * instance unlinks and rebinds it. Unlinking the
  * socket FILE (the one cleanup step that already existed, both here and in
  * start_harness()) only removes the directory entry - it does nothing to
  * the PROCESS still holding the old listening socket open, which just
@@ -43,7 +43,7 @@ function kill_stale_listener(string $socketPath): void
     // that shows up as socket:[N] in /proc/<pid>/fd/*, which is what
     // actually identifies it below) is a completely separate numbering
     // space. /proc/net/unix is what maps a bound path back to that real
-    // socket inode - verified live 2026-08-08 after a first attempt using
+    // socket inode after a first attempt using
     // fileinode() silently matched nothing (different number spaces, so it
     // just never found the process it was supposed to kill).
     $unixSockets = @file('/proc/net/unix', FILE_IGNORE_NEW_LINES);
@@ -71,7 +71,7 @@ function kill_stale_listener(string $socketPath): void
     foreach (glob('/proc/[0-9]*/fd/*') ?: [] as $fdPath) {
         // $fdPath is /proc/<pid>/fd/<fd> - dirname() once lands on
         // /proc/<pid>/fd (basename() of THAT is just "fd"), so the pid
-        // itself needs a second dirname() first. Found live 2026-08-08: an
+        // itself needs a second dirname() first. An
         // earlier version of this got this one level short, so $pid was
         // always (int)"fd" === 0 - and POSIX kill(pid, sig) treats pid 0 as
         // "signal my entire process group", not "no such process". The

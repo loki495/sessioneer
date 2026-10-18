@@ -18,8 +18,7 @@
 // highlights.js/sidebar.js - fully self-contained, no dependency on (or
 // from) any other extracted module. Reads window.SESSIONEER_BOOTSTRAP.session
 // directly (same as sidebar.js's own sessionName derivation) rather than
-// depending on session.js's local. Extracted from session.js 2026-08-24,
-// sixth and final cut of the "split session.js into modules" pass.
+// depending on session.js's local. Extracted from session.js.
 var sessionSearchInput = document.getElementById('session-search-input');
 var sessionSearchResults = document.getElementById('session-search-results');
 var sessionSearchScopeGlobalRadio = document.getElementById('session-search-scope-global');
@@ -48,7 +47,7 @@ function renderSessionSearchResults(matches, query) {
 
 // Global mode's own results shape (one entry per matching session, each
 // with its own matches array) mirrors index.js's dashboard-wide search
-// exactly - includes cwd (Andres's own ask: global results need to show
+// exactly - includes cwd (global results need to show
 // it, since without a per-session sidebar it's the only way to tell
 // sessions with the same title apart) and a "live" badge, but not that
 // search's Archive/Unarchive action forms - this is a quick jump-to-

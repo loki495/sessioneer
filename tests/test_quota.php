@@ -12,13 +12,13 @@ declare(strict_types=1);
  * An earlier version of this file tested a whole cache/background-refresh
  * subsystem (QuotaService::run_claude_quota()/read_quota_cache()/
  * trigger_background_quota_refresh(), an external `claude-quota` binary
- * scrape) - deleted 2026-08-22 as confirmed dead code once
+ * scrape) - deleted as confirmed dead code once
  * quota_from_statusline_state() became the only source get_quota() ever
  * reads from (see QuotaService's own class docblock for why). See git
  * history if any of that ever needs resurrecting.
  *
  * quota_from_statusline_state() reads GlobalStateStore's `global_state`
- * table (Config::push_sqlite_path()) since 2026-08-24, not a plain file -
+ * table (Config::push_sqlite_path()), not a plain file -
  * see write_quota_live_state()/delete_quota_live_state() below for the
  * fixture-side equivalent of a real write_quota_live_state.php run.
  */

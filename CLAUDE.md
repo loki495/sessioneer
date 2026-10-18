@@ -33,7 +33,7 @@ interrupt. One deliberate, opt-in exception:
 `test_claude_trust_prompt_live.php` (any `*_live.php` file) spawns the
 REAL `claude` binary in a fresh, never-before-trusted directory, to prove
 the folder-trust dialog's detection/handling still matches whatever the
-currently-installed CLI actually renders — added 2026-09-11 after a real
+currently-installed CLI actually renders — added after a real
 CLI version silently broke this app's trust-dialog handling (dropped its
 option numbers, reversed the default order) with every fixture-based test
 still green, since none of them replay anything but a frozen capture.
@@ -250,7 +250,7 @@ Docker-spawned, makes that impossible by construction — not by convention.
    local ones (`/context`, `/usage`) answer without a model call, TUI-only ones
    (`/add-dir`, `/theme`) reply "isn't available in this environment", and an
    unrecognised `/name` is NOT rejected - it goes to the model and spends a
-   turn (verified live, 2.1.278; docs/features.md, "Headless runtime").
+   turn (behaviour of 2.1.278; docs/features.md, "Headless runtime").
    The manager's own processes are not bare ones: `BareProcessService::
    managed_headless_pids()` (a no-retry probe of the manager) keeps them out of
    the "other Claude processes" list, and Kill/Take over refuse them.
@@ -299,8 +299,7 @@ in both places.
   the hook's stdin, so a blocked permission prompt's preview doesn't depend
   on scraping a small, best-effort-rendered tmux pane. Never approves or
   denies anything — writes nothing to stdout, always exits 0. Also clears
-  `SessionStatusStore`'s blocked state on every firing (added 2026-08-22,
-  see CONTRIBUTING.md) — a later tool call starting is itself proof any
+  `SessionStatusStore`'s blocked state on every firing (see CONTRIBUTING.md) — a later tool call starting is itself proof any
   earlier permission prompt was already resolved, which is what actually
   clears a stale "waiting on input" prompt that PermissionRequest set for a
   tool call earlier in the same turn.
@@ -313,7 +312,7 @@ in both places.
   state, inferred from hook SEQUENCE (`UserPromptSubmit` → working,
   `PermissionRequest` → blocked, `Stop` → idle, `PreToolUse` → also clears
   blocked). **Mandatory, not a
-  "prefer this, fall back to pane-scraping" cascade** (decided 2026-08-22):
+  "prefer this, fall back to pane-scraping" cascade**:
   `SessionService::build_session_entry()` reads mode/working-status/
   blocked-prompt content EXCLUSIVELY from this file for every tool except
   `AskUserQuestion` — a session with no status file (hooks not installed)
@@ -331,8 +330,8 @@ in both places.
   "Answering a multi-question AskUserQuestion without reading the pane" for
   the confirmed mechanics) — no more Prev/Next tab navigation needed for
   this shape, so the old mechanism (`SessionService::navigate_prompt()`,
-  `/session_navigate.php`, the `nav-prompt-btn` UI) was deleted outright
-  2026-08-22, not left around unused. The pane-title-spinner-glyph working-status
+  `/session_navigate.php`, the `nav-prompt-btn` UI) was deleted outright,
+  not left around unused. The pane-title-spinner-glyph working-status
   detection this replaced (`PromptParser::pane_title_is_working()`,
   `TmuxService::tmux_session_panes()`'s old `working` key) was deleted
   outright, not left around unused — see CONTRIBUTING.md for the full
@@ -345,7 +344,7 @@ that only `create_agent_session()`-spawned sessions have).
 ## Conventions worth knowing before editing
 
 - **OpenCode server integration: prefer the v2 `/api/session` API for
-  everything possible from now on** (decided 2026-08-26). v1 `/session`
+  everything possible from now on**. v1 `/session`
   only returns the tiny "currently live" set and is unreliable for
   enumeration (caused the headless sync to prune just-resumed sessions);
   v2 is the fuller, canonical surface. When touching any opencode-server
@@ -363,8 +362,7 @@ that only `create_agent_session()`-spawned sessions have).
 
 - **Claude Code multi-account ("profile") support: any new Claude-specific
   transcript/session-lookup function needs a `?string $profile = null`
-  parameter, or it silently only works for the default account.** Added
-  2026-09-18 - a session can be spawned under a
+  parameter, or it silently only works for the default account.** A session can be spawned under a
   different `CLAUDE_CONFIG_DIR` (a separate account, e.g. work), named in
   `host-agent/config/agents.php`. `Config::claude_config_dir($profile)` is
   the base every Claude-account-scoped path is built from; the profile name
@@ -382,7 +380,7 @@ that only `create_agent_session()`-spawned sessions have).
 
 - **Claude Code tools/hooks questions: check the real docs first, not
   memory.** Whenever a change or investigation touches what tools/hooks a
-  Claude Code session has available (this came up 2026-08-22/23
+  Claude Code session has available (this came up
   investigating why `TodoWrite` wasn't available for the sidebar's Tasks
   feature), check the actual current docs before acting on assumption or
   a subagent's summary - both the model itself and a fresh subagent can
@@ -402,7 +400,7 @@ that only `create_agent_session()`-spawned sessions have).
   - https://code.claude.com/docs/en/cli-reference - CLI flags/parameters
     and their actual behavior (this is where `--tools`/`--allowedTools`/
     `--disallowedTools`/`--session-id`/etc. are documented).
-  - Confirmed live 2026-08-23 (empirically, not just from docs): `--tools`
+  - Confirmed empirically, not just from docs: `--tools`
     REPLACES the session's built-in tool set with exactly what's named
     (e.g. `--tools=TaskCreate,TaskList` drops `Bash`/`Read`/`Write`/`Edit`
     entirely) - `--allowedTools` is ADDITIVE instead, naming a tool turns
@@ -422,11 +420,10 @@ that only `create_agent_session()`-spawned sessions have).
 - All tmux/process invocations use `proc_open()` with the command as an
   **array**, never a shell string — no shell metacharacter injection
   surface. Keep new host-agent commands in this form.
-- Comments throughout this codebase frequently record a specific bug found
-  live (often "found live: ...", "verified live YYYY-MM-DD ...") and the
-  reasoning that led to the fix — read them before assuming something is
-  over-engineered; the non-obvious behavior it's guarding against is
-  usually explained right there.
+- Comments explain WHY the code is the way it is: the non-obvious behavior
+  or specific bug it guards against. Read them before assuming something is
+  over-engineered, and keep new ones to that — no who, when or how-it-was-found
+  narrative.
 - Every transcript block (text/plan/tool_use/tool_result/task_notification) carries two
   cross-cutting attributes in both its PHP render (`transcript/block.php`)
   and its JS poll-time mirror (`renderBlock()` in `session.js`) — keep

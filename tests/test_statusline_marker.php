@@ -7,8 +7,8 @@ declare(strict_types=1);
  * SessionService::self_heal_agent_session_id() (the consuming side - see
  * both classes' own docblocks for why this exists: a second, independent
  * cross-check against SidecarStore's agent_session_id, on top of the
- * SessionStart hook's own transcript-existence check added the same day,
- * 2026-08-08). Uses its own fixture HOME_ROOT/SIDECAR_DIR, never the real
+ * SessionStart hook's own transcript-existence check added the same day).
+ * Uses its own fixture HOME_ROOT/SIDECAR_DIR, never the real
  * ~/.claude/settings.json, statusline script, or sidecar dir.
  */
 
@@ -71,7 +71,7 @@ try {
     assert_equal(null, StatuslineMarkerService::parse_marker_from_pane("sessioneer-data:{\"session_id\":\"not-a-real-uuid\"}")['session_id'], 'parse_marker_from_pane: session_id is null when the JSON value is not UUID-shaped');
     assert_equal(strtolower($id), StatuslineMarkerService::parse_marker_from_pane("sessioneer-data:{\"session_id\":\"" . strtoupper($id) . "\"}")['session_id'], 'parse_marker_from_pane: session_id is case-insensitive, normalized to lowercase');
 
-    // Found live 2026-08-23: a tall pane (TMUX_PANE_HEIGHT=150 by default)
+    // A tall pane (TMUX_PANE_HEIGHT=150 by default)
     // can still have an OLDER statusline render visible above the current
     // one after a session rotates its agent_session_id (/clear, /compact,
     // --resume) - matching the first occurrence fed self_heal_agent_session_id()
@@ -93,7 +93,7 @@ try {
         StatuslineMarkerService::locate_statusline_script(['statusLine' => ['type' => 'command', 'command' => "bash {$scriptPath}"]]),
         'locate_statusline_script: finds the script file referenced by a real, writable command'
     );
-    // Found live 2026-09-18: a command written the normal way ("bash
+    // A command written the normal way ("bash
     // $HOME/...", never shell-evaluated here) used to never resolve at
     // all - is_file() on the literal, unexpanded "$HOME/..." string can
     // never match a real file, so check_statusline_marker() reported
@@ -162,7 +162,7 @@ try {
     // (protects against a stale/idle session's script firing after a
     // fresher one already reported higher usage in the same window - see
     // merge_quota_bucket() in host-agent/quota_live_state_write.php's own
-    // docblock and the 2026-08-21 duplicate-notification bug it exists to
+    // docblock and the duplicate-notification bug it exists to
     // prevent).
     $runWithQuota = static function (string $scriptPath, array $payload): void {
         $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
@@ -240,7 +240,7 @@ try {
     // has the (older) session-id marker but predates the quota-capture
     // block gets just that block appended, without disturbing the marker
     // or needing a second stdin-capture prelude. This is the exact shape
-    // of Andres's own real, already-installed script before this feature
+    // of a real, already-installed script before this feature
     // existed. ---
     file_put_contents($scriptPath, "#!/usr/bin/env bash\ninput=\$(cat)\nmodel=\$(echo \"\$input\" | jq -r '.model.display_name // \"\"')\nprintf '%s' \"\$model\"\necho \"\"\n");
     chmod($scriptPath, 0700);
@@ -277,7 +277,7 @@ try {
 
     // --- install_statusline_marker(): STALE quota-capture BODY - a script
     // whose block markers are already present but whose body still has the
-    // old jq-merge-then-mv logic (found live 2026-08-24 in Andres's own
+    // old jq-merge-then-mv logic (in a real
     // already-installed script, predating the move to
     // host-agent/quota_live_state_write.php/GlobalStateStore) gets that
     // block's body REPLACED in place, not skipped as "already installed" -

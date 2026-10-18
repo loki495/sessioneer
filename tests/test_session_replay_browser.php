@@ -345,7 +345,7 @@ try {
         // Set once control_panel_wait_for_go() reports the window/page is
         // gone - every check after the loop below also needs $page, so
         // they're all skipped once this is true rather than each one
-        // separately failing against a dead connection (found live: left
+        // separately failing against a dead connection (left
         // unguarded, this produced a cascade of confusing unrelated FAILs
         // - mobile viewport, compose bar, etc. - on top of the one real
         // "window closed" event, plus a Broken pipe notice per attempt).
@@ -418,7 +418,7 @@ try {
                 // RENDERING in the DOM - #thinking-indicator (session.php)
                 // always exists as a container; session.js's own
                 // renderThinkingIndicator() empties/populates it based on the
-                // client's own poll response. Found live 2026-08-12: this
+                // client's own poll response. This
                 // exact path had zero coverage anywhere before now (Claude
                 // Code switched its spinner glyph set, working became always
                 // false, and nothing caught it) - test_session_replay.php
@@ -464,8 +464,8 @@ try {
                     // PromptInteractionService::answer_multi_question() re-scrapes
                     // the REAL tmux pane and REJECTS the whole answer (no keys
                     // sent, blocked status left untouched) if that pane doesn't
-                    // already show this exact question - found live investigating
-                    // a CI-only (occasionally-local-too) failure where the
+                    // already show this exact question. Seen as a
+                    // CI-only (occasionally-local-too) failure where the
                     // blocked prompt never cleared after this exact click: this
                     // step's own pane_text is written via a SEPARATE, slower path
                     // (real `tmux send-keys` subprocesses in replay_step(), one
@@ -517,8 +517,8 @@ try {
                     $revealed = cdp_click($page, ".reveal-freetext-btn[data-option=\"{$option}\"]");
                     browser_assert($page, $revealed, "session.php (step {$i}): the \"Type something.\" option reveals the free-text field", "step-{$i}-freetext-reveal-failed");
 
-                    // Typed via the fullscreen-expand editor (Andres's own
-                    // ask, 2026-08-24) instead of setting the textarea's
+                    // Typed via the fullscreen-expand editor (the way a
+                    // user types it) instead of setting the textarea's
                     // value directly - real end-to-end coverage of
                     // openFullscreenEditModal()'s live two-way sync
                     // (common.js), not just the plain free-text send path
@@ -608,7 +608,7 @@ try {
             browser_assert($page, is_array($undescribed) && $undescribed['description'] === null && $undescribed['summary'] === 'Ran rm -rf /var/www/uploads/tmp', 'session.php (poll-rendered): a Bash call with no description shows only "Ran <command>", no empty description line', 'tool-call-description-unexpected');
 
             // Real end-to-end coverage of the jump-to-search-result "wrong
-            // spot" bug (found live 2026-08-20): line 4 in the fixture's
+            // spot" bug: line 4 in the fixture's
             // own jsonl is the Bash tool_use, paired with its result into
             // its own standalone, collapsed <details class="tool-call-
             // entry"> (closed by default - see TranscriptView::

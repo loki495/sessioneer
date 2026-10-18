@@ -35,7 +35,7 @@ $root = sys_get_temp_dir() . '/sessioneer-test-claude-replay-' . getmypid();
 // the REAL manager's environment - including SIDECAR_DIR - by construction
 // (the manager passes its own env to every child it spawns), so an "if
 // unset" guard would silently do nothing and this test would run against
-// the real host's sessions.sqlite. Found live 2026-09-27: a direct `php tests/test_X.php` run from inside such
+// the real host's sessions.sqlite. A direct `php tests/test_X.php` run from inside such
 // a session locked and corrupted real session rows this way.
 $realSidecarDir = Config::sidecar_dir();
 putenv('SIDECAR_DIR=' . $root . '/sidecars');
@@ -168,7 +168,7 @@ foreach ($captures as $i => $file) {
         // should never lag behind them - but reading it with its own
         // wait_until, rather than trusting that atomicity across two
         // separate reads, is what actually asserts the value this block
-        // cares about instead of a proxy for it (found live 2026-09-28: a
+        // cares about instead of a proxy for it (a
         // plain unguarded read here flaked on a loaded CI runner).
         if (!empty($lastResult['is_error'])) {
             assert_true(

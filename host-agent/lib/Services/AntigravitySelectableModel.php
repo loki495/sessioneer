@@ -6,7 +6,7 @@ namespace HostAgent\Services;
 
 /**
  * The fixed 7-row vocabulary behind Antigravity's real `/model` picker, in
- * the EXACT order it renders them - verified live 2026-08-24 against two
+ * the EXACT order it renders them - checked against two
  * disposable scratch `agy` sessions (never the real tracked session), same
  * "confirm against the real thing" discipline SelectableModel.php's own
  * Claude Code vocabulary already used.
@@ -15,19 +15,19 @@ namespace HostAgent\Services;
  * has no session-only confirm key - there is only one "enter Select"
  * action, and it always overwrites the ACCOUNT-WIDE default model, applying
  * to every future `agy` session including ones started by hand outside this
- * app. Confirmed live: switching the model inside one throwaway session,
+ * app. Switching the model inside one throwaway session,
  * then killing it and starting a brand new unrelated one, showed the new
  * session picked up the switched model rather than resetting - so
  * PromptInteractionService::set_antigravity_model() below is knowingly a
- * global-default switch, not a per-session one (Andres's own explicit
- * decision 2026-08-24 after being shown this finding, not an oversight).
+ * global-default switch, not a per-session one (a deliberate
+ * decision, not an oversight).
  */
 class AntigravitySelectableModel
 {
     /**
      * Row order matches the real /model picker exactly. Each row also
      * carries whatever reasoning-effort level the picker last remembered
-     * for that specific model on its own (verified live: switching models
+     * for that specific model on its own (switching models
      * changes the Effort slider's position too, per-model) - this app
      * doesn't touch Effort at all, only ever confirms whatever effort the
      * picker already has selected for the target row.
@@ -47,7 +47,7 @@ class AntigravitySelectableModel
      * from the way Claude Code does (see TranscriptService::
      * find_latest_model()) - the only place it's ever shown is the live
      * pane's own bottom-right footer, e.g. "Gemini 3.7 Flash · high"
-     * (verified live 2026-08-24 across three different picked models:
+     * (seen across three different picked models:
      * Gemini 3.7 Flash, Gemini 3.6 Flash, and back to Gemini 3.7 Flash at
      * a different effort - the "<label> · <effort>" shape held every
      * time). Same str_contains-against-known-phrases discipline as

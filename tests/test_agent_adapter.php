@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 /**
  * Exercises HostAgent\Agents\AgentRegistry/ClaudeCodeAdapter/
- * AntigravityAdapter - the seam introduced 2026-08-24
+ * AntigravityAdapter - the seam between agents
  * and its second real implementation. ClaudeCodeAdapter::build_spawn_argv() must
  * produce BYTE-IDENTICAL argv to what SessionLifecycleService::
  * create_agent_session() built inline before this extraction - this file is
@@ -94,9 +94,9 @@ try {
     $withNullMode = $adapter->build_spawn_argv(['starting_mode' => null]);
     assert_true(!in_array('--permission-mode', $withNullMode['argv'], true), 'build_spawn_argv(starting_mode: null): omits the flag entirely, same as never passing the option at all');
 
-    // --- build_spawn_argv(model): the bug found live 2026-08-30 (Andres:
-    // "requesting a model at session launch... doesn't work for Claude
-    // sessions") - Sessions.php's 'create' case extracted $modelId off the
+    // --- build_spawn_argv(model): the bug where
+    // requesting a model at session launch didn't work for Claude
+    // sessions - Sessions.php's 'create' case extracted $modelId off the
     // request but never actually passed it to create_agent_session()/this
     // adapter, so a model chosen on the New Session form was silently
     // dropped for Claude Code (unlike Antigravity/OpenCode above, which
@@ -142,7 +142,7 @@ try {
 
     $agBare = $antigravity->build_spawn_argv([]);
     assert_equal([Config::antigravity_bin()], $agBare['argv'], 'AntigravityAdapter::build_spawn_argv([]): bare argv is just the binary, no flags');
-    assert_equal(null, $agBare['assigned_id'], 'AntigravityAdapter::build_spawn_argv(): assigned_id is always null - no --session-id/--conversation-id equivalent exists for a fresh interactive session (confirmed live against `agy --help`)');
+    assert_equal(null, $agBare['assigned_id'], 'AntigravityAdapter::build_spawn_argv(): assigned_id is always null - no --session-id/--conversation-id equivalent exists for a fresh interactive session');
 
     $agWithModel = $antigravity->build_spawn_argv(['model' => 'gemini-3.7-flash-high']);
     $modelIdx = array_search('--model', $agWithModel['argv'], true);
@@ -184,7 +184,7 @@ try {
 
     $ocBare = $opencode->build_spawn_argv([]);
     assert_equal([Config::opencode_bin()], $ocBare['argv'], 'OpenCodeAdapter::build_spawn_argv([]): bare argv is just the binary, no positional workdir or flags');
-    assert_equal(null, $ocBare['assigned_id'], 'OpenCodeAdapter::build_spawn_argv(): assigned_id is always null - no --session-id equivalent exists for a fresh TUI session (verified live: opencode --session <nonexistent> is resume-only)');
+    assert_equal(null, $ocBare['assigned_id'], 'OpenCodeAdapter::build_spawn_argv(): assigned_id is always null - no --session-id equivalent exists for a fresh TUI session');
 
     $ocWithWorkdir = $opencode->build_spawn_argv(['workdir' => '/tmp/test-project']);
     assert_true(in_array('/tmp/test-project', $ocWithWorkdir['argv'], true), 'build_spawn_argv(workdir): includes positional workdir');

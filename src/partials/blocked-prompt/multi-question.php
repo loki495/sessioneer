@@ -30,8 +30,7 @@
                whole viewport in on focusing any text input rendered under
                16px, no way to opt out of that short of the font size
                itself (see sidebar.php's own copy of this comment).
-               A <textarea>, not a plain <input type="text"> (changed
-               2026-08-24, Andres's own call after a live-risk check) - lets
+               A <textarea>, not a plain <input type="text"> - lets
                the fullscreen-expand editor (common.js's
                openFullscreenEditModal()) offer real multi-line typing room
                here too. Any embedded newline is still stripped back to a

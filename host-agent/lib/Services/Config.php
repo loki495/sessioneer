@@ -10,8 +10,7 @@ namespace HostAgent\Services;
  * production) so tests can point at an isolated tmux socket and a fixture
  * claude binary instead of the real host session.
  *
- * No installer's own personal paths are hardcoded here (removed
- * 2026-08-09, ahead of open-sourcing this repo) - every default below is
+ * No installer's own personal paths are hardcoded here - every default below is
  * either genuinely environment-derived (this process's real $HOME/uid,
  * which is correct on ANY machine, not just the original author's) or
  * empty, which downstream code/README setup steps treat as "not
@@ -209,7 +208,7 @@ class Config
      * Same reasoning as claude_bin() above - no safe universal guess for
      * where the Antigravity CLI (binary name `agy`) was installed, so this
      * is empty until ANTIGRAVITY_BIN is set explicitly. Run `which agy` to
-     * find the real path. Added 2026-08-24 for AntigravityAdapter.
+     * find the real path.
      */
     public static function antigravity_bin(): string
     {
@@ -220,7 +219,7 @@ class Config
      * Same reasoning as claude_bin() above - no safe universal guess for
      * where the OpenCode TUI CLI (binary name `opencode`) was installed, so
      * this is empty until OPENCODE_BIN is set explicitly. Run `which
-     * opencode` to find the real path. Added 2026-08-25 for OpenCodeAdapter.
+     * opencode` to find the real path.
      */
     public static function opencode_bin(): string
     {
@@ -392,10 +391,10 @@ class Config
     /**
      * A new session's tmux pane, with no real client ever attached to give it
      * a size to inherit, otherwise falls back to the SERVER's default-size
-     * (confirmed live: 80x24, tmux's own classic default) - nowhere near
+     * (80x24, tmux's own classic default) - nowhere near
      * enough for Claude Code's own TUI to render a long tool-permission
      * preview (a big Write, a long Bash script) without cutting it short.
-     * Found live: capture-pane (even with extra -S scrollback) came back
+     * capture-pane (even with extra -S scrollback) comes back
      * missing the earlier lines entirely - not truncated by this app's own
      * parsing, genuinely never rendered by Claude Code in the first place,
      * since it adapts its own output to whatever height it detects. Sized
@@ -426,8 +425,7 @@ class Config
     }
 
     /**
-     * GlobalStateStore key (Config::push_sqlite_path(), NOT a file, since
-     * 2026-08-24) holding account-wide rate-limit quota (session/week_all
+     * GlobalStateStore key (Config::push_sqlite_path(), NOT a file) holding account-wide rate-limit quota (session/week_all
      * pct + real epoch resets_at, straight from Claude Code's own
      * statusLine JSON) - written by host-agent/quota_live_state_write.php,
      * invoked from the statusLine script this app installs (see
@@ -435,7 +433,7 @@ class Config
      * no tmux/capture-pane involved. QuotaService::get_quota()'s only
      * source (see that class's own docblock - the tmux-pane-scraping
      * fallback and the external `claude-quota`-binary scrape behind it were
-     * both deleted 2026-08-22 as dead code).
+     * both deleted as dead code).
      *
      * $profile null (the default account) keeps the original bare key
      * unchanged - an existing install's already-captured quota history
@@ -457,7 +455,7 @@ class Config
      * host-agent/antigravity_quota_poll.php, run periodically by the
      * (opt-in, not auto-enabled) sessioneer-antigravity-quota-check systemd
      * timer - a real, free, headless `agy -p "/usage" --output-format
-     * json` call (confirmed live 2026-08-24: duration_seconds=0,
+     * json` call (duration_seconds=0,
      * zero token usage, no real model turn), not an event-driven capture.
      * Own separate key, own separate table row, from quota_live_state_key()
      * above - the two agents' quota shapes don't overlap (Antigravity has
@@ -473,14 +471,13 @@ class Config
     /**
      * SidecarStore/SessionStatusStore/PendingToolStore's shared SQLite DB -
      * ephemeral, same tmpfs directory (and same wiped-on-reboot lifetime)
-     * as the plain JSON sidecar files this replaced (2026-08-24). One file,
+     * as the plain JSON sidecar files this replaced. One file,
      * three tables (see SqliteDb::sessions_schema()) - a session's identity,
      * live status, and pending-tool-call state are almost always read
      * together anyway (SessionService::build_session_entry()), and a single
      * SQLite connection per request (WAL mode, see SqliteDb) removes the
      * hand-rolled read-modify-write race SessionStatusStore::update_status()
-     * used to have between two hooks firing close together (found live
-     * 2026-08-23).
+     * used to have between two hooks firing close together.
      */
     public static function sessions_sqlite_path(): string
     {
@@ -492,7 +489,7 @@ class Config
      * GlobalStateStore's shared SQLite DB - persistent (host-agent/state/,
      * not tmpfs - a phone's subscription shouldn't need to be redone just
      * because the host rebooted). quota_live_state_key() (GlobalStateStore)
-     * lives here too since 2026-08-24 - the shell statusLine script no
+     * lives here too - the shell statusLine script no
      * longer writes it directly via jq; it now shells out to
      * host-agent/quota_live_state_write.php, a small standalone PHP
      * script, once per render (see that file's own docblock for the
@@ -508,7 +505,7 @@ class Config
     /**
      * OpenCode's own SQLite database - lives at ~/.local/share/opencode/opencode.db
      * by default (see `opencode debug paths`'s `data` entry), WAL mode
-     * (confirmed live 2026-08-25: PRAGMA journal_mode=wal, concurrent
+     * (PRAGMA journal_mode=wal, concurrent
      * readers safe while the TUI runs). Overridable via env for tests so a
      * canned fixture DB can be pointed at without touching the real host data.
      */
@@ -656,8 +653,8 @@ class Config
 
     /**
      * Fallback statusline script this app installs (and points
-     * ~/.claude/settings.json's statusLine at) only when Andres has no
-     * statusLine of his own configured yet - see StatuslineMarkerService.
+     * ~/.claude/settings.json's statusLine at) only when the user has no
+     * statusLine of their own configured yet - see StatuslineMarkerService.
      * When one already exists, its own script file is appended to instead;
      * this path is never touched in that case.
      */

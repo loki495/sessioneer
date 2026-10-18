@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<?php /* Found live 2026-08-22 (Andres, real iOS Safari screen recording):
+<?php /* 
      <body>'s own overflow-hidden (below) does NOT actually stop the page
      from scrolling - in standards mode, <html> (document.documentElement),
      not <body>, is the real root scrolling element, and it had no height/
@@ -33,8 +33,7 @@
 <?= $this->section('style', '') ?>
 </head>
 <body class="<?= !empty($fixedShell) ? 'h-[var(--app-vh,100dvh)] overflow-hidden' : 'min-h-screen' ?> bg-slate-950 text-slate-100 overscroll-y-none">
-<?php /* overscroll-y-none (not the both-axes overscroll-none this replaced,
-     2026-08-09) - Y-axis only, so vertical rubber-banding/scroll-chaining
+<?php /* overscroll-y-none (not the both-axes overscroll-none this replaced) - Y-axis only, so vertical rubber-banding/scroll-chaining
      past the top/bottom of the page is blocked without also touching
      X-axis overscroll-behavior, which the iOS edge-swipe-back gesture
      (see navigation-blanket above) rides on. */ ?>
@@ -67,8 +66,7 @@
     </span>
     <button type="button" id="fullscreen-text-modal-close" aria-label="Close full screen view" class="text-slate-400 active:text-slate-200 text-2xl leading-none px-3 py-1">&times;</button>
   </div>
-  <?php /* A <div>, not a <pre> - Andres's own ask, 2026-08-23 ("markdown in all
-       the full size modals"): openFullscreenTextModal() (common.js) can
+  <?php /* A <div>, not a <pre>: markdown in the full size modals - openFullscreenTextModal() (common.js) can
        fill this with rendered markdown HTML (block-level <p>/<ul>/<pre>
        elements from MarkdownRenderer::render_html()/its JS mirror
        renderMarkdown()), which would be invalid/broken nested inside a
@@ -80,8 +78,7 @@
        properties, not something requiring a literal <pre> element. */ ?>
   <div id="fullscreen-text-modal-content" class="flex-1 overflow-auto overscroll-contain whitespace-pre px-3 py-2 text-xs text-slate-100"></div>
 </div>
-<?php /* Editable counterpart to the read-only modal above (Andres asked
-     2026-08-24 for a way to expand a text area to full screen while
+<?php /* Editable counterpart to the read-only modal above (lets a text area expand to full screen while
      typing, both compose and answering a blocked prompt) - a genuinely
      separate element, not a repurposed fullscreen-text-modal: that one's
      content is a plain <div> that can hold rendered markdown HTML, driven

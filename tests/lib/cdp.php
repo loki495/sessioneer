@@ -38,7 +38,7 @@ declare(strict_types=1);
  * cdp_click()'s .click()) never propagates back through that call's own
  * return value, so without this, a handler silently throwing and doing
  * nothing looks IDENTICAL to it running successfully - exactly how the
- * multi-question "Send answers" regression (found live 2026-08-23, see
+ * multi-question "Send answers" regression (see
  * CONTRIBUTING.md) went unnoticed by this suite despite already clicking
  * that exact button.
  */
@@ -99,7 +99,7 @@ function cdp_launch(string $chromeBin): ?array
         '--no-sandbox',
         // --disable-crash-reporter: chrome's crashpad handler deliberately
         // detaches from the main chrome process (so it survives to report
-        // a crash even as chrome itself dies) - found live: that means
+        // a crash even as chrome itself dies), which means
         // proc_terminate() on the main process alone leaves it running,
         // orphaned, forever. Same accumulating-orphan shape as the
         // tmux-socket-harness incident this project's CLAUDE.md already
@@ -108,7 +108,7 @@ function cdp_launch(string $chromeBin): ?array
         '--disable-crash-reporter',
         '--remote-debugging-port=0', '--user-data-dir=' . $userDataDir, 'about:blank',
     ];
-    // stdout/stderr go to a real FILE, not pipes - found live: chrome is
+    // stdout/stderr go to a real FILE, not pipes - chrome is
     // chatty on stderr (its own internal logging), and NOTHING in this
     // file ever reads a piped stdout/stderr once launch succeeds. Once
     // that pipe's OS buffer (64KB) fills, chrome's own write() calls
@@ -218,7 +218,7 @@ function cdp_http(string $method, string $url): array
 
 /**
  * Opens a fresh tab via Chrome's HTTP `/json/new` endpoint (a PUT, not GET -
- * newer Chrome rejects GET here, a CSRF hardening change verified live
+ * newer Chrome rejects GET here, a CSRF hardening change verified
  * against Chrome 151) and connects directly to that tab's OWN
  * `webSocketDebuggerUrl`, no Target.createTarget/attachToTarget dance
  * needed - every CDP command sent on this connection already targets this
@@ -318,7 +318,7 @@ function cdp_ws_send(mixed $sock, string $payload): void
     // handled condition here - cdp_call()'s own read loop already treats
     // a subsequent failed/empty read as "no response", so this would
     // otherwise just spam a "Broken pipe" PHP Notice for every single
-    // call made after the connection dies, found live testing the
+    // call made after the connection dies, as on the
     // control panel's dead-window abort path.
     @fwrite($sock, $frame);
 }
@@ -432,7 +432,7 @@ function cdp_ws_arm_timeout(mixed $sock, float $deadline): bool
  * Every OTHER frame type read along the way is still fully consumed
  * (via cdp_ws_read_frame(), which always reads a frame's complete
  * declared-length payload regardless of opcode) rather than skipped -
- * found live: an earlier version bailed out immediately on a non-text
+ * An earlier version bailed out immediately on a non-text
  * frame without reading its payload bytes at all. Chrome periodically
  * sends WebSocket PING frames (opcode 0x9) on an otherwise-idle
  * connection; leaving one unread desynchronizes every future frame read
@@ -504,7 +504,7 @@ function cdp_ws_send_pong(mixed $sock, string $payload): void
  * "id" field at all).
  *
  * $page MUST reach here by reference at every call site, including
- * through a closure (`use (&$page)`, not `use ($page)`) - found live: a
+ * through a closure (`use (&$page)`, not `use ($page)`) - a
  * closure passed to browser_wait_until() that captured $page BY VALUE got
  * its own independent copy of next_id, incrementing separately from the
  * outer scope's calls on the same underlying socket. Both copies
@@ -562,7 +562,7 @@ function cdp_call(array &$page, string $method, array $params = [], float $timeo
  * layer, and sufficient here since every page this drives is a small,
  * already-fast local `php -S` response, not a heavy real-world page.
  *
- * Default bumped 5.0 -> 10.0 -> 20.0 - found live on CI (a slower, shared
+ * Default bumped 5.0 -> 10.0 -> 20.0 (a slower, shared
  * runner than this suite was originally tuned against, confirmed by two
  * genuinely separate navigate() calls in the SAME run each occasionally
  * needing more than 10s): occasionally still mid-load a hair past the
@@ -576,7 +576,7 @@ function cdp_call(array &$page, string $method, array $params = [], float $timeo
  */
 function cdp_navigate(array &$page, string $url, float $timeout = 20.0): bool
 {
-    // Found live investigating a CI-only navigate() failure that
+    // A CI-only navigate() failure that
     // consistently gave up after exactly 5.0s no matter how high $timeout
     // was raised: this initial Page.navigate dispatch used to call
     // cdp_call() with NO timeout argument at all, silently falling back to

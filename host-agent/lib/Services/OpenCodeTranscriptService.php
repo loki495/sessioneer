@@ -642,8 +642,7 @@ class OpenCodeTranscriptService
      * given opencode session — the opencode equivalent of Claude Code's
      * blocked-on-AskUserQuestion. Used by SessionService to surface a
      * blocked prompt without relying on pane parsing (which is blank for
-     * opencode's TUI idle state, but does show the question when blocked —
-     * verified live 2026-08-25 on ses_fc8124).
+     * opencode's TUI idle state, but does show the question when blocked).
      *
     /**
      * @return array{question:string, header:?string, options:array<int, array{number:int, label:string}>}|null
@@ -664,7 +663,7 @@ class OpenCodeTranscriptService
         $stmt->execute([$sessionId]);
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
 
-        // Staleness guard (found live 2026-08-25, cloning session): opencode
+        // Staleness guard: opencode
         // leaves a question tool's state.status as "running" even after the
         // question is answered, but the NEWER re-ask of the same question is
         // the one that gets flipped to "completed". The naive "first

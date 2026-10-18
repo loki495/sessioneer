@@ -11,7 +11,7 @@
               // session-list rows (see SessionRowView::profile_badge_class()'s
               // own docblock: other agents have no config-dir profile concept
               // yet, so their 'profile' always resolves to null). Inline with
-              // the title (Andres's own ask, 2026-09-18), not stacked below it. ?>
+              // the title, not stacked below it. ?>
         <?php if ($found && ($detail['agent'] ?? 'claude') === 'claude'): ?>
           <span class="shrink-0 inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border <?= App\Views\SessionRowView::profile_badge_class($detail['profile'] ?? null) ?>"><?= htmlspecialchars(App\Views\SessionRowView::profile_label($detail['profile'] ?? null), ENT_QUOTES) ?></span>
         <?php endif ?>
@@ -22,8 +22,7 @@
           <span class="shrink-0 inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border bg-violet-900/30 text-violet-400 border-violet-700/40">Headless</span>
         <?php endif ?>
       </div>
-      <?php // The workdir itself is NOT shown here (removed 2026-09-28,
-            // Andres's own ask) - the sidebar's own "This session" block
+      <?php // The workdir itself is NOT shown here - the sidebar's own "This session" block
             // already shows it, with a copy button the header never had. ?>
       <?php $gitBranch = $found && !empty($detail['git_branch']) ? (string)$detail['git_branch'] : ''; ?>
       <div id="header-branch" class="text-[11px] text-slate-500 truncate<?= $gitBranch === '' ? ' hidden' : '' ?>"><?= htmlspecialchars($gitBranch, ENT_QUOTES) ?></div>

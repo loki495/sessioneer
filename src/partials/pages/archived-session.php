@@ -64,8 +64,7 @@ $this->layout('layout', [
     <div class="select-none mb-4">
       <?php /* text-base (16px), not text-sm - iOS Safari auto-zooms the whole
            viewport in on focusing any text input rendered under 16px
-           (found live 2026-08-20: this one was missed in the same pass
-           that fixed sidebar.php's/index.php's own search inputs).
+           (the same applies to sidebar.php's/index.php's own search inputs).
            appearance-none suppresses the native WebKit search-cancel
            button - see sidebar.php's own copy of this comment for why. */ ?>
       <div class="relative">
@@ -98,7 +97,7 @@ $this->layout('layout', [
       </div>
     <?php else: ?>
       <?php
-        // Found live 2026-09-18: this used to hardcode 'Claude Code' below
+        // this used to hardcode 'Claude Code' below
         // regardless of the session's real agent - now that
         // archived_session_detail() resolves 'agent' (see
         // SessionDetailService.php), match it the same way session.php's

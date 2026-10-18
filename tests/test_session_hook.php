@@ -149,7 +149,7 @@ try {
     assert_equal('notify-send done', $decoded['hooks']['Stop'][0]['hooks'][0]['command'] ?? null, 'install_session_hook: preserves a pre-existing unrelated hook');
     assert_equal('dark', $decoded['theme'] ?? null, 'install_session_hook: preserves pre-existing top-level settings');
     // Regression coverage for the hooks-status-file design's own load-bearing
-    // assumption: Andres's own personal Stop hook (already registered for
+    // assumption: a user's own personal Stop hook (already registered for
     // this exact event above) must survive as its own matcher-group entry,
     // with ours appended as a SECOND entry under the same event, not merged
     // into or replacing his.
@@ -199,7 +199,7 @@ try {
     assert_equal(true, HookService::permission_request_hook_present(['hooks' => ['PermissionRequest' => [['matcher' => '*', 'hooks' => [['type' => 'command', 'command' => Config::permission_request_hook_command()]]]]]]), 'permission_request_hook_present: true when our command is present');
     assert_equal(false, HookService::user_prompt_submit_hook_present(['hooks' => ['UserPromptSubmit' => [['matcher' => '*', 'hooks' => [['type' => 'command', 'command' => 'something-unrelated.sh']]]]]]), 'user_prompt_submit_hook_present: false for an unrelated UserPromptSubmit hook');
     assert_equal(true, HookService::user_prompt_submit_hook_present(['hooks' => ['UserPromptSubmit' => [['matcher' => '*', 'hooks' => [['type' => 'command', 'command' => Config::user_prompt_submit_hook_command()]]]]]]), 'user_prompt_submit_hook_present: true when our command is present');
-    assert_equal(false, HookService::stop_hook_present(['hooks' => ['Stop' => [['matcher' => '*', 'hooks' => [['type' => 'command', 'command' => 'notify-send done']]]]]]), 'stop_hook_present: false when only an unrelated Stop hook (e.g. Andres\'s own) is present');
+    assert_equal(false, HookService::stop_hook_present(['hooks' => ['Stop' => [['matcher' => '*', 'hooks' => [['type' => 'command', 'command' => 'notify-send done']]]]]]), 'stop_hook_present: false when only an unrelated Stop hook is present');
     assert_equal(true, HookService::stop_hook_present(['hooks' => ['Stop' => [['matcher' => '*', 'hooks' => [['type' => 'command', 'command' => 'notify-send done']]], ['matcher' => '*', 'hooks' => [['type' => 'command', 'command' => Config::stop_hook_command()]]]]]]), 'stop_hook_present: true when our command is present alongside an unrelated one');
 
     // --- PromptParser::format_pending_tool_input(): full-text preview per tool shape ---
@@ -258,7 +258,7 @@ try {
     assert_equal(
         "Yes, and don't ask again for: rtk curl *",
         PromptParser::permission_suggestion_option_label(['type' => 'addRules', 'rules' => [['toolName' => 'Bash', 'ruleContent' => 'rtk curl *']]]),
-        'permission_suggestion_option_label: addRules renders ruleContent verbatim, confirmed live'
+        'permission_suggestion_option_label: addRules renders ruleContent verbatim'
     );
     assert_equal(null, PromptParser::permission_suggestion_option_label(['type' => 'somethingNew']), 'permission_suggestion_option_label: an unrecognized suggestion type returns null rather than guessing');
 
@@ -299,7 +299,7 @@ try {
         'tool_input' => ['command' => 'rtk curl example.com', 'description' => 'Fetch example.com'],
         'permission_suggestions' => [['type' => 'addRules', 'rules' => [['toolName' => 'Bash', 'ruleContent' => 'rtk curl *']], 'behavior' => 'allow', 'destination' => 'localSettings']],
     ]);
-    assert_equal('Do you want to proceed?', $hookPrompt['question'] ?? null, 'build_prompt_from_hook_status: question is Claude Code\'s own fixed phrasing for this prompt shape, confirmed live');
+    assert_equal('Do you want to proceed?', $hookPrompt['question'] ?? null, 'build_prompt_from_hook_status: question is Claude Code\'s own fixed phrasing for this prompt shape');
     assert_equal("Fetch example.com\n\nrtk curl example.com", $hookPrompt['context'] ?? null, 'build_prompt_from_hook_status: context is format_pending_tool_input()\'s full-text rendering, same as the pane-scraped path uses');
     assert_equal(
         [['number' => 1, 'label' => 'Yes'], ['number' => 2, 'label' => "Yes, and don't ask again for: rtk curl *"], ['number' => 3, 'label' => 'No']],
@@ -320,7 +320,7 @@ try {
 
     // --- PromptParser::build_multi_question_key_sequence(): the exact tmux
     // action sequence for a multi-question AskUserQuestion prompt, confirmed
-    // against a real live 3-question call 2026-08-22 (Color: single-select,
+    // against a real live 3-question call (Color: single-select,
     // Toppings: multiSelect, Confirm: single-select-with-free-text) - see
     // the todo file's research entry for the raw captures this mirrors. ---
 
@@ -363,11 +363,11 @@ try {
         'build_multi_question_key_sequence: matches the exact real free-text-within-a-multi-question capture'
     );
 
-    // --- a LONE multiSelect question: found live 2026-09-12 (Andres: sessioneer's
-    // own dashboard rendered this shape with no way to check several boxes then
+    // --- a LONE multiSelect question (a dashboard that
+    // rendered this shape had no way to check several boxes then
     // confirm at all, unlike Claude Code's own real TUI) - it gets a tab bar just
     // like a real 2+-question call, and is mechanically identical in every respect
-    // re-verified live against a real, disposable session: toggle the checked
+    // re-verified against a real, disposable session: toggle the checked
     // options, Right advances straight to the Review tab (there's only one
     // question to review), "1. Submit answers" confirms. ---
 
@@ -430,7 +430,7 @@ try {
     assert_equal('Bash', $augmented['tool_name'] ?? null, 'augment_prompt_with_pending_tool: exposes tool_name so callers (push body) can tell a permission prompt from a real question');
     assert_equal(['command' => 'npm test --full-real-command-not-truncated'], $augmented['tool_input'] ?? null, 'augment_prompt_with_pending_tool: exposes tool_input too');
 
-    // AskUserQuestion renders with no "●" marker at all (verified live), so
+    // AskUserQuestion renders with no "●" marker at all, so
     // there's nothing to cross-check against - the pane-scraped
     // question/context (already exactly what a human sees) must be left
     // untouched rather than replaced by a raw tool_input JSON dump, but
@@ -509,7 +509,7 @@ try {
 
     assert_true(SidecarStore::read_sidecar($liveName) !== null, 'prune_orphaned_sidecars: a live session\'s sidecar row survives');
     assert_true(PendingToolStore::read_pending_tool($liveName) !== null, 'prune_orphaned_sidecars: a live session\'s pending-tool row survives');
-    // Regression test, from the pre-SQLite (2026-08-24) version of this
+    // Regression test, from the pre-SQLite version of this
     // method: it used to strip a hardcoded suffix list off each glob-
     // matched filename to recover the real session name (".status.json"
     // -> strip ".status" -> the real name) - forgetting a kind there
@@ -554,8 +554,7 @@ try {
 
     // --- SESSIONEER_SESSION_NAME set + real sidecar + payload reports a session-id
     // with NO matching transcript anywhere -> the rebind is refused, the
-    // working sidecar is left exactly as it was. Regression test for the
-    // 2026-08-08 live incident: a `claude` process run manually from inside
+    // working sidecar is left exactly as it was. Regression test: a `claude` process run manually from inside
     // a tracked pane's own Bash tool (e.g. testing `--resume` behavior)
     // inherits SESSIONEER_SESSION_NAME and fires its own genuine SessionStart with
     // its own, unrelated session_id, which the hook used to trust blindly -
@@ -567,7 +566,7 @@ try {
     assert_equal($newId, SidecarStore::read_sidecar($sidecarName)['agent_session_id'] ?? null, 'session_start.php: a session-id with no matching transcript file anywhere is never trusted enough to rebind an existing, working sidecar');
 
     // --- the new transcript only appears ~650ms after /clear on Claude Code
-    // 2.1.285 (found live 2026-10-06: two /clears in a row left the sidecar
+    // 2.1.285 (two /clears in a row left the sidecar
     // on the pre-/clear id). A file written 900ms after the hook starts must
     // still be picked up. ---
 
@@ -581,7 +580,7 @@ try {
     // --- SESSIONEER_SESSION_NAME set + real sidecar + payload reports a session-id
     // that's real (has a transcript) but is ALREADY the live id of a
     // DIFFERENT tracked tmux session -> the rebind is refused, same as the
-    // phantom-id case. Regression test for the 2026-08-23 live incident: a
+    // phantom-id case. Regression test: a
     // nested `claude` child process inheriting this pane's SESSIONEER_SESSION_NAME
     // reported ANOTHER pane's own real, transcript-backed session id, which
     // passed the old transcript-exists-only check and clobbered this pane's
@@ -700,7 +699,7 @@ try {
     assert_equal('Bash', $written['tool_name'] ?? null, 'pre_tool_use.php: records tool_name from stdin');
     assert_equal('echo hi', $written['tool_input']['command'] ?? null, 'pre_tool_use.php: records the full tool_input from stdin');
 
-    // --- found live 2026-08-22: a session stuck showing a stale "waiting
+    // --- a session stuck showing a stale "waiting
     // on input" prompt long after it was actually resolved - permission_
     // request.php sets status=blocked, but nothing else in the hook
     // sequence ever clears it unless the SAME turn also fires
@@ -726,7 +725,7 @@ try {
     $overwritten = PendingToolStore::read_pending_tool($preToolSessionName);
     assert_equal('Write', $overwritten['tool_name'] ?? null, 'pre_tool_use.php: a later tool call overwrites the earlier pending-tool file');
 
-    // --- found live 2026-08-23: AskUserQuestion never fires
+    // --- AskUserQuestion never fires
     // PermissionRequest (it's a distinct mechanism from a permission
     // decision, per the official tools reference), so the general
     // "optimistic working, PermissionRequest corrects it to blocked right
@@ -775,7 +774,7 @@ try {
     assert_equal([['type' => 'setMode', 'mode' => 'acceptEdits']], $permReqStatus['blocked']['permission_suggestions'] ?? null, 'permission_request.php: records permission_suggestions verbatim');
     assert_equal('manual', $permReqStatus['mode'] ?? null, 'permission_request.php: normalizes permission_mode ("default" -> "manual") into the same file');
 
-    // --- an AskUserQuestion payload (no permission_suggestions at all, confirmed live) still records fine - build_session_entry() is what excludes it, not this hook ---
+    // --- an AskUserQuestion payload (no permission_suggestions at all) still records fine - build_session_entry() is what excludes it, not this hook ---
 
     run_permission_request_hook($permReqName, [
         'tool_name' => 'AskUserQuestion',
@@ -843,8 +842,8 @@ try {
     assert_equal('manual', $stopStatus['mode'] ?? null, 'stop.php: records the normalized current mode too');
 
     // --- stop.php clears SessionStatusStore's `model` optimistic override
-    // (the fix for the bug reported live 2026-08-30, "changing the model on
-    // the session page doesn't work" - see SessionStatusStore::
+    // (the fix for the bug where changing the model on
+    // the session page didn't work - see SessionStatusStore::
     // read_status()'s own docblock for the full mechanics): once the turn
     // that used the just-picked model finishes, the transcript itself
     // already reflects it, so the override must be cleared here or it
@@ -944,7 +943,7 @@ function run_session_start_hook(?string $sessioneerSessionName, ?array $payload,
  * Creates a real, minimal transcript file under the fixture HOME_ROOT's
  * .claude/projects tree so TranscriptService::find_transcript_path()
  * (used by session_start.php to refuse trusting a session-id with no real
- * transcript - see the 2026-08-08 regression test above) finds it. The
+ * transcript - see the regression test above) finds it. The
  * containing directory name is arbitrary - find_transcript_path() globs by
  * session-id filename only, never decodes the directory name.
  */

@@ -16,7 +16,7 @@ use HostAgent\Runtimes\CodexBridgeClient;
  * kind. An earlier design also fell back to scanning a live tmux pane
  * directly, and beyond that to an external `claude-quota` binary (a slow,
  * 10-40s scrape of Claude Code's own /usage panel, cached and
- * background-refreshed) - both were deleted 2026-08-22 as confirmed dead
+ * background-refreshed) - both were deleted as confirmed dead
  * code: once any session has ever written the statusline-state file even
  * once, it never returns null again, so neither fallback could actually be
  * reached anymore. See CONTRIBUTING.md/git history if any of that ever
@@ -76,8 +76,7 @@ class QuotaService
      *
      * Reads StatuslineMarkerService's own JSON marker (parse_marker_from_pane())
      * rather than regexing Claude Code's own rendered status line text for
-     * "ctx: N%" (removed 2026-08-21 - see that method's own former
-     * docblock). That used to be a second, independent path to the exact
+     * "ctx: N%" (since removed). That used to be a second, independent path to the exact
      * same underlying context_window.used_percentage number, and a
      * fragile one: it only ever matched because Claude Code's DEFAULT
      * status line happens to render that text, but this app always
@@ -107,13 +106,13 @@ class QuotaService
      * tmux/capture-pane involved at all. This is get_quota()'s ONLY source
      * now (the tmux-pane-scraping fallback, and the external `claude-quota`
      * binary scrape + its cache/background-refresh machinery behind it,
-     * were both deleted 2026-08-22 as dead code - once ANY session has ever
+     * were both deleted as dead code - once ANY session has ever
      * written this file even once, it never returns null again below, so
      * neither of those fallback paths could ever actually be reached; see
      * the git history for what used to live here). resets_at here is a real
      * Unix epoch straight from Claude Code's own statusLine JSON
      * (rate_limits.*.resets_at), not reconstructed from rounded pane
-     * duration text like "1h 53m" - the exact source of the 2026-08-05
+     * duration text like "1h 53m" - the exact source of the
      * jitter bug documented in PushDeliveryService::check_and_send_quota_pushes().
      *
      * The shell side already merges each write against whatever it last

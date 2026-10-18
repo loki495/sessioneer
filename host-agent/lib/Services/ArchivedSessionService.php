@@ -9,8 +9,7 @@ use HostAgent\Runtimes\RuntimeType;
 
 /**
  * Archived/dormant session listing and dashboard-wide transcript search.
- * Split out of SessionService.php (2026-08-24 readability audit - see the
- * plan this followed) - depends on core SessionService (list_all_sessions,
+ * Split out of SessionService.php - depends on core SessionService (list_all_sessions,
  * title_cascade) but nothing else. Methods/bodies moved verbatim, no
  * behavior changes.
  */
@@ -163,7 +162,7 @@ class ArchivedSessionService
 
     /**
      * The dispatcher-facing wrapper around list_archived_sessions() - an
-     * on-demand action (only ever called when Andres actually opens the
+     * on-demand action (only ever called when the user actually opens the
      * dashboard's archived-sessions toggle, never part of the regular
      * poll - see this project's own workflow reminders about being extra
      * careful with anything periodic vs explicitly user-triggered) that
@@ -185,7 +184,7 @@ class ArchivedSessionService
             }
         }
 
-        // Found live 2026-09-11: a bare (untracked) claude process - e.g.
+        // A bare (untracked) claude process - e.g.
         // one typed by hand directly in a terminal, no tmux involved at
         // all - is just as "not dormant" as a tracked one, but was never
         // excluded here; see BareProcessService::live_bare_agent_session_

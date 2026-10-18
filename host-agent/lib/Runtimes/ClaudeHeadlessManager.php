@@ -1145,7 +1145,7 @@ final class ClaudeHeadlessManager
         }
 
         if (($request['subtype'] ?? null) !== 'can_use_tool') {
-            // An unanswered request stalls the turn (live-verified), so refuse
+            // An unanswered request stalls the turn, so refuse
             // anything we do not implement explicitly.
             $subtype = is_string($request['subtype'] ?? null) ? $request['subtype'] : 'unknown';
             $this->log("{$child->name}: refusing unsupported control request '{$subtype}'");

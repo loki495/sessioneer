@@ -6,7 +6,7 @@ declare(strict_types=1);
  * Standalone entry point run periodically by the (opt-in, not
  * auto-enabled - see install.sh) sessioneer-antigravity-quota-check systemd
  * timer. Runs `agy -p "/usage" --output-format json` - a real, confirmed-
- * free headless call (live-verified 2026-08-24: duration_seconds=0, all-
+ * free headless call (duration_seconds=0, all-
  * zero token usage, no real model turn or transcript entry) - and writes the
  * parsed result to GlobalStateStore under Config::
  * antigravity_quota_live_state_key().

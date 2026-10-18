@@ -15,7 +15,7 @@ use HostAgent\Stores\GlobalStateStore;
  * A single inline "Refusing: ..." error on the answer_prompt.php response
  * is easy to miss or forget about; this makes the underlying "Claude
  * Code's permission-menu layout doesn't match what this app assumes"
- * problem visible dashboard-wide until Andres has looked at it, the same
+ * problem visible dashboard-wide until the user has looked at it, the same
  * way an uninstalled hook or an unreachable OpenCode serve already are
  * (see PushHealthService::health_check()).
  *
@@ -31,9 +31,9 @@ class TuiLayoutMismatchService
 
     /**
      * How long a recorded mismatch keeps failing the health check before
-     * aging out on its own - long enough that Andres won't miss it across
+     * aging out on its own - long enough that the user won't miss it across
      * a normal usage gap, short enough that a one-off Claude Code release
-     * hiccup he already noticed and dismissed doesn't nag forever. No
+     * hiccup already noticed and dismissed doesn't nag forever. No
      * "acknowledge"/dismiss action exists (yet) - the health box has no
      * per-check dismiss mechanism today, see HealthBoxView.
      */

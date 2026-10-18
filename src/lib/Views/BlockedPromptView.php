@@ -89,7 +89,7 @@ class BlockedPromptView extends View
      * The Copy + View-full-screen footer row shown in every EXPANDABLE
      * branch of render_collapsible_block()/render_full_block()/
      * render_collapsible_markdown_block() - byte-identical across all
-     * three (found via the 2026-08-23 readability audit), extracted here
+     * three extracted here
      * once rather than duplicated in each template.
      */
     private static function expandable_footer_html(): string
@@ -103,7 +103,7 @@ class BlockedPromptView extends View
      * buttons) - but with no <details>/<summary> of its own, always showing
      * the full raw text. For a context that already has its OWN outer
      * expand/collapse toggle (TranscriptView::render_tool_call_entry_html(),
-     * added 2026-08-22 when per-tool-call entries stopped being bundled
+     * where per-tool-call entries stopped being bundled
      * under a shared "N tool calls" group) - nesting a SECOND "collapsed to
      * one line, click to expand" toggle inside an already-deliberately-
      * opened one would mean two clicks to see one piece of output, not one.
@@ -135,7 +135,7 @@ class BlockedPromptView extends View
      * a subagent (a tool_result carrying `agent_type`, or a task-
      * notification's own report), not command/file output, where showing
      * literal `## Findings`/`- bullet` markdown syntax instead of rendered
-     * formatting reads badly (Andres's own call 2026-08-22, once assistant
+     * formatting reads badly (assistant
      * text messages already got the same MarkdownRenderer treatment - a
      * subagent's report is exactly the same kind of content). The raw text
      * still lives in a hidden `.copy-source` span (not the visible
@@ -169,7 +169,7 @@ class BlockedPromptView extends View
      *
      * A "Type something." option (Claude Code always offers one on an
      * AskUserQuestion prompt) gets a reveal button instead of an
-     * immediate-submit form - verified live that selecting it needs custom
+     * immediate-submit form - selecting it needs custom
      * typed text sent alongside it (see answer_prompt_with_text() in
      * Sessions.php), not just the bare numbered choice. The paired reply
      * box (hidden until revealed) is shared by whichever free-text option
@@ -277,7 +277,7 @@ class BlockedPromptView extends View
 
         // The pending command/description this prompt is asking about gets
         // its own entry, immediately before the card below rather than
-        // nested inside it - Andres's own explicit call, 2026-08-08,
+        // nested inside it,
         // prioritizing readability (matches how a real tool_use entry reads
         // elsewhere in the transcript) over the tradeoff that it can now
         // read as "something that already happened" the way a real past

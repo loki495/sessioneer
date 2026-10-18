@@ -51,8 +51,7 @@
 #              matching process by script path, which would also take out
 #              a legitimate concurrent use of the same harness (e.g. a
 #              scratch script for manual Playwright verification, a
-#              different socket path/purpose entirely - found live
-#              2026-08-08 running this automatically). Only reach for this
+#              different socket path/purpose entirely). Only reach for this
 #              to tidy up already-existing old orphans by hand.
 set -uo pipefail
 
@@ -180,8 +179,7 @@ if [ "${CACHE_DIR:-}" = "$REAL_CACHE_DIR" ] || [ -z "${CACHE_DIR:-}" ]; then
 fi
 
 # Explicit --cleanup only, deliberately NOT run automatically before every
-# normal test run. Found live 2026-08-08, the same night this was added:
-# running it unconditionally killed a legitimate, currently-in-use scratch
+# normal test run: running it unconditionally killed a legitimate, currently-in-use scratch
 # verification server (a manual Playwright-verification harness, same
 # socket_harness.php script, a DIFFERENT socket path/purpose entirely) as
 # an unintended side effect of just running the normal suite - pkill -f

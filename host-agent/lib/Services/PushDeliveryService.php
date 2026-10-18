@@ -83,7 +83,7 @@ class PushDeliveryService
      * heartbeat proving the sessioneer-push-check timer is actually running, not
      * just that sends succeed when attempted. Read back by
      * PushHealthService::push_delivery_check() for the dashboard.
-     * GlobalStateStore key, not a file, since 2026-08-24 - see that
+     * GlobalStateStore key, not a file - see that
      * class's own docblock.
      */
     public static function push_check_status_key(): string
@@ -118,8 +118,7 @@ class PushDeliveryService
      * letting notificationclick answer the prompt directly via fetch() with
      * no window ever opening. Platform support for `actions` varies (full
      * on Android Chrome and desktop Chrome/Edge on Windows/Linux, degraded
-     * to hover+"More" on macOS, absent entirely on iOS Safari and Firefox -
-     * researched 2026-08-22) - omitted (null) here always falls back
+     * to hover+"More" on macOS, absent entirely on iOS Safari and Firefox) - omitted (null) here always falls back
      * cleanly to a plain notification, exactly today's behavior, on every
      * platform/state where it doesn't apply.
      *
@@ -138,8 +137,8 @@ class PushDeliveryService
         // this runs unattended via the sessioneer-push-check systemd timer: an
         // uncaught exception here would silently kill that whole tick (every
         // other session's transition check included) rather than just this
-        // one send failing. Found live while testing against a deliberately
-        // malformed key: it's a hard ErrorException, not a normal return.
+        // one send failing. A deliberately
+        // malformed key, for example, is a hard ErrorException, not a normal return.
         try {
             $httpFactory = new HttpFactory();
             $webPush = new WebPush([
@@ -150,7 +149,7 @@ class PushDeliveryService
                 ],
             ], [], new Client([
                 'timeout' => 30,
-                // Found live: IPv6 to web.push.apple.com can silently black-hole
+                // IPv6 to web.push.apple.com can silently black-hole
                 // on this network (times out after the full 30s) while IPv4 to
                 // the exact same endpoint responds instantly - forcing IPv4
                 // avoids paying that timeout on every send.
@@ -239,7 +238,7 @@ class PushDeliveryService
      * $prompt_options at all, so this never runs for that shape) rather
      * than guessing and risking Approve secretly meaning something else.
      *
-     * Found live 2026-09-11: Claude Code v2.1.269 reversed the folder-trust
+     * Claude Code v2.1.269 reversed the folder-trust
      * dialog's default option order ("No, exit" now comes first, not
      * "Yes, I trust this folder" - see PromptParser's own docblock), which
      * would have silently broken a first-vs-last check - scans every
@@ -405,11 +404,11 @@ class PushDeliveryService
      * - "over" once pct first reaches 100
      * - "reset" once wall-clock time passes the bucket's own resets_at,
      *   tracked via a one-shot notified_reset flag in PushQuotaStateStore
-     *   (Andres's own proposal, 2026-08-23, after a real reset notification
+     *   (a real reset notification once
      *   arrived ~29 minutes late in production). Replaces an EARLIER
      *   version that inferred a reset from pct DROPPING by a threshold
      *   amount since the last tick, which - although itself a deliberate
-     *   fix for an even older resets_at-jitter bug (2026-08-05: resets_at
+     *   fix for an even older resets_at-jitter bug (resets_at
      *   used to be re-parsed from the live pane's own duration text, e.g.
      *   "1h 53m", only minute-precision, jittering ~60s between ticks) -
      *   had a structural problem the pct-jitter fix never addressed:
@@ -419,8 +418,7 @@ class PushDeliveryService
      *   frozen at whatever was last observed, so a pct-drop comparison
      *   literally cannot fire until SOME session becomes active again and
      *   renders at least once, however long after the real reset that
-     *   happens to be. resets_at, by contrast, is (as of the 2026-08-05
-     *   fix) a real Unix epoch straight from Claude Code's own statusLine
+     *   happens to be. resets_at, by contrast, is now a real Unix epoch straight from Claude Code's own statusLine
      *   JSON (rate_limits.*.resets_at) - no longer reconstructed from lossy
      *   pane text, so comparing it against time() needs no fresh render at
      *   all: even a STALE bucket (last written hours ago, before the

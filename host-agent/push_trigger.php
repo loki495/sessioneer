@@ -12,8 +12,7 @@ declare(strict_types=1);
  * check_and_send_quota_pushes()). See those methods for the actual logic;
  * this script is just the timer's entry point.
  *
- * Found live 2026-08-24 (Andres: asked a real question in an Antigravity
- * session, hit "Individual quota reached", never got a push): the quota
+ * The quota
  * pass used to feed check_and_send_quota_pushes() only
  * QuotaService::get_quota()['quota'] - the DASHBOARD-WIDE variant of that
  * key is Claude Code's buckets whenever ANY Claude quota data exists at
@@ -53,7 +52,7 @@ if (!PushDeliveryService::push_configured()) {
     exit(0);
 }
 
-// Each pass wrapped independently - found live 2026-08-08 that an
+// Each pass wrapped independently - an
 // uncaught error partway through list_all_sessions()/check_and_send_pushes()
 // (a real incident: methods referenced mid-edit during unrelated live
 // development elsewhere in this same unsandboxed codebase - see this

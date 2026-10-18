@@ -21,8 +21,8 @@ declare(strict_types=1);
  *    genuinely killed/cleaned up already (see the bail-out below), not a
  *    session worth resurrecting a sidecar for.
  *
- * 2. Any OTHER claude session running inside a real tmux pane (Andres
- *    started it by hand, in a pane this app never touched) - adopted by
+ * 2. Any OTHER claude session running inside a real tmux pane (started
+ *    by hand, in a pane this app never touched) - adopted by
  *    asking that pane's own tmux server "what session are you" (`tmux
  *    display-message -p '#S'`, resolved from the TMUX env var this hook
  *    inherits as a child of that pane's own shell, same as any other
@@ -92,7 +92,7 @@ if ($existingSidecar === null && !$createIfMissing) {
 // (e.g. to test `--resume` behavior live) fires its own genuine
 // SessionStart with its own, unrelated session_id, and this hook can't
 // otherwise tell that apart from the pane's real session rotating.
-// Found live 2026-08-08: exactly this happened, clobbering a working
+// Without the check this clobbers a working
 // sidecar with an id that had no transcript anywhere, breaking transcript
 // lookup until manually repaired. Require a real transcript file to
 // actually exist for the reported id before trusting it enough to
@@ -129,7 +129,7 @@ if (!$transcriptConfirmed) {
     exit(0);
 }
 
-// Found live 2026-08-23: a real transcript existing for $agentSessionId
+// A real transcript existing for $agentSessionId
 // isn't enough - it may be a DIFFERENT pane's own real, currently-live
 // session (e.g. a nested `claude` child process spawned from this pane's
 // Bash tool, inheriting SESSIONEER_SESSION_NAME from the parent pane's env,
@@ -156,10 +156,10 @@ SidecarStore::write_sidecar($sessionName, [
     'agent_session_id' => $agentSessionId,
     'agent' => $existingSidecar['agent'] ?? 'claude',
     // Lets the dashboard tell "this app spawned the pane" apart from "this
-    // app adopted a pane Andres started by hand" without re-deriving it
+    // app adopted a pane started by hand" without re-deriving it
     // from the session name later (e.g. to decide whether Kill should
     // just tear down a pane this app made, versus needing more care for
-    // one Andres is also using directly outside the app).
+    // one that is also used directly outside the app).
     'spawned_by_app' => $existingSidecar['spawned_by_app'] ?? (is_string($spawnedByApp) && $spawnedByApp !== ''),
     // Preserved from the existing sidecar, same as agent/workdir above -
     // this hook fires on EVERY session start including the very first one

@@ -5,8 +5,8 @@ declare(strict_types=1);
 /**
  * Registered as Claude Code's PermissionRequest hook (see HookService::
  * install_session_hook() in ../lib/Sessions.php, and the README) - fires
- * only when Claude Code actually needs a human decision (confirmed live:
- * an intrinsically pre-allowlisted command gets PreToolUse but no
+ * only when Claude Code actually needs a human decision (an
+ * intrinsically pre-allowlisted command gets PreToolUse but no
  * PermissionRequest at all - see PendingToolStore's own docblock for the
  * older mechanism this complements). Its payload already carries
  * tool_name/tool_input/permission_suggestions directly - no correlation

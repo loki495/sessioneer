@@ -9,7 +9,7 @@ declare(strict_types=1);
  * harness used AS a stand-in for the real agent; this file tests the
  * harness script itself.
  *
- * Found live 2026-08-08: socket_harness.php only ever unlinked the socket
+ * socket_harness.php only ever unlinked the socket
  * FILE before rebinding, never touched the PROCESS still holding the old
  * listener - ten orphaned instances (some days old) had piled up from
  * repeated manual-verification runs reusing the same fixed socket path.
@@ -23,7 +23,7 @@ require __DIR__ . '/lib/assert.php';
  * NOT just is_dir("/proc/{$pid}") - a killed process this script itself
  * spawned (via proc_open) stays a zombie, with its /proc entry still very
  * much present, until this script's own proc_close()/proc_terminate() (or
- * exit) reaps it. Found live 2026-08-08: that false "still alive" reading
+ * exit) reaps it. That false "still alive" reading
  * looked exactly like kill_stale_listener() silently failing, when the
  * kill had actually already succeeded - real process state (excluding
  * zombies) needs the actual State field from /proc/<pid>/status.

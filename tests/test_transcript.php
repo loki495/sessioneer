@@ -64,8 +64,8 @@ assert_equal([['kind' => 'tool_use', 'text' => 'tool: Bash', 'tool_name' => 'Bas
 // threshold - see format_tool_use_summary()) ---
 // description (when present) is excluded from summarize_tool_use()'s own
 // text entirely - it's surfaced separately (see summarize_content_block()'s
-// own 'description' field and tool_use_description()'s doc comment,
-// 2026-08-21) as its own always-visible rendered line, not part of the
+// own 'description' field and tool_use_description()'s doc comment)
+// as its own always-visible rendered line, not part of the
 // collapsible param-dump text at all.
 assert_equal('tool: Bash - command: rm -rf /tmp/x', TranscriptService::summarize_tool_use(['name' => 'Bash', 'input' => ['command' => 'rm -rf /tmp/x', 'description' => 'Clean up']]), 'summarize_tool_use: Bash - description excluded from the text (surfaced separately), command still shown as a param');
 assert_equal('tool: Bash', TranscriptService::summarize_tool_use(['name' => 'Bash', 'input' => ['description' => 'Just the description, no other params']]), 'summarize_tool_use: a description-only input has nothing left to show as text once description is excluded - just the bare tool name');
@@ -139,7 +139,7 @@ assert_equal(
 );
 
 // --- TranscriptService::summarize_tool_use()/summarize_agent_tool_use(): a subagent launch
-// (Claude Code's "Agent" tool - real name verified live 2026-08-02, not
+// (Claude Code's "Agent" tool - real name verified, not
 // "Task") shows "<subagent_type>: <description>" instead of dumping
 // description/prompt/subagent_type/run_in_background as separate params -
 // the full prompt text especially would otherwise be noisy/unreadable. ---
@@ -182,7 +182,7 @@ $nonAgentToolUseLine = TranscriptService::parse_transcript_line('{"type":"assist
 assert_true(!array_key_exists('agent_type', $nonAgentToolUseLine['blocks'][0]), 'parse_transcript_line: a plain (non-Agent) tool_use never gets an agent_type field');
 
 // --- TranscriptService::parse_transcript_line(): the Agent tool's own tool_result - real
-// shape captured live 2026-08-02 against an actual subagent call. Two
+// shape against an actual subagent call. Two
 // real findings baked in: (1) the second text block ("agentId: ...
 // <usage>...</usage>") is pure internal bookkeeping the tool's own
 // instructions say must never be shown - stripped from the rendered text
@@ -209,7 +209,7 @@ $nonAgentToolResultLine = TranscriptService::parse_transcript_line('{"type":"use
 assert_true(!array_key_exists('agent_type', $nonAgentToolResultLine['blocks'][0]), 'parse_transcript_line: a plain (non-subagent) tool_result never gets an agent_type field');
 
 // --- TranscriptService::is_subagent_metadata_text(): the ASYNC agent-launch
-// acknowledgment tool_result - real shape captured live 2026-08-22, no
+// acknowledgment tool_result - real shape, no
 // <usage> tag anywhere (unlike the synchronous shape above), so it needs
 // its own detection rather than falling through the original regex. ---
 assert_true(
@@ -222,10 +222,10 @@ assert_true(!TranscriptService::is_subagent_metadata_text('pineapple'), 'is_suba
 // backgrounded subagent's completion notifies the parent conversation as a
 // plain-string "<task-notification>...</task-notification>"-wrapped "user"
 // entry - Claude Code's own SendMessage/fork mechanism, NOT a tool_result
-// block at all (real shape captured live 2026-08-22). Before this, a plain
+// block at all (a real shape). Before this, a plain
 // string $content with no special-casing just became a generic 'text'
-// block, rendering the raw XML tags verbatim - found live while
-// investigating a different report (subagent entries "render raw XML"). ---
+// block, rendering the raw XML tags verbatim
+// (subagent entries "render raw XML"). ---
 $taskNotificationText = "<task-notification>\n<task-id>a208bf6022dfc3391</task-id>\n<tool-use-id>toolu_01WZxrK1iYbxqPteFtG8xqYw</tool-use-id>\n<output-file>/tmp/foo/tasks/a208bf6022dfc3391.output</output-file>\n<status>completed</status>\n<summary>Agent \"CDP-in-PHP feasibility research\" finished</summary>\n<note>A task-notification fires each time this agent stops with no live background children of its own.</note>\n<result>Have everything needed. All read-only research is complete.</result>\n</task-notification>";
 
 $notification = TranscriptService::parse_task_notification($taskNotificationText);
@@ -272,7 +272,7 @@ assert_equal([['kind' => 'plan', 'text' => "# Refactor the thing\n\nDetails here
 
 // --- TranscriptService::parse_transcript_line(): an APPROVED plan is
 // self-identifying via its own outer toolUseResult ({"plan": "..."} - a
-// distinctive shape, verified live 2026-08-07 against real captured
+// distinctive shape seen in real
 // transcripts) - no id cross-reference needed. The verbose "## Approved
 // Plan:\n<plan again>" boilerplate is replaced with a short, clean line -
 // the real plan text is already fully visible just above as its own
@@ -288,8 +288,7 @@ assert_equal('Plan approved - starting work', $approvedPlanLine['blocks'][0]['te
 
 // --- TranscriptService::find_exit_plan_mode_tool_use_ids()/parse_transcript_line(): a
 // REJECTED plan is NOT self-identifying - "User rejected tool use" is the
-// exact same generic outer toolUseResult for ANY rejected tool (verified
-// live 2026-08-07: identical string for rejected Bash/Write/Edit calls
+// exact same generic outer toolUseResult for ANY rejected tool (identical string for rejected Bash/Write/Edit calls
 // too), so recognizing "this rejection was specifically a plan" requires
 // cross-referencing tool_use_id against a real ExitPlanMode tool_use seen
 // elsewhere in the transcript - see find_exit_plan_mode_tool_use_ids(). ---
@@ -322,7 +321,7 @@ assert_equal([['kind' => 'tool_use', 'text' => 'tool: Bash - command: ls -la', '
 // --- summarize_content_block()'s own 'description' field: rendered as its
 // own always-visible line (transcript/block.php/renderBlock() in
 // session.js), never subject to the collapsible summary's first-line-only
-// truncation the rest of the params are (2026-08-21) ---
+// truncation the rest of the params are ---
 $toolUseNoDescription = TranscriptService::parse_transcript_line('{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/etc/hosts"}}]}}');
 assert_equal(false, array_key_exists('description', $toolUseNoDescription['blocks'][0] ?? []), 'parse_transcript_line: tool_use with no description input has no description key at all, not an empty string');
 
@@ -771,8 +770,8 @@ $missing = TranscriptService::read_transcript_page('/does/not/exist.jsonl', null
 assert_equal(false, $missing['ok'] ?? null, 'read_transcript_page: missing file -> ok=false');
 
 // --- TranscriptService::read_transcript_page($untilRealUserMessage=true):
-// backs session.php's "Load until last message" button (Andres's own ask
-// 2026-08-24) - stops the moment it includes a REAL user message
+// backs session.php's "Load until last message" button -
+// stops the moment it includes a REAL user message
 // (role="user" AND not a bare tool_result) rather than after $limit
 // entries, which is ignored entirely in this mode. The fixture's only two
 // role="user" entries are line 5 (a tool_result Claude Code fed back in,
@@ -846,7 +845,7 @@ assert_equal(false, $sinceMissing['ok'] ?? null, 'read_transcript_page_since: mi
 // parse_transcript_line(): a SendUserFile tool_result's real file
 // metadata (path, size, isImage, media_type, file_uuid) lives on the
 // outer JSONL line's toolUseResult.attachments field, not in the content
-// blocks themselves (verified live 2026-08-04 against a real captured
+// blocks themselves (seen in a real captured
 // SendUserFile call) - same "outer field, threaded onto the tool_result
 // block" pattern as agent_type above, just a different field. The real
 // host path is deliberately dropped from the rendered shape (never sent
@@ -1092,7 +1091,7 @@ assert_equal(
 // tool_use call + its matching tool_result, correlated by tool_use_id, with
 // the STRUCTURED toolUseResult field the real assertions are keyed off (not
 // the human-readable text) - see find_current_task_list()'s own docblock for
-// why: this exact field/shape was captured live 2026-08-22 against a real
+// why: this exact field/shape was captured from a real
 // Claude Code v2.1.241 transcript by actually calling these tools in the
 // session that built this feature, not guessed or taken from public docs
 // (which don't document toolUseResult at all). ---
@@ -1210,8 +1209,8 @@ assert_equal(
     'find_current_task_list: a create with no subject, and a create whose tool_result is missing the structured task id, are both skipped rather than polluting the list; a well-formed create alongside them still comes through (activeForm falls back to subject when absent)'
 );
 
-// The critical sad path this whole method exists to get right (found LIVE
-// 2026-08-22, not hypothesized - see the method's own docblock): a
+// The critical sad path this whole method exists to get right (a real
+// failure, not hypothesized - see the method's own docblock): a
 // TaskUpdate call can plausibly LOOK like it should apply (a well-formed
 // call, a real existing task id) while the tool actually REJECTED it
 // (toolUseResult.success === false). The requested change must NOT be

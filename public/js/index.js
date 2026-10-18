@@ -180,8 +180,7 @@ document.addEventListener('click', function (e) {
 // Plain Enter inserts a newline everywhere text gets typed in this app -
 // only Shift+Enter submits (same convention as session.php's own compose
 // box/freetext reply). Used to be the opposite here specifically (plain
-// Enter submitted) - changed 2026-08-08 per Andres's own explicit call
-// for one consistent rule app-wide, while separately chasing a mobile
+// Enter submitted) - changed for one consistent rule app-wide, while separately chasing a mobile
 // Shift+Enter false-positive (see shiftKeyPhysicallyHeld's own doc
 // comment in common.js) that this dashboard reply box was never
 // actually vulnerable to itself (it didn't require shiftKey at all
@@ -335,8 +334,7 @@ document.addEventListener('keydown', function (e) {
   });
 })();
 
-// "Identify" a bare (untracked) process's row - Andres's own ask
-// (2026-09-11), after the archived-list/resume bug turned up a case where
+// "Identify" a bare (untracked) process's row - added after a case where
 // a live bare process's own session had no way to tell whether it
 // duplicated something already in the archived list. Two-step, both
 // lazy-loaded on first click and cached after that (same pattern as
@@ -437,8 +435,7 @@ document.addEventListener('keydown', function (e) {
   // materially different versions (a full 7-kind classifier there vs this
   // dashboard's simplified 3-kind subset) - same-named-but-differently-
   // behaving functions in two separate files was a real risk for a
-  // contributor assuming "the color function" is shared (found via the
-  // 2026-08-23 readability audit). No actual runtime collision either way
+  // contributor assuming "the color function" is shared (found in a readability audit). No actual runtime collision either way
   // (each file is its own IIFE), but the misleading-name risk is real on
   // its own.
   function dashboardEntryColorKind(entry) {
@@ -1034,14 +1031,14 @@ document.addEventListener('keydown', function (e) {
 })();
 
 // Archived-sessions toggle - deliberately NOT part of the poll IIFE above:
-// fetched once, lazily, only when Andres actually opens it (see
+// fetched once, lazily, only when the user actually opens it (see
 // DashboardController::archivedFragment()'s own doc comment for why a full
 // ~/.claude/projects scan has no business running on a timer). The whole
 // list is still fetched and rendered into the DOM in that one request (the
 // scan itself is the expensive part, and it has to walk every transcript
 // to sort by last_activity anyway - see SessionService::
 // list_archived_sessions()) - what's paginated is only how many rows are
-// REVEALED at once (found live 2026-08-22: at 100+ archived sessions and
+// REVEALED at once (at 100+ archived sessions and
 // growing daily, showing everything at once made the list unwieldy to
 // scroll through, even though a client-side filter over all of them was
 // still instant). Search deliberately ignores pagination entirely and
@@ -1274,7 +1271,7 @@ document.addEventListener('keydown', function (e) {
         return '<div class="text-xs text-slate-400 mt-1"><span class="text-slate-500">' + escapeHtml(roleLabel) + ':</span>' + timeHtml + ' ' + highlightSnippet(m.snippet, query) + '</div>';
       }).join('');
 
-      // Archive (kill, per Andres's own call - there's no separate
+      // Archive (kill - there's no separate
       // "archived" state to move a live session into, its own transcript
       // just naturally becomes archived once nothing's tracking it live
       // anymore) for a live result; Unarchive (resume) for an already-

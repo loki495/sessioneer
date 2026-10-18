@@ -12,7 +12,7 @@ declare(strict_types=1);
  * user_prompt_submit.php's own docblock.
  *
  * Deliberately does NOT try to use Stop firing as a transcript-freshness
- * signal (ruled out 2026-08-02, see the todo file - Claude Code writes the
+ * signal (ruled out - Claude Code writes the
  * transcript file ~1.7-2s BEFORE Stop fires) - this hook only ever updates
  * the status file, nothing transcript-related. That same "transcript
  * already written by the time Stop fires" timing IS relied on for one

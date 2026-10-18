@@ -131,7 +131,7 @@ class ProcessInspector
     public static function find_claude_processes(): array
     {
         $procs = [];
-        // basename, not the full configured path - found live 2026-08-08:
+        // basename, not the full configured path:
         // typing bare `claude` in a terminal (PATH-resolved by the shell)
         // gives that process argv[0] "claude" verbatim, which never equals
         // Config::claude_bin()'s full path (e.g. ~/.local/bin/
@@ -141,9 +141,8 @@ class ProcessInspector
         // typed.
         $claudeBinBasename = basename(Config::claude_bin());
 
-        // ALSO matched by realpath, not just basename - found live
-        // 2026-09-11 (a real `claude --resume <path>` process launched by
-        // claude-code-ui, a different tool entirely, was invisible to this
+        // ALSO matched by realpath, not just basename (a real `claude --resume <path>` process launched by
+        // a different tool entirely would otherwise be invisible to this
         // whole scan): Config::claude_bin() (e.g. ~/.local/bin/claude) is
         // itself a symlink to a versioned binary
         // (~/.local/share/claude/versions/<version>) that changes on every
@@ -177,7 +176,7 @@ class ProcessInspector
             // never collides with either check, so this doesn't reopen that
             // false-positive risk.
             //
-            // A THIRD shape, found live 2026-09-12: the CLI's own background
+            // A THIRD shape: the CLI's own background
             // daemon (`claude daemon run`) rewrites its worker processes'
             // argv[0] to a single, space-containing descriptive string for
             // `ps` readability - "claude bg-spare" or "claude bg-pty-host" as
@@ -197,8 +196,8 @@ class ProcessInspector
 
             // The exact value passed to --resume/--session-id, when present -
             // a UUID directly, or (some third-party launchers, e.g.
-            // claude-code-ui, confirmed live 2026-09-11) a full path to the
-            // transcript .jsonl file itself. Found live the same day: a bare
+            // claude-code-ui) a full path to the
+            // transcript .jsonl file itself. A bare
             // process started this way has a REAL, deterministic
             // agent_session_id sitting right there in its own argv - no
             // marker or timing-heuristic guess needed at all, and this is

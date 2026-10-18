@@ -14,7 +14,7 @@
 // --- CSRF token cache (IndexedDB) - read side ---
 // A service worker has no access to server-rendered HTML or localStorage
 // (a completely separate execution context from any page), so the
-// Approve/Deny notification actions below (researched + built 2026-08-22)
+// Approve/Deny notification actions below
 // need some other way to learn the app's CSRF token before they can
 // fetch() answer_prompt.php headlessly. push-notify.js writes the current
 // token into this same IndexedDB store on every page load - see its own
@@ -59,7 +59,7 @@ function readPushCsrfToken() {
 // against the SW's own registration scope), but iOS Safari's PWA
 // (home-screen-installed, standalone display) mode has a known history of
 // mishandling that and opening/focusing the app at its start_url instead
-// of the requested one - Andres reported exactly this live. Passing an
+// of the requested one. Passing an
 // already-absolute URL is the commonly-cited workaround, so trying that
 // here rather than the relative form.
 function openOrFocusUrl(url) {
@@ -102,7 +102,7 @@ self.addEventListener('push', function (event) {
   // payload actually carries both option numbers (see
   // PushDeliveryService::approve_deny_actions() on the host-agent side;
   // never set for a "finished"/quota notification, only a blocked one).
-  // Platform support for `actions` varies (researched 2026-08-22): full
+  // Platform support for `actions` varies: full
   // on Android Chrome and desktop Chrome/Edge on Windows/Linux, degraded
   // to hover+"More" on macOS, absent entirely on iOS Safari and Firefox -
   // a browser that doesn't support `actions` just silently ignores this
@@ -117,9 +117,9 @@ self.addEventListener('push', function (event) {
   // Both promises collected and passed to ONE event.waitUntil(Promise.all(...))
   // - matches WebKit's own documented pattern exactly (see
   // https://webkit.org/blog/14112/badging-for-home-screen-web-apps/), not
-  // two separate waitUntil() calls as this originally shipped. Confirmed
-  // live: the separate-calls version never actually showed a badge on
-  // Andres's real device (notification itself worked fine, so this wasn't
+  // two separate waitUntil() calls as this originally shipped. The
+  // separate-calls version never actually showed a badge on a real iOS
+  // device (notification itself worked fine, so this wasn't
   // a permissions issue) despite no thrown/caught error anywhere - iOS
   // Safari's Badging API implementation apparently doesn't reliably honor
   // a badge promise registered via a SECOND, separate waitUntil() call.
@@ -139,8 +139,7 @@ self.addEventListener('push', function (event) {
 self.addEventListener('notificationclick', function (event) {
   var notifData = event.notification.data || {};
 
-  // Approve/Deny tapped directly on the notification (researched + built
-  // 2026-08-22) - answers the prompt headlessly via fetch(), with NO
+  // Approve/Deny tapped directly on the notification - answers the prompt headlessly via fetch(), with NO
   // window ever opening, matching what a native app's notification action
   // does. Falls back to the plain open/focus behavior below if anything
   // needed to do that isn't actually available (no cached CSRF token yet,

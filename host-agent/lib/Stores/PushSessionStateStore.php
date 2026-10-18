@@ -13,7 +13,7 @@ use HostAgent\Services\Config;
  * session that just finished a genuinely long task apart from one that
  * only worked for a couple of seconds. Lives in the `push_session_state`
  * table of Config::push_sqlite_path() (see PushSubscriptionStore's own
- * docblock for the 2026-08-24 migration off a plain JSON file, and its
+ * docblock for the migration off a plain JSON file, and its
  * later removal of the lazy legacy-file importer).
  */
 class PushSessionStateStore

@@ -1,8 +1,7 @@
 // @ts-check
 (function () {
   // #history-list only renders when $found is true (see session.php) - the
-  // old #session-info card this used to check for is gone (Andres's own
-  // ask, 2026-08-20: dropped in favor of just title+cwd in the fixed
+  // old #session-info card this used to check for is gone (replaced by just title+cwd in the fixed
   // header), so this is the new "was a real session found" sentinel.
   var list = document.getElementById('history-list');
   var headerTitle = document.getElementById('header-title');
@@ -59,7 +58,7 @@
   // a compose message (real text, closely matches its eventual transcript
   // entry), an answer's confirmed entry likely isn't literally the button
   // label text, so reconcilePendingEntries()'s content-matching may never
-  // find it - found live: it stayed dimmed "Sending…" forever even once
+  // find it - it stayed dimmed "Sending…" forever even once
   // the prompt itself had genuinely resolved. Tied directly to
   // answerPendingReason instead, in renderBlockedSection() below: the
   // prompt actually resolving is a far more reliable confirmation signal
@@ -84,7 +83,7 @@
     composeInputRow.classList.toggle('hidden', isBlocked);
     composeBlockedNote.classList.toggle('hidden', !isBlocked);
 
-    // Andres reported the textarea sometimes coming back too short (a
+    // The textarea was seen sometimes coming back too short (a
     // sliver, not its normal auto-grown height) right after a mid-typing
     // prompt cleared. The auto-grown height is a plain inline style on
     // #compose-textarea, unaffected in principle by the row's own
@@ -100,7 +99,7 @@
     // with `function autoGrowCompose() {}` inside an `if` block further
     // down (the compose-bar setup guard), not directly in this IIFE's own
     // body - real, non-strict-mode browsers still hoist it here via Annex B
-    // legacy web compatibility semantics (verified live), but tsc's static
+    // legacy web compatibility semantics, but tsc's static
     // analysis doesn't model that, hence the ts-expect-error below.
     // @ts-expect-error -- Annex B block-scoped function hoisting, see above
     if (wasHidden && !isBlocked && typeof autoGrowCompose === 'function') {
@@ -112,20 +111,18 @@
   // the compose-bar footer-height watcher/scrollToBottom()/scrollToTop()
   // and the go-to-bottom/go-to-top buttons' own state now live in
   // scroll.js (loaded before this file - see session.php), plain global
-  // functions/vars, same convention as common.js - extracted 2026-08-24,
-  // third cut of the "split session.js into modules" pass. pageContent
+  // functions/vars, same convention as common.js. pageContent
   // itself is also declared there now; every other reference to it in this
   // file falls through to that global (same pattern already used for
   // escapeHtml()/parseJsonResponse() from common.js), not redeclared
   // locally here. (The scroll controls are docked in #scroll-toolbar, not
-  // position:fixed, since 2026-09-06 - see session.php.)
+  // position:fixed - see session.php.)
 
   // The slideable sidebar (other sessions' status/prompt, uploaded files,
   // plan/handoff files, confirm-before-answer/show-subagent settings, and
   // its swipe gestures) now lives in sidebar.js (loaded before this file -
   // see session.php), plain global functions/vars, same convention as
-  // common.js/scroll.js/highlights.js - extracted 2026-08-24, fifth cut of
-  // the "split session.js into modules" pass. pollAbortController is also
+  // common.js/scroll.js/highlights.js. pollAbortController is also
   // declared there now (needed early by its own refreshSidebarNotification());
   // startPolling()/stopPolling() below reassign it (not with `var`, so it
   // falls through to that same global) each time polling actually
@@ -151,11 +148,10 @@
   // isNearBottom()/isNearTop()/scrollToBottom()/scrollToTop()/
   // updateGoToBottomVisibility()/updateGoToTopVisibility()/maybeAutoScroll()
   // now live in scroll.js (loaded before this file - see session.php),
-  // plain global functions, same convention as common.js - extracted
-  // 2026-08-24, third cut of the "split session.js into modules" pass.
+  // plain global functions, same convention as common.js.
 
   // iOS's own native "tap the status bar to scroll to top" convention has
-  // nothing to act on here (Andres's own ask 2026-08-22) - it targets the
+  // nothing to act on here - it targets the
   // window/document's own scroll position, but this app's fixed-shell
   // pages deliberately make #page-content the ONLY scrolling element (see
   // #app-shell's own comment in this file), so window never scrolls at
@@ -341,13 +337,12 @@
   // RegExp rather than a regex literal, specifically so nothing here is a
   // literal NUL byte sitting in this file (mirrors PHP's "\x00" - a real
   // NUL is effectively impossible to collide with in genuine chat text,
-  // unlike an ASCII placeholder like " CB0 " would be - found live: an
+  // unlike an ASCII placeholder like " CB0 " would be: an
   // earlier plain-space-delimited version of this had exactly that
   // collision risk, e.g. real text containing "the IC5 pin" would have
   // falsely matched the inline-code restore pass).
   // renderMarkdown() and its mdXxx() helpers now live in markdown.js
-  // (loaded before this file - see session.php) - extracted 2026-08-24,
-  // first cut of the "split session.js into modules" pass, since they're
+  // (loaded before this file - see session.php), since they're
   // pure text-to-HTML with no DOM/session state at all, unlike almost
   // everything else in this file.
 
@@ -623,7 +618,7 @@
   // always writes them as consecutive entries) into ONE standalone,
   // individually collapsed <details> entry, right in the transcript flow.
   // Replaced the old "bundle a run of consecutive tool calls under one
-  // shared 'N tool calls' toggle" design (Andres's own call 2026-08-22, see
+  // shared 'N tool calls' toggle" design (see
   // git history if that ever needs resurrecting).
   //
   // Unlike the PHP side (which only ever renders one full batch at once -
@@ -681,7 +676,7 @@
 
   // Mirrors TranscriptView::tool_call_entry_summary() (PHP) - Write/Edit/
   // Read get "Write relative/path.php" / "Edit ..." / "Read ..." - natural
-  // language, not "ToolName(args)" (Andres's own call 2026-08-22) -
+  // language, not "ToolName(args)" -
   // block.file_path relativized against sessionCwd. Bash gets "Ran
   // truncated command" (block.command; the call's `description`, if any,
   // is rendered on its own line above by renderToolCallEntry()). Everything
@@ -864,7 +859,7 @@
   }
 
   // --- pending-compose-message persistence: survives a navigation away
-  // and back to this same session, found live 2026-08-08 (Andres: a
+  // and back to this same session (a
   // message sent while Claude was mid-turn, still showing dimmed, was
   // gone entirely after navigating to another page and back before it
   // was confirmed). pendingEntries itself is plain in-memory JS state,
@@ -1021,10 +1016,10 @@
       // isn't guaranteed to preserve incidental leading/trailing
       // whitespace exactly as typed, and an exact-match requirement here
       // has no recovery path at all if it ever doesn't: a pending entry
-      // that never matches just sits "Sending…" forever (found live
-      // 2026-08-20 alongside the actual root cause, a missing tmux
-      // paste-then-Enter delay in SessionService::send_message() - this
-      // is a smaller, independent robustness improvement on top of that).
+      // that never matches just sits "Sending…" forever (the actual root cause
+      // was a missing tmux paste-then-Enter delay in
+      // SessionService::send_message(); this is a smaller, independent
+      // robustness improvement on top of that).
       var pendingTextTrimmed = el.dataset.pendingText.trim();
       var matched = freshEntries.some(function (entry) {
         return entry.role === el.dataset.pendingRole && pendingEntryText(entry.blocks).trim() === pendingTextTrimmed;
@@ -1043,7 +1038,7 @@
   }
 
   // The session-info card (title/name/workdir/attached/context-used%/
-  // worktree/activity) is gone (Andres's own ask, 2026-08-20) - the fixed
+  // worktree/activity) is gone - the fixed
   // header now carries just title + cwd (see header.php), and only the
   // title half needs live updating here (an AI-generated title can appear/
   // change mid-session; cwd never changes for a session's lifetime, so
@@ -1075,7 +1070,7 @@
   //
   // Skips the rebuild when the shown/hidden state hasn't actually changed
   // - same "no-op unless something real changed" pattern as
-  // renderBlockedSection(). Found live: rebuilding on every single poll
+  // renderBlockedSection(). Rebuilding on every single poll
   // (the previous behavior) tore out and replaced the Stop button on
   // every cycle even while a session just sat "working" poll after poll
   // with nothing new to show - if that landed while a stop click's own
@@ -1091,7 +1086,7 @@
       return;
     }
 
-    // Optimistic override (Andres's own ask, 2026-08-24): right after
+    // Optimistic override: right after
     // answering a blocked prompt, the real hook-fed working/blocked state
     // can lag a poll or more behind - the three answer-send handlers below
     // (plain option, free-text reply, multi-question) call this function
@@ -1338,7 +1333,7 @@
   // only ever reflect whichever tab the pane currently has up, which this
   // form doesn't need or want shown alongside every question already
   // rendered here. Carries mt-2 same as renderOptionsCardHtml()'s own card
-  // below (found live 2026-08-22, codebase audit: this was missing here,
+  // below (this was missing here,
   // so a session that only BECOMES blocked mid-poll - not already blocked
   // at page load - rendered its card sitting closer to the wrapper's edge
   // than blocked-prompt/rich.php's own top-level element, which always
@@ -1356,7 +1351,7 @@
   // card, optionally preceded by the pending command/description this
   // prompt is asking about, as its OWN entry before the card rather than
   // nested inside it (mirrors BlockedPromptView::blocked_prompt_rich_html()
-  // (PHP), same reasoning there - Andres's own explicit call, 2026-08-08:
+  // (PHP), same reasoning there:
   // readability over it now reading like a real, already-happened tool_use
   // entry).
   function renderOptionsCardHtml(detail) {
@@ -1383,8 +1378,7 @@
 
   // The numbered-option buttons plus, when one of them is "Type
   // something.", the paired (initially hidden) free-text reply box - the
-  // third visually/behaviorally distinct shape the 2026-08-23 readability
-  // audit called out, nested inside renderOptionsCardHtml() above rather
+  // third visually/behaviorally distinct shape, nested inside renderOptionsCardHtml() above rather
   // than a top-level dispatcher branch of its own: a free-text option only
   // ever shows up ALONGSIDE the other numbered options for the same
   // prompt, never in place of them.
@@ -1459,7 +1453,7 @@
     // while a prompt just sits unanswered, poll after poll. Skipping the
     // rebuild entirely (rather than rebuilding every time and carefully
     // trying to restore state afterward) is what actually fixes the whole
-    // family of poll-during-interaction bugs found live: lost textarea
+    // family of poll-during-interaction bugs: lost textarea
     // focus/cursor, the page scrolling back to the top, an expanded
     // command's own scroll position resetting (so only its last lines were
     // visible), a manually-opened <details> snapping shut - none of that
@@ -1507,7 +1501,7 @@
 
     currentBlockedReason = detail.blocked_reason;
 
-    // Small dispatcher (2026-08-24 readability audit follow-up) - one
+    // Small dispatcher - one
     // render-function per visually/behaviorally distinct prompt shape,
     // each returning a plain HTML string with no side effects of its own.
     // Everything stateful (the dirty-check/restore dance above and below)
@@ -1631,7 +1625,7 @@
       }
     }
 
-    // :not([type="hidden"]) matters - found live: the plain-option answer
+    // :not([type="hidden"]) matters: the plain-option answer
     // form (blocked-prompt/options.php) carries its session/csrf_token/
     // option fields as hidden <input>s INSIDE the very <form> being
     // submitted, and disabling a field before new FormData(form) reads it
@@ -1710,7 +1704,7 @@
             // The request only waits for the keys to be *sent*, not for
             // Claude Code to actually process them and redraw past the
             // prompt - polling immediately can still catch the old,
-            // now-stale blocked state (found live: the prompt appeared
+            // now-stale blocked state (the prompt appeared
             // "stuck" until the next regular poll tick, up to the full
             // interval later). Same fix as the mode-select's redraw wait.
             setTimeout(pollOnce, 300);
@@ -1895,8 +1889,7 @@
   var LOAD_MORE_BTN_LABEL = 'Load older messages';
   var LOAD_UNTIL_USER_BTN_LABEL = 'Load until last message';
 
-  // Shared by both #load-more-btn and #load-until-user-btn (Andres's own
-  // ask 2026-08-24: a faster way to back-page than clicking "Load older
+  // Shared by both #load-more-btn and #load-until-user-btn (a faster way to back-page than clicking "Load older
   // messages" repeatedly, when what's actually wanted is "get back to the
   // start of the most recent real exchange") - they page the exact same
   // cursor (btn.dataset.before is the single source of truth for both;
@@ -2037,8 +2030,8 @@
 
           // maybeAutoScroll() below used to run unconditionally, every
           // single poll cycle, whether or not this poll's own data
-          // actually changed anything - found live 2026-08-19: Andres
-          // reported the scrollable transcript area visibly "jittering"
+          // actually changed anything - the scrollable transcript area
+          // visibly "jittered"
           // while typing a message, which is exactly what a smooth
           // scrollTo() re-firing every poll interval looks like even when
           // the target position hasn't meaningfully moved. The thinking
@@ -2078,8 +2071,7 @@
   // updateJumpToNewVisibility()/jumpToNewContent()/markNewContent() and the
   // "New" divider/jump-to-new-btn state now live in highlights.js (loaded
   // before this file - see session.php), plain global functions/vars, same
-  // convention as common.js/scroll.js - extracted 2026-08-24, fourth cut of
-  // the "split session.js into modules" pass. currentDivider is also
+  // convention as common.js/scroll.js. currentDivider is also
   // declared there now; resetHistoryForRotatedTranscript()'s own
   // `currentDivider = null;` below falls through to that global, same
   // pattern already used for pageContent (scroll.js) and escapeHtml()
@@ -2153,8 +2145,8 @@
   // race: each computes `fresh`/reconciles pendingEntries against its own
   // snapshot of the shared, mutable `newestLine`, which is read again at
   // response-processing time rather than pinned to what it was when that
-  // response's own fetch was issued - found live 2026-08-08 as the cause
-  // of an optimistic "Sending…" bubble surviving alongside the real,
+  // response's own fetch was issued, which caused
+  // an optimistic "Sending…" bubble surviving alongside the real,
   // already-confirmed entry once both arrived close together. The guard
   // below makes pollOnce() itself re-entrant-safe regardless of caller:
   // a call that arrives while one's already running just marks "run
@@ -2441,8 +2433,7 @@
         // keepalive: a plain page navigation (this app has no client-side
         // router - see CLAUDE.md - so leaving this session is always a
         // real browser navigation/unload) can otherwise abort an in-flight
-        // fetch outright, not just lose track of it client-side - found
-        // live 2026-08-08 as the likely cause behind a compose message
+        // fetch outright, not just lose track of it client-side - the likely cause behind a compose message
         // reported as genuinely gone, not just visually stale, after
         // navigating away fast enough. keepalive lets the request finish
         // even once the page that started it is gone. Body is a short
@@ -2642,7 +2633,7 @@
 
   // --- mode select: jumps directly to the chosen mode (set_mode() in
   // Sessions.php works out the Shift+Tab steps and sends them, spaced
-  // 300ms apart - verified live that back-to-back presses with no gap
+  // 300ms apart - back-to-back presses with no gap
   // get dropped). The request blocks until every press is sent, so by
   // the time it resolves the mode has already changed - the extra 300ms
   // below is just for Claude Code's last status-line redraw to land
@@ -2672,8 +2663,7 @@
 
   // --- model select: drives Claude Code's real /model picker to switch
   // session-only (set_model() in Sessions.php works out and sends the
-  // Up/Down/'s' key sequence - see its own docblock for the full mechanics,
-  // confirmed live 2026-08-24). The request blocks until every press is
+  // Up/Down/'s' key sequence - see its own docblock for the full mechanics). The request blocks until every press is
   // sent (can take longer than the mode toggle's own - up to ~11 steps vs
   // ~3 - since it always normalizes to row 1 first rather than assuming a
   // known starting position), so the same "extra 300ms after, disabled for
@@ -2705,8 +2695,7 @@
   // the same way (Up-to-row-1-then-Down-to-target, see
   // PromptInteractionService::set_antigravity_model()'s own docblock for
   // the mechanics), but UNLIKE the Claude Code select above, this always
-  // overwrites Antigravity's ACCOUNT-WIDE default model - confirmed live
-  // 2026-08-24, there is no session-only option in Antigravity's picker.
+  // overwrites Antigravity's ACCOUNT-WIDE default model - there is no session-only option in Antigravity's picker.
   // Same "disable during the request, let the next poll's
   // renderAntigravityModelToggle() reflect the real new value" pattern as
   // the Claude Code select above - AntigravitySelectableModel::
@@ -2988,8 +2977,8 @@
     // inside a collapsed tool-call entry <details> (openAncestorDetails(),
     // in common.js) or behind the "show subagent calls" toggle being off
     // gets a meaningless zeroed-out getBoundingClientRect() while hidden,
-    // silently landing the scroll on the wrong spot (found live
-    // 2026-08-20: "clicking on a result doesn't go to the right one").
+    // silently landing the scroll on the wrong spot (clicking a
+    // search result missed its target).
     openAncestorDetails(jumpTarget);
 
     if (!document.body.classList.contains('show-subagent') && jumpTarget.closest('.subagent-detail, .subagent-use-block, .entry-subagent-only')) {
@@ -3005,9 +2994,9 @@
     }
 
     // A plain scrollTo() computed from the element's own rect, not
-    // scrollIntoView() - found live 2026-08-09: scrollIntoView() silently
-    // no-ops on this page in at least one real headless-Chrome automation
-    // context (verified: scrollTo() itself worked immediately when called
+    // scrollIntoView() - scrollIntoView() silently
+    // no-ops on this page in at least one headless-Chrome automation
+    // context (scrollTo() itself worked immediately when called
     // directly right after, in the very same context where
     // scrollIntoView() had just done nothing), so this avoids depending on
     // browser-specific scrollIntoView behavior entirely rather than
@@ -3049,6 +3038,5 @@
   // Sidebar search (isGlobalSearchScope()/runSessionSearch()/the result
   // renderers) now lives in search.js (loaded before this file - see
   // session.php), plain global functions/vars, same convention as
-  // common.js/scroll.js/highlights.js/sidebar.js - extracted 2026-08-24,
-  // sixth and final cut of the "split session.js into modules" pass.
+  // common.js/scroll.js/highlights.js/sidebar.js.
 })();

@@ -194,7 +194,7 @@ class SessionController extends Controller
      * session on every poll, keeping it alive. Without this, a long-idle-
      * but-open tab's session (and the CSRF token session.php issued at
      * load) could expire via normal PHP session GC while the page itself
-     * never notices - found live: the resulting stale-token POST comes
+     * never notices - the resulting stale-token POST comes
      * back 403 with a plain-text body ("Rejected: missing or invalid CSRF
      * token."), which a fetch().then(r => r.json()) can't parse, surfacing
      * as a bare "Unexpected response" with no indication it was actually a
@@ -226,13 +226,13 @@ class SessionController extends Controller
     /**
      * GET-only JSON endpoint backing session.php's "load more" transcript
      * pagination (see session.php's inline script), and its "load until
-     * last message" button (until_user=1 - Andres's own ask 2026-08-24;
+     * last message" button (until_user=1;
      * see SessionDetailService::session_history()/TranscriptService::
      * read_transcript_page() for the actual stop-at-a-real-user-message
      * behavior). Read-only, same no-CSRF-needed reasoning as detail() above.
      *
      * start_readonly_json()'s Cache-Control: no-store override matters a
-     * lot here specifically - confirmed live: iOS Safari can legally serve
+     * lot here specifically - iOS Safari can legally serve
      * a stale cached response to this exact polling fetch() URL for up to
      * 60s under AuthService::start_app_session()'s own default limiter,
      * which is what made mobile polling look "stuck" even across a manual
@@ -323,8 +323,8 @@ class SessionController extends Controller
     }
 
     /**
-     * POST-only JSON endpoint for session.php's "Select model" dropdown
-     * (Andres's own ask, 2026-08-24) - same AJAX pattern as setMode() above.
+     * POST-only JSON endpoint for session.php's "Select model" dropdown;
+     * same AJAX pattern as setMode() above.
      * Session-only, never saved as the account's new default - see
      * SessionService::set_model()'s own docblock for why that distinction
      * needed driving the real interactive picker rather than just typing
@@ -371,7 +371,7 @@ class SessionController extends Controller
 
     /**
      * POST-only JSON endpoint for session.php's Antigravity "Select model"
-     * dropdown (Andres's own ask, 2026-08-24) - same AJAX pattern as
+     * dropdown - same AJAX pattern as
      * setModel() above, but a DIFFERENT underlying action
      * (set_antigravity_model, not set_model): unlike Claude Code's picker,
      * Antigravity's has no session-only option - this always overwrites the
@@ -461,8 +461,7 @@ class SessionController extends Controller
     }
 
     /**
-     * GET-only JSON endpoint backing the sidebar's "Todo" link (Andres's own
-     * ask, 2026-08-25) - opens the session's cwd-level `todo` file in the
+     * GET-only JSON endpoint backing the sidebar's "Todo" link - opens the session's cwd-level `todo` file in the
      * fullscreen text modal, rather than a new tab. Read-only (no state
      * mutated), same no-CSRF-needed reasoning as detail() above; workdir is
      * re-derived server-side by the host-agent, never accepted from the

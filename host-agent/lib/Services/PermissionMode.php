@@ -9,8 +9,8 @@ namespace HostAgent\Services;
  * and translation to/from Claude Code's own two DIFFERENT representations
  * of the same four modes (its internal PermissionMode enum values, seen in
  * hook payloads/transcript lines, and its human-readable status-line
- * phrasing, seen in a live pane) - split out of PromptParser.php (2026-08-24
- * readability audit: PromptParser mixed pane-title reading, prompt
+ * phrasing, seen in a live pane) - split out of PromptParser.php
+ * (which mixed pane-title reading, prompt
  * detection/parsing, AND this vocabulary translation, reached into by both
  * PromptInteractionService::set_mode() and SessionLifecycleService::create_agent_session()) into
  * its own class, since none of it is actually pane-parsing logic - it's a
@@ -24,7 +24,7 @@ class PermissionMode
     /**
      * Every mode Claude Code's own Shift+Tab cycle visits, in the exact order
      * it cycles through them, mapped to the exact phrase it prints in its
-     * bottom status line for each - all confirmed live against a real running
+     * bottom status line for each - all taken from a real running
      * session, not guessed. Three say "<mode> mode on"; "accept edits" is its
      * own inconsistency and just says "accept edits on" (no "mode") - caught
      * by testing against a real capture rather than a hand-written one, which

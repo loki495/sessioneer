@@ -11,7 +11,7 @@ use HostAgent\Stores\SidecarStore;
  *
  * OpenCode's TUI surfaces a pending permission only to the session's own
  * process (via the plugin `permission.ask` hook) - there is NO queryable
- * server-side state for it (verified live 2026-08-25: GET /permission,
+ * server-side state for it (GET /permission,
  * /api/permission/request and /api/session/:id/permission all return empty;
  * the DB has no permission records; only the pane shows a dialog, and a pane
  * footer can be STALE - the feasibility session showed a resolved dialog while

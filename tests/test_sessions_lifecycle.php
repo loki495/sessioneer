@@ -150,7 +150,7 @@ function find_session(string $name): ?array
  * spawned (via proc_open) stays a zombie, with its /proc entry still very
  * much present, until this script's own proc_close()/proc_terminate() (or
  * exit) reaps it - same finding as test_socket_harness.php's own
- * pid_alive() (2026-08-08), hit again 2026-09-12 writing the roster
+ * pid_alive(), hit again in the roster
  * take-over test below: a naive is_dir() check kept reporting a pid this
  * app had already correctly killed as "still alive".
  */
@@ -168,7 +168,7 @@ function pid_alive(int $pid): bool
 // --- PromptParser::clean_pane_title(): strips Claude Code's animated spinner glyph,
 // leaving the short task description it sets via terminal title escapes.
 // Both the old Braille-dot spinner (⠂⠐...) and the newer half-circle one
-// (◐◑..., found live 2026-08-12 replacing the dots - see
+// (◐◑..., which replaced the dots - see
 // PromptParser::SPINNER_GLYPH_PATTERN's own doc comment) are covered by
 // the same \p{So}-based match, not two special-cased branches - the whole
 // point of matching by Unicode category instead of a hardcoded range is
@@ -185,7 +185,7 @@ assert_equal(null, PromptParser::clean_pane_title('   '), 'clean_pane_title: whi
 assert_equal('Fix login bug', PromptParser::clean_pane_title("\u{2733} Fix login bug"), 'clean_pane_title: strips the static idle marker glyph too, same as a real spinner frame');
 
 // PromptParser::pane_title_is_working() - the pane-title-spinner-glyph
-// "is it doing something right now" signal - was removed 2026-08-22 once
+// "is it doing something right now" signal - was removed once
 // UserPromptSubmit/PermissionRequest/Stop became SessionStatusStore's only
 // source for working/idle/blocked (see SessionService::build_session_entry()
 // and the todo file's research entry) - its own unit tests went with it.
@@ -261,10 +261,10 @@ assert_equal(
 );
 
 // Claude Code v2.1.269 dropped this dialog's option numbers entirely and
-// reversed the default order (verified live 2026-09-11 - see PromptParser's
+// reversed the default order (verified - see PromptParser's
 // own docblock and tests/fixtures/claude_folder_trust_prompt_pane_v2_1_269.txt,
 // a verbatim capture from a real, never-before-trusted directory). This is
-// the actual regression Andres hit ("can't start a session in a new
+// the actual regression ("can't start a session in a new
 // folder"): the old digit-anchored parse below found nothing at all here,
 // so the app never saw the trust dialog as blocking, and answer_prompt()'s
 // digit-then-Enter would have confirmed whatever's default-selected instead
@@ -311,7 +311,7 @@ assert_equal(
 
 // --- PromptParser::parse_blocking_prompt(): a command/preview taller than the old fixed
 // BLOCKING_PROMPT_CONTEXT_WINDOW (15 lines) used to have its earlier lines
-// silently cut off - found live (Andres reported a truncated command).
+// silently cut off.
 // Fixed by finding the real top of the block via Claude Code's own "● "
 // tool-invocation marker line instead of a fixed window. This script body
 // is 20 lines, deliberately more than the window, with the marker at the
@@ -385,8 +385,8 @@ assert_equal(
 assert_equal(true, $multiQuestionParsed['multi_question'] ?? null, 'parse_blocking_prompt: real multi-question prompt - tab bar detected');
 
 // --- PromptParser::parse_blocking_prompt(): a real, live capture of a multi-question
-// AskUserQuestion's own "Submit" review tab (found live 2026-08-09: Andres
-// reported what looked like a redundant second confirmation on this exact
+// AskUserQuestion's own "Submit" review tab (it once
+// looked like a redundant second confirmation on this exact
 // screen - see this app's session.php, the "Awaiting approval" pending-
 // context card immediately followed by a "Waiting on input" card asking
 // what read as the same thing again). The nearest-● scan alone finds only
@@ -425,8 +425,7 @@ assert_equal(
 );
 
 // --- PromptParser::parse_blocking_prompt(): a real, live capture of a
-// RESHOWN single-question tab of a multi-question AskUserQuestion (found
-// live 2026-08-09, same investigation as the Submit-review-tab case above -
+// RESHOWN single-question tab of a multi-question AskUserQuestion (same investigation as the Submit-review-tab case above):
 // navigating back to an earlier tab has no tool-invocation marker of its
 // own at all, unlike a fresh permission prompt). The nearest-● scan used
 // to walk straight through the decorative separator above the tab bar and
@@ -497,7 +496,7 @@ assert_equal('no', PromptParser::classify_permission_option_intent('No, and tell
 assert_equal('unknown', PromptParser::classify_permission_option_intent('Type something else'), 'classify_permission_option_intent: a free-text-style label is neither yes nor no');
 
 // --- PermissionMode::parse_current_mode(): reads Claude Code's own bottom status line -
-// mode names and cycle order confirmed live against a real running
+// mode names and cycle order confirmed against a real running
 // session (Shift+Tab cycles manual -> accept edits -> plan -> auto). ---
 assert_equal('manual', PermissionMode::parse_current_mode("  user@host ~\n  \xE2\x8F\xB8 manual mode on \xC2\xB7 \xE2\x86\x90 for agents\n"), 'parse_current_mode: manual');
 assert_equal('accept edits', PermissionMode::parse_current_mode("  \xE2\x8F\xB5\xE2\x8F\xB5 accept edits on (shift+tab to cycle) \xC2\xB7 \xE2\x86\x90 for agents\n"), 'parse_current_mode: accept edits - the one mode whose status line omits the word "mode" entirely');
@@ -674,8 +673,8 @@ try {
     assert_true(preg_match($uuidPattern, (string)($session['agent_session_id'] ?? '')) === 1, 'list: agent_session_id recorded via sidecar, uuid-shaped');
 
     // --- create: $enableTaskTools appends --allowedTools naming the
-    // TaskCreate/TaskGet/TaskList/TaskUpdate family (Andres's own ask,
-    // 2026-08-23 - the New Session form's opt-in checkbox) - verified via
+    // TaskCreate/TaskGet/TaskList/TaskUpdate family (the New Session form's
+    // opt-in checkbox) - verified via
     // tmux's own #{pane_start_command}, which reflects the FULL original
     // spawn argv regardless of what the pane's command does with them
     // afterward (fake_claude deliberately discards its own args and execs
@@ -683,7 +682,7 @@ try {
     // /proc/<pid>/cmdline alone would never show this).
     //
     // sleep(1) here (and between the two create_and_track() calls below) -
-    // found live writing this test: create_agent_session()'s name is
+    // create_agent_session()'s name is
     // date('Ymd-His')-based (1-second resolution), so a create landing in
     // the SAME wall-clock second as the $created one already made a few
     // lines up (or as the second call just below) collides on an identical
@@ -768,11 +767,10 @@ try {
     }
 
     // --- TmuxService::list_all_tmux_sessions()'s 'activity' field: sourced
-    // from #{window_activity}, not tmux's own #{session_activity} - found
-    // live 2026-08-08 on this app's own real session (a live, actively-
-    // working session's dashboard row looked stale/"detached" - Andres
-    // noticed while dogfooding). #{session_activity} does NOT reliably
-    // advance from real, continuous pane output (confirmed live: stayed
+    // from #{window_activity}, not tmux's own #{session_activity}
+    // (a live, actively-working session's dashboard row looked
+    // stale/"detached" otherwise). #{session_activity} does NOT reliably
+    // advance from real, continuous pane output (confirmed: stayed
     // frozen at spawn time for 8+ real hours of heavy use on the actual
     // session that surfaced this), while #{window_activity} does. This
     // needs a REAL tmux session (the bug is real tmux behavior, not
@@ -847,7 +845,7 @@ try {
     // sidecar) claude process whose live agent_session_id is confidently
     // known via the statusline marker must ALSO be excluded from
     // "archived", and resume_agent_session() must ALSO refuse to resume
-    // it. Found live 2026-09-11 (Andres: his own real terminal session -
+    // it. A real terminal session -
     // no tmux, no sidecar at all - showed up as "archived" and "resuming"
     // it from there made no sense) - see BareProcessService::
     // live_bare_agent_session_ids()'s own docblock for the full incident.
@@ -903,9 +901,9 @@ try {
     // resolve_bare_process_detail()/live_bare_agent_session_ids()): a bare
     // process started with an explicit --resume/--session-id resolves with
     // confidence='confirmed' straight from its own argv - no marker, no
-    // timing guess. Found live 2026-09-11 (Andres: a real claude-code-ui-
+    // timing guess. A real claude-code-ui-
     // launched `claude --resume <path>.jsonl` process still showed up in
-    // the archived list) - that shape's transcript can be arbitrarily
+    // the archived list otherwise - that shape's transcript can be arbitrarily
     // older than the resuming process's own start time, which is exactly
     // what the pre-existing closest-start-time heuristic gets wrong.
     //
@@ -959,7 +957,7 @@ try {
     // --- ProcessInspector::find_claude_processes(): matches a process
     // whose argv[0] is the REALPATH-resolved target of CLAUDE_BIN (a
     // symlink, same as the real ~/.local/bin/claude install), not just an
-    // exact basename match. Found live 2026-09-11 alongside the argv-
+    // exact basename match. Alongside the argv-
     // resume fix above: a real claude-code-ui-launched process's argv[0]
     // was the fully-resolved versioned binary path
     // (~/.local/share/claude/versions/X.Y.Z, basename "X.Y.Z") because
@@ -997,8 +995,8 @@ try {
 
     // --- ProcessInspector::find_claude_processes(): matches a process
     // whose argv[0] is "claude <subcommand>" as ONE space-containing argv
-    // element, not "claude" followed by a separate element. Found live
-    // 2026-09-12: the CLI's own background daemon (`claude daemon run`)
+    // element, not "claude" followed by a separate element:
+    // the CLI's own background daemon (`claude daemon run`)
     // rewrites its bg-spare/bg-pty-host worker processes' argv[0] to
     // exactly this shape for `ps` readability - basename() of a string
     // with no "/" in it is the string itself, so it never equals plain
@@ -1030,7 +1028,7 @@ try {
     // way to identify a bg-spare/bg-pty-host worker's own conversation at
     // all, since that shape has no --resume in its own argv anywhere (the
     // daemon dispatches it over a private rendezvous socket instead) -
-    // this is exactly what was still hiding Andres's own live session
+    // this is exactly what was still hiding a real live session
     // (running through this exact pool) in the archived list even after
     // the argv-resume and realpath fixes above. A plain bare fake_claude
     // process stands in for a real daemon worker here - only roster.json's
@@ -1072,7 +1070,7 @@ try {
     assert_equal('confirmed', $rosterDetail['confidence'] ?? null, 'resolve_bare_process_detail: a daemon-roster match is confirmed, not a guess');
 
     // --- BareProcessService::enrich_bare_with_confirmed_ids(): the
-    // dashboard's "add the title by default" ask (Andres, 2026-09-12) -
+    // dashboard's "add the title by default" ask -
     // a whole bare[] batch gets resolved_agent_session_id/resolved_title
     // attached in one pass (one roster read shared across every row),
     // for every row this can identify with CERTAINTY, with no click
@@ -1087,9 +1085,8 @@ try {
     assert_equal($rosterUuid, $enrichedBare[0]['resolved_agent_session_id'] ?? null, 'enrich_bare_with_confirmed_ids: resolves a daemon-roster match within a batch');
     assert_true(!array_key_exists('resolved_agent_session_id', $enrichedBare[1]), 'enrich_bare_with_confirmed_ids: a row with no resolvable id at all is left untouched, not given a bogus one');
 
-    // --- BareProcessService::declutter_bare_list(): Andres's own ask
-    // (2026-09-12) once he was seeing ~14 "Other claude processes on host"
-    // rows that were really just the daemon's own internals - pure
+    // --- BareProcessService::declutter_bare_list(): exists because ~14 "Other claude processes on host"
+    // rows were really just the daemon's own internals - pure
     // array-in/array-out logic, no live process/tmux fixture needed at
     // all. Display-only: never changes what a row's own Kill/Take-over
     // targets, never touches a row with no resolved id at all. ---
@@ -1200,8 +1197,8 @@ try {
     }
 
     // --- resume: a concurrent resume attempt for the SAME agent_session_id
-    // is rejected via flock() (not just the post-spawn sidecar check above)
-    // - found live 2026-08-22 (codebase audit): the sidecar-only check left
+    // is rejected via flock() (not just the post-spawn sidecar check above):
+    // the sidecar-only check left
     // a TOCTOU window between the check and the sidecar write (tmux spawn +
     // a 300ms settle sleep in between), where two near-simultaneous
     // requests could both pass it and spawn two panes on the same
@@ -1212,7 +1209,7 @@ try {
     // resume_lock_path() (private) rather than exposed for testing, same
     // as this suite already does for SidecarStore's own file-naming
     // convention a few lines up. Run only after $resumedName above is
-    // already killed - found live while writing this test: tmux session
+    // already killed: tmux session
     // names here are date('Ymd-His')-based (1-second resolution), so a
     // resume issued while an earlier same-second session is still alive
     // can collide with it and fail for a reason unrelated to the lock
@@ -1383,7 +1380,7 @@ try {
     }
     $bareProc = null;
 
-    // --- regression, found live 2026-08-08: find_claude_processes() used
+    // --- regression: find_claude_processes() used
     // to require argv[0] to equal Config::claude_bin()'s FULL configured
     // path exactly. Typing a bare `claude` in a terminal (PATH-resolved by
     // the shell, not the full path) gives that process argv[0] "claude"
@@ -1610,8 +1607,8 @@ try {
     @rmdir($markerFakeHome);
     putenv('HOME_ROOT');
 
-    // --- take_over_bare_process(): a daemon-managed worker pair - Andres's
-    // own explicit ask (2026-09-12), once this could be resolved with
+    // --- take_over_bare_process(): a daemon-managed worker pair -
+    // once this could be resolved with
     // certainty via the daemon roster: "I'm ok with a plain kill and
     // --resume inside a managed tmux". A worker is really TWO real
     // processes sharing one conversation (a bg-pty-host wrapper, whose own
@@ -1693,8 +1690,8 @@ try {
 
     // --- bare_process_take_over_candidates(): excludes another OTHER
     // live (marker-matched) bare process's own session for the same
-    // cwd, even though nothing tracks it via a sidecar (Andres's own
-    // concern, 2026-08-08) - resume_agent_session()'s already-live guard
+    // cwd, even though nothing tracks it via a sidecar -
+    // resume_agent_session()'s already-live guard
     // only checks sidecars, so without this a candidate transcript
     // still being actively written by a different live bare process
     // could get a second pane fighting over it. A genuinely dormant
@@ -1840,7 +1837,7 @@ try {
     assert_true(str_ends_with($paneAfterReorderedAnswer, '3'), 'answer_prompt: sent the corrected option number (3) into the pane, not the guessed one (2)');
 
     // Case 2: the real menu doesn't offer the intended option AT ALL (only
-    // a plain Yes/No this time, matching Andres's own report that the iOS
+    // a plain Yes/No this time, matching a report that the iOS
     // app/TUI can show just Allow/Deny for this same prompt shape) - must
     // refuse rather than silently sending whatever's really at that
     // number, and the health check must then flag it.
@@ -1911,8 +1908,8 @@ try {
     SessionStatusStore::update_status($promptTestSession, ['status' => 'working', 'blocked' => null]);
 
     // --- PromptInteractionService::answer_prompt(): for a MULTI-QUESTION prompt specifically,
-    // sends ONLY the digit - no trailing Enter (found live 2026-08-09,
-    // Andres reported answering a question "skipped" the next one; verified
+    // sends ONLY the digit - no trailing Enter (answering a
+    // question once "skipped" the next one; verified
     // against a real, disposable claude session: the digit alone already
     // selects+confirms+auto-advances on this prompt shape, so this app's
     // old always-send-Enter behavior landed that extra Enter on whatever
@@ -1986,7 +1983,7 @@ try {
     // AskUserQuestion, but only 1 SINGLE-select question - no tab bar exists
     // for that specific shape, use answer_prompt()/answer_prompt_with_text()
     // instead. A lone MULTISELECT question is different (see the accept-path
-    // test further below) - it DOES get a tab bar, found live 2026-09-12.
+    // test further below) - it DOES get a tab bar.
     SessionStatusStore::write_status($promptTestSession, ['status' => 'blocked', 'blocked' => ['tool_name' => 'AskUserQuestion', 'tool_input' => ['questions' => [$multiQuestionSet[0]]]]]);
     assert_equal(
         false,
@@ -2017,7 +2014,7 @@ try {
     // parse_blocking_prompt()'s BLOCKING_PROMPT_CONTEXT_WINDOW fallback to
     // stop at, so it merges everything back to "Do you want to proceed?"
     // into one giant paragraph instead of just this prompt's own "Pick a
-    // color" - found live writing this exact test. A real Claude Code pane
+    // color". A real Claude Code pane
     // never has this problem: every new interactive prompt is its own full
     // redraw, never a bare append onto old content like this fixture would
     // do without the explicit clear.
@@ -2027,7 +2024,7 @@ try {
     // full-session.replay.json's own "Multi-question prompt: Q1" step);
     // without it, parse_blocking_prompt()'s paragraph-grouping (joining
     // CONSECUTIVE non-blank lines into one paragraph) merges the tab bar
-    // itself into the question text - also found live writing this test.
+    // itself into the question text.
     TmuxService::tmux_run(['send-keys', '-t', $promptTestSession, '-l', "\x1b[2J\x1b[H"]);
     TmuxService::tmux_run(['send-keys', '-t', $promptTestSession, "←  ☐ Color  ☐ Toppings  ☐ Confirm  ✔ Submit  →", 'Enter']);
     TmuxService::tmux_run(['send-keys', '-t', $promptTestSession, '', 'Enter']);
@@ -2064,13 +2061,13 @@ try {
 
     SessionStatusStore::delete_status($promptTestSession);
 
-    // --- answer_multi_question(): a LONE multiSelect question - found live
-    // 2026-09-12 (Andres: sessioneer's own dashboard rendered this shape via
+    // --- answer_multi_question(): a LONE multiSelect question
+    // (the dashboard once rendered this shape via
     // the plain one-button-submits-immediately options.php form, with no
     // way to check several boxes then confirm at all, unlike Claude Code's
     // own real TUI). Real fixture below is a verbatim capture from a real,
     // disposable session (just this one question, multiSelect true, 3
-    // options) - re-verified live that toggling checked options then Right
+    // options) - re-verified that toggling checked options then Right
     // lands directly on the "Review your answers" / "1. Submit answers"
     // screen, since there's only one question to review. ---
     $loneMultiSelectQuestion = ['question' => 'Pick your toppings', 'header' => 'Toppings', 'multiSelect' => true, 'options' => [['label' => 'Cheese'], ['label' => 'Pepperoni'], ['label' => 'Mushroom']]];
@@ -2121,7 +2118,7 @@ try {
 
     // --- PromptInteractionService::set_model(): drives the real /model picker's
     // Up-normalize-to-row-1-then-Down-to-target-then-'s' sequence (see its
-    // own docblock for the full mechanics, confirmed live 2026-08-24
+    // own docblock for the full mechanics, confirmed
     // against a real running session - not independently re-verifiable
     // here, same reasoning set_mode()'s own test above already settled on:
     // Up/Down/Enter are escape sequences, not printable bytes cat echoes
@@ -2145,13 +2142,13 @@ try {
 
     // --- PromptInteractionService::send_escape(): interrupts whatever
     // Claude is currently doing (mid-generation or mid-tool-call), same as
-    // pressing Escape while attached. Found live 2026-08-30: Escape is a
+    // pressing Escape while attached. Escape is a
     // true interrupt (not a natural turn completion), so the Stop hook -
     // which fires ONLY on natural completion - never fires. Without the
     // update_status() call after the tmux send-keys, a session interrupted
     // mid-turn has no mechanism to ever clear its stale `working: true`
     // status. This is the same bug class already fixed for set_mode()
-    // (see that method's own docblock, 2026-08-23). ---
+    // (see that method's own docblock). ---
     SessionStatusStore::update_status($promptTestSession, ['status' => 'working', 'blocked' => null]);
     assert_equal('working', SessionStatusStore::read_status($promptTestSession)['status'] ?? null, 'send_escape test setup: seeded SessionStatusStore with working status');
 
@@ -2170,8 +2167,8 @@ try {
     $promptTestSession = null;
 
     // --- PromptInteractionService::answer_prompt(): the initial per-folder
-    // trust dialog specifically. Found live 2026-09-11 (Andres: couldn't
-    // start a session in a new folder): Claude Code v2.1.269 dropped this
+    // trust dialog specifically (a session couldn't
+    // be started in a new folder): Claude Code v2.1.269 dropped this
     // dialog's option numbers entirely (see PromptParser's own docblock),
     // so the plain digit-then-Enter path used for every other prompt shape
     // would type a digit the dialog just ignores, then Enter confirms
@@ -2381,7 +2378,7 @@ try {
 
     // The ONE case that's still pane-scraped regardless of hook installation
     // status: the initial per-folder trust dialog, which fires none of
-    // Claude Code's hooks at all (confirmed live, permanent - see
+    // Claude Code's hooks at all (confirmed, permanent - see
     // CONTRIBUTING.md). Still no status file here - proves this path is
     // reached independently of SessionStatusStore, not as some leftover
     // general-purpose fallback. Reuses $realTrustDialog (defined above, a
@@ -2407,7 +2404,7 @@ try {
     $statusEntrySession = null;
 
     // --- send_message()/answer_prompt_with_text() concurrency isolation:
-    // found live 2026-08-14 that both used tmux's single SHARED default
+    // both used tmux's single SHARED default
     // buffer (a bare `set-buffer`/`paste-buffer` with no -b) - this
     // host-agent handles every request as its OWN separate OS process
     // (systemd socket activation in production; tests/lib/socket_harness.php
@@ -2480,7 +2477,7 @@ try {
         'buffer isolation: PromptInteractionService.php never uses paste-buffer with no -b (would paste from the shared default buffer)'
     );
 
-    // --- send_message()'s own regression guard (found live 2026-08-20):
+    // --- send_message()'s own regression guard:
     // sending Enter with no gap right after paste-buffer can be processed
     // before the pane has actually registered the pasted text, submitting
     // nothing - the message sits typed but unsent, no thinking indicator
@@ -2554,7 +2551,7 @@ try {
     // --- QuotaService::quota_from_statusline_state()/get_quota(): the ONLY
     // account-wide quota source now (a live tmux-pane-scraping fallback,
     // and the external claude-quota-binary scrape behind that, were both
-    // deleted 2026-08-22 as confirmed dead code - see QuotaService's own
+    // deleted as confirmed dead code - see QuotaService's own
     // class docblock for why). The merge/protection logic the shell side
     // itself does is exercised end-to-end in test_statusline_marker.php;
     // this only checks QuotaService's read side and get_quota()'s "no data

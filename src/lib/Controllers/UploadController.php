@@ -38,7 +38,7 @@ class UploadController extends Controller
     {
         $this->require_post_json();
 
-        // Found live 2026-08-22 (Andres): a real phone video upload hit
+        // a real phone video upload hit
         // "Allowed memory size exhausted" under the container's default
         // 128M memory_limit. This one request briefly holds several full
         // copies of the file at once - the raw bytes from file_get_contents()

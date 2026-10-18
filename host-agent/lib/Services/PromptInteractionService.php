@@ -11,8 +11,7 @@ use HostAgent\Stores\SidecarStore;
 /**
  * Sending input to a live session's pane: prompt answers (plain,
  * free-text, and multi-question), mode/model switches, escape, and plain
- * messages. Split out of SessionService.php (2026-08-24 readability
- * audit - see the plan this followed) - these 7 methods had zero
+ * messages. Split out of SessionService.php - these 7 methods had zero
  * `self::` cross-references into any other cluster, the single safest,
  * most isolated piece to extract first. Methods/bodies moved verbatim,
  * no behavior changes.
@@ -21,7 +20,7 @@ class PromptInteractionService
 {
     /**
      * A 300ms gap between rapid, related keypresses sent to a live Claude
-     * Code pane - not cosmetic, verified live twice over: (1) 3 BTab presses
+     * Code pane - not cosmetic: (1) 3 BTab presses
      * with no gap between them landed 2 steps short (a key got dropped), 300ms
      * between each was reliable every time; (2) selecting an AskUserQuestion
      * option by digit moves the on-screen cursor but doesn't confirm it - a
@@ -118,13 +117,13 @@ class PromptInteractionService
         // folder trust) sources its options from a SINGLE place for both
         // display and send, so there's nothing to reconcile there.
         //
-        // Found live 2026-09-02 (Andres): clicked a button labeled "Allow
+        // Example: a button labeled "Allow
         // always" for a Bash tool's addRules suggestion; the guessed menu
         // put that at position 2, but Claude Code's real on-screen menu for
         // that combo didn't have a third option at all (iOS/the TUI itself
         // sometimes offers a plain Allow/Deny for this exact shape) - so
         // sending digit 2 landed on the pane's real "No" and the tool use
-        // came back denied. Fix: don't trust the guessed NUMBER at all here
+        // came back denied. So don't trust the guessed NUMBER at all here
         // - resolve the user's actual INTENT (once/always/no) from the
         // guessed label at $option, then find whichever number the FRESH
         // pane-scrape really has that same intent at (self-healing if the
@@ -264,9 +263,7 @@ class PromptInteractionService
         }
 
         // The initial per-folder trust dialog: answered via Up/Down + Enter,
-        // same reasoning as the OpenCode permission block above - found live
-        // 2026-09-11 (Andres: couldn't start a session in a new folder) that
-        // Claude Code v2.1.269 dropped this dialog's option numbers entirely
+        // same reasoning as the OpenCode permission block above - Claude Code v2.1.269 dropped this dialog's option numbers entirely
         // ("❯ No, exit" / "  Yes, I trust this folder" - see PromptParser's
         // own docblock), so typing the digit does nothing at all here; the
         // Enter that used to just confirm the typed digit's selection now
@@ -329,14 +326,11 @@ class PromptInteractionService
             return ['ok' => false, 'message' => "Failed to send response: " . trim($digitResult['stderr'])];
         }
 
-        // A single-question prompt needs a separate Enter - verified live
-        // that the digit there only moves the on-screen cursor, it doesn't
+        // A single-question prompt needs a separate Enter - the digit there only moves the on-screen cursor, it doesn't
         // auto-confirm, so an Enter sent in the same instant can race ahead
         // and confirm whatever was *previously* highlighted instead.
         //
-        // A multi-question AskUserQuestion tab is the opposite: verified
-        // live 2026-08-09 (Andres reported answering a question "skipped"
-        // the next one) against a real, disposable test session - the
+        // A multi-question AskUserQuestion tab is the opposite: the
         // digit there ALREADY selects, confirms, AND auto-advances to the
         // next tab (or submits, on the final Submit/Cancel tab) entirely on
         // its own. Sending an Enter afterward regardless (this app's old
@@ -379,7 +373,7 @@ class PromptInteractionService
     /**
      * Answers a prompt's free-text option (Claude Code's AskUserQuestion
      * always offers one labeled "Type something.") with custom typed text,
-     * instead of just the bare numbered choice. Verified live: selecting
+     * instead of just the bare numbered choice. Selecting
      * that option by digit (without Enter) turns it into an inline text
      * field right there in the option list - typing replaces its label live,
      * and Enter submits whatever was typed. Declining to type anything
@@ -418,14 +412,13 @@ class PromptInteractionService
         usleep(self::TMUX_KEY_STEP_DELAY_USEC);
 
         // A uniquely-named buffer, not tmux's shared default one (a bare
-        // set-buffer/paste-buffer with no -b) - found live 2026-08-14: this
+        // set-buffer/paste-buffer with no -b): this
         // host-agent handles every request as its OWN separate OS process
         // (systemd socket activation), all sharing the SAME tmux server, so
         // two genuinely concurrent replies (two devices/tabs, or this and
         // send_message() racing) landing their set-buffer calls back to
         // back before either's paste-buffer runs would silently paste
-        // WHICHEVER text set-buffer wrote last into BOTH panes - reproduced
-        // live against two real fixture panes. -d deletes the named buffer
+        // WHICHEVER text set-buffer wrote last into BOTH panes. -d deletes the named buffer
         // the instant paste-buffer consumes it, so nothing here needs its
         // own separate cleanup step on the success path.
         $bufferName = 'sessioneer-' . bin2hex(random_bytes(8));
@@ -463,9 +456,9 @@ class PromptInteractionService
      * own docblock for the confirmed tab-bar mechanics this drives) rather
      * than one tab at a time (the OLD design - SessionService::
      * navigate_prompt(), Left/Right arrow-key navigation - removed
-     * 2026-08-22, once this method made it unreachable: a multi-question
+     * once this method made it unreachable: a multi-question
      * prompt now always renders this form instead) - the
-     * decoupled design Andres asked for 2026-08-22, so the app never has to
+     * decoupled design, so the app never has to
      * show "only whichever tab the pane currently has up".
      *
      * $questions is deliberately NOT read from the request - always
@@ -500,10 +493,10 @@ class PromptInteractionService
         $questions = is_array($hookBlocked['tool_input']['questions'] ?? null) ? $hookBlocked['tool_input']['questions'] : null;
 
         // count(...) < 2 alone would wrongly reject a LONE multiSelect
-        // question too - found live 2026-09-12: that shape gets a tab bar
+        // question too: that shape gets a tab bar
         // just like a real 2+-question call (see PromptParser::
         // build_multi_question_key_sequence()'s own docblock for the full
-        // live-verified mechanics), so it needs this exact same path, not
+        // mechanics), so it needs this exact same path, not
         // the plain single-select answer_prompt() one. Only a lone
         // SINGLE-select question (no tab bar at all) is still rejected here.
         $isLoneSingleSelect = $questions !== null && count($questions) === 1 && ($questions[0]['multiSelect'] ?? false) !== true;
@@ -560,20 +553,16 @@ class PromptInteractionService
      * is a safe no-op if nothing is actually running, so there's nothing to
      * reject up front beyond "is this a real managed session at all".
      *
-     * Found live 2026-08-30 (Andres: "a session interrupted mid-turn still
-     * shows working/thinking in Sessioneer even though the real Claude Code app
-     * confirms it's no longer thinking"): Escape is a true interrupt (not a
+     * Escape is a true interrupt (not a
      * natural turn completion), so the Stop hook - which fires ONLY on
-     * natural completion (https://code.claude.com/docs/en/hooks, confirmed
-     * live) - never fires. SessionStatusStore's cached `status`/`working`
+     * natural completion (https://code.claude.com/docs/en/hooks) - never fires. SessionStatusStore's cached `status`/`working`
      * fields are ONLY refreshed by the Stop/UserPromptSubmit/PermissionRequest
      * hooks - without the update_status() call at the end here (matching
      * every sibling action method in this file - set_mode()/set_model()/
      * answer_prompt()/send_message() all call it after their own tmux
      * mutation), a session interrupted mid-turn has no mechanism to ever
      * clear its stale `working: true` status. This is the same bug class
-     * already fixed for set_mode() (see that method's own docblock,
-     * 2026-08-23).
+     * already fixed for set_mode() (see that method's own docblock).
      */
     public static function send_escape(string $name): array
     {
@@ -593,8 +582,7 @@ class PromptInteractionService
     }
 
     /**
-     * Found live 2026-08-23 (Andres: "changing modes is broken in session
-     * pages"): the Shift+Tab keystrokes below genuinely DO change the live
+     * The Shift+Tab keystrokes below genuinely DO change the live
      * pane's mode, but session_detail()'s own current_mode comes
      * exclusively from SessionStatusStore's cached `mode` field (refreshed
      * only by the Stop/UserPromptSubmit/PermissionRequest hooks, none of
@@ -643,23 +631,23 @@ class PromptInteractionService
 
     /**
      * Switches a live session's model for the CURRENT session only - never
-     * saved as the account's new default. Andres's own explicit ask,
-     * 2026-08-24: typing `/model <name>` directly saves it as the default
-     * for every FUTURE session too (confirmed live and in the docs -
+     * saved as the account's new default. Typing `/model <name>` directly
+     * saves it as the default
+     * for every FUTURE session too (see the docs -
      * https://code.claude.com/docs/en/model-config#setting-your-model),
      * which isn't what a per-session dropdown should do. Session-only
      * switching only exists through the real interactive picker's own 's'
-     * key (confirmed live 2026-08-24 against a real running session, same
+     * key (checked against a real running session, same
      * discipline PromptParser's own key-sequence docblocks already use),
      * so this drives that picker instead of typing the target name
      * directly: '/model' + Enter opens it with the cursor on whichever row
      * happens to be currently selected, Up (count(SelectableModel::
      * PICKER_OPTIONS)) times reliably lands on row 1 regardless of where
-     * that was (verified live: the cursor never wraps past the first row),
+     * that was (the cursor never wraps past the first row),
      * then Down (target row - 1) times reaches the target row
      * deterministically - no need to read the CURRENT model first the way
      * set_mode()'s relative Shift+Tab cycling does. Finally 's' confirms
-     * "this session only" (verified live: shows "Set model to <name> for
+     * "this session only" (it shows "Set model to <name> for
      * this session only", not the "set as your default" wording Enter
      * would show instead).
      *
@@ -724,18 +712,15 @@ class PromptInteractionService
      * the cursor to the target row, then Enter confirms it.
      *
      * UNLIKE set_model() above, there is no final "session only" key to
-     * send - Antigravity's picker has no such option. Confirmed live: this
+     * send - Antigravity's picker has no such option. This
      * always overwrites the ACCOUNT-WIDE default model, applying to every
      * future `agy` session (see AntigravitySelectableModel's own docblock
-     * for the disposable-session test that proved this). Andres's own
-     * explicit decision 2026-08-24, after being shown this finding, was to
+     * for the disposable-session test that proved this). The decision was to
      * ship it anyway rather than wait for a session-scoped mechanism that
      * doesn't exist - callers must label this as a global default switch,
      * not a per-session one.
      *
-     * Found live 2026-08-24 (Andres: "when I change the model on an agy
-     * session, it immediately reverts to the old one"): an EARLIER version
-     * of this method fired a fixed-count Up-then-Down key sequence blind
+     * A fixed-count Up-then-Down key sequence fired blind
      * (same shape as set_mode()'s own Shift+Tab cycling), trusting that
      * count(PICKER_OPTIONS) Up presses always lands on row 1 regardless of
      * starting position. Reproduced directly: from row 2 (Gemini 3.6 Flash
@@ -746,7 +731,7 @@ class PromptInteractionService
      * Claude Code's own picker/BTab cycling, where a fixed count has always
      * been reliable - see set_model()'s own docblock) - a fixed count key
      * sequence is therefore NOT safe here, unlike set_mode()/set_model().
-     * Fixed by verifying the actual cursor position against the live pane
+     * So this verifies the actual cursor position against the live pane
      * after each press and only stopping once it's confirmed on the right
      * row - see move_antigravity_picker_cursor() below.
      *
@@ -754,8 +739,7 @@ class PromptInteractionService
      * 'blocked' the way set_mode()/set_model() do - Antigravity has no
      * blocked-prompt detection built yet (still open), so 'blocked' never actually occurs for an
      * antigravity-agent session; a slash command typed while genuinely busy
-     * gets silently QUEUED behind other input instead of failing (confirmed
-     * live), which would desync this method's own key sequence from
+     * gets silently QUEUED behind other input instead of failing, which would desync this method's own key sequence from
      * whatever screen is actually showing when it's finally processed.
      *
      * @return array{ok:bool, message:string}
@@ -838,7 +822,7 @@ class PromptInteractionService
      * send-keys with the raw text as a "key": send-keys treats embedded
      * newlines in a multi-line message as individual Enter keypresses, each
      * prematurely submitting whatever's been typed so far, where a real
-     * terminal paste delivers the whole block as one unit (verified live)
+     * terminal paste delivers the whole block as one unit
      * and only the explicit trailing Enter submits it.
      *
      * $attachmentPaths (compose-bar file uploads still pending when Send is
@@ -884,10 +868,7 @@ class PromptInteractionService
             return ['ok' => false, 'message' => 'Failed to send message: ' . trim($paste['stderr'])];
         }
 
-        // Found live 2026-08-20 (Andres: a sent message sometimes sat stuck
-        // showing "Sending…" client-side, with no thinking indicator ever
-        // appearing - the message never actually got submitted, just typed
-        // into the pane) - this was missing the same TMUX_KEY_STEP_DELAY_USEC
+        // Without the same TMUX_KEY_STEP_DELAY_USEC
         // gap answer_prompt_with_text() already has between ITS own
         // paste-buffer and confirming Enter (see that constant's own doc
         // comment), for the identical reason: an Enter sent with no gap

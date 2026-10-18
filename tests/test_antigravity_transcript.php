@@ -7,7 +7,7 @@ declare(strict_types=1);
  * {type, role, timestamp, blocks} form, plus pagination/incremental-poll
  * reading) and TranscriptRouter (dispatch to TranscriptService vs
  * AntigravityTranscriptService by path shape). Entry shapes here are
- * modeled directly on real ones captured live 2026-08-24, not guessed.
+ * modeled directly on real ones, not guessed.
  */
 
 require __DIR__ . '/lib/assert.php';

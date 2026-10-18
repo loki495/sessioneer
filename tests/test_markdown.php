@@ -120,7 +120,7 @@ assert_equal(
 
 // --- a real substring that could collide with the internal placeholder
 // scheme if it used a plain-text delimiter instead of a NUL-byte one
-// (found live during development - an earlier plain-space-delimited
+// (an earlier plain-space-delimited
 // version of the JS mirror had exactly this collision). ---
 assert_equal(
     '<p class="whitespace-pre-wrap break-words">the IC5 pin should not be corrupted</p>',

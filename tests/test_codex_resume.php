@@ -143,7 +143,7 @@ try {
     // REAL tmux session (against the isolated test socket) with the fake claude binary before
     // failing/succeeding on its own terms - not a no-op. That spawned session must be torn down
     // before this file exits, or it leaks into every test file that runs after this one in the
-    // same `tests/run.sh` invocation (confirmed live: it stalled test_ui_smoke.php's headless
+    // same `tests/run.sh` invocation (confirmed: it stalled test_ui_smoke.php's headless
     // browser pass). test_sessions_lifecycle.php's own resume-path tests establish the same
     // pattern (see its "TmuxService::tmux_run(['kill-server'])" after exercising
     // resume_agent_session()'s real-spawn path) - kill-server is the isolated test socket only,

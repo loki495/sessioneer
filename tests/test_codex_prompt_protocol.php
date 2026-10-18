@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /**
  * Unit tests for HostAgent\Services\CodexPromptProtocol - the normalize/
- * response logic extracted out of host-agent/codex_bridge.php (2026-08-29)
+ * response logic extracted out of host-agent/codex_bridge.php
  * so it can be tested without spawning a real `codex app-server --stdio`
  * process or binding the bridge's UNIX socket. See PLAN.md Task 1 (fix A1:
  * Codex question-type prompts unanswerable) for the bug this fixes: the old

@@ -9,7 +9,7 @@ declare(strict_types=1);
  * PromptInteractionService::answer_prompt()) still actually works against
  * whatever the CURRENTLY INSTALLED Claude Code CLI renders - not just
  * against a fixture text file frozen at whatever version last captured it.
- * Andres's own idea (2026-09-11), after the v2.1.269 trust-dialog rewrite
+ * Added after the v2.1.269 trust-dialog rewrite
  * (dropped its option numbers, reversed the default order - see
  * PromptParser.php's own docblock) broke this app silently, with every
  * existing test still green: they all replay a hand-typed or previously-
@@ -25,7 +25,7 @@ declare(strict_types=1);
  *
  * Zero real API cost either way: it only ever answers "No, exit"
  * (declining trust), which Claude Code handles entirely on its own before
- * any model call is ever made - confirmed live, see PromptParser.php's own
+ * any model call is ever made, see PromptParser.php's own
  * docblock for the same finding. It never gets anywhere near a real
  * conversation.
  *

@@ -118,14 +118,14 @@ class NotificationContentBuilder
      * Code's own tmux pane-title, which it doesn't necessarily keep current
      * across a long, multi-topic session (can be set once early on and never
      * updated) - prefixing a stale title onto an unrelated later command
-     * read as confusing noise rather than useful context, confirmed live.
+     * read as confusing noise rather than useful context.
      *
      * A Bash call's own `description` field (the short human-readable summary
      * Claude Code itself writes alongside every Bash tool_input, e.g. "Run
      * full test suite after X changes") IS prefixed when present, though -
      * real per-command context rather than a stale session-wide label, and
      * already the exact same source PromptParser::format_pending_tool_input() uses for the
-     * in-app blocked-prompt card (see there). Confirmed live: this is the
+     * in-app blocked-prompt card (see there). This is the
      * same descriptive text Anthropic's own Claude app shows (without a
      * command) for the identical permission prompt - this combines both.
      *
@@ -157,7 +157,7 @@ class NotificationContentBuilder
 
             // Without this, ExitPlanMode fell through to the generic
             // default below - "Run ExitPlanMode", a literal tool name
-            // that's meaningless to Andres, found live 2026-08-07. The
+            // that's meaningless to the user. The
             // plan's first line is usually its own "# Title" markdown
             // heading (see real plans saved under ~/.claude/plans/) -
             // stripped of the leading #/whitespace, that alone reads as a
@@ -186,8 +186,7 @@ class NotificationContentBuilder
      * pending tool (the trust dialog, a stale/missing PreToolUse record) -
      * blocked_reason is already the right thing to show for those.
      *
-     * push_truncate()'d here too (found live 2026-08-08, journalctl: two
-     * real send failures, "Size of payload must not be greater than 4078
+     * push_truncate()'d here too (real send failures were seen: "Size of payload must not be greater than 4078
      * octets", the Web Push/VAPID hard limit) - unlike every other body
      * branch in this file, this fallback used to return blocked_reason
      * completely unbounded. blocked_reason is normally just the short

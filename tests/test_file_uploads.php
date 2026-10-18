@@ -79,7 +79,7 @@ try {
     assert_equal(strlen($content), $saved['size'] ?? null, 'save_uploaded_file: reports the real decoded size');
     assert_equal($content, file_get_contents($fixtureWorkdir . '/.claude/uploads/note.txt'), 'save_uploaded_file: the file on disk actually contains the real (decoded) content, not the base64 text');
 
-    // .claude/ is NOT reliably already gitignored (confirmed live against
+    // .claude/ is NOT reliably already gitignored (confirmed against
     // the real sessioneer repo itself while building this
     // feature) - a self-contained .gitignore inside the uploads dir is
     // what actually protects an upload from showing up in `git status`.

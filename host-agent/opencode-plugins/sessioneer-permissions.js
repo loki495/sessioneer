@@ -5,7 +5,7 @@
  * OpenCode has NO queryable server-side state for a pending permission (the
  * permission lives in-memory in the session's own process; GET /permission,
  * /api/permission/request and /api/session/:id/permission all return empty,
- * and the DB stores no permission records - verified live 2026-08-25). The
+ * and the DB stores no permission records). The
  * pane can show a STALE dialog while a session is actively working, so a
  * footer heuristic false-positives. The authoritative signal is this plugin
  * hook: opencode fires permission.ask precisely when a permission is pending.

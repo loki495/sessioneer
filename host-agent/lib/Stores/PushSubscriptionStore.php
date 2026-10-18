@@ -11,7 +11,7 @@ use HostAgent\Services\Config;
  * shared DB - a phone's subscription shouldn't need to be redone just
  * because the host rebooted, so this lives in the `push_subscriptions`
  * table of Config::push_sqlite_path() (host-agent/state/, gitignored,
- * not tmpfs). Backed by a plain JSON file until 2026-08-24 - migrated to
+ * not tmpfs). Backed by a plain JSON file until it was migrated to
  * SQLite alongside PushSessionStateStore/PushQuotaStateStore for the same
  * atomicity reasons as SidecarStore's own migration; its lazy legacy-file
  * importer was later removed once every real subscription had cut over.

@@ -11,8 +11,7 @@ use HostAgent\Stores\SidecarStore;
  * kept together because both sides share two private helpers
  * (transcript_page_for_claude_session, read_attachment_for_claude_session)
  * neither would have any reason to exist without the other. Split out of
- * SessionService.php (2026-08-24 readability audit - see the plan this
- * followed) - depends on core SessionService (build_session_entry,
+ * SessionService.php - depends on core SessionService (build_session_entry,
  * title_cascade) but nothing else. Methods/bodies moved verbatim, no
  * behavior changes.
  */
@@ -72,7 +71,7 @@ class SessionDetailService
      * never has an $after) still pages backward via $before as before.
      *
      * $untilRealUserMessage - session.php's "Load until last message"
-     * button (Andres's own ask 2026-08-24) - see TranscriptService::
+     * button - see TranscriptService::
      * read_transcript_page()'s own docblock for the full contract. Only
      * ever combined with $before, same as a normal "Load older messages"
      * click.

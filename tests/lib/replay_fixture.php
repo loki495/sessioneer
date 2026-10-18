@@ -55,7 +55,7 @@ declare(strict_types=1);
  *                          is no longer read from the pane title at all
  *                          (PromptParser::pane_title_is_working() was
  *                          deleted outright once SessionStatusStore's hooks
- *                          became mandatory 2026-08-22, not left around
+ *                          became mandatory, not left around
  *                          unused - see "hook_status" below for what drives
  *                          "expect_working" now). Persists across steps
  *                          exactly like pane content does (unless a later
@@ -74,7 +74,7 @@ declare(strict_types=1);
  *                          replay_step(), through replay_write_session_status()
  *                          below (raw PDO/SQLite against the exact same
  *                          `session_status` table SessionStatusStore itself
- *                          uses, since 2026-08-24 - see that function's own
+ *                          uses - see that function's own
  *                          comment for why this isn't just a require of
  *                          SessionStatusStore, same "never in-process"
  *                          principle as replay_capture_pane() below).
@@ -84,7 +84,7 @@ declare(strict_types=1);
  *                          fallback for mode/working-status/blocked-prompt-
  *                          content beyond the trust dialog (which fires no
  *                          hooks at all, permanently) since these three
- *                          hooks became mandatory 2026-08-22 - a step that
+ *                          hooks became mandatory - a step that
  *                          omits "hook_status" simply won't show as working
  *                          or blocked, matching real behavior for a session
  *                          whose hooks never fired. Persists across steps
@@ -235,7 +235,7 @@ function replay_tmux_send_keys(string $sessionName, string $text, bool $literal 
  * directly via `tmux select-pane -T`, rather than trying to inject a raw
  * OSC title escape sequence through the fixture's `cat` pane and hoping
  * tmux's own terminal emulation parses it out of the echoed byte stream -
- * simpler, and verified live to
+ * simpler, and verified to
  * produce an identical result (tmux_session_panes()'s
  * `#{pane_pid}|#{pane_title}` format read is agnostic to which mechanism
  * actually set the title).
@@ -286,7 +286,7 @@ function replay_sessions_db(): PDO
  * (SqliteDb::sessions_schema(), inlined here rather than required from
  * host-agent - see this file's own "never in-process" doc comment) rather
  * than calling the real Store class. Needed since SidecarStore stopped
- * falling back to a legacy per-session JSON file (2026-08-24) - a fixture
+ * falling back to a legacy per-session JSON file - a fixture
  * session's identity now has to land straight in the same table
  * SidecarStore::read_sidecar() actually reads.
  *

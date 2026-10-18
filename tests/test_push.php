@@ -32,7 +32,7 @@ mkdir($fixtureDir, 0700, true);
 
 putenv('PUSH_TIMER_UNIT_PATH=' . $fixtureDir . '/sessioneer-push-check.timer');
 // PushSubscriptionStore/PushSessionStateStore/PushQuotaStateStore/
-// GlobalStateStore's real backing store since 2026-08-24 - no legacy JSON
+// GlobalStateStore's real backing store - no legacy JSON
 // file fallback exists anymore (removed once every real row had migrated,
 // see each store's own docblock), so this is the only isolation var these
 // stores need.
@@ -170,7 +170,7 @@ try {
 
     // --- PushDeliveryService::approve_deny_actions(): maps a blocked
     // prompt's numbered options onto Approve/Deny for sw.js's own one-tap
-    // notification action buttons (researched + built 2026-08-22) ---
+    // notification action buttons ---
 
     assert_equal(
         ['session' => 'cc-x', 'approve_option' => 1, 'deny_option' => 3],
@@ -234,9 +234,9 @@ try {
     assert_equal('Edit /tmp/foo.txt', NotificationContentBuilder::push_permission_body('Edit', ['file_path' => '/tmp/foo.txt', 'old_string' => 'a', 'new_string' => 'b']), 'push_permission_body: Edit shows the path');
     assert_equal('Run WebFetch', NotificationContentBuilder::push_permission_body('WebFetch', ['url' => 'https://example.com']), 'push_permission_body: an unrecognized tool falls back to "Run <tool>"');
 
-    // Found live 2026-08-07: before this case existed, ExitPlanMode fell
+    // Before this case existed, ExitPlanMode fell
     // through to the generic "Run <tool>" default - "Run ExitPlanMode",
-    // meaningless to Andres. The plan's first line is usually its own
+    // meaningless to the user. The plan's first line is usually its own
     // "# Title" markdown heading - stripped of the leading #, that alone
     // is a real one-line preview without rendering markdown.
     assert_equal('Refactor the login flow', NotificationContentBuilder::push_permission_body('ExitPlanMode', ['plan' => "# Refactor the login flow\n\nLots of detail here."]), 'push_permission_body: ExitPlanMode shows the plan\'s own heading, not "Run ExitPlanMode"');
@@ -248,7 +248,7 @@ try {
     assert_equal(141, mb_strlen(NotificationContentBuilder::push_permission_body('Bash', ['command' => $longCommand])), 'push_permission_body: a long command is truncated the same as push_finished_body');
 
     // A Bash call's own `description` field - real per-command context
-    // Claude Code itself writes, confirmed live to be exactly what
+    // Claude Code itself writes, confirmed to be exactly what
     // Anthropic's own Claude app shows (without the command) for the
     // identical prompt - IS prefixed, unlike the reverted session-title
     // prefix above (a stale, session-wide label rather than real
@@ -292,7 +292,7 @@ try {
         'push_blocked_body: a completely empty session still returns something, not a crash'
     );
 
-    // Found live 2026-08-08 (journalctl): two real push send failures,
+    // Real push send failures:
     // "Size of payload must not be greater than 4078 octets" - unlike
     // every other body branch, this fallback used to return blocked_reason
     // completely unbounded (a verbose AskUserQuestion question, or raw
@@ -329,7 +329,7 @@ try {
     // no "Claude" wording (iOS already attributes the notification to
     // this app via the icon and its own OS-level "from <manifest name>"
     // line, not something the Notification API can suppress - repeating
-    // "Claude" in the title text was redundant, per Andres) - the
+    // "Claude" in the title text was redundant) - the
     // session's own title is still folded in after, since "which
     // session" matters here in a way it doesn't for a single-conversation
     // app. Every branch is type-labeled, including the folder-trust
@@ -418,7 +418,7 @@ try {
 
     // --- PushDeliveryService::send_push_notification(): a genuinely malformed VAPID key must
     // report failure, not crash the whole (unattended, systemd-timer-run)
-    // process - found live: minishlink/web-push throws a hard
+    // process - minishlink/web-push throws a hard
     // ErrorException for this, not a normal failed-report return. ---
 
     $malformedKeySubscription = ['endpoint' => 'http://127.0.0.1:1/nothing-listens-here', 'keys' => ['p256dh' => 'x', 'auth' => 'y']];
@@ -601,9 +601,8 @@ try {
     $quotaStillOver = PushDeliveryService::check_and_send_quota_pushes(['session' => ['pct' => 100, 'resets_at' => $farFuture], 'week_all' => ['pct' => 30, 'resets_at' => $farFuture]]);
     assert_equal([], $quotaStillOver['notified'], 'check_and_send_quota_pushes: still at 100% on the next tick -> not notified again');
 
-    // --- Reset detection: rewritten 2026-08-23 (Andres's own proposal,
-    // after a real "reset" notification arrived ~29 minutes late in
-    // production) to key off a bucket's resets_at passing WALL-CLOCK TIME,
+    // --- Reset detection: rewritten after a real "reset" notification arrived ~29 minutes late in
+    // production, to key off a bucket's resets_at passing WALL-CLOCK TIME,
     // not a pct drop between ticks - see check_and_send_quota_pushes()'s
     // own docblock for the full "why" (QuotaService::quota_from_
     // statusline_state() only ever updates on a live session's own render,
