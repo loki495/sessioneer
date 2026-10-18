@@ -12,6 +12,10 @@ them, send messages, view transcripts, and kill sessions, all from a phone
 or any browser on your network. No accounts, no login - see "Network
 binding" below for how access is actually controlled.
 
+> **Early access**: Sessioneer is pre-release software (every GitHub release so far
+> is marked pre-release, and there is no changelog yet). Interfaces, the on-disk
+> state and the host-agent protocol may change between releases.
+
 > **Note on scope**: this project's primary author runs it as a personal
 > tool on their own machine, so day-to-day development is driven by that
 > use case. It's shared here as a working example and a starting point for
@@ -63,6 +67,8 @@ an installable PWA, meant to be added to an iOS/Android home screen):
   sessions can spawn a continuation you then follow in the dashboard (see
   [`docs/cli.md`](docs/cli.md)). Put it on your `PATH` by symlinking it, e.g.
   `ln -s "$PWD/bin/sessioneer" ~/.local/bin/sessioneer`.
+- **Quick Prompt (optional)**: a bearer-token `POST /api/quick-prompt` starts a
+  new headless session from a phone shortcut (see "iOS Quick Prompt" below).
 - **Kill sessions**: stop a running session without killing the whole
   terminal/tmux.
 - **View transcripts**: read the full conversation history for a session,
@@ -427,7 +433,6 @@ mechanism, notification-content details, and the quota-push variant.
 
 ## Current limitations
 
-
 - No accounts, no multi-user support — this is a single-operator tool for one person's
   own dev box, gated by network binding, not a login (see "Network binding" above).
 - Only manages sessions on the same host the container and host agent run on — no
@@ -453,6 +458,10 @@ check on every pull request, and merging to `master` requires it to pass.
 `bash tests/run.sh --live` adds opt-in checks against the real installed
 agent CLIs.
 
+## iOS Quick Prompt
+
+An optional token-authenticated `POST /api/quick-prompt` starts a new managed headless Claude (auto or plan mode) or Codex (read-only) session. It returns a short terminal answer or a trusted dashboard link after a bounded wait, with shared rate limiting and optional idempotency keys. Explicit first-line hints, or an optional local Ollama router reading the prompt, select validated agent/model/project/account settings; failed sessions and finished one-line answers are archived. [Configuration, API schema, security boundaries, and exact iOS Shortcut actions](docs/quick-prompt.md).
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the architecture deep-dive, file
@@ -461,7 +470,3 @@ structure, hook rationale, development workflow, and testing details.
 ## License
 
 [MIT](LICENSE)
-
-## iOS Quick Prompt
-
-An optional token-authenticated `POST /api/quick-prompt` starts a new managed headless Claude (auto or plan mode) or Codex (read-only) session. It returns a short terminal answer or a trusted dashboard link after a bounded wait, with shared rate limiting and optional idempotency keys. Explicit first-line hints, or an optional local Ollama router reading the prompt, select validated agent/model/project/account settings; failed sessions and finished one-line answers are archived. [Configuration, API schema, security boundaries, and exact iOS Shortcut actions](docs/quick-prompt.md).
