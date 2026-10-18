@@ -384,7 +384,8 @@ Implementation entry points:
   sidebar.
 - Web Push can notify on blocked and sufficiently long working-to-idle
   transitions. For Codex Remote this includes an observe-only blocked notice
-  that directs the user back to the owning app.
+  whose push body is the notice "Approval required in Codex Remote." (or
+  "Input required in Codex Remote."), directing the user back to the owning app.
 - The health panel is split into Global, Claude Code, OpenCode, and Codex
   checks. Antigravity hook installation and its optional quota timer currently
   use the manual commands in the README.
