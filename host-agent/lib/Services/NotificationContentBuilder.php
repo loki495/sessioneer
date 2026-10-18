@@ -201,12 +201,18 @@ class NotificationContentBuilder
      * at send time (which could cut a multi-byte UTF-8 character in half,
      * or land inside the JSON structure itself rather than just the text).
      *
-     * @param array{blocked_reason?:mixed, prompt_tool_name?:mixed, prompt_tool_input?:mixed} $session
+     * @param array{blocked_reason?:mixed, prompt_tool_name?:mixed, prompt_tool_input?:mixed, prompt_external?:mixed} $session
      */
     public static function push_blocked_body(array $session): string
     {
         $toolName = is_string($session['prompt_tool_name'] ?? null) ? $session['prompt_tool_name'] : null;
         $toolInput = is_array($session['prompt_tool_input'] ?? null) ? $session['prompt_tool_input'] : null;
+
+        // A Codex Remote-owned block has no tool of its own to describe; its
+        // reason text is the notice that points back to Codex Remote.
+        if (!empty($session['prompt_external'])) {
+            return self::push_truncate((string)($session['blocked_reason'] ?? 'Waiting on input'));
+        }
 
         if ($toolName !== null && $toolName !== 'AskUserQuestion' && $toolInput !== null) {
             return self::push_permission_body($toolName, $toolInput);
