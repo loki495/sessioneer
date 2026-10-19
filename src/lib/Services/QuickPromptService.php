@@ -92,7 +92,7 @@ final class QuickPromptService
         if ($input['prompt'] === '' || strlen($input['prompt']) > 16384 || str_contains($input['prompt'], "\0")) return self::error('invalid_prompt', 'Prompt must contain 1–16384 UTF-8 bytes', 422);
         $base = getenv('QUICK_PROMPT_BASE_URL') ?: '';
         $url = parse_url($base);
-        if (!is_array($url) || ($url['scheme'] ?? '') !== 'https' || empty($url['host']) || isset($url['user'], $url['pass']) || isset($url['user']) || isset($url['query']) || isset($url['fragment'])) return self::error('not_configured', 'Quick Prompt is not configured', 503);
+        if (!is_array($url) || ($url['scheme'] ?? '') !== 'https' || empty($url['host']) || isset($url['user']) || isset($url['query']) || isset($url['fragment'])) return self::error('not_configured', 'Quick Prompt is not configured', 503);
         $key = $server['HTTP_IDEMPOTENCY_KEY'] ?? null;
         if ($key !== null && (!is_string($key) || preg_match('/^[a-zA-Z0-9_.:-]{1,128}$/D', $key) !== 1)) return self::error('invalid_idempotency_key', 'Invalid idempotency key', 422);
         $result = ($this->call)(['action' => 'quick_prompt_start', 'input' => $input, 'key' => hash('sha256', $key ?? bin2hex(random_bytes(32)))], 10.0);

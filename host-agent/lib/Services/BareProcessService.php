@@ -146,11 +146,9 @@ class BareProcessService
 
     /**
      * The Claude Code CLI's own background daemon (`claude daemon run`)
-     * keeps a real-time roster of every
-     * "spare"/pty-host worker pair it manages - a warm pool used to make
-     * new/resumed sessions start instantly - at
-     * ~/.claude/daemon/roster.json. A session running entirely through this pool would
-     * otherwise keep showing up as archived: a worker dispatched this way has NO --resume/
+     * keeps a roster of its warm-pool "spare"/pty-host worker pairs at
+     * ~/.claude/daemon/roster.json. A session running through this pool would
+     * otherwise show up as archived: a worker dispatched this way has NO --resume/
      * --session-id in its own process's argv at all (the daemon hands it
      * the target transcript over a private rendezvous socket instead), so
      * neither agent_session_id_from_resume_arg() nor the statusline-marker

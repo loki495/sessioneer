@@ -71,42 +71,26 @@ class AuthService
 
         $host = $_SERVER['HTTP_HOST'] ?? null;
 
-        return $sourceAuthority === $host || $sourceHost === $host;
+        return $sourceAuthority === $host;
     }
 
     /**
      * Starts (or resumes) the PHP session used for the CSRF token and flash
-     * messages - session_start() itself is idempotent-safe to call more than
-     * once (a second call is a silent no-op), but callers should still only
-     * need to call this once per request, near the top before any output.
+     * messages. Safe to call more than once; a second call is a no-op.
      *
-     * Uses the 'private_no_expire' cache limiter instead of PHP's default
-     * 'nocache' - the default sends Cache-Control: no-store plus an
-     * already-past Expires date, which webview-based embeds (e.g. Home
-     * Assistant's iframe "Webpage" card, backed by WKWebView on iOS) can't
-     * place in their back-forward cache; resuming/reloading such a page then
-     * surfaces as an expired-page error instead of a normal refetch.
-     * private_no_expire still keeps the response out of shared/public caches
-     * (correct, since it carries a CSRF token and flash state) without that
-     * combination.
+     * 'private_no_expire' instead of PHP's default 'nocache': no-store plus a
+     * past Expires date can't be placed in the back-forward cache by webview
+     * embeds (WKWebView in an iframe card), so resuming such a page shows an
+     * expired-page error. It still keeps the response out of shared caches,
+     * which matters because it carries the CSRF token and flash state.
+     * session_cache_expire(1) caps max-age at 1 minute so a plain navigation
+     * never serves a stale session.php from PHP's 180-minute default.
      *
-     * session_cache_expire(1) pins the resulting max-age to 1 minute, not
-     * PHP's 180-minute default - the default let a browser
-     * serve a 3-hour-stale copy of session.php (old HTML/JS) on a plain
-     * navigation after a code change, no reload needed to trigger it. A short
-     * max-age keeps normal navigations fresh while still avoiding no-store,
-     * so the bfcache fix above still holds.
-     *
-     * Also overrides PHP's default 24-minute session.gc_maxlifetime (and
-     * matches the cookie's own lifetime to it, via SESSION_LIFETIME_SECONDS)
-     * - a tab left open past that (e.g. backgrounded on a
-     * phone, polling paused) still holds the CSRF token from its original
-     * page load, but the server-side session backing it had already been
-     * garbage-collected, so the next POST 403'd with "invalid or missing
-     * CSRF token" for no reason visible to the user. As this class's own doc
-     * comment notes, there's no login here - the real access boundary is
-     * the LAN-only network binding, and CSRF just blocks a stray cross-site
-     * POST - so there's no security reason for a short-lived session.
+     * The lifetime is raised above PHP's 24-minute gc_maxlifetime and the
+     * cookie matched to it: a long-open tab keeps its CSRF token, and a
+     * garbage-collected session would reject its next POST. There is no login
+     * here (the LAN binding is the access boundary), so nothing is gained from
+     * a short-lived session.
      */
     public static function start_app_session(): void
     {
