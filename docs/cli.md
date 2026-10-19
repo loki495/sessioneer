@@ -9,6 +9,9 @@ sessioneer --workdir ~/www/some/project --model sonnet --mode plan "Review the f
 # continue a conversation (reuses the live session if there is one)
 sessioneer --resume <claude-conversation-id> "Now apply the fix"
 
+# last known usage stats for every agent and Claude account, as JSON
+sessioneer --usage
+
 # prompt from stdin, full reply as JSON
 echo "Summarise the open TODOs" | sessioneer --json -
 ```
@@ -29,6 +32,7 @@ echo "Summarise the open TODOs" | sessioneer --json -
 | `--send TARGET` | Deliver the prompt to another session (name or conversation id) from inside a session. The host agent prepends `[sessioneer peer: <name> · <workdir> · <branch>]` from its own records of the sender, so the message body cannot set it. A blocked peer accepts it and sees it when it resumes. Refused outside a session, for an unknown target, a blank message, or a message to yourself. |
 | `--whoami` | Print this session's own name (`SESSIONEER_SELF`); exits 1 outside a session. |
 | `--peers` | List the other live sessions in this session's git repository (worktrees included) as tab-separated name, status, branch and directory. |
+| `--usage` | Print the last known usage (quota) stats as JSON and exit 0: `agents`, one entry per agent (`claude`, `antigravity`, `opencode`, `codex`), with Claude's configured accounts nested under `agents.claude.profiles` (the default account keyed `personal`). Each entry has `label`, `ok`, `quota`, `fetched_at` (unix time, or null) and `message` (why there is no data yet). Read-only: it returns what the dashboard footer shows and never refreshes anything. Exits 1 if the host agent is unreachable. |
 | `--json` | Print the full reply as JSON instead of the plain output. |
 
 On success it prints the session name (the dashboard opens it at `session.php?session=NAME`) and exits 0; any refusal prints `sessioneer: <message>` on stderr and exits 1.
@@ -49,6 +53,8 @@ Every session Sessioneer spawns (headless or tmux) gets `SESSIONEER_SELF=<its na
 
 There is no separate "archive": stopping a session archives its conversation, exactly like the dashboard's Kill. `--kill` only manages headless Claude sessions; a terminal (tmux) session or a bare process is refused, and is stopped from the dashboard.
 
+`--usage` is the one option that is not a launcher action: it sends the dashboard's own `quota` request and prints its `agents` map with `claude_profiles` nested under the Claude entry. The other options combine only with their own modifiers (`--kill`, `--list`, `--send`, `--peers` and `--usage` are mutually exclusive).
+
 The CLI sends one `launch`, `launch_kill`, `launch_list`, `launch_send` or `launch_peers` request to the host agent. `HostAgent\Launch\LaunchService` picks a `SessionLauncher` by agent id; the interface documents the request and reply keys for all five. Supporting another agent means one new class implementing `SessionLauncher` and one line in `LaunchService::LAUNCHERS`; the CLI and the action do not change. Not yet offered: a thinking/effort level (the stream-json protocol is unconfirmed for it) and agents other than Claude.
 
-Tests: `tests/test_launch.php`.
+Tests: `tests/test_launch.php`, `tests/test_cli_usage.php`.

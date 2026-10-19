@@ -36,6 +36,7 @@ function usage(): string
       Message a peer:    sessioneer --send TARGET "message"
       Who am I:          sessioneer --whoami
       Peer sessions:     sessioneer --peers [--json]
+      Usage stats:       sessioneer --usage
 
     PROMPT is the message to deliver; "-" reads it from stdin. A new session
     requires one; a resume does not.
@@ -65,6 +66,10 @@ function usage(): string
       --whoami          print this session's own name (SESSIONEER_SELF)
       --peers           list the other live sessions in this session's git
                         repository: name, status, branch, directory
+      --usage           print the last known usage (quota) stats as JSON: one
+                        entry per agent, with Claude's account profiles nested
+                        under it, each with its fetched_at time. Read-only; never
+                        refreshes anything.
       --json            print the full reply as JSON instead of the plain output
       -h, --help        this text
 
@@ -80,7 +85,7 @@ function fail(string $message): never
     exit(1);
 }
 
-$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'mode:', 'profile:', 'task-tools', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers'], $restIndex);
+$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'mode:', 'profile:', 'task-tools', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage'], $restIndex);
 
 if ($opts === false) {
     fail("bad options\n\n" . usage());
@@ -138,8 +143,22 @@ $list = isset($opts['list']);
 $send = $opt('send');
 $peers = isset($opts['peers']);
 
-if (count(array_filter([$kill !== null, $list, $send !== null, $peers])) > 1) {
-    fail('--kill, --list, --send and --peers cannot be combined');
+if (count(array_filter([$kill !== null, $list, $send !== null, $peers, isset($opts['usage'])])) > 1) {
+    fail('--kill, --list, --send, --peers and --usage cannot be combined');
+}
+
+if (isset($opts['usage'])) {
+    $reply = AgentClient::agent_call(['action' => 'quota']);
+
+    if (!isset($reply['agents'], $reply['claude_profiles'])) {
+        fail((string)($reply['message'] ?? 'usage unavailable'));
+    }
+
+    $agents = $reply['agents'];
+    $agents['claude']['profiles'] = $reply['claude_profiles'];
+
+    echo json_encode(['agents' => $agents], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
+    exit(0);
 }
 
 $action = $kill !== null ? 'launch_kill' : ($list ? 'launch_list' : ($send !== null ? 'launch_send' : ($peers ? 'launch_peers' : 'launch')));
