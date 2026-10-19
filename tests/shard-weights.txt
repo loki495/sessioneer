@@ -23,6 +23,7 @@ test_file_uploads.php 1
 test_git_branch_service.php 1
 test_headless_status_reconciliation.php 46
 test_host_allowlist.php 1
+test_cli_usage.php 2
 test_launch.php 12
 test_markdown_parity_browser.php 1
 test_markdown.php 1
