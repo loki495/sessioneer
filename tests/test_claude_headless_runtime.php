@@ -292,7 +292,7 @@ assert_equal('Session not found', $rt->send_message('claude-headless-t' . $tag .
 assert_equal('Rejected: empty message', $rt->send_message($s1, '  ')['message'], 'a blank message is rejected');
 assert_equal([], $fake->calls, 'neither reaches the manager');
 assert_true($rt->send_message($s1, 'hello')['ok'], 'a message is sent');
-assert_equal(['session' => $s1, 'content' => 'hello'], $fake->calls[0]['params'], 'as plain text content');
+assert_equal(['session' => $s1, 'content' => 'hello', 'await_hooks' => true], $fake->calls[0]['params'], 'as plain text content, held until its hooks have run');
 $fake->responses['sessioneer/sendInput'] = ['ok' => false, 'message' => 'Spawning is disabled: nope'];
 assert_equal('Spawning is disabled: nope', $rt->send_message($s1, 'hello')['message'], 'a manager refusal is reported');
 unset($fake->responses['sessioneer/sendInput']);

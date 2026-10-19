@@ -131,6 +131,16 @@ assert_equal(true, $noPrompt['ok'] ?? null, 'reusing without a prompt is fine');
 assert_equal(false, $noPrompt['prompt_sent'] ?? null, 'and sends nothing');
 assert_equal(1, count(SidecarStore::list_runtime_sidecars('headless')), 'no second session was opened on the conversation');
 
+echo "Hook-refused prompt\n";
+$held = launch(['agent_session_id' => $conversationId, 'prompt' => 'HOOKBLOCK idle too long']);
+assert_equal(false, $held['ok'] ?? null, 'a prompt a UserPromptSubmit hook refuses is reported as a failure, not delivered');
+assert_equal(false, $held['prompt_sent'] ?? null, 'with prompt_sent false');
+assert_contains('Prompt not sent: Idle 935 min', (string)($held['message'] ?? ''), 'and the hook\'s reason reaches the caller');
+assert_true((bool)wait_until(static fn (): bool => status_of($name) === 'idle'), 'the session stays idle');
+$again = launch(['agent_session_id' => $conversationId, 'prompt' => 'second try']);
+assert_equal(true, $again['prompt_sent'] ?? null, 'a re-send is delivered');
+assert_true((bool)wait_until(static fn (): bool => status_of($name) === 'idle' && has_result($m, 'echo: second try')), 'and answered');
+
 echo "Resume\n";
 $transcriptDir = $root . '/home/.claude/projects/' . preg_replace('/[^A-Za-z0-9]/', '-', $workdir);
 @mkdir($transcriptDir, 0700, true);

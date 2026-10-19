@@ -351,6 +351,7 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
         $reply = $this->client->request('sessioneer/sendInput', [
             'session' => $sessionRef,
             'content' => $attachmentPaths === [] ? $text : $this->content_with_attachments($text, $attachmentPaths, $workdir),
+            'await_hooks' => true,
         ]);
 
         return ($reply['ok'] ?? false) === true
