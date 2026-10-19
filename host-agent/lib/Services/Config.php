@@ -376,7 +376,7 @@ class Config
      * How long Take over waits for the process it just stopped to actually
      * exit before resuming its conversation. A real Claude flushes state on
      * SIGTERM/SIGHUP and can take several seconds; resuming earlier is refused
-     * (two writers on one transcript), which used to strand the conversation.
+     * (two writers on one transcript).
      */
     public static function take_over_exit_wait_seconds(): float
     {

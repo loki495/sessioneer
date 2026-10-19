@@ -16,15 +16,10 @@ services:
         ARG APP_GID=1000
         RUN addgroup -g "${APP_GID}" appgroup \
             && adduser -D -H -u "${APP_UID}" -G appgroup appuser
-        # Default upload_max_filesize=2M/post_max_size=8M rejects a
-        # typical phone-camera photo (or, worse, a screen-recording video)
-        # outright - raised for the file-uploads feature (upload_file.php).
-        # App-level max_upload_bytes() in host-agent/lib/Services/
-        # UploadService.php independently enforces a friendlier-error 64MB
-        # cap on top of this - these two are set a few MB above that so
-        # multipart/form-data's own framing overhead never trips the ini
-        # limit first with a generic PHP error instead of the app's
-        # friendlier one.
+        # Phone photos and screen recordings exceed PHP's 2M/8M defaults.
+        # UploadService::max_upload_bytes() enforces the real 64MB cap with a
+        # friendlier error; these sit a few MB above it so multipart framing
+        # overhead never trips the ini limit first.
         RUN { \
                 echo 'upload_max_filesize = 68M'; \
                 echo 'post_max_size = 70M'; \
@@ -43,11 +38,8 @@ services:
       # hostname get a 421, which is what stops DNS rebinding.
       SESSIONEER_BIND_ADDR: ${BIND_ADDR:-127.0.0.1}
       SESSIONEER_ALLOWED_HOSTS: ${ALLOWED_HOSTS:-}
-      # php -S is single-threaded by default, so session.php's 3 parallel poll
-      # requests (history/info/sidebar) were queuing behind each other instead
-      # of actually running concurrently - measured ~165ms serialized vs an
-      # expected ~60-80ms in parallel. This pre-forks worker processes so they
-      # don't share one PHP thread. Supported since PHP 7.4.
+      # php -S is single-threaded by default; pre-fork workers so the session
+      # page's parallel poll requests run concurrently (PHP 7.4+).
       PHP_CLI_SERVER_WORKERS: 4
       QUICK_PROMPT_API_TOKEN: ${QUICK_PROMPT_API_TOKEN:-}
       QUICK_PROMPT_BASE_URL: ${QUICK_PROMPT_BASE_URL:-}

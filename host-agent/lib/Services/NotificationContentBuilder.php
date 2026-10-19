@@ -186,19 +186,16 @@ class NotificationContentBuilder
      * pending tool (the trust dialog, a stale/missing PreToolUse record) -
      * blocked_reason is already the right thing to show for those.
      *
-     * push_truncate()'d here too (real send failures were seen: "Size of payload must not be greater than 4078
-     * octets", the Web Push/VAPID hard limit) - unlike every other body
-     * branch in this file, this fallback used to return blocked_reason
-     * completely unbounded. blocked_reason is normally just the short
+     * push_truncate()'d because the Web Push/VAPID payload limit is 4078
+     * octets and this fallback has no other bound. blocked_reason is normally just the short
      * question line (see SessionService::build_session_entry()'s own
      * 'blocked_reason' => $prompt['question'] ?? null), but a verbose
      * AskUserQuestion question, or pane-scraped text for a stale/missing
      * PreToolUse record with no cleanly-parsed question at all, can run
      * long enough on its own to be the one field that pushes the whole
-     * JSON-encoded {title, body, url} payload over the limit - fixed at
-     * the source here, not by truncating the assembled payload as a whole
-     * at send time (which could cut a multi-byte UTF-8 character in half,
-     * or land inside the JSON structure itself rather than just the text).
+     * JSON-encoded {title, body, url} payload over the limit. Truncating
+     * here, not the assembled payload, avoids cutting a multi-byte UTF-8
+     * character or the JSON structure itself.
      *
      * @param array{blocked_reason?:mixed, prompt_tool_name?:mixed, prompt_tool_input?:mixed, prompt_external?:mixed} $session
      */
