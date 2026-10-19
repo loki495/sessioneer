@@ -212,7 +212,10 @@ New Claude sessions run headless by default (below); the tmux runtime
 `PermissionRequest`, `UserPromptSubmit`, and `Stop`) maintain transcript
 identity, flow state, permission details, mode, and the last response. The
 installer merges only Sessioneer's entries and refuses to overwrite malformed
-JSON. Already-running Claude sessions may need to be resumed or restarted
+JSON. The health check treats `$HOME`, `${HOME}` and a leading `~` as the home
+directory, so a settings file kept in a dotfiles repo with portable paths still
+counts as installed (the same goes for the Codex and Antigravity hook checks).
+Already-running Claude sessions may need to be resumed or restarted
 before newly-installed hooks take effect.
 
 Permission approvals, free-text questions, multi-question

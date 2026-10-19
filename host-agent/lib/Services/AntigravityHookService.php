@@ -60,7 +60,7 @@ class AntigravityHookService
 
         if (!$grouped) {
             foreach ($entries as $handler) {
-                if (is_array($handler) && ($handler['command'] ?? null) === $command) {
+                if (is_array($handler) && Config::hook_command_matches($handler['command'] ?? null, $command)) {
                     return true;
                 }
             }
@@ -72,7 +72,7 @@ class AntigravityHookService
             $hooks = is_array($matcherGroup) ? ($matcherGroup['hooks'] ?? []) : [];
 
             foreach ((is_array($hooks) ? $hooks : []) as $hook) {
-                if (is_array($hook) && ($hook['command'] ?? null) === $command) {
+                if (is_array($hook) && Config::hook_command_matches($hook['command'] ?? null, $command)) {
                     return true;
                 }
             }

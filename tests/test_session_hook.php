@@ -189,6 +189,15 @@ try {
 
     unlink($settingsPath);
 
+    // --- hook_command_matches(): $HOME / ${HOME} / ~ spellings of the home directory count as the same command, other differences do not ---
+
+    assert_equal(true, Config::hook_command_matches('php $HOME/a/b.php', 'php /home/u/a/b.php', '/home/u'), 'hook_command_matches: $HOME form matches the absolute path');
+    assert_equal(true, Config::hook_command_matches('php ${HOME}/a/b.php', 'php /home/u/a/b.php', '/home/u'), 'hook_command_matches: ${HOME} form matches');
+    assert_equal(true, Config::hook_command_matches('php ~/a/b.php', 'php /home/u/a/b.php', '/home/u'), 'hook_command_matches: ~ form matches');
+    assert_equal(false, Config::hook_command_matches('php $HOME/a/other.php', 'php /home/u/a/b.php', '/home/u'), 'hook_command_matches: a different script never matches');
+    assert_equal(false, Config::hook_command_matches('php $HOMER/a/b.php', 'php /home/u/a/b.php', '/home/u'), 'hook_command_matches: $HOMER is not $HOME');
+    assert_equal(false, Config::hook_command_matches(null, 'php /home/u/a/b.php', '/home/u'), 'hook_command_matches: a missing command never matches');
+
     // --- HookService::session_start_hook_present()/HookService::pre_tool_use_hook_present(): key off the exact command string, not just hook presence ---
 
     assert_equal(false, HookService::session_start_hook_present(['hooks' => ['SessionStart' => [['matcher' => '*', 'hooks' => [['type' => 'command', 'command' => 'something-unrelated.sh']]]]]]), 'session_start_hook_present: false for an unrelated SessionStart hook');

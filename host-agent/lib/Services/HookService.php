@@ -53,7 +53,7 @@ class HookService
             $hooks = is_array($matcherGroup) ? ($matcherGroup['hooks'] ?? []) : [];
 
             foreach ((is_array($hooks) ? $hooks : []) as $hook) {
-                if (is_array($hook) && ($hook['command'] ?? null) === $command) {
+                if (is_array($hook) && Config::hook_command_matches($hook['command'] ?? null, $command)) {
                     return true;
                 }
             }

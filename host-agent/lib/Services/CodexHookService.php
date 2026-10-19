@@ -51,7 +51,7 @@ class CodexHookService
             $hooks = $group['hooks'] ?? [];
 
             foreach (is_array($hooks) ? $hooks : [] as $hook) {
-                if (is_array($hook) && ($hook['command'] ?? null) === Config::codex_status_hook_command()) {
+                if (is_array($hook) && Config::hook_command_matches($hook['command'] ?? null, Config::codex_status_hook_command())) {
                     return true;
                 }
             }

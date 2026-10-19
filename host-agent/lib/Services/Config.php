@@ -315,6 +315,28 @@ class Config
         return self::sessioneer_config('WWW_ROOT', self::home_root());
     }
 
+    /**
+     * True if a hook command found in an agent's settings file is the expected
+     * command. Hook commands run through a shell, so a dotfiles-managed
+     * settings file may spell the home directory as $HOME, ${HOME} or a leading
+     * ~ instead of the absolute path this app writes; those count as the same
+     * command.
+     */
+    public static function hook_command_matches(mixed $installed, string $expected, ?string $home = null): bool
+    {
+        if (!is_string($installed)) {
+            return false;
+        }
+
+        $home ??= (string)getenv('HOME');
+
+        if ($home !== '') {
+            $installed = preg_replace('/\$\{HOME\}|\$HOME(?![A-Za-z0-9_])|(?<=\s)~(?=\/)/', $home, $installed) ?? $installed;
+        }
+
+        return $installed === $expected;
+    }
+
     public static function home_root(): string
     {
         return self::sessioneer_config('HOME_ROOT', getenv('HOME') ?: '');
