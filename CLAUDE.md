@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+Delivery: PR. The default branch has required status checks, so changes land through a throwaway-branch PR (git-workflow skill, GH006); the remote branch name doesn't matter. Commit on the default branch locally; push only after explicit confirmation.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What this is
