@@ -288,6 +288,20 @@ assert_true(($interrupted['ok'] ?? false) === true, 'interrupt is acknowledged b
 assert_true((bool)wait_until(static fn (): bool => has_result($m1, 'echo: follow-up while busy') && status_is($sn(1), 'idle')), 'the queued message still runs after the interrupt, then the session is idle');
 assert_true((bool)wait_until(static fn (): bool => SessionStatusStore::read_status($sn(1))['last_turn_error'] === null), 'and the follow-up\'s success clears the interrupted turn\'s error');
 
+echo "Turns: a prompt refused by a UserPromptSubmit hook\n";
+$accepted = call($m1, 'sessioneer/sendInput', ['session' => $sn(1), 'content' => 'plain prompt', 'await_hooks' => true]);
+assert_true(($accepted['ok'] ?? false) === true, 'a prompt the hooks pass is acknowledged once it is past them');
+assert_true((bool)wait_until(static fn (): bool => status_is($sn(1), 'idle')), 'and its turn completes');
+$held = call($m1, 'sessioneer/sendInput', ['session' => $sn(1), 'content' => 'HOOKBLOCK stale', 'await_hooks' => true]);
+assert_true(($held['ok'] ?? true) === false && str_starts_with((string)($held['message'] ?? ''), \HostAgent\Runtimes\ClaudeHeadlessManager::PROMPT_HELD_PREFIX), 'a hook-blocked prompt is reported as not sent, with the hook\'s reason');
+assert_true(str_contains((string)$held['message'], 'Idle 935 min'), 'the hook\'s own reason reaches the caller');
+assert_true((bool)wait_until(static fn (): bool => status_is($sn(1), 'idle')), 'the session returns to idle');
+assert_equal(0, call($m1, 'sessioneer/status', ['session' => $sn(1)])['open_turns'], 'the refused prompt leaves no open turn');
+assert_true(str_starts_with((string)SessionStatusStore::read_status($sn(1))['last_turn_error'], \HostAgent\Runtimes\ClaudeHeadlessManager::PROMPT_HELD_PREFIX), 'and the dashboard sees it as the last turn error');
+$resent = call($m1, 'sessioneer/sendInput', ['session' => $sn(1), 'content' => 'plain re-send', 'await_hooks' => true]);
+assert_true(($resent['ok'] ?? false) === true, 'a re-send goes through');
+assert_true((bool)wait_until(static fn (): bool => has_result($m1, 'echo: plain re-send') && SessionStatusStore::read_status($sn(1))['last_turn_error'] === null), 'and clears the notice');
+
 echo "Turns: a message queued during a silent in-flight tool call\n";
 call($m1, 'sessioneer/sendInput', ['session' => $sn(1), 'content' => 'SLOW_THEN_QUEUE first']);
 assert_true((bool)wait_until(static fn (): bool => status_is($sn(1), 'working')), 'the turn shows as working while the fake child is silently "mid tool call"');

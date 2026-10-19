@@ -27,6 +27,9 @@ declare(strict_types=1);
  *               of one per message - reproduces the suspected real-CLI shape
  *               seen live (a message queued mid-tool-call
  *               that never produced its own separate result)
+ *   HOOKBLOCK   a UserPromptSubmit hook refuses the prompt (decision=block, as the
+ *               idle-cache hook does): no turn, no result
+ *   (every prompt gets a passing UserPromptSubmit hook_response first)
  *   CRASH       exit 3 mid-turn with a stderr message, no result
  *   CLEAR       emit conversation_reset and continue under a NEW session id
  *   APIKEY      report an API key as the credential source
@@ -246,6 +249,16 @@ while (true) {
     $text = text_of($msg);
     $forceApiKey = str_contains($text, 'APIKEY');
     init();
+
+    $blocked = str_contains($text, 'HOOKBLOCK');
+    $hookOut = $blocked ? json_encode(['decision' => 'block', 'reason' => 'Idle 935 min with a 228k-token context. Not sent.']) : '';
+    emit(['type' => 'system', 'subtype' => 'hook_started', 'hook_name' => 'UserPromptSubmit', 'hook_event' => 'UserPromptSubmit']);
+    emit(['type' => 'system', 'subtype' => 'hook_response', 'hook_name' => 'UserPromptSubmit', 'hook_event' => 'UserPromptSubmit',
+        'output' => $hookOut, 'stdout' => $hookOut, 'stderr' => '', 'exit_code' => 0, 'outcome' => 'success']);
+
+    if ($blocked) {
+        continue;
+    }
 
     if (str_contains($text, 'CRASH')) {
         fwrite(STDERR, "fake claude: simulated crash\n");

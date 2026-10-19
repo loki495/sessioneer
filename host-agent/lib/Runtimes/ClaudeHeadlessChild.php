@@ -86,6 +86,9 @@ final class ClaudeHeadlessChild
     /** @var array<string, array{client: resource, deadline: float}> control_request id => client awaiting the control_response */
     public array $controlWaiters = [];
 
+    /** @var list<array{client: resource, deadline: float, reply: array<string, mixed>}> sendInput callers waiting to learn whether the prompt got past the UserPromptSubmit hooks */
+    public array $promptWaiters = [];
+
     /** The Claude account (agents.php profile name) this child runs under; null is the default account. */
     public ?string $profile = null;
 

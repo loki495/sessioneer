@@ -168,6 +168,13 @@ service loads its code once, so restart it after editing it; restarting it stops
 every process, sessions resume on their next message, and any open prompt is
 lost.
 
+A message waits briefly for the process's `UserPromptSubmit` hooks to run before
+it is acknowledged. If a hook refuses the prompt (for example one that holds the
+first message after a long idle gap because the prompt cache has expired), the
+sender gets "Prompt not sent: <the hook's reason>" instead of a delivery
+confirmation: the CLI exits non-zero and the dashboard shows the same text as the
+session's last turn error. Re-sending the same prompt goes through.
+
 The New Session form's "Runs in" list preselects Headless, with Terminal (tmux)
 as the alternative; a new session started while the manager is down fails with a
 "Cannot reach Claude headless manager" message rather than quietly opening a

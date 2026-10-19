@@ -44,6 +44,12 @@ final class ClaudeHeadlessManager
 
     private const CONTROL_TIMEOUT_SECONDS = 15.0;
 
+    /** Longest a sendInput caller waits to hear whether a UserPromptSubmit hook blocked its prompt; silence means accepted. */
+    private const PROMPT_HOOK_WAIT_SECONDS = 3.0;
+
+    /** Starts the `last_turn_error` of a prompt a hook refused; callers and the UI recognise it by this. */
+    public const PROMPT_HELD_PREFIX = 'Prompt not sent: ';
+
     /** Extra seconds between SIGTERM and SIGKILL. */
     private const KILL_AFTER_TERM_SECONDS = 2.0;
 
@@ -381,7 +387,7 @@ final class ClaudeHeadlessManager
             'sessioneer/list' => $this->list_children(),
             'sessioneer/status' => $this->status($session),
             'sessioneer/spawn' => $this->spawn_request($session, $params),
-            'sessioneer/sendInput' => $this->send_input($session, $params),
+            'sessioneer/sendInput' => $this->send_input($session, $params, $stream),
             'sessioneer/pendingPrompt' => $this->pending_prompt($session),
             'sessioneer/answerPrompt' => $this->answer_prompt($session, $params),
             'sessioneer/interrupt' => $this->control_request($session, ['subtype' => 'interrupt'], $stream),
@@ -442,9 +448,10 @@ final class ClaudeHeadlessManager
 
     /**
      * @param array<string, mixed> $params
-     * @return array<string, mixed>
+     * @param resource $stream
+     * @return array<string, mixed>|null null = the reply is deferred until the prompt's hooks have run
      */
-    private function send_input(string $session, array $params): array
+    private function send_input(string $session, array $params, $stream): ?array
     {
         $tracked = $this->tracked($session);
 
@@ -500,7 +507,18 @@ final class ClaudeHeadlessManager
             $this->persist_status($session, ['status' => 'working', 'blocked' => null, 'last_turn_error' => null]);
         }
 
-        return ['ok' => true, 'message' => 'Message sent', 'queued' => $child->openTurns > 1];
+        $reply = ['ok' => true, 'message' => 'Message sent', 'queued' => $child->openTurns > 1];
+
+        // A UserPromptSubmit hook can refuse the prompt after it was written,
+        // and the stream gives no other sign: hold the reply until the hooks
+        // have run so the caller is told instead of assuming delivery.
+        if (!empty($params['await_hooks'])) {
+            $child->promptWaiters[] = ['client' => $stream, 'deadline' => microtime(true) + self::PROMPT_HOOK_WAIT_SECONDS, 'reply' => $reply];
+
+            return null;
+        }
+
+        return $reply;
     }
 
     /** @return array<string, mixed> */
@@ -881,6 +899,10 @@ final class ClaudeHeadlessManager
                 continue;
             }
 
+            if ($child->promptWaiters !== [] && $now > $child->promptWaiters[0]['deadline']) {
+                $this->release_prompt_waiters($child);
+            }
+
             foreach ($child->controlWaiters as $requestId => $waiter) {
                 if ($now > $waiter['deadline']) {
                     unset($child->controlWaiters[$requestId]);
@@ -1024,6 +1046,12 @@ final class ClaudeHeadlessManager
         $type = $event['type'] ?? null;
         $child->lastActivity = time();
 
+        // Only a turn that has really started proves the prompt got past the
+        // hooks; init, status and rate-limit events can arrive before them.
+        if ($child->promptWaiters !== [] && in_array($type, ['assistant', 'user', 'result', 'control_request'], true)) {
+            $this->release_prompt_waiters($child);
+        }
+
         if ($type === 'assistant') {
             foreach (is_array($event['message']['content'] ?? null) ? $event['message']['content'] : [] as $block) {
                 if (is_array($block) && ($block['type'] ?? null) === 'tool_use') {
@@ -1036,6 +1064,7 @@ final class ClaudeHeadlessManager
             match ($event['subtype'] ?? null) {
                 'init' => $this->on_init($child, $event),
                 'status' => $this->on_mode($child, $event['permissionMode'] ?? null),
+                'hook_response' => $this->on_hook_response($child, $event),
                 default => null,
             };
         } elseif ($type === 'control_request') {
@@ -1223,6 +1252,46 @@ final class ClaudeHeadlessManager
     }
 
     /** @param array<string, mixed> $event */
+    private function on_hook_response(ClaudeHeadlessChild $child, array $event): void
+    {
+        if (($event['hook_event'] ?? null) !== 'UserPromptSubmit') {
+            return;
+        }
+
+        $out = json_decode(is_string($event['stdout'] ?? null) ? $event['stdout'] : '', true);
+
+        if (!is_array($out) || ($out['decision'] ?? null) !== 'block') {
+            return;
+        }
+
+        $reason = self::PROMPT_HELD_PREFIX . (is_string($out['reason'] ?? null) && $out['reason'] !== '' ? $out['reason'] : 'a UserPromptSubmit hook blocked it');
+
+        // The refused prompt never became a turn.
+        $child->openTurns = max(0, $child->openTurns - 1);
+
+        if ($child->openTurns === 0 && $child->pending === []) {
+            $child->state = 'idle';
+            $child->lastResult = ['request_id' => $child->quickPromptId, 'failed' => true, 'text' => '', 'has_tools' => false];
+            $this->persist_status($child->name, ['status' => 'idle', 'blocked' => null, 'last_turn_error' => $reason]);
+        }
+
+        $waiter = array_shift($child->promptWaiters);
+
+        if ($waiter !== null) {
+            $this->reply($waiter['client'], ['ok' => false, 'message' => $reason]);
+        }
+    }
+
+    private function release_prompt_waiters(ClaudeHeadlessChild $child): void
+    {
+        foreach ($child->promptWaiters as $waiter) {
+            $this->reply($waiter['client'], $waiter['reply']);
+        }
+
+        $child->promptWaiters = [];
+    }
+
+    /** @param array<string, mixed> $event */
     private function on_result(ClaudeHeadlessChild $child, array $event): void
     {
         // A `result` means the child's single conversation loop is completely
@@ -1387,6 +1456,10 @@ final class ClaudeHeadlessManager
 
         foreach ($child->controlWaiters as $waiter) {
             $this->reply($waiter['client'], ['ok' => false, 'message' => 'Claude process exited before answering']);
+        }
+
+        foreach ($child->promptWaiters as $waiter) {
+            $this->reply($waiter['client'], ['ok' => false, 'message' => 'Claude process exited before the prompt was accepted; send it again to resume']);
         }
 
         unset($this->children[$child->name]);
