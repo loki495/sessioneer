@@ -134,7 +134,8 @@ an archived conversation, or delivers a prompt to the session already tracking a
 conversation id, so scripts and other sessions can spawn a continuation that
 shows up in the dashboard. `--list` shows headless sessions and `--kill` stops
 one (refusing a working or blocked session without `--force`). `--usage` prints
-the last known usage stats for every agent and Claude account as JSON. Claude only; see
+the last known usage stats for every agent and Claude account as JSON. `--wait [--timeout N]` blocks until the launched session is idle and
+prints its final assistant message, exiting 1 on an error or timeout. Claude only; see
 [cli.md](cli.md).
 
 ### Headless runtime

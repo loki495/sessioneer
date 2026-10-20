@@ -64,7 +64,8 @@ an installable PWA, meant to be added to an iOS/Android home screen):
   shows them and collects answers.
 - **Launch from the command line**: `bin/sessioneer` starts, resumes,
   reuses, lists or stops headless Claude sessions (and prints the last known
-  usage stats as JSON with `--usage`), so scripts and other
+  usage stats as JSON with `--usage`, or blocks until a session is idle and
+  prints its final message with `--wait`), so scripts and other
   sessions can spawn a continuation you then follow in the dashboard (see
   [`docs/cli.md`](docs/cli.md)). Put it on your `PATH` by symlinking it, e.g.
   `ln -s "$PWD/bin/sessioneer" ~/.local/bin/sessioneer`.

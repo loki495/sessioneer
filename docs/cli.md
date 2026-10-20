@@ -9,6 +9,9 @@ sessioneer --workdir ~/www/some/project --model sonnet --mode plan "Review the f
 # continue a conversation (reuses the live session if there is one)
 sessioneer --resume <claude-conversation-id> "Now apply the fix"
 
+# run to completion: block until the session is idle, print its final message
+sessioneer --wait --timeout 600 --workdir ~/www/some/project "Summarise the open TODOs"
+
 # last known usage stats for every agent and Claude account, as JSON
 sessioneer --usage
 
@@ -33,6 +36,8 @@ echo "Summarise the open TODOs" | sessioneer --json -
 | `--whoami` | Print this session's own name (`SESSIONEER_SELF`); exits 1 outside a session. |
 | `--peers` | List the other live sessions in this session's git repository (worktrees included) as tab-separated name, status, branch and directory. |
 | `--usage` | Print the last known usage (quota) stats as JSON and exit 0: `agents`, one entry per agent (`claude`, `antigravity`, `opencode`, `codex`), with Claude's configured accounts nested under `agents.claude.profiles` (the default account keyed `personal`). Each entry has `label`, `ok`, `quota`, `fetched_at` (unix time, or null) and `message` (why there is no data yet). Read-only: it returns what the dashboard footer shows and never refreshes anything. Exits 1 if the host agent is unreachable. |
+| `--wait` | With a launch or resume: block until the session is idle, then print the text of its final assistant message on stdout (the session name goes to stderr). Exits 1 if the launch is refused, the turn reports an error, or `--timeout` runs out. A session waiting on a permission prompt is not idle, so it keeps being waited on: answer it in the dashboard or set `--timeout`. Not combinable with `--kill`, `--list`, `--send` or `--peers`. A final message with no text (only tool calls) prints an empty line. |
+| `--timeout N` | With `--wait`, give up after N seconds (a positive integer). Default: no limit. The session keeps running after a timeout. |
 | `--json` | Print the full reply as JSON instead of the plain output. |
 
 On success it prints the session name (the dashboard opens it at `session.php?session=NAME`) and exits 0; any refusal prints `sessioneer: <message>` on stderr and exits 1.
@@ -57,4 +62,6 @@ There is no separate "archive": stopping a session archives its conversation, ex
 
 The CLI sends one `launch`, `launch_kill`, `launch_list`, `launch_send` or `launch_peers` request to the host agent. `HostAgent\Launch\LaunchService` picks a `SessionLauncher` by agent id; the interface documents the request and reply keys for all five. Supporting another agent means one new class implementing `SessionLauncher` and one line in `LaunchService::LAUNCHERS`; the CLI and the action do not change. Not yet offered: a thinking/effort level (the stream-json protocol is unconfirmed for it) and agents other than Claude.
 
-Tests: `tests/test_launch.php`, `tests/test_cli_usage.php`.
+`--wait` is client-side only: after the `launch` reply (sent once the prompt is accepted, so the turn has started) the CLI polls the dashboard's own `session_detail` request every 2 seconds and stops at status `idle` or a `last_turn_error`. No new host-agent action.
+
+Tests: `tests/test_launch.php`, `tests/test_cli_usage.php`, `tests/test_cli_wait.php`.
