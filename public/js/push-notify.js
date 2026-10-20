@@ -88,10 +88,6 @@
       if (existing) {
         postSubscription(existing);
 
-        if (status) {
-          status.textContent = 'Push notifications enabled';
-        }
-
         return;
       }
 
@@ -129,10 +125,6 @@
             .then(postSubscription)
             .then(function () {
               btn.classList.add('hidden');
-
-              if (status) {
-                status.textContent = 'Push notifications enabled';
-              }
             })
             .catch(function () {
               if (status) {

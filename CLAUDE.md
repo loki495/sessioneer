@@ -208,7 +208,8 @@ Docker-spawned, makes that impossible by construction — not by convention.
    `blocked` (a pending prompt is normal to sit on).
    A `sessioneer/sendInput` with `await_hooks` (the runtime's `send_message`
    always sets it) is answered only once the prompt is past its
-   `UserPromptSubmit` hooks: the stream's `hook_response` carrying
+   `UserPromptSubmit` hooks: the stream's `hook_response` (only emitted because the
+   child is launched with `--include-hook-events`) carrying
    `{"decision":"block"}` fails the call with `Prompt not sent: <reason>`
    (`ClaudeHeadlessManager::PROMPT_HELD_PREFIX`, also written to
    `last_turn_error`), a turn-start event or a 3s timeout accepts it. Without

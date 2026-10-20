@@ -101,6 +101,7 @@ assert_true(in_array('-p', $argv, true), 'headless argv is a print-mode (-p) pro
 assert_equal(['--input-format', 'stream-json'], array_slice($argv, array_search('--input-format', $argv, true), 2), 'input is stream-json');
 assert_equal(['--output-format', 'stream-json'], array_slice($argv, array_search('--output-format', $argv, true), 2), 'output is stream-json');
 assert_equal(['--permission-prompt-tool', 'stdio'], array_slice($argv, array_search('--permission-prompt-tool', $argv, true), 2), 'prompts are routed to the client over stdio');
+assert_true(in_array('--include-hook-events', $argv, true), 'hook events are streamed, so a hook-refused prompt is reported instead of looking delivered');
 assert_true(!in_array('--bare', $argv, true), 'never --bare (it ignores the subscription login)');
 assert_true(in_array('--session-id', $argv, true) && $fresh['assigned_id'] !== null && !in_array('--resume', $argv, true), 'a fresh session pre-assigns an id');
 assert_true(in_array('--permission-mode', $argv, true) && in_array('plan', $argv, true), 'starting mode is passed in Claude vocabulary');

@@ -109,6 +109,9 @@ class ClaudeCodeAdapter implements AgentAdapter
             '--input-format', 'stream-json',
             '--output-format', 'stream-json',
             '--verbose',
+            // Without it the stream carries no UserPromptSubmit hook_response, so a prompt
+            // refused by a hook looks delivered (ClaudeHeadlessManager::on_hook_response()).
+            '--include-hook-events',
             '--permission-prompt-tool', 'stdio',
         ];
 
