@@ -112,7 +112,8 @@ function sessioneer_with_custom_titles(array $result, string $detailSession = ''
 }
 
 /**
- * @return array
+ * @param array<string, mixed> $request
+ * @return array<string, mixed>
  */
 function sessioneer_dispatch_action(array $request): array
 {
