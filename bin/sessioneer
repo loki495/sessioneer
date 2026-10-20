@@ -37,6 +37,7 @@ function usage(): string
       Who am I:          sessioneer --whoami
       Peer sessions:     sessioneer --peers [--json]
       Usage stats:       sessioneer --usage
+      Run to the end:    sessioneer --wait [--timeout N] --workdir DIR "do the thing"
 
     PROMPT is the message to deliver; "-" reads it from stdin. A new session
     requires one; a resume does not.
@@ -70,6 +71,13 @@ function usage(): string
                         entry per agent, with Claude's account profiles nested
                         under it, each with its fetched_at time. Read-only; never
                         refreshes anything.
+      --wait            after launching or messaging, block until the session is
+                        idle and print its final assistant message to stdout (the
+                        session name goes to stderr). Exits 1 if the launch fails,
+                        the turn errors or --timeout runs out. A session waiting on
+                        a prompt is not idle: it is waited on, so answer it in the
+                        dashboard or set --timeout.
+      --timeout N       with --wait, give up after N seconds (default: no limit)
       --json            print the full reply as JSON instead of the plain output
       -h, --help        this text
 
@@ -85,7 +93,7 @@ function fail(string $message): never
     exit(1);
 }
 
-$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'mode:', 'profile:', 'task-tools', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage'], $restIndex);
+$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'mode:', 'profile:', 'task-tools', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:'], $restIndex);
 
 if ($opts === false) {
     fail("bad options\n\n" . usage());
@@ -181,6 +189,59 @@ $reply = AgentClient::agent_call(array_filter([
 ], static fn ($v): bool => $v !== null && $v !== ''));
 
 $ok = ($reply['ok'] ?? false) === true;
+
+if (isset($opts['wait'])) {
+    if ($kill !== null || $list || $send !== null || $peers) {
+        fail('--wait only applies to launching or resuming a session');
+    }
+
+    if (!$ok) {
+        fail((string)($reply['message'] ?? 'launch failed'));
+    }
+
+    $timeout = $opt('timeout');
+
+    if ($timeout !== null && (!ctype_digit($timeout) || (int)$timeout < 1)) {
+        fail('--timeout must be a positive number of seconds');
+    }
+
+    $name = (string)($reply['name'] ?? '');
+    $deadline = $timeout !== null ? time() + (int)$timeout : null;
+    fwrite(STDERR, $name . "\n");
+
+    // The launch reply is only sent once the prompt was accepted, so the turn
+    // has started; idle after that means it finished.
+    while (true) {
+        $d = AgentClient::agent_call(['action' => 'session_detail', 'session' => $name]);
+
+        if (($d['ok'] ?? false) !== true) {
+            fail('session ' . $name . ': ' . (string)($d['message'] ?? 'detail unavailable'));
+        }
+
+        if (is_string($d['last_turn_error'] ?? null) && $d['last_turn_error'] !== '') {
+            fail('session ' . $name . ' errored: ' . $d['last_turn_error']);
+        }
+
+        if (($d['status'] ?? null) === 'idle' || (!isset($d['status']) && empty($d['working']))) {
+            $text = [];
+
+            foreach ($d['last_message']['blocks'] ?? [] as $b) {
+                if (($b['kind'] ?? null) === 'text') {
+                    $text[] = (string)$b['text'];
+                }
+            }
+
+            echo implode("\n\n", $text), "\n";
+            exit(0);
+        }
+
+        if ($deadline !== null && time() >= $deadline) {
+            fail('timed out after ' . $timeout . 's waiting for ' . $name);
+        }
+
+        sleep(2);
+    }
+}
 
 if (isset($opts['json'])) {
     echo json_encode($reply, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
