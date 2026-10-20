@@ -43,6 +43,7 @@ class SidecarStore
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'agent_session_id', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'spawned_by_app', 'INTEGER');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'custom_title', 'TEXT');
+        SqliteDb::add_column_if_missing($pdo, 'sidecars', 'no_tools', 'INTEGER');
 
         return $pdo;
     }
@@ -60,11 +61,11 @@ class SidecarStore
     }
 
     /**
-     * @return array{workdir:?string, spawned_at:?int, agent_session_id?:?string, spawned_by_app?:bool, agent?:?string, runtime?:?string, title?:?string, profile?:?string}|null
+     * @return array{workdir:?string, spawned_at:?int, agent_session_id?:?string, spawned_by_app?:bool, agent?:?string, runtime?:?string, title?:?string, profile?:?string, no_tools?:bool}|null
      */
     public static function read_sidecar(string $sessionName): ?array
     {
-        $stmt = self::db()->prepare('SELECT workdir, spawned_at, agent_session_id, spawned_by_app, agent, runtime, title, profile FROM sidecars WHERE session_name = ?');
+        $stmt = self::db()->prepare('SELECT workdir, spawned_at, agent_session_id, spawned_by_app, agent, runtime, title, profile, no_tools FROM sidecars WHERE session_name = ?');
         $stmt->execute([$sessionName]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
 
@@ -105,6 +106,7 @@ class SidecarStore
                 // treat a null profile as "use Config's own defaults",
                 // same convention runtime/title already use.
                 'profile' => $row['profile'],
+                'no_tools' => (bool)$row['no_tools'],
             ];
         }
 
@@ -170,6 +172,12 @@ class SidecarStore
         $rows = self::db()->query("SELECT session_name, custom_title FROM sidecars WHERE custom_title IS NOT NULL AND custom_title != ''")->fetchAll(\PDO::FETCH_KEY_PAIR);
 
         return array_map('strval', $rows);
+    }
+
+    /** Own column, not part of write_sidecar(), so the headless sync that rewrites a sidecar never drops it. */
+    public static function set_no_tools(string $sessionName): void
+    {
+        self::db()->prepare('UPDATE sidecars SET no_tools = 1 WHERE session_name = ?')->execute([$sessionName]);
     }
 
     /** Null or empty clears the name. False when no such session is tracked. */

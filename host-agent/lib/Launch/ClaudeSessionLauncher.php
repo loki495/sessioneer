@@ -63,6 +63,7 @@ class ClaudeSessionLauncher implements SessionLauncher
                 'model' => $request['model'] ?? null,
                 'starting_mode' => $request['starting_mode'] ?? null,
                 'enable_task_tools' => !empty($request['enable_task_tools']),
+                'no_tools' => !empty($request['no_tools']),
                 'profile' => $profile,
             ]);
 

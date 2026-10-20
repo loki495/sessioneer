@@ -148,7 +148,11 @@ class ClaudeCodeAdapter implements AgentAdapter
     {
         $flags = [];
 
-        if (!empty($options['enable_task_tools'])) {
+        // `--tools ""` drops every built-in tool; --strict-mcp-config with no --mcp-config
+        // drops the MCP ones the user's settings would otherwise add back.
+        if (!empty($options['no_tools'])) {
+            array_push($flags, '--tools', '', '--strict-mcp-config');
+        } elseif (!empty($options['enable_task_tools'])) {
             array_push($flags, '--allowedTools', 'TaskCreate,TaskGet,TaskList,TaskUpdate');
         }
 

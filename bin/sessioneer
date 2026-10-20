@@ -54,6 +54,7 @@ function usage(): string
       --profile NAME    account profile (default: the one matching this shell's
                         CLAUDE_CONFIG_DIR, else the default account)
       --task-tools      enable the task tools in a new session
+      --no-tools        start a new session with no tools at all (no built-in or MCP tools)
       --kill TARGET     stop a headless session by name or conversation id; its
                         conversation stays resumable (archived). Refuses a
                         working or blocked session unless --force.
@@ -93,7 +94,7 @@ function fail(string $message): never
     exit(1);
 }
 
-$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'mode:', 'profile:', 'task-tools', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:'], $restIndex);
+$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:'], $restIndex);
 
 if ($opts === false) {
     fail("bad options\n\n" . usage());
@@ -169,6 +170,16 @@ if (isset($opts['usage'])) {
     exit(0);
 }
 
+if (isset($opts['no-tools'])) {
+    if ($resume !== null || $kill !== null || $list || $send !== null || $peers) {
+        fail('--no-tools only applies to starting a new session');
+    }
+
+    if (isset($opts['task-tools'])) {
+        fail('--no-tools and --task-tools cannot be combined');
+    }
+}
+
 $action = $kill !== null ? 'launch_kill' : ($list ? 'launch_list' : ($send !== null ? 'launch_send' : ($peers ? 'launch_peers' : 'launch')));
 
 $reply = AgentClient::agent_call(array_filter([
@@ -182,6 +193,7 @@ $reply = AgentClient::agent_call(array_filter([
     'profile' => $opt('profile'),
     'caller_config_dir' => $opt('profile') === null ? (getenv('CLAUDE_CONFIG_DIR') ?: null) : null,
     'enable_task_tools' => isset($opts['task-tools']) ? true : null,
+    'no_tools' => isset($opts['no-tools']) ? true : null,
     'target' => $kill ?? $send,
     'message' => $send !== null ? $prompt : null,
     'from' => $send !== null || $peers ? $self : null,

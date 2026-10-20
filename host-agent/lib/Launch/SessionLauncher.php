@@ -21,6 +21,7 @@ namespace HostAgent\Launch;
  *   caller_config_dir string   optional; the caller's CLAUDE_CONFIG_DIR, used to
  *                              pick the profile when `profile` is absent
  *   enable_task_tools bool     optional
+ *   no_tools          bool     optional; a new session gets no tools at all
  *
  * Reply: ['ok' => bool, 'message' => string] plus, once a session exists,
  * 'name' (the session ref the dashboard uses), 'action' (created|resumed|
