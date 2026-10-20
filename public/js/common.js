@@ -1125,7 +1125,7 @@ function initHorizontalSwipe(handlers) {
   }, { passive: true });
 }
 
-// Rename button on session cards (sidebar and dashboard): asks for a new name and saves it
+// Rename button on session cards (sidebar and dashboard) and in the session page header: asks for a new name and saves it
 // as the session's own title. An empty name clears it back to the agent's title.
 (function () {
   function renameSession(button) {
@@ -1151,7 +1151,7 @@ function initHorizontalSwipe(handlers) {
         }
 
         // Empty means the agent's own title is back; the next list refresh fills it in.
-        var card = button.closest('li, a');
+        var card = button.closest('li, a, header');
         var label = card ? card.querySelector('[data-session-title]') : null;
 
         if (data.title) {

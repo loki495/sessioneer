@@ -363,7 +363,7 @@ Implementation entry points:
 
 ## Shared UI and platform features
 
-- Renaming: the Rename button on a session card (dashboard and sidebar; not on
+- Renaming: the Rename button on a session card (dashboard, sidebar and the session page header; not on
   archived sessions) asks for a name and stores it in the session's sidecar as
   `custom_title`, for every agent. It overrides the agent's title in the list
   and in the session detail, survives the headless sync that rewrites the

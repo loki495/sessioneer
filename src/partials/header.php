@@ -3,10 +3,13 @@
     <a href="/" class="text-sm text-slate-400 hover:underline whitespace-nowrap" aria-label="All sessions" title="All sessions">&larr;</a>
     <div class="min-w-0 text-center">
       <div class="flex items-center justify-center gap-1.5 min-w-0">
-        <div id="header-title" class="min-w-0 text-sm font-medium text-slate-200 truncate cursor-pointer"
+        <div id="header-title" data-session-title class="min-w-0 text-sm font-medium text-slate-200 truncate cursor-pointer"
           title="<?= $found ? htmlspecialchars((string)($detail['title'] ?? $detail['name']), ENT_QUOTES) : '' ?>">
           <?= $found ? htmlspecialchars((string)($detail['title'] ?? $detail['name']), ENT_QUOTES) : '' ?>
         </div>
+        <?php if ($found): ?>
+          <button type="button" data-rename-session="<?= htmlspecialchars((string)$sessionName, ENT_QUOTES) ?>" data-title="<?= htmlspecialchars((string)($detail['title'] ?? $detail['name']), ENT_QUOTES) ?>" data-csrf="<?= htmlspecialchars((string)$csrfToken, ENT_QUOTES) ?>" title="Rename" aria-label="Rename session" class="shrink-0 text-slate-500 hover:text-slate-200 active:text-slate-200 text-xs leading-none px-1">&#9998;</button>
+        <?php endif ?>
         <?php // Account/profile badge - Claude-only for now, same gate as the
               // session-list rows (see SessionRowView::profile_badge_class()'s
               // own docblock: other agents have no config-dir profile concept
