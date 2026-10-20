@@ -144,6 +144,8 @@ try {
     $indexJs = curl_request('GET', "{$baseUrl}{$indexScriptMatch[2]}");
     assert_equal(200, $indexJs['status'], 'GET /js/index.js?v=...: 200 (served as a static file, no 404)');
     assert_contains('function applyPagination(', $indexJs['body'], 'GET /js/index.js: the archived-list Load-more pagination (applyPagination()) is shipped');
+    assert_contains("name=\"profile\" value=\"' + escapeHtml(r.profile)", $indexJs['body'], 'GET /js/index.js: the search-result Unarchive form carries the result\'s account profile (without it a work-profile conversation resumed under the default account)');
+    assert_contains("(r.profile ? '<input", $indexJs['body'], 'GET /js/index.js: the profile field is omitted for the default account, matching archived-row.php');
     assert_contains("query === ''", $indexJs['body'], 'GET /js/index.js: clearing the archived-list search query reverts to the paginated view rather than leaving every row revealed');
 
     // CSRF token must round-trip through the session (via the cookie jar), not the URL - every
