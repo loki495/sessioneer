@@ -71,6 +71,9 @@ an installable PWA, meant to be added to an iOS/Android home screen):
   `ln -s "$PWD/bin/sessioneer" ~/.local/bin/sessioneer`.
 - **Quick Prompt (optional)**: a bearer-token `POST /api/quick-prompt` starts a
   new headless session from a phone shortcut (see "iOS Quick Prompt" below).
+- **Rename sessions**: a Rename button on each session card (dashboard and
+  sidebar) sets your own name for any session; leave it empty to go back to the
+  agent's title.
 - **Kill sessions**: stop a running session without killing the whole
   terminal/tmux.
 - **View transcripts**: read the full conversation history for a session,

@@ -23,7 +23,7 @@
         // in one <a> would have. ?>
   <a href="/session.php?session=<?= urlencode($name) ?>" class="absolute inset-0 rounded-xl" aria-label="Open transcript for <?= $this->e($title) ?>"></a>
   <div class="min-w-0 flex-1">
-    <div class="select-none text-sm leading-tight truncate"><?= $this->e($title) ?></div>
+    <div class="select-none text-sm leading-tight truncate" data-session-title><?= $this->e($title) ?></div>
     <?php if (!empty($agentLabel)): ?>
       <?php
         $agentBadgeClass = App\Views\SessionRowView::agent_badge_class($agentId ?? 'claude');
@@ -72,6 +72,7 @@
     <div class="relative"><?= $blockedHtml ?></div>
   </div>
   <div class="relative flex flex-col gap-2 shrink-0">
+    <button type="button" data-rename-session="<?= $this->e($name) ?>" data-title="<?= $this->e($title) ?>" data-csrf="<?= $this->e($csrfToken) ?>" class="select-none w-full min-h-[2.25rem] rounded-lg border border-slate-700 bg-slate-800 active:bg-slate-700 text-slate-300 text-xs px-3 py-1.5">Rename</button>
     <?php // Claude conversations can move between a tmux pane and a headless
           // session (same conversation, different process); offer the runtime
           // the session is NOT on. The host agent refuses while it is busy. ?>

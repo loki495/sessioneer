@@ -12,7 +12,11 @@
       // to its widest UNWRAPPED content instead of shrinking to the sidebar's
       // actual width, pushing the whole card off the visible panel. ?>
 <a href="/session.php?session=<?= urlencode($name) ?>" class="block min-w-0 rounded-xl border px-4 py-3 active:bg-slate-800" style="<?= $agentCardStyle ?>" data-session="<?= $this->e($name) ?>">
-  <div class="text-slate-200 truncate"><?= $this->e($title) ?></div>
+  <div class="flex items-center gap-2">
+    <div class="text-slate-200 truncate min-w-0 flex-1" data-session-title><?= $this->e($title) ?></div>
+    <?php // A span, not a <button>: this whole card is one <a>, and a button inside a link is invalid HTML. common.js handles the click and cancels the navigation. ?>
+    <span role="button" tabindex="0" data-rename-session="<?= $this->e($name) ?>" data-title="<?= $this->e($title) ?>" data-csrf="<?= $this->e($csrfToken) ?>" title="Rename" aria-label="Rename session" class="select-none shrink-0 px-1 text-slate-500 active:text-slate-200">&#9998;</span>
+  </div>
   <?php if (!empty($agentLabel)): ?>
     <div class="select-none mt-0.5 mb-1.5 flex items-center gap-1.5">
       <span class="inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border <?= $agentBadgeClass ?>"><?= $this->e($agentLabel) ?></span>
