@@ -197,7 +197,15 @@ assert_equal($root . '/work', $sc['workdir'], 'and the working directory');
 assert_equal(true, $sc['spawned_by_app'], 'and that the app spawned it');
 $spawn = $fake->calls[0];
 assert_equal('sessioneer/spawn', $spawn['method'], 'the manager is asked to spawn');
-assert_equal(['session' => $created['name'], 'fresh' => true, 'model' => 'haiku', 'starting_mode' => 'plan', 'enable_task_tools' => true], $spawn['params'], 'with the requested options');
+assert_equal(['session' => $created['name'], 'fresh' => true, 'model' => 'haiku', 'starting_mode' => 'plan', 'enable_task_tools' => true, 'no_tools' => false], $spawn['params'], 'with the requested options');
+assert_equal(false, $sc['no_tools'], 'a normal session is not marked no-tools');
+
+$bare = $rt->create(['workdir' => $root . '/work', 'no_tools' => true]);
+track((string)$bare['name']);
+assert_equal(true, SidecarStore::read_sidecar($bare['name'])['no_tools'], 'no_tools is remembered in the sidecar, so a dormant respawn keeps it');
+assert_equal(true, $fake->calls[1]['params']['no_tools'], 'and passed to the manager on the first spawn');
+SidecarStore::write_sidecar($bare['name'], ['workdir' => $root . '/work', 'agent' => 'claude', 'runtime' => RuntimeType::HEADLESS]);
+assert_equal(true, SidecarStore::read_sidecar($bare['name'])['no_tools'], 'a sidecar rewrite does not drop it');
 
 $second = $rt->create(['workdir' => $root . '/work']);
 track((string)$second['name']);
@@ -216,7 +224,7 @@ $failed = $rt->create(['workdir' => $root . '/work']);
 assert_true(($failed['ok'] ?? true) === false, 'create fails when the manager refuses');
 assert_equal('Too many live Claude sessions (8); stop one first', $failed['message'], 'with the manager\'s own message');
 $listed = array_column(SidecarStore::list_runtime_sidecars(RuntimeType::HEADLESS), 'session_name');
-$leaked = array_filter($listed, static fn (string $n): bool => !in_array($n, [$created['name'], $second['name']], true) && str_starts_with($n, 'claude-headless-') && (SidecarStore::read_sidecar($n)['workdir'] ?? '') === $root . '/work');
+$leaked = array_filter($listed, static fn (string $n): bool => !in_array($n, [$created['name'], $bare['name'], $second['name']], true) && str_starts_with($n, 'claude-headless-') && (SidecarStore::read_sidecar($n)['workdir'] ?? '') === $root . '/work');
 assert_equal([], array_values($leaked), 'a failed create leaves no sidecar behind');
 $fake->responses['sessioneer/spawn'] = ['ok' => false, 'message' => 'Cannot reach Claude headless manager: No such file or directory'];
 assert_contains('Cannot reach', (string)$rt->create(['workdir' => $root . '/work'])['message'], 'a manager that is down is a named, handled error');

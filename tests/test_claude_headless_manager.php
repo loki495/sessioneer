@@ -109,6 +109,11 @@ assert_true(in_array('--model', $argv, true) && in_array('haiku', $argv, true), 
 assert_true(in_array('--allowedTools', $argv, true), 'task tools opt-in passes through');
 assert_true(!isset($fresh['env']), 'no CLAUDE_CONFIG_DIR override without a profile');
 
+$noTools = $adapter->build_headless_argv(['no_tools' => true, 'enable_task_tools' => true])['argv'];
+assert_equal(['--tools', '', '--strict-mcp-config'], array_slice($noTools, array_search('--tools', $noTools, true), 3), 'no_tools disables the built-in tools and ignores MCP servers');
+assert_true(!in_array('--allowedTools', $noTools, true), 'no_tools wins over the task-tools opt-in');
+assert_true(!in_array('--tools', $argv, true) && !in_array('--strict-mcp-config', $argv, true), 'tools are untouched by default');
+
 $resume = $adapter->build_headless_argv(['resume' => 'abc-123']);
 assert_equal(['--resume', 'abc-123'], array_slice($resume['argv'], array_search('--resume', $resume['argv'], true), 2), 'resume continues the given id');
 assert_equal('abc-123', $resume['assigned_id'], 'resume reports the same id');

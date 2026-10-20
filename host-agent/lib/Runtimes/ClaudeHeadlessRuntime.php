@@ -125,12 +125,17 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
             'profile' => $profile,
         ]);
 
+        if (!empty($options['no_tools'])) {
+            SidecarStore::set_no_tools($name);
+        }
+
         $reply = $this->client->request('sessioneer/spawn', [
             'session' => $name,
             'fresh' => true,
             'model' => is_string($options['model'] ?? null) ? $options['model'] : null,
             'starting_mode' => is_string($options['starting_mode'] ?? null) ? $options['starting_mode'] : null,
             'enable_task_tools' => !empty($options['enable_task_tools']),
+            'no_tools' => !empty($options['no_tools']),
         ]);
 
         if (($reply['ok'] ?? false) !== true) {

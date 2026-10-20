@@ -786,6 +786,8 @@ final class ClaudeHeadlessManager
             'model' => $options['model'] ?? null,
             'starting_mode' => is_string($mode) ? $mode : null,
             'enable_task_tools' => !empty($options['enable_task_tools']),
+            // Sticky: the sidecar remembers it so a dormant respawn never regains tools.
+            'no_tools' => !empty($options['no_tools']) || !empty($sidecar['no_tools']),
         ];
 
         if ($existingId !== null && !$fresh) {
