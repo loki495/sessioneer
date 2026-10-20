@@ -46,6 +46,76 @@ use HostAgent\Launch\LaunchService;
  */
 function dispatch_action(array $request): array
 {
+    $action = $request['action'] ?? '';
+
+    if ($action === 'rename_session') {
+        return sessioneer_rename_session((string)($request['session'] ?? ''), (string)($request['title'] ?? ''));
+    }
+
+    $result = sessioneer_dispatch_action($request);
+
+    return in_array($action, ['list', 'session_detail'], true) ? sessioneer_with_custom_titles($result, (string)($request['session'] ?? '')) : $result;
+}
+
+const SESSIONEER_CUSTOM_TITLE_MAX = 120;
+
+/** @return array{ok:bool, message?:string, title?:?string} */
+function sessioneer_rename_session(string $session, string $title): array
+{
+    $title = trim(preg_replace('/[\x00-\x1F\x7F\s]+/u', ' ', $title) ?? '');
+
+    if (mb_strlen($title) > SESSIONEER_CUSTOM_TITLE_MAX) {
+        return ['ok' => false, 'message' => 'Name is too long (max ' . SESSIONEER_CUSTOM_TITLE_MAX . ' characters)'];
+    }
+
+    if ($session === '' || !SidecarStore::set_custom_title($session, $title)) {
+        return ['ok' => false, 'message' => 'Session not found'];
+    }
+
+    return ['ok' => true, 'title' => $title === '' ? null : $title];
+}
+
+/**
+ * The user's own session names win over every agent-supplied title, in the
+ * list (tracked and headless rows) and in the detail of $detailSession.
+ *
+ * @param array<string, mixed> $result
+ * @return array<string, mixed>
+ */
+function sessioneer_with_custom_titles(array $result, string $detailSession = ''): array
+{
+    if (($result['ok'] ?? false) !== true) {
+        return $result;
+    }
+
+    $titles = SidecarStore::custom_titles();
+
+    if ($titles === []) {
+        return $result;
+    }
+
+    if ($detailSession !== '' && isset($titles[$detailSession])) {
+        $result['title'] = $titles[$detailSession];
+    }
+
+    foreach (['sessions' => 'name', 'headless' => 'id'] as $key => $idKey) {
+        foreach (is_array($result[$key] ?? null) ? $result[$key] : [] as $i => $row) {
+            $id = is_array($row) && is_string($row[$idKey] ?? null) ? $row[$idKey] : null;
+
+            if ($id !== null && isset($titles[$id])) {
+                $result[$key][$i]['title'] = $titles[$id];
+            }
+        }
+    }
+
+    return $result;
+}
+
+/**
+ * @return array
+ */
+function sessioneer_dispatch_action(array $request): array
+{
     switch ($request['action'] ?? '') {
         case 'quick_prompt_start':
             return (new \HostAgent\Services\QuickPromptService())->start($request);
@@ -639,7 +709,7 @@ function sessioneer_merge_headless_sessions(array $sessions): array
  */
 function sessioneer_sessions_for_push(): array
 {
-    return sessioneer_merge_headless_sessions(SessionService::list_all_sessions()['sessions']);
+    return sessioneer_with_custom_titles(['ok' => true, 'sessions' => sessioneer_merge_headless_sessions(SessionService::list_all_sessions()['sessions'])])['sessions'];
 }
 
 /**

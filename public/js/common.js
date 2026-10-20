@@ -1124,3 +1124,64 @@ function initHorizontalSwipe(handlers) {
     }
   }, { passive: true });
 }
+
+// Rename button on session cards (sidebar and dashboard): asks for a new name and saves it
+// as the session's own title. An empty name clears it back to the agent's title.
+(function () {
+  function renameSession(button) {
+    var session = button.getAttribute('data-rename-session');
+    var current = button.getAttribute('data-title') || '';
+    var title = window.prompt('Rename session (leave empty to reset)', current);
+
+    if (title === null) {
+      return;
+    }
+
+    fetch('/session_rename.php', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ session: session, title: title, csrf_token: button.getAttribute('data-csrf') || '' }).toString()
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data || !data.ok) {
+          window.alert((data && data.message) || 'Could not rename the session.');
+          return;
+        }
+
+        // Empty means the agent's own title is back; the next list refresh fills it in.
+        var card = button.closest('li, a');
+        var label = card ? card.querySelector('[data-session-title]') : null;
+
+        if (data.title) {
+          button.setAttribute('data-title', data.title);
+
+          if (label) {
+            label.textContent = data.title;
+          }
+        }
+      })
+      .catch(function () { window.alert('Network error - the session was not renamed.'); });
+  }
+
+  document.addEventListener('click', function (e) {
+    var button = e.target.closest('[data-rename-session]');
+
+    if (button) {
+      e.preventDefault();
+      e.stopPropagation();
+      renameSession(button);
+    }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    var button = e.target.closest ? e.target.closest('[data-rename-session]') : null;
+
+    if (button && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      e.stopPropagation();
+      renameSession(button);
+    }
+  });
+}());

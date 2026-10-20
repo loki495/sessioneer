@@ -363,6 +363,12 @@ Implementation entry points:
 
 ## Shared UI and platform features
 
+- Renaming: the Rename button on a session card (dashboard and sidebar; not on
+  archived sessions) asks for a name and stores it in the session's sidecar as
+  `custom_title`, for every agent. It overrides the agent's title in the list
+  and in the session detail, survives the headless sync that rewrites the
+  sidecar, and is dropped when the session is killed. An empty name clears it.
+  Names are trimmed, whitespace-collapsed and capped at 120 characters.
 - Dashboard and session-detail polling pause while the browser tab is hidden;
   manual and mobile pull-to-refresh remain available.
 - Transcript blocks support Markdown, collapsing, copying, attachments,

@@ -42,6 +42,7 @@ class SidecarStore
         // add-alongside approach as the agent/runtime/title columns above.
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'agent_session_id', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'spawned_by_app', 'INTEGER');
+        SqliteDb::add_column_if_missing($pdo, 'sidecars', 'custom_title', 'TEXT');
 
         return $pdo;
     }
@@ -155,6 +156,29 @@ class SidecarStore
             ':title' => $data['title'] ?? null,
             ':profile' => $data['profile'] ?? null,
         ]);
+    }
+
+    /**
+     * The user's own name for each session, keyed by session name. Kept in its
+     * own column so the sync that rewrites a sidecar's agent-supplied title
+     * (write_sidecar()) never loses it.
+     *
+     * @return array<string, string>
+     */
+    public static function custom_titles(): array
+    {
+        $rows = self::db()->query("SELECT session_name, custom_title FROM sidecars WHERE custom_title IS NOT NULL AND custom_title != ''")->fetchAll(\PDO::FETCH_KEY_PAIR);
+
+        return is_array($rows) ? array_map('strval', $rows) : [];
+    }
+
+    /** Null or empty clears the name. False when no such session is tracked. */
+    public static function set_custom_title(string $sessionName, ?string $title): bool
+    {
+        $stmt = self::db()->prepare('UPDATE sidecars SET custom_title = :title WHERE session_name = :name');
+        $stmt->execute([':title' => $title === '' ? null : $title, ':name' => $sessionName]);
+
+        return $stmt->rowCount() > 0;
     }
 
     public static function delete_sidecar(string $sessionName): void

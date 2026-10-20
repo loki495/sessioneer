@@ -307,6 +307,18 @@ class SessionController extends Controller
         echo json_encode(AgentClient::agent_call(['action' => 'send_message', 'session' => $sessionName, 'text' => $text, 'attachment_paths' => $attachmentPaths]));
     }
 
+    /** POST-only JSON endpoint for the rename button on session cards; an empty title clears the name. */
+    public function rename(): void
+    {
+        $this->require_post_json();
+
+        echo json_encode(AgentClient::agent_call([
+            'action' => 'rename_session',
+            'session' => trim((string)($_POST['session'] ?? '')),
+            'title' => (string)($_POST['title'] ?? ''),
+        ]));
+    }
+
     /**
      * POST-only JSON endpoint for session.php's mode toggle. Same AJAX
      * pattern as send() above - clicked often enough that a full page
