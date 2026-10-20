@@ -141,6 +141,31 @@ $again = launch(['agent_session_id' => $conversationId, 'prompt' => 'second try'
 assert_equal(true, $again['prompt_sent'] ?? null, 'a re-send is delivered');
 assert_true((bool)wait_until(static fn (): bool => status_of($name) === 'idle' && has_result($m, 'echo: second try')), 'and answered');
 
+echo "No tools\n";
+$bareDir = $root . '/work/toolless';
+@mkdir($bareDir, 0700, true);
+$bare = launch(['prompt' => 'bare words', 'workdir' => $bareDir, 'no_tools' => true]);
+assert_true(($bare['ok'] ?? false) === true, 'a --no-tools session launches' . (($bare['ok'] ?? false) === true ? '' : ' - got ' . json_encode($bare)));
+$bareName = (string)($bare['name'] ?? '');
+$made[] = $bareName;
+assert_equal(true, SidecarStore::read_sidecar($bareName)['no_tools'] ?? null, 'the launcher forwards no_tools, so the sidecar remembers it');
+assert_true((bool)wait_until(static fn (): bool => status_of($bareName) === 'idle' && has_result($m, 'echo: bare words')), 'and the prompt is answered');
+$spawnArgv = static function () use ($m): array {
+    $all = array_values(array_filter(fake_log($m), static fn (array $r): bool => isset($r['argv'])));
+
+    return $all[count($all) - 1]['argv'];
+};
+$argv = $spawnArgv();
+assert_equal(['--tools', '', '--strict-mcp-config'], array_slice($argv, (int)array_search('--tools', $argv, true), 3), 'the process is started with no built-in tools and no MCP servers');
+assert_true(!in_array('--tools', array_values(array_filter(fake_log($m), static fn (array $r): bool => isset($r['argv'])))[0]['argv'], true), 'while an ordinary session keeps its tools');
+assert_true(($stopped = call($m, 'sessioneer/stop', ['session' => $bareName]))['ok'] ?? false, 'the process is stopped, leaving the session dormant');
+$sent = launch(['agent_session_id' => (string)(dispatch_action(['action' => 'session_detail', 'session' => $bareName])['agent_session_id'] ?? ''), 'prompt' => 'bare again']);
+assert_equal(true, $sent['prompt_sent'] ?? null, 'a message to the dormant session is delivered');
+assert_true((bool)wait_until(static fn (): bool => has_result($m, 'echo: bare again')), 'and answered by a respawned process');
+$argv = $spawnArgv();
+assert_equal(['--tools', '', '--strict-mcp-config'], array_slice($argv, (int)array_search('--tools', $argv, true), 3), 'which is still started with no tools');
+assert_true(in_array('--resume', $argv, true) || in_array('--session-id', $argv, true), 'on the same conversation');
+
 echo "Resume\n";
 $transcriptDir = $root . '/home/.claude/projects/' . preg_replace('/[^A-Za-z0-9]/', '-', $workdir);
 @mkdir($transcriptDir, 0700, true);
@@ -269,6 +294,6 @@ assert_equal($resumedName, $down['name'] ?? null, 'and still names the session s
 $downNew = launch(['prompt' => 'anyone?', 'workdir' => $workdir]);
 assert_equal(false, $downNew['ok'] ?? null, 'a new launch with the manager down fails');
 assert_contains('Cannot reach Claude headless manager', (string)$downNew['message'], 'with the same error');
-assert_equal(3, count(SidecarStore::list_runtime_sidecars('headless')), 'and leaves no half-created session');
+assert_equal(4, count(SidecarStore::list_runtime_sidecars('headless')), 'and leaves no half-created session');
 
 test_exit();
