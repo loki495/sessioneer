@@ -169,7 +169,7 @@ class SidecarStore
     {
         $rows = self::db()->query("SELECT session_name, custom_title FROM sidecars WHERE custom_title IS NOT NULL AND custom_title != ''")->fetchAll(\PDO::FETCH_KEY_PAIR);
 
-        return is_array($rows) ? array_map('strval', $rows) : [];
+        return array_map('strval', $rows);
     }
 
     /** Null or empty clears the name. False when no such session is tracked. */
