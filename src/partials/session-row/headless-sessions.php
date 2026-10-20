@@ -1,1 +1,0 @@
-<div class="mt-8"><h2 class="select-none text-sm font-medium text-slate-400 mb-1">Headless OpenCode sessions</h2><p class="select-none text-xs text-slate-500 mb-2">Run via <code>opencode serve</code>, not tmux.</p><ul class="flex flex-col gap-2"><?= $rowsHtml ?></ul></div>

@@ -1290,6 +1290,7 @@ document.addEventListener('keydown', function (e) {
             + '<input type="hidden" name="csrf_token" value="' + escapeHtml(csrfToken) + '">'
             + '<input type="hidden" name="agent_session_id" value="' + escapeHtml(r.agent_session_id) + '">'
             + '<input type="hidden" name="workdir" value="' + escapeHtml(r.cwd) + '">'
+            + (r.profile ? '<input type="hidden" name="profile" value="' + escapeHtml(r.profile) + '">' : '')
             + '<button type="submit" class="select-none rounded-lg border border-slate-700 bg-slate-800 active:bg-slate-700 text-slate-300 text-xs font-medium px-3 py-1.5">Unarchive</button>'
             + '</form>'
           : '');
