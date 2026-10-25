@@ -13,6 +13,7 @@ class LaunchService
     /** @var array<string, class-string<SessionLauncher>> */
     private const LAUNCHERS = [
         'claude' => ClaudeSessionLauncher::class,
+        'codex' => CodexSessionLauncher::class,
     ];
 
     /**
