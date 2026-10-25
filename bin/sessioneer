@@ -65,7 +65,7 @@ function usage(): string
                         id) from inside a session; the host agent stamps it
                         "[sessioneer peer: NAME · DIR · BRANCH]". Information
                         and requests only, never approval.
-      --whoami          print this session's own name (SESSIONEER_SELF)
+      --whoami          print this session's own name (SESSIONEER_SELF, or CODEX_THREAD_ID inside Codex)
       --peers           list the other live sessions in this session's git
                         repository: name, status, branch, directory
       --usage           print the last known usage (quota) stats as JSON: one
@@ -136,11 +136,12 @@ if (getenv('SESSIONEER_AGENT_SOCKET') === false || getenv('SESSIONEER_AGENT_SOCK
     putenv('SESSIONEER_AGENT_SOCKET=' . (getenv('XDG_RUNTIME_DIR') ?: '/run/user/' . posix_getuid()) . '/sessioneer-agent.sock');
 }
 
-$self = getenv('SESSIONEER_SELF') ?: null;
+// A Codex session carries no SESSIONEER_SELF; its thread id is its session name.
+$self = getenv('SESSIONEER_SELF') ?: getenv('CODEX_THREAD_ID') ?: null;
 
 if (isset($opts['whoami'])) {
     if ($self === null) {
-        fail('not running inside a Sessioneer session (SESSIONEER_SELF is not set)');
+        fail('not running inside a Sessioneer session (neither SESSIONEER_SELF nor CODEX_THREAD_ID is set)');
     }
 
     echo $self, "\n";

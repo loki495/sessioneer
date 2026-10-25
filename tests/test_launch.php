@@ -97,9 +97,9 @@ assert_true(new ClaudeSessionLauncher() instanceof SessionLauncher, 'the Claude 
 assert_equal('claude', (new ClaudeSessionLauncher())->agent_id(), 'and names its agent');
 
 echo "Refusals\n";
-$unsupported = launch(['agent' => 'codex', 'prompt' => 'hi', 'workdir' => $workdir]);
+$unsupported = launch(['agent' => 'antigravity', 'prompt' => 'hi', 'workdir' => $workdir]);
 assert_equal(false, $unsupported['ok'] ?? null, 'an agent with no launcher is refused');
-assert_contains("not supported for agent 'codex' (supported: claude)", (string)$unsupported['message'], 'naming the agent and what is supported');
+assert_contains("not supported for agent 'antigravity' (supported: claude, codex)", (string)$unsupported['message'], 'naming the agent and what is supported');
 assert_contains('needs a prompt', (string)launch(['workdir' => $workdir])['message'], 'a new session without a prompt is refused');
 assert_contains('needs a prompt', (string)launch(['workdir' => $workdir, 'prompt' => "  \n"])['message'], 'a blank prompt counts as none');
 assert_contains('existing absolute workdir', (string)launch(['workdir' => 'relative', 'prompt' => 'hi'])['message'], 'a relative workdir is refused');
@@ -187,12 +187,12 @@ $row = array_values(array_filter($listed['sessions'] ?? [], static fn (array $s)
 assert_equal($conversationId, $row['agent_session_id'] ?? null, 'the session is listed with its conversation id');
 assert_equal('idle', $row['status'] ?? null, 'and its status');
 assert_equal($workdir, $row['workdir'] ?? null, 'and its directory');
-assert_contains('not supported for agent', (string)dispatch_action(['action' => 'launch_list', 'agent' => 'codex'])['message'], 'listing an agent with no launcher is a handled failure');
+assert_contains('not supported for agent', (string)dispatch_action(['action' => 'launch_list', 'agent' => 'antigravity'])['message'], 'listing an agent with no launcher is a handled failure');
 
 echo "Kill\n";
 assert_contains('needs a session name', (string)dispatch_action(['action' => 'launch_kill', 'target' => ' '])['message'], 'a blank target is refused');
 assert_contains('No headless Claude session found', (string)dispatch_action(['action' => 'launch_kill', 'target' => 'no-such-session'])['message'], 'an unknown target is a handled failure');
-assert_contains('not supported for agent', (string)dispatch_action(['action' => 'launch_kill', 'agent' => 'codex', 'target' => $resumedName])['message'], 'an agent with no launcher is refused');
+assert_contains('not supported for agent', (string)dispatch_action(['action' => 'launch_kill', 'agent' => 'antigravity', 'target' => $resumedName])['message'], 'an agent with no launcher is refused');
 SessionStatusStore::update_status($resumedName, ['status' => 'working']);
 $busy = dispatch_action(['action' => 'launch_kill', 'target' => $resumedName]);
 assert_equal(false, $busy['ok'] ?? null, 'a working session is not stopped');
@@ -282,7 +282,7 @@ assert_contains('No tracked Claude session', (string)dispatch_action(['action' =
 assert_contains('inside a Sessioneer session', (string)dispatch_action(['action' => 'launch_send', 'target' => $resumedName, 'message' => 'x'])['message'], 'a sender outside any session is refused');
 assert_contains('inside a Sessioneer session', (string)dispatch_action(['action' => 'launch_send', 'from' => 'cc-forged', 'target' => $resumedName, 'message' => 'x'])['message'], 'so is one naming an untracked session');
 assert_contains('to itself', (string)dispatch_action(['action' => 'launch_send', 'from' => $senderName, 'target' => $senderName, 'message' => 'x'])['message'], 'a session cannot message itself');
-assert_contains('not supported for agent', (string)dispatch_action(['action' => 'launch_send', 'agent' => 'codex', 'from' => $senderName, 'target' => $resumedName, 'message' => 'x'])['message'], 'an agent with no launcher is refused');
+assert_contains('not supported for agent', (string)dispatch_action(['action' => 'launch_send', 'agent' => 'antigravity', 'from' => $senderName, 'target' => $resumedName, 'message' => 'x'])['message'], 'an agent with no launcher is refused');
 
 echo "Failure: manager down\n";
 proc_terminate($m['proc'], SIGTERM);

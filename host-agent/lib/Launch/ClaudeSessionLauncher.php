@@ -9,7 +9,6 @@ use HostAgent\Runtimes\RuntimeRegistry;
 use HostAgent\Runtimes\RuntimeType;
 use HostAgent\Services\BareProcessService;
 use HostAgent\Services\Config;
-use HostAgent\Services\ProcessRunner;
 use HostAgent\Services\PromptInteractionService;
 use HostAgent\Services\TranscriptRouter;
 use HostAgent\Services\TranscriptService;
@@ -24,6 +23,8 @@ use HostAgent\Stores\SidecarStore;
  */
 class ClaudeSessionLauncher implements SessionLauncher
 {
+    use PeerLookup;
+
     private const AGENT_ID = 'claude';
 
     public function agent_id(): string
@@ -201,50 +202,9 @@ class ClaudeSessionLauncher implements SessionLauncher
             return ['ok' => false, 'message' => 'Headless runtime unavailable for claude'];
         }
 
-        $workdir = (string)($sender['workdir'] ?? '-');
-        $branch = $this->branch_of($workdir) ?? '-';
-        // The stamp comes from the host agent's own records of the sender, never from the message.
-        $stamp = "[sessioneer peer: {$from} · {$workdir} · {$branch}]";
+        $stamp = $this->peer_stamp($from, $sender);
 
         return $this->deliver($name, 'sent', "{$stamp} {$message}", $runtime, (string)($receiver['runtime'] ?? RuntimeType::TMUX));
-    }
-
-    public function peers(array $request): array
-    {
-        $from = is_string($request['from'] ?? null) ? trim($request['from']) : '';
-        $sender = $from !== '' ? SidecarStore::read_sidecar($from) : null;
-        $workdir = is_string($sender['workdir'] ?? null) ? $sender['workdir'] : (is_string($request['workdir'] ?? null) ? $request['workdir'] : '');
-        $repo = $workdir !== '' ? $this->repo_of($workdir) : null;
-
-        if ($repo === null) {
-            return ['ok' => false, 'message' => 'Peers needs a session (SESSIONEER_SELF) or a workdir inside a git repository'];
-        }
-
-        $peers = [];
-
-        foreach ($this->list_sessions($request)['sessions'] ?? [] as $s) {
-            if ($s['name'] === $from || !is_string($s['workdir']) || $this->repo_of($s['workdir']) !== $repo) {
-                continue;
-            }
-
-            $peers[] = ['name' => $s['name'], 'status' => $s['status'], 'workdir' => $s['workdir'], 'branch' => $this->branch_of($s['workdir']), 'title' => $s['title']];
-        }
-
-        return ['ok' => true, 'self' => $from !== '' ? $from : null, 'peers' => $peers];
-    }
-
-    private function repo_of(string $dir): ?string
-    {
-        $r = is_dir($dir) ? ProcessRunner::run_process(['git', '-C', $dir, 'rev-parse', '--path-format=absolute', '--git-common-dir']) : null;
-
-        return $r !== null && $r['exit'] === 0 && trim($r['stdout']) !== '' ? trim($r['stdout']) : null;
-    }
-
-    private function branch_of(string $dir): ?string
-    {
-        $r = is_dir($dir) ? ProcessRunner::run_process(['git', '-C', $dir, 'branch', '--show-current']) : null;
-
-        return $r !== null && $r['exit'] === 0 && trim($r['stdout']) !== '' ? trim($r['stdout']) : null;
     }
 
     /**
