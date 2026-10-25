@@ -111,7 +111,10 @@ one merge rule, and it is unavailable until either has run once.
 Claude Code alone also supports multiple accounts ("profiles") - a session can
 be spawned under a different `CLAUDE_CONFIG_DIR` (e.g. a separate work
 account) instead of always using this process's own default, named in
-`host-agent/config/agents.php`. A profile is picked from the New Session
+`host-agent/config/agents.php`. The default (and a profile without a
+`config_dir`) runs with `CLAUDE_CONFIG_DIR` removed from the launched
+process's environment, so a value inherited from the spawner can never pick
+the account (tmux and headless, new and resumed alike). A profile is picked from the New Session
 form's Account selector when more than one is configured, persists on the
 session's sidecar, and is threaded through spawn/resume, transcript lookup,
 archived-session listing, and hook install/health checks so a work-profile
