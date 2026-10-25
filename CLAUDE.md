@@ -375,7 +375,13 @@ that only `create_agent_session()`-spawned sessions have).
   parameter, or it silently only works for the default account.** A session can be spawned under a
   different `CLAUDE_CONFIG_DIR` (a separate account, e.g. work), named in
   `host-agent/config/agents.php`. `Config::claude_config_dir($profile)` is
-  the base every Claude-account-scoped path is built from; the profile name
+  the base every Claude-account-scoped FILESYSTEM path is built from (the
+  default account is `~/.claude` there), whereas a spawned process's env comes
+  from `ClaudeCodeAdapter::account_env()`: a profile with a `config_dir` sets
+  `CLAUDE_CONFIG_DIR` explicitly, every other one (default, `personal`,
+  unknown) has it REMOVED (null; tmux gets an `env -u` prefix, the headless
+  manager drops it from the child env) because the CLI reads `~/.claude.json`
+  only when it is unset and the spawner may carry another account's value; the profile name
   itself lives on the sidecar's `profile` column and flows through
   `SessionService::build_session_entry()`'s own `profile` field. A caller
   with no sidecar to consult (a bare/untracked process, an archived-session

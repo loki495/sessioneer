@@ -107,7 +107,9 @@ assert_true(in_array('--session-id', $argv, true) && $fresh['assigned_id'] !== n
 assert_true(in_array('--permission-mode', $argv, true) && in_array('plan', $argv, true), 'starting mode is passed in Claude vocabulary');
 assert_true(in_array('--model', $argv, true) && in_array('haiku', $argv, true), 'model alias passes through');
 assert_true(in_array('--allowedTools', $argv, true), 'task tools opt-in passes through');
-assert_true(!isset($fresh['env']), 'no CLAUDE_CONFIG_DIR override without a profile');
+assert_equal(['CLAUDE_CONFIG_DIR' => null], $fresh['env'] ?? null, 'the default account explicitly unsets CLAUDE_CONFIG_DIR (null) instead of inheriting one');
+assert_equal(['CLAUDE_CONFIG_DIR' => null], $adapter->build_headless_argv(['profile' => 'personal'])['env'] ?? null, 'a profile with no config_dir (personal) unsets it too, never the explicit default dir');
+assert_equal(['CLAUDE_CONFIG_DIR' => Config::claude_config_dir('work')], $adapter->build_headless_argv(['profile' => 'work'])['env'] ?? null, 'a profile with a config_dir keeps it explicit');
 
 $noTools = $adapter->build_headless_argv(['no_tools' => true, 'enable_task_tools' => true])['argv'];
 assert_equal(['--tools', '', '--strict-mcp-config'], array_slice($noTools, array_search('--tools', $noTools, true), 3), 'no_tools disables the built-in tools and ignores MCP servers');
@@ -545,6 +547,41 @@ call($m8, 'sessioneer/sendInput', ['session' => $sn(71), 'content' => 'QUOTAJUNK
 assert_true((bool)wait_until(static fn (): bool => has_result($m8, 'echo: QUOTAJUNK now') && status_is($sn(71), 'idle')), 'a turn whose rate_limit_event has unusable windows still completes');
 assert_equal($workBefore, GlobalStateStore::read(Config::quota_live_state_key('work')), 'and writes nothing (no bogus bucket, no fresh capture time)');
 assert_true(!str_contains((string)file_get_contents($m8['log']), 'unexpected error'), 'without an unexpected error in the manager');
+
+// ============================================ inherited CLAUDE_CONFIG_DIR
+
+echo "Env: an inherited CLAUDE_CONFIG_DIR never selects the account\n";
+$mEnv = start_manager($root, 'menv', ['CLAUDE_CONFIG_DIR' => $root . '/inherited-wrong']);
+make_session($root, $sn(80));
+make_session($root, $sn(81), ['profile' => 'personal']);
+make_session($root, $sn(82), ['profile' => 'work']);
+
+foreach ([80, 81, 82] as $n) {
+    call($mEnv, 'sessioneer/sendInput', ['session' => $sn($n), 'content' => "env probe {$n}"]);
+    wait_until(static fn (): bool => has_result($mEnv, "echo: env probe {$n}") && status_is($sn($n), 'idle'));
+}
+
+$envLaunches = array_values(array_filter(fake_log($mEnv), static fn (array $r): bool => isset($r['env'])));
+assert_equal(3, count($envLaunches), 'three children launched');
+assert_equal(false, $envLaunches[0]['env']['CLAUDE_CONFIG_DIR'], 'default account: the inherited value is removed from the child');
+assert_equal(false, $envLaunches[1]['env']['CLAUDE_CONFIG_DIR'], 'personal: the inherited value is removed from the child');
+assert_equal($root . '/home/.claude-work', $envLaunches[2]['env']['CLAUDE_CONFIG_DIR'], 'work: its own configured dir wins over the inherited one');
+assert_equal(false, $envLaunches[0]['env']['ANTHROPIC_API_KEY'], 'API-key stripping is unchanged');
+
+// Resumed launches: the stop/respawn path and the adapter's --resume shape.
+call($mEnv, 'sessioneer/stop', ['session' => $sn(80)]);
+call($mEnv, 'sessioneer/stop', ['session' => $sn(82)]);
+$launchCount = static fn (): int => count(array_filter(fake_log($mEnv), static fn (array $r): bool => isset($r['env'])));
+// One respawn at a time: launch order is only meaningful when each is awaited before the next starts.
+call($mEnv, 'sessioneer/sendInput', ['session' => $sn(80), 'content' => 'env probe again 80']);
+wait_until(static fn (): bool => $launchCount() >= 4);
+call($mEnv, 'sessioneer/sendInput', ['session' => $sn(82), 'content' => 'env probe again 82']);
+wait_until(static fn (): bool => $launchCount() >= 5);
+$envLaunches = array_values(array_filter(fake_log($mEnv), static fn (array $r): bool => isset($r['env'])));
+assert_equal(false, $envLaunches[3]['env']['CLAUDE_CONFIG_DIR'] ?? null, 'a respawned default-account session still has the inherited value removed');
+assert_equal($root . '/home/.claude-work', $envLaunches[4]['env']['CLAUDE_CONFIG_DIR'] ?? null, 'a respawned work session keeps its own dir');
+assert_equal(['CLAUDE_CONFIG_DIR' => null], $adapter->build_headless_argv(['resume' => 'abc', 'profile' => 'personal'])['env'] ?? null, '--resume shape: personal unsets');
+assert_equal(['CLAUDE_CONFIG_DIR' => Config::claude_config_dir('work')], $adapter->build_headless_argv(['resume' => 'abc', 'profile' => 'work'])['env'] ?? null, '--resume shape: work keeps its dir');
 
 // ============================================ stop escalation, real restart
 

@@ -5,8 +5,9 @@ declare(strict_types=1);
  * Exercises HostAgent\Agents\AgentRegistry/ClaudeCodeAdapter/
  * AntigravityAdapter - the seam between agents
  * and its second real implementation. ClaudeCodeAdapter::build_spawn_argv() must
- * produce BYTE-IDENTICAL argv to what SessionLifecycleService::
- * create_agent_session() built inline before this extraction - this file is
+ * produce the same argv SessionLifecycleService::
+ * create_agent_session() built inline before this extraction (plus the
+ * CLAUDE_CONFIG_DIR env entry, see account_env()) - this file is
  * what proves that, not a rewrite of HookService's own coverage (see
  * test_session_hook.php for that; check_hooks()/install_hooks() here only
  * confirm delegation, not every edge case HookService itself already

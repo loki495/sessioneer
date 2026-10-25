@@ -826,7 +826,7 @@ final class ClaudeHeadlessManager
      * The child environment: everything inherited MINUS the variables that
      * would override the subscription login or re-enable Claude's hooks.
      *
-     * @param array<string, string> $extra
+     * @param array<string, ?string> $extra
      * @return array<string, string>
      */
     private function child_env(array $extra): array
@@ -839,7 +839,8 @@ final class ClaudeHeadlessManager
             }
         }
 
-        return $extra + $env;
+        // A null in $extra removes the inherited variable (see ClaudeCodeAdapter::account_env()).
+        return array_filter($extra + $env, static fn (?string $v): bool => $v !== null);
     }
 
     /**

@@ -55,12 +55,11 @@ class ClaudeCodeAdapter implements AgentAdapter
      * separate work account. null/empty/unrecognized all mean "this
      * process's own default account", same fallback Config's own profile
      * helpers already use, so every caller from before profiles existed
-     * keeps spawning byte-identical sessions. When set, the CLI binary
+     * keeps spawning the same sessions. When set, the CLI binary
      * comes from that profile's own 'bin' override if any (Config::
-     * claude_bin($profile)), and the returned env carries CLAUDE_CONFIG_DIR
-     * so the spawned tmux pane's `claude` process (and Claude Code's own
-     * transcript/settings storage under it) actually runs under that
-     * account.
+     * claude_bin($profile)), and the returned env always names CLAUDE_CONFIG_DIR
+     * (account_env()) so the spawned `claude` process (and Claude Code's own
+     * transcript/settings storage under it) runs under that account.
      */
     public function build_spawn_argv(array $options): array
     {
@@ -72,11 +71,26 @@ class ClaudeCodeAdapter implements AgentAdapter
 
         $result = ['argv' => $argv, 'assigned_id' => $sessionId];
 
-        if ($profile !== null) {
-            $result['env'] = ['CLAUDE_CONFIG_DIR' => Config::claude_config_dir($profile)];
-        }
+        $result['env'] = self::account_env($profile);
 
         return $result;
+    }
+
+    /**
+     * The child env that selects the account. A profile with its own
+     * 'config_dir' sets it explicitly; the default account (null, personal,
+     * an unknown name) maps to null = REMOVE the variable, because the
+     * CLI reads ~/.claude.json only when it is unset - an explicit
+     * ~/.claude is a different, empty config - and the spawning process
+     * (manager, tmux server) may itself carry another account's value.
+     * Deliberately not Config::claude_config_dir(), which is the transcript
+     * lookup path (~/.claude for the default).
+     *
+     * @return array<string, ?string>
+     */
+    public static function account_env(?string $profile): array
+    {
+        return ['CLAUDE_CONFIG_DIR' => Config::claude_profile_config($profile)['config_dir']];
     }
 
     /**
@@ -94,7 +108,7 @@ class ClaudeCodeAdapter implements AgentAdapter
      * the previous permission mode.
      *
      * @param array<string, mixed> $options
-     * @return array{argv: string[], assigned_id: ?string, env?: array<string, string>}
+     * @return array{argv: string[], assigned_id: ?string, env?: array<string, ?string>}
      */
     public function build_headless_argv(array $options): array
     {
@@ -130,9 +144,7 @@ class ClaudeCodeAdapter implements AgentAdapter
 
         $result = ['argv' => $argv, 'assigned_id' => $assignedId];
 
-        if ($profile !== null) {
-            $result['env'] = ['CLAUDE_CONFIG_DIR' => Config::claude_config_dir($profile)];
-        }
+        $result['env'] = self::account_env($profile);
 
         return $result;
     }

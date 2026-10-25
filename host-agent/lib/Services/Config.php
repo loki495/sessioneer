@@ -149,11 +149,11 @@ class Config
     /**
      * The CLAUDE_CONFIG_DIR a given profile's session should run under -
      * $profile's own 'config_dir' when set, else this process's own
-     * default (home_root() . '/.claude', i.e. today's single-account
-     * behavior unchanged). This is what gets injected as the spawned tmux
-     * pane's CLAUDE_CONFIG_DIR env (see SessionLifecycleService) and is
-     * the base every other Claude-account-scoped path below is now built
-     * from, instead of home_root() directly.
+     * default (home_root() . '/.claude'). This is the FILESYSTEM location of
+     * the account's transcripts/settings, the base every other Claude-
+     * account-scoped path below is built from - NOT the env a spawned
+     * process gets: the default account runs with CLAUDE_CONFIG_DIR unset
+     * (ClaudeCodeAdapter::account_env()).
      */
     public static function claude_config_dir(?string $profile = null): string
     {
