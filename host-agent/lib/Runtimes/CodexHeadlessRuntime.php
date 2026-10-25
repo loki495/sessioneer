@@ -41,6 +41,11 @@ class CodexHeadlessRuntime implements RuntimeProvider
         }
 
         $params = ['cwd' => $workdir, 'approvalPolicy' => 'on-request', 'sandbox' => ($options['read_only'] ?? false) === true ? 'read-only' : 'workspace-write'];
+        // Unattended work (git in a worktree, docker, network) cannot run inside workspace-write and nobody is there to approve.
+        if (($options['full_access'] ?? false) === true) {
+            $params = ['cwd' => $workdir, 'approvalPolicy' => 'never', 'sandbox' => 'danger-full-access'];
+        }
+
         foreach (['model', 'serviceTier'] as $key) {
             if (is_string($options[$key] ?? null) && $options[$key] !== '') {
                 $params[$key] = $options[$key];

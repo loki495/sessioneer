@@ -33,6 +33,13 @@ try {
     assert_equal("final answer\n", $out, '--wait: stdout is only the final assistant text');
     assert_contains('ok', $err, '--wait: the session name goes to stderr');
 
+    [$code, $out] = run_cli([$bin, '--agent', 'codex', '--wait', '--workdir', '/tmp', 'late'], $socketPath);
+    assert_equal(0, $code, '--wait with codex: exit 0');
+    assert_equal("final answer\n", $out, '--wait with codex: an idle thread whose last message is still the user\'s is not done');
+
+    [$code, $out] = run_cli([$bin, '--wait', '--workdir', '/tmp', 'late'], $socketPath);
+    assert_equal("the prompt\n", $out, '--wait with claude: idle is trusted as before, whatever the last message is');
+
     [$code, $out, $err] = run_cli([$bin, '--wait', '--workdir', '/tmp', 'err'], $socketPath);
     assert_equal(1, $code, '--wait: a turn error exits 1');
     assert_contains('errored: boom', $err, '--wait: the turn error is a handled message');

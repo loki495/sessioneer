@@ -235,7 +235,11 @@ if (isset($opts['wait'])) {
             fail('session ' . $name . ' errored: ' . $d['last_turn_error']);
         }
 
-        if (($d['status'] ?? null) === 'idle' || (!isset($d['status']) && empty($d['working']))) {
+        // A new Codex thread reports idle for a few seconds after its prompt is accepted, before the
+        // turn goes active; only an assistant reply as the last message proves the turn happened.
+        $replied = $opt('agent') !== 'codex' || ($d['last_message']['role'] ?? null) === 'assistant';
+
+        if ($replied && (($d['status'] ?? null) === 'idle' || (!isset($d['status']) && empty($d['working'])))) {
             $text = [];
 
             foreach ($d['last_message']['blocks'] ?? [] as $b) {

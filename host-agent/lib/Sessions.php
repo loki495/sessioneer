@@ -942,6 +942,18 @@ function sessioneer_headless_sync(): void
     }
 }
 
+/**
+ * A Codex thread is not listed until its first message materializes it, so a
+ * sidecar written at create time must survive a sync that runs before then.
+ *
+ * @param array{session_name: string, spawned_at: ?int} $row
+ * @param array<string, true> $live
+ */
+function sessioneer_codex_sidecar_is_stale(array $row, array $live, int $now): bool
+{
+    return !isset($live[$row['session_name']]) && $now - (int)($row['spawned_at'] ?? 0) > 300;
+}
+
 /** Reconciles recent native Codex app-server threads into headless sidecars. */
 function sessioneer_codex_sync(): void
 {
@@ -986,7 +998,7 @@ function sessioneer_codex_sync(): void
 
     foreach (SidecarStore::list_runtime_sidecars(RuntimeType::HEADLESS) as $row) {
         if (($row['agent'] ?? null) !== 'codex') continue;
-        if (!isset($live[$row['session_name']])) {
+        if (sessioneer_codex_sidecar_is_stale($row, $live, $now)) {
             SidecarStore::delete_sidecar($row['session_name']);
             SessionStatusStore::delete_status($row['session_name']);
         }
@@ -1327,6 +1339,8 @@ function sessioneer_headless_detail_shape(array $serve, string $agentId = 'openc
             : null,
         'context_used_percentage' => null,
         'git_worktree' => null,
+        // Read by `sessioneer --wait` to print the final answer.
+        'last_message' => $id !== '' ? SessionService::session_last_message($id) : null,
         'has_transcript' => true,
         'todos' => $todos,
     ];

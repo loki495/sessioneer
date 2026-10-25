@@ -130,6 +130,12 @@ $client->calls = [];
 $launcher->launch(['prompt' => 'look only', 'workdir' => $workdir, 'starting_mode' => 'plan']);
 assert_equal('read-only', $client->calls_of('thread/start')[0]['sandbox'], '--mode plan starts a read-only sandbox');
 
+$client->calls = [];
+$launcher->launch(['prompt' => 'do it', 'workdir' => $workdir, 'starting_mode' => 'full']);
+$full = $client->calls_of('thread/start')[0];
+assert_equal('danger-full-access', $full['sandbox'], '--mode full starts with no sandbox');
+assert_equal('never', $full['approvalPolicy'], 'and no approval prompts');
+
 echo "Failed delivery\n";
 $client->failSend = true;
 $lost = $launcher->launch(['prompt' => 'x', 'workdir' => $workdir]);
@@ -202,6 +208,14 @@ assert_contains('No tracked Codex session', (string)$launcher->send(['from' => '
 assert_contains('inside a Sessioneer session', (string)$launcher->send(['target' => 'thr-b', 'message' => 'x'])['message'], 'a sender outside any session is refused');
 assert_contains('inside a Sessioneer session', (string)$launcher->send(['from' => 'thr-forged', 'target' => 'thr-b', 'message' => 'x'])['message'], 'so is one naming an untracked session');
 assert_contains('to itself', (string)$launcher->send(['from' => 'thr-a', 'target' => 'thr-a', 'message' => 'x'])['message'], 'a session cannot message itself');
+
+echo "Sync pruning\n";
+require_once dirname(__DIR__) . '/host-agent/lib/Sessions.php';
+$now = time();
+assert_equal(false, sessioneer_codex_sidecar_is_stale(['session_name' => 't', 'spawned_at' => $now - 5], [], $now), 'a just-created thread not yet listed is kept');
+assert_equal(true, sessioneer_codex_sidecar_is_stale(['session_name' => 't', 'spawned_at' => $now - 3600], [], $now), 'an old thread that is no longer listed is pruned');
+assert_equal(false, sessioneer_codex_sidecar_is_stale(['session_name' => 't', 'spawned_at' => $now - 3600], ['t' => true], $now), 'a listed thread is kept');
+assert_equal(true, sessioneer_codex_sidecar_is_stale(['session_name' => 't', 'spawned_at' => null], [], $now), 'a sidecar with no spawn time counts as old');
 
 echo "Bridge down\n";
 $down = new CodexSessionLauncher(new CodexHeadlessRuntime(new CodexBridgeClient($root . '/none.sock', 1), null, '/nonexistent/codex'));

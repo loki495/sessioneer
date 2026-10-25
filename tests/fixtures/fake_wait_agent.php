@@ -5,7 +5,7 @@ declare(strict_types=1);
  * Stand-in for host-agent/agent.php for test_cli_wait.php: a `launch` names a
  * session after its prompt, and `session_detail` replays that scenario - the
  * first poll is working, later ones idle with a final message (scenario "ok"),
- * a turn error ("err"), or never idle ("hang").
+ * a turn error ("err"), never idle ("hang"), or idle at first with only the user's message ("late").
  */
 
 $request = json_decode((string)stream_get_contents(STDIN), true);
@@ -29,7 +29,10 @@ switch ($request['action'] ?? '') {
         $idle = $scenario === 'hang' ? false : $polls > 1;
         $entry = ['ok' => true, 'status' => $idle ? 'idle' : 'working', 'last_turn_error' => $idle && $scenario === 'err' ? 'boom' : null];
 
-        if ($idle) {
+        if ($scenario === 'late' && $polls <= 3) {
+            // A Codex thread that reads idle before its turn starts: the last message is still the user's.
+            $entry = ['ok' => true, 'status' => 'idle', 'last_turn_error' => null, 'last_message' => ['role' => 'user', 'blocks' => [['kind' => 'text', 'text' => 'the prompt']]]];
+        } elseif ($idle) {
             $entry['last_message'] = ['role' => 'assistant', 'blocks' => [['kind' => 'tool_use', 'text' => 'x'], ['kind' => 'text', 'text' => 'final answer']]];
         }
 

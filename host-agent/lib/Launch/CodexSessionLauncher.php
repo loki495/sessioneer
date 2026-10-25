@@ -14,9 +14,9 @@ use HostAgent\Stores\SidecarStore;
  * session's name IS its thread id, so a conversation id and a session name
  * are the same thing here.
  *
- * `--mode` maps to the thread's sandbox: absent = workspace-write (what
- * Dibs-style work needs, same as the dashboard's New Session), `plan` =
- * read-only. Approvals are always on-request.
+ * `--mode` maps to the thread's sandbox: absent = workspace-write with
+ * on-request approvals (same as the dashboard's New Session), `plan` =
+ * read-only, `full` = no sandbox and no approvals, for trusted unattended work.
  */
 class CodexSessionLauncher implements SessionLauncher
 {
@@ -47,8 +47,8 @@ class CodexSessionLauncher implements SessionLauncher
             return ['ok' => false, 'message' => '--profile is not supported for Codex'];
         }
 
-        if ($mode !== '' && $mode !== 'plan') {
-            return ['ok' => false, 'message' => "--mode '{$mode}' is not supported for Codex (only 'plan', a read-only sandbox; omit it for workspace-write)"];
+        if (!in_array($mode, ['', 'plan', 'full'], true)) {
+            return ['ok' => false, 'message' => "--mode '{$mode}' is not supported for Codex (only 'plan', a read-only sandbox, or 'full', no sandbox and no approvals; omit it for workspace-write)"];
         }
 
         if ($threadId === '') {
@@ -62,7 +62,7 @@ class CodexSessionLauncher implements SessionLauncher
                 return ['ok' => false, 'message' => 'A new session needs an existing absolute workdir'];
             }
 
-            $created = $this->runtime()->create(['workdir' => $workdir, 'model' => $request['model'] ?? null, 'read_only' => $mode === 'plan']);
+            $created = $this->runtime()->create(['workdir' => $workdir, 'model' => $request['model'] ?? null, 'read_only' => $mode === 'plan', 'full_access' => $mode === 'full']);
             $id = $created['ok'] === true && is_string($created['id'] ?? null) ? $created['id'] : null;
 
             if ($id === null) {
@@ -114,7 +114,7 @@ class CodexSessionLauncher implements SessionLauncher
             return ['ok' => false, 'message' => "No tracked Codex session found for '{$target}'"];
         }
 
-        $status = (string)($this->runtime()->status($name)['status'] ?? 'idle');
+        $status = (string)$this->runtime()->status($name)['status'];
 
         if ($status !== 'idle' && empty($request['force'])) {
             return ['ok' => false, 'name' => $name, 'message' => "Session {$name} is {$status}; stopping it would drop that work (use --force)"];
