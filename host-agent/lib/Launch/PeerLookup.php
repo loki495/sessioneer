@@ -38,7 +38,11 @@ trait PeerLookup
         return ['ok' => true, 'self' => $from !== '' ? $from : null, 'peers' => $peers];
     }
 
-    /** The stamp comes from the host agent's own records of the sender, never from the message. */
+    /**
+     * The stamp comes from the host agent's own records of the sender, never from the message.
+     *
+     * @param array<string, mixed> $sender
+     */
     private function peer_stamp(string $from, array $sender): string
     {
         $workdir = (string)($sender['workdir'] ?? '-');
