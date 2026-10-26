@@ -236,6 +236,12 @@ class Config
         return self::sessioneer_config('CODEX_BRIDGE_SOCKET', '/run/user/' . getmyuid() . '/sessioneer-codex-bridge.sock');
     }
 
+    /** The managed daemon Codex Remote (the phone app) also talks to; empty disables it for the bridge. */
+    public static function codex_daemon_socket(): string
+    {
+        return self::sessioneer_config('CODEX_DAEMON_SOCKET', self::home_root() . '/.codex/app-server-control/app-server-control.sock');
+    }
+
     public static function claude_headless_socket(): string
     {
         return self::sessioneer_config('CLAUDE_HEADLESS_SOCKET', '/run/user/' . getmyuid() . '/sessioneer-claude-headless.sock');

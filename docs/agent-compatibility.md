@@ -18,7 +18,7 @@ capability matrix and parity gaps.
 |-------|------|---------------|----------|------------------|
 | **Claude Code** | Primary | 2.1.278 and 2.1.302 (headless stream-json captures); tmux pane fixtures from 2.1.269 | Headless (default) or tmux | Headless sessions show no context % or worktree; concurrent permission prompts queue by request id |
 | **OpenCode** | Supported | 1.18.21 | `opencode serve` (default) or tmux fallback | 1.x only: OpenCode 2.x is not supported yet (see below). No full status-hook plugin or mode vocabulary; tmux fallback is less complete |
-| **Codex** | Supported | 0.152.1 (app-server schema from 0.150.1) | Headless only | Approvals and input requests owned by Codex Remote are visible but can't be answered; no transcript search |
+| **Codex** | Supported | 0.152.1 (app-server schema from 0.150.1) | Headless only | Approvals and input requests are answerable from Sessioneer and Codex Remote alike while the bridge is attached to the managed daemon; with only the private fallback, ones owned by Codex Remote are visible but can't be answered; no transcript search |
 | **Antigravity** | Experimental | `agy` 1.2.1 | tmux only | Approval dialogs read from the pane; model changes are account-wide; no transcript search; hooks are a manual install |
 
 "Last verified" is the newest version the integration was checked against live
