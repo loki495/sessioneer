@@ -22,6 +22,9 @@ use HostAgent\Services\SessionLifecycleService;
  */
 class ClaudeCodeAdapter implements AgentAdapter
 {
+    /** What `claude --effort` accepts; the CLI rejects a level a model does not support at spawn. */
+    public const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
+
     public function id(): string
     {
         return 'claude';
@@ -172,6 +175,12 @@ class ClaudeCodeAdapter implements AgentAdapter
 
         if (is_string($model) && $model !== '' && $model !== 'default' && array_key_exists($model, SelectableModel::PICKER_OPTIONS)) {
             array_push($flags, '--model', $model);
+        }
+
+        $effort = $options['effort'] ?? null;
+
+        if (is_string($effort) && in_array($effort, self::EFFORT_LEVELS, true)) {
+            array_push($flags, '--effort', $effort);
         }
 
         $startingMode = $options['starting_mode'] ?? null;

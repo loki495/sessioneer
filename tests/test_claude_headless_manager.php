@@ -107,6 +107,8 @@ assert_true(in_array('--session-id', $argv, true) && $fresh['assigned_id'] !== n
 assert_true(in_array('--permission-mode', $argv, true) && in_array('plan', $argv, true), 'starting mode is passed in Claude vocabulary');
 assert_true(in_array('--model', $argv, true) && in_array('haiku', $argv, true), 'model alias passes through');
 assert_true(in_array('--allowedTools', $argv, true), 'task tools opt-in passes through');
+assert_equal(['--effort', 'max'], array_slice($adapter->build_headless_argv(['effort' => 'max'])['argv'], -2), 'a known effort level becomes --effort');
+assert_true(!in_array('--effort', $adapter->build_headless_argv(['effort' => 'turbo'])['argv'], true), 'an unknown level is never passed to the CLI');
 assert_equal(['CLAUDE_CONFIG_DIR' => null], $fresh['env'] ?? null, 'the default account explicitly unsets CLAUDE_CONFIG_DIR (null) instead of inheriting one');
 assert_equal(['CLAUDE_CONFIG_DIR' => null], $adapter->build_headless_argv(['profile' => 'personal'])['env'] ?? null, 'a profile with no config_dir (personal) unsets it too, never the explicit default dir');
 assert_equal(['CLAUDE_CONFIG_DIR' => Config::claude_config_dir('work')], $adapter->build_headless_argv(['profile' => 'work'])['env'] ?? null, 'a profile with a config_dir keeps it explicit');
