@@ -204,7 +204,7 @@ answered in Sessioneer.
 | Claude Code | headless by default; tmux optional | tmux: Claude hooks, with narrow pane fallbacks for folder trust and `AskUserQuestion` UI state. Headless: the session process's own event stream, no hooks or pane | Click **Install hooks**; `host-agent/install.sh` installs the headless manager once `CLAUDE_BIN` is set |
 | Antigravity | tmux only | Hooks provide lifecycle and conversation identity; the live pane identifies approval dialogs | Install its global hooks; optionally enable its quota timer |
 | OpenCode | `opencode serve` by default; tmux fallback | Serve API + SQLite + global permissions plugin; tmux permissions also consult the live pane | Re-run `host-agent/install.sh` after setting `OPENCODE_BIN` |
-| Codex | headless only | Private app-server bridge for locally-owned startup; persistent queue + Codex hooks for shared/Remote-owned threads | Click **Install hooks**, trust them in Codex, and bootstrap Remote control when sharing with Codex Remote |
+| Codex | headless only | Bridge attached to the managed app-server daemon shared with Codex Remote (private app-server fallback); persistent queue + Codex hooks | Click **Install hooks**, trust them in Codex, and bootstrap Remote control when sharing with Codex Remote |
 
 For detailed agent version compatibility and known quirks, see [`docs/agent-compatibility.md`](docs/agent-compatibility.md).
 
@@ -336,7 +336,7 @@ thread writable from Sessioneer even when Codex Remote started it or currently
 has it loaded. Queue writes are FIFO and deferred while a turn is active; they
 do not steal the active turn or its prompt ownership. The first message of a
 brand-new, not-yet-materialized Sessioneer thread is the one exception and is
-sent through the private bridge that created it.
+sent through the bridge that created it.
 
 To share threads with Codex Remote, its managed daemon must be running with
 remote control enabled:
@@ -351,8 +351,8 @@ Use the absolute `CODEX_BIN` path here if `codex` is not on your shell's
 
 Rebootstrapping the managed daemon does not delete persisted Codex sessions,
 so they remain resumable, but it can interrupt an active turn. Restarting the
-private Sessioneer bridge likewise clears any stale bridge-owned pending prompt
-because its response ID died with the old connection.
+Sessioneer bridge likewise clears any stale pending prompt because its response
+ID died with the old connection.
 
 The **Install hooks** button adds Sessioneer's observer to
 `~/.codex/hooks.json` for `SessionStart`, `UserPromptSubmit`,
@@ -364,12 +364,18 @@ Codex requires new or changed non-managed hooks to be reviewed and trusted in
 sessions that were already open when the hook configuration changed. See the
 [official Codex hooks documentation](https://developers.openai.com/codex/hooks).
 
-An approval or `request_user_input` prompt belongs to the app-server
-connection that created it. Therefore Sessioneer can answer a prompt only when
-its private bridge owns the active turn (notably the first turn described
-above). A prompt from Codex Remote or from the shared queue/managed transport
-is observability-only in Sessioneer: it shows the session as blocked, preserves
-useful prompt context, removes answer buttons, and directs you to Codex Remote.
+The bridge connects to the managed daemon's WebSocket control socket
+(`CODEX_DAEMON_SOCKET`, default `~/.codex/app-server-control/app-server-control.sock`),
+the same daemon Codex Remote uses. A thread created there is visible in the
+Codex app, and the daemon sends an approval or `request_user_input` to every
+connection that has the thread loaded, so either side can answer and the other
+is told it was resolved. The bridge loads every thread the daemon reports and
+every thread that becomes active (a brand-new thread cannot be loaded until its
+first turn has run, so it retries for about ten seconds). If the daemon is not
+running or the setting is empty, the bridge falls back to a private
+`app-server --stdio` child: its threads are invisible to Codex Remote, and a
+prompt from a Remote-owned thread is then observability-only (blocked, no answer
+buttons, "Approval required in Codex Remote").
 The persistent queue solves cross-owner **messages**, not cross-owner **prompt
 responses**.
 

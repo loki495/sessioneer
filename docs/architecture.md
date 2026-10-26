@@ -30,7 +30,7 @@ Session state (blocked/working/idle) comes exclusively from each agent's own str
 - **Claude Code** uses hooks (tmux runtime) or, for a headless session, the structured events of its own process, written to the session status store by the manager
 - **Antigravity** uses hooks for lifecycle/identity and its pane for the actual approval dialog
 - **OpenCode** uses its serve API, SQLite, permissions plugin, and (for TUI permissions) its pane
-- **Codex** uses the private bridge for Sessioneer-owned turns and hooks for Remote-owned activity
+- **Codex** uses a bridge attached to the managed app-server daemon that Codex Remote also uses (a private `app-server --stdio` is the fallback when the daemon is down), and hooks as a fallback signal
 
 Pane parsing is therefore limited to prompt shapes whose owning agent exposes no authoritative structured equivalent, rather than being a generic activity detector.
 

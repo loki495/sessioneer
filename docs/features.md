@@ -15,7 +15,7 @@ Legend: **✓** supported · **◐** supported with a caveat · **✗** unavaila
 | Claude Code | `claude-headless-*` headless (default) / `cc-*` tmux | headless (`claude -p` owned by the headless manager) by default, or tmux | Claude JSONL | tmux: five Claude hooks, narrow pane fallbacks; headless: the process's own event stream | tmux key input, or the manager's stdin |
 | Antigravity | `ag-*` | tmux | `transcript_full.jsonl` | Four Antigravity hooks plus the pane for approval visibility | tmux key input |
 | OpenCode | `ses_*` headless / `oc-*` tmux | `opencode serve` by default, tmux fallback | `opencode.db` | Serve API, SQLite, permissions plugin, and TUI pane where necessary | serve API or tmux key input |
-| Codex | native thread UUID | headless only | Codex rollout JSONL and app-server | Private bridge for Sessioneer-owned turns; Codex hooks for Remote-owned activity | Persistent queue after materialization; private bridge for a new thread's first turn and owned prompt replies |
+| Codex | native thread UUID | headless only | Codex rollout JSONL and app-server | Bridge attached to the managed daemon Codex Remote also uses (private app-server as fallback); Codex hooks as a fallback signal | Persistent queue after materialization; private bridge for a new thread's first turn and owned prompt replies |
 
 All host-only work goes through `host-agent/`; the web container never controls
 tmux, agent daemons, process tables, or user configuration directly.
@@ -313,10 +313,13 @@ Implementation entry points:
 `CodexAdapter` supports only `RuntimeType::HEADLESS`; there is no Codex tmux
 path. Two separate transports serve different purposes:
 
-1. `sessioneer-codex-bridge.service` owns a long-lived private
-   `codex app-server --stdio` connection. It creates threads, handles the first
-   turn before a rollout exists, reads/archives threads, updates model/effort,
-   and owns the request IDs for prompts raised by its turns.
+1. `sessioneer-codex-bridge.service` holds a long-lived connection to the
+   managed app-server daemon (WebSocket on `CODEX_DAEMON_SOCKET`), the one Codex
+   Remote uses, or a private `codex app-server --stdio` child when the daemon is
+   down. It creates threads, handles the first turn before a rollout exists,
+   reads/archives threads, updates model/effort, and loads (`thread/resume`)
+   every thread the daemon reports or that becomes active so it receives that
+   thread's prompts.
 2. `codex queue --thread <id> --message <text>` appends normal user messages
    through Codex's persistent thread queue once a rollout exists. This path is
    not tied to the private connection, so it works for a materialized thread
@@ -330,13 +333,18 @@ Codex's reset guidance when supplied. The latest turn is read directly so queued
 turns are covered even when they run outside Sessioneer's private bridge. Starting
 a new turn clears the previous error.
 
-This is bidirectional at the normal-message level, not at the pending-prompt
-protocol level. Approval and `request_user_input` response IDs are scoped to
-the app-server connection that created them. A prompt raised while Sessioneer's
-private bridge owns the turn is answerable in Sessioneer. A prompt raised by
-Codex Remote or the shared queue/managed transport is recorded by hooks as an
-external block and shown without fake answer controls; the user must open Codex
-Remote to answer it. Queueing another message neither answers that prompt nor
+Approval and `request_user_input` response IDs are scoped to a connection, but
+the daemon sends each request to every connection that has the thread loaded
+and tells the others (`serverRequest/resolved`) once one has answered. With the
+bridge attached to the daemon, a prompt is answerable in Sessioneer and in
+Codex Remote, whoever started the thread. A request the bridge cannot receive
+(the private fallback, or a thread it has not loaded yet) shows only as a
+blocked status from the thread's `waitingOnApproval`/`waitingOnUserInput` flag
+and the hooks, without answer controls. A pending prompt is dropped only by its
+own resolved notice, an answer, or the thread leaving the active state, never
+by an unrelated status event; an approval the automatic reviewer
+(`approvals_reviewer`) settles itself clears the observe-only notice when its
+review completes. Queueing another message neither answers a prompt nor
 transfers ownership.
 
 Sessioneer installs one neutral observer command for eight Codex hook events:
@@ -352,7 +360,7 @@ load the trusted configuration; sessions already open when it changes should
 be reopened or resumed. The managed daemon used by Codex Remote is bootstrapped
 separately with `codex app-server daemon bootstrap --remote-control`. Its
 restart preserves persisted threads but may interrupt an active turn. The
-private Sessioneer bridge has its own systemd lifecycle and clears prompts
+Sessioneer bridge has its own systemd lifecycle and clears prompts
 whose connection-scoped response IDs became stale after a restart.
 
 Implementation entry points:
@@ -429,10 +437,11 @@ Implementation entry points:
 3. Antigravity must use its pane to confirm/answer approval UI because its hook
    signal is insufficient; model changes are account-wide.
 4. OpenCode has no full status-hook plugin or Claude-style mode vocabulary.
-5. Codex Remote-owned approvals and `request_user_input` prompts are visible
-   but cannot be answered from Sessioneer because the response IDs are owned by
-   Remote's app-server connection. Normal messages remain cross-owner through
-   the persistent queue.
+5. Codex approvals and `request_user_input` prompts are answerable from
+   Sessioneer only while the bridge is attached to the managed daemon and has the
+   thread loaded (see the Codex section); with the private fallback they are
+   visible but not answerable. Interrupt works only for a turn the bridge saw
+   start, so it does not yet cover a turn the phone app started.
 6. The dashboard **Install hooks** action covers Claude Code and Codex.
    Antigravity hooks remain an explicit manual install, and OpenCode's plugin is
    installed by `host-agent/install.sh`.

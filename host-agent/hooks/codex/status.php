@@ -73,6 +73,15 @@ try {
                 $fields = ['status' => 'working', 'blocked' => null];
             }
 
+            // The bridge records the real, answerable prompt; this hook's notice is only
+            // for a request the bridge cannot see, so it must never replace one.
+            if (is_array($fields) && ($fields['blocked']['external'] ?? false) === true) {
+                $current = \HostAgent\Stores\SessionStatusStore::read_status($sessionId);
+                if (is_array($current['blocked'] ?? null) && ($current['blocked']['external'] ?? false) !== true) {
+                    $fields = null;
+                }
+            }
+
             if (is_array($fields)) {
                 \HostAgent\Stores\SessionStatusStore::update_status($sessionId, $fields);
             }
