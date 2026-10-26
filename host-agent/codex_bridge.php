@@ -356,6 +356,10 @@ try {
                     $method = is_string($message['method'] ?? null) ? $message['method'] : '';
                     $params = is_array($message['params'] ?? null) ? $message['params'] : [];
                     $threadId = is_string($params['threadId'] ?? null) ? $params['threadId'] : '';
+                    // thread/started nests the thread rather than carrying a threadId.
+                    if ($threadId === '' && $method === 'thread/started' && is_string($params['thread']['id'] ?? null)) {
+                        $threadId = $params['thread']['id'];
+                    }
 
                     if (array_key_exists('id', $message) && $threadId !== '' && in_array($method, [
                         'item/commandExecution/requestApproval',
