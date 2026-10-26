@@ -49,4 +49,4 @@ assert_true((new CodexWebSocketFrames())->feed(server_frame('', 8))['closed'], '
 
 assert_true(str_contains(CodexWebSocketFrames::handshake_request(), 'Upgrade: websocket'), 'handshake asks for an upgrade');
 
-echo "ok\n";
+test_exit();
