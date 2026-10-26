@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace HostAgent\Launch;
 
+use HostAgent\Agents\ClaudeCodeAdapter;
 use HostAgent\Runtimes\ClaudeHeadlessRuntime;
 use HostAgent\Runtimes\RuntimeRegistry;
 use HostAgent\Runtimes\RuntimeType;
@@ -48,6 +49,12 @@ class ClaudeSessionLauncher implements SessionLauncher
             $profile = $resolved;
         }
 
+        $effort = is_string($request['effort'] ?? null) ? trim($request['effort']) : '';
+
+        if ($effort !== '' && !in_array($effort, ClaudeCodeAdapter::EFFORT_LEVELS, true)) {
+            return ['ok' => false, 'message' => "--effort '{$effort}' is not a Claude level (" . implode(', ', ClaudeCodeAdapter::EFFORT_LEVELS) . ')'];
+        }
+
         $runtime = RuntimeRegistry::runtime_for(self::AGENT_ID, RuntimeType::HEADLESS);
 
         if (!$runtime instanceof ClaudeHeadlessRuntime) {
@@ -66,6 +73,7 @@ class ClaudeSessionLauncher implements SessionLauncher
                 'enable_task_tools' => !empty($request['enable_task_tools']),
                 'no_tools' => !empty($request['no_tools']),
                 'profile' => $profile,
+                'effort' => $effort,
             ]);
 
             return $created['ok'] === true ? $this->deliver((string)$created['name'], 'created', $prompt, $runtime) : $created;
@@ -74,6 +82,10 @@ class ClaudeSessionLauncher implements SessionLauncher
         $existing = $this->tracked_session($conversationId);
 
         if ($existing !== null) {
+            if ($effort !== '') {
+                return ['ok' => false, 'name' => $existing['name'], 'message' => "Session {$existing['name']} already exists; Claude's effort is fixed when its process starts, so --effort cannot change it"];
+            }
+
             return $prompt === ''
                 ? ['ok' => true, 'name' => $existing['name'], 'action' => 'reused', 'prompt_sent' => false, 'message' => "Session {$existing['name']} already tracks that conversation"]
                 : $this->deliver($existing['name'], 'reused', $prompt, $runtime, $existing['runtime']);
@@ -94,7 +106,7 @@ class ClaudeSessionLauncher implements SessionLauncher
             return ['ok' => false, 'message' => 'No transcript found for that conversation; pass a workdir if it lives under another account'];
         }
 
-        $resumed = $runtime->resume($workdir, $conversationId, $profile);
+        $resumed = $runtime->resume($workdir, $conversationId, $profile, $effort !== '' ? $effort : null);
 
         if ($resumed['ok'] !== true) {
             return $resumed;
@@ -163,6 +175,7 @@ class ClaudeSessionLauncher implements SessionLauncher
                 'workdir' => $entry['workdir'],
                 'title' => $entry['title'],
                 'model' => $entry['current_model'],
+                'effort' => SidecarStore::read_sidecar($entry['name'])['effort'] ?? null,
             ];
         }
 

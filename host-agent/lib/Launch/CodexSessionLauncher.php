@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace HostAgent\Launch;
 
+use HostAgent\Agents\CodexAdapter;
 use HostAgent\Runtimes\CodexHeadlessRuntime;
 use HostAgent\Runtimes\RuntimeType;
 use HostAgent\Stores\SessionStatusStore;
@@ -24,7 +25,7 @@ class CodexSessionLauncher implements SessionLauncher
 
     private const AGENT_ID = 'codex';
 
-    public function __construct(private ?CodexHeadlessRuntime $runtime = null)
+    public function __construct(private ?CodexHeadlessRuntime $runtime = null, private ?CodexAdapter $adapter = null)
     {
     }
 
@@ -51,6 +52,16 @@ class CodexSessionLauncher implements SessionLauncher
             return ['ok' => false, 'message' => "--mode '{$mode}' is not supported for Codex (only 'plan', a read-only sandbox, or 'full', no sandbox and no approvals; omit it for workspace-write)"];
         }
 
+        $effort = is_string($request['effort'] ?? null) ? trim($request['effort']) : '';
+
+        if ($effort !== '') {
+            $refusal = $this->effort_refusal($effort, is_string($request['model'] ?? null) ? $request['model'] : '', $threadId);
+
+            if ($refusal !== null) {
+                return ['ok' => false, 'message' => $refusal];
+            }
+        }
+
         if ($threadId === '') {
             if ($prompt === '') {
                 return ['ok' => false, 'message' => 'A new session needs a prompt'];
@@ -71,14 +82,15 @@ class CodexSessionLauncher implements SessionLauncher
 
             // Tracked at once, as the dashboard's New Session does, so the name resolves before the next sync.
             $this->track($id, $workdir);
+            $applied = $this->apply_effort($id, $effort);
 
-            return $this->deliver($id, 'created', $prompt);
+            return $applied ?? $this->deliver($id, 'created', $prompt);
         }
 
         if ($this->tracked($threadId) !== null) {
             return $prompt === ''
                 ? ['ok' => true, 'name' => $threadId, 'action' => 'reused', 'prompt_sent' => false, 'message' => "Session {$threadId} already tracks that thread"]
-                : $this->deliver($threadId, 'reused', $prompt);
+                : ($this->apply_effort($threadId, $effort) ?? $this->deliver($threadId, 'reused', $prompt));
         }
 
         $detail = $this->runtime()->detail($threadId);
@@ -94,6 +106,11 @@ class CodexSessionLauncher implements SessionLauncher
         }
 
         $this->track($threadId, $workdir);
+        $applied = $this->apply_effort($threadId, $effort);
+
+        if ($applied !== null) {
+            return $applied;
+        }
 
         return $prompt === ''
             ? ['ok' => true, 'name' => $threadId, 'action' => 'resumed', 'prompt_sent' => false, 'message' => "Session {$threadId} resumed"]
@@ -149,6 +166,7 @@ class CodexSessionLauncher implements SessionLauncher
                 'workdir' => $row['workdir'],
                 'title' => $row['title'],
                 'model' => $state['model'] ?? null,
+                'effort' => SidecarStore::read_sidecar($row['session_name'])['effort'] ?? null,
             ];
         }
 
@@ -182,6 +200,53 @@ class CodexSessionLauncher implements SessionLauncher
         }
 
         return $this->deliver($name, 'sent', $this->peer_stamp($from, $sender) . " {$message}");
+    }
+
+    /** @return ?string why the level cannot be used, null when the model's catalog lists it */
+    private function effort_refusal(string $effort, string $model, string $threadId): ?string
+    {
+        $catalog = ($this->adapter ??= new CodexAdapter())->model_catalog();
+
+        if ($catalog['ok'] !== true) {
+            return 'Could not read the Codex model list to validate --effort: ' . (string)($catalog['message'] ?? 'unknown error');
+        }
+
+        $models = $catalog['models'];
+
+        if ($model === '' && $threadId === '') {
+            $models = array_values(array_filter($models, static fn (array $m): bool => $m['isDefault']));
+        } elseif ($model === '') {
+            // A resumed thread keeps its own model; any model that lists the level is a fair check.
+            return count(array_filter($models, static fn (array $m): bool => in_array($effort, $m['efforts'], true))) > 0 ? null : "--effort '{$effort}' is not offered by any Codex model";
+        } else {
+            $models = array_values(array_filter($models, static fn (array $m): bool => $m['id'] === $model));
+
+            if ($models === []) {
+                return "--effort needs a model Codex lists; '{$model}' is not one";
+            }
+        }
+
+        $supported = $models[0]['efforts'] ?? [];
+
+        return in_array($effort, $supported, true) ? null : "--effort '{$effort}' is not supported by Codex model '{$models[0]['id']}' (" . ($supported === [] ? 'it lists none' : implode(', ', $supported)) . ')';
+    }
+
+    /** @return ?array<string, mixed> the failure reply, null when applied or not requested */
+    private function apply_effort(string $threadId, string $effort): ?array
+    {
+        if ($effort === '') {
+            return null;
+        }
+
+        $applied = $this->runtime()->update_settings($threadId, null, $effort);
+
+        if ($applied['ok'] !== true) {
+            return ['ok' => false, 'name' => $threadId, 'message' => "Session {$threadId} started, but its effort was not set: " . (string)($applied['message'] ?? 'unknown error')];
+        }
+
+        SidecarStore::set_effort($threadId, $effort);
+
+        return null;
     }
 
     private function runtime(): CodexHeadlessRuntime

@@ -44,6 +44,7 @@ class SidecarStore
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'spawned_by_app', 'INTEGER');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'custom_title', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'no_tools', 'INTEGER');
+        SqliteDb::add_column_if_missing($pdo, 'sidecars', 'effort', 'TEXT');
 
         return $pdo;
     }
@@ -61,11 +62,11 @@ class SidecarStore
     }
 
     /**
-     * @return array{workdir:?string, spawned_at:?int, agent_session_id?:?string, spawned_by_app?:bool, agent?:?string, runtime?:?string, title?:?string, profile?:?string, no_tools?:bool}|null
+     * @return array{workdir:?string, spawned_at:?int, agent_session_id?:?string, spawned_by_app?:bool, agent?:?string, runtime?:?string, title?:?string, profile?:?string, no_tools?:bool, effort?:?string}|null
      */
     public static function read_sidecar(string $sessionName): ?array
     {
-        $stmt = self::db()->prepare('SELECT workdir, spawned_at, agent_session_id, spawned_by_app, agent, runtime, title, profile, no_tools FROM sidecars WHERE session_name = ?');
+        $stmt = self::db()->prepare('SELECT workdir, spawned_at, agent_session_id, spawned_by_app, agent, runtime, title, profile, no_tools, effort FROM sidecars WHERE session_name = ?');
         $stmt->execute([$sessionName]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
 
@@ -107,6 +108,7 @@ class SidecarStore
                 // same convention runtime/title already use.
                 'profile' => $row['profile'],
                 'no_tools' => (bool)$row['no_tools'],
+                'effort' => $row['effort'],
             ];
         }
 
@@ -178,6 +180,12 @@ class SidecarStore
     public static function set_no_tools(string $sessionName): void
     {
         self::db()->prepare('UPDATE sidecars SET no_tools = 1 WHERE session_name = ?')->execute([$sessionName]);
+    }
+
+    /** Own column for the same reason as no_tools: the effort a dormant respawn must re-apply. */
+    public static function set_effort(string $sessionName, string $effort): void
+    {
+        self::db()->prepare('UPDATE sidecars SET effort = ? WHERE session_name = ?')->execute([$effort, $sessionName]);
     }
 
     /** Null or empty clears the name. False when no such session is tracked. */

@@ -166,6 +166,35 @@ $argv = $spawnArgv();
 assert_equal(['--tools', '', '--strict-mcp-config'], array_slice($argv, (int)array_search('--tools', $argv, true), 3), 'which is still started with no tools');
 assert_true(in_array('--resume', $argv, true) || in_array('--session-id', $argv, true), 'on the same conversation');
 
+echo "Effort\n";
+$badEffort = launch(['prompt' => 'hi', 'workdir' => $workdir, 'effort' => 'extreme']);
+assert_equal(false, $badEffort['ok'] ?? null, 'an unknown effort level is refused');
+assert_contains('low, medium, high, xhigh, max', (string)$badEffort['message'], 'naming the levels Claude accepts');
+$effortDir = $root . '/work/effortful';
+@mkdir($effortDir, 0700, true);
+$eff = launch(['prompt' => 'think words', 'workdir' => $effortDir, 'effort' => 'high']);
+assert_true(($eff['ok'] ?? false) === true, 'a session launches with an effort' . (($eff['ok'] ?? false) === true ? '' : ' - got ' . json_encode($eff)));
+$effName = (string)($eff['name'] ?? '');
+$made[] = $effName;
+assert_equal('high', SidecarStore::read_sidecar($effName)['effort'] ?? null, 'the sidecar remembers the effort');
+assert_true((bool)wait_until(static fn (): bool => status_of($effName) === 'idle' && has_result($m, 'echo: think words')), 'and the prompt is answered');
+$argv = $spawnArgv();
+assert_equal(['--effort', 'high'], array_slice($argv, (int)array_search('--effort', $argv, true), 2), 'the process is started with --effort high');
+$effId = (string)(dispatch_action(['action' => 'session_detail', 'session' => $effName])['agent_session_id'] ?? '');
+assert_true(($stopped = call($m, 'sessioneer/stop', ['session' => $effName]))['ok'] ?? false, 'the process is stopped, leaving the session dormant');
+launch(['agent_session_id' => $effId, 'prompt' => 'think again']);
+assert_true((bool)wait_until(static fn (): bool => has_result($m, 'echo: think again')), 'a message respawns it');
+$argv = $spawnArgv();
+assert_equal(['--effort', 'high'], array_slice($argv, (int)array_search('--effort', $argv, true), 2), 'with the same effort re-applied');
+$retune = launch(['agent_session_id' => $effId, 'prompt' => 'x', 'effort' => 'low']);
+assert_equal(false, $retune['ok'] ?? null, 'a tracked session cannot be retuned');
+assert_contains('fixed when its process starts', (string)$retune['message'], 'with the reason');
+assert_equal('high', SidecarStore::read_sidecar($effName)['effort'] ?? null, 'and keeps its effort');
+$listedEffort = array_values(array_filter(dispatch_action(['action' => 'launch_list'])['sessions'] ?? [], static fn (array $s): bool => $s['name'] === $effName))[0] ?? [];
+assert_equal('high', $listedEffort['effort'] ?? null, 'the list shows the effort');
+$plain = array_values(array_filter(fake_log($m), static fn (array $r): bool => isset($r['argv'])))[0]['argv'];
+assert_true(!in_array('--effort', $plain, true), 'while a launch without one passes no --effort');
+
 echo "Resume\n";
 $transcriptDir = $root . '/home/.claude/projects/' . preg_replace('/[^A-Za-z0-9]/', '-', $workdir);
 @mkdir($transcriptDir, 0700, true);
@@ -294,6 +323,6 @@ assert_equal($resumedName, $down['name'] ?? null, 'and still names the session s
 $downNew = launch(['prompt' => 'anyone?', 'workdir' => $workdir]);
 assert_equal(false, $downNew['ok'] ?? null, 'a new launch with the manager down fails');
 assert_contains('Cannot reach Claude headless manager', (string)$downNew['message'], 'with the same error');
-assert_equal(4, count(SidecarStore::list_runtime_sidecars('headless')), 'and leaves no half-created session');
+assert_equal(5, count(SidecarStore::list_runtime_sidecars('headless')), 'and leaves no half-created session');
 
 test_exit();

@@ -129,6 +129,10 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
             SidecarStore::set_no_tools($name);
         }
 
+        if (is_string($options['effort'] ?? null) && $options['effort'] !== '') {
+            SidecarStore::set_effort($name, $options['effort']);
+        }
+
         $reply = $this->client->request('sessioneer/spawn', [
             'session' => $name,
             'fresh' => true,
@@ -157,7 +161,7 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
      *
      * @return array{ok:bool, name?:string, id?:string, session?:array<string,mixed>, message?:string}
      */
-    public function resume(string $workdir, string $agentSessionId, ?string $profile = null): array
+    public function resume(string $workdir, string $agentSessionId, ?string $profile = null, ?string $effort = null): array
     {
         if ($workdir === '' || $workdir[0] !== '/' || !is_dir($workdir)) {
             return ['ok' => false, 'message' => 'Working directory must be an existing absolute path'];
@@ -199,6 +203,10 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
                 'title' => null,
                 'profile' => $profile,
             ]);
+
+            if ($effort !== null && $effort !== '') {
+                SidecarStore::set_effort($name, $effort);
+            }
 
             $reply = $this->client->request('sessioneer/spawn', ['session' => $name]);
 

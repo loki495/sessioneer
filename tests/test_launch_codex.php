@@ -19,6 +19,7 @@ putenv('SESSIONS_SQLITE_FILE=' . $root . '/sessions.sqlite');
 putenv('CODEX_BRIDGE_SOCKET=' . $root . '/no-codex-bridge.sock');
 @mkdir($root . '/sidecars', 0700, true);
 
+use HostAgent\Agents\CodexAdapter;
 use HostAgent\Launch\CodexSessionLauncher;
 use HostAgent\Launch\LaunchService;
 use HostAgent\Launch\SessionLauncher;
@@ -53,6 +54,11 @@ class ScriptedCodexClient extends CodexBridgeClient
                 : ['ok' => true, 'result' => ['thread' => ['id' => $params['threadId'], 'cwd' => '/tmp', 'status' => ['type' => $this->threadStatus], 'turns' => []]]],
             'sessioneer/pendingPrompt' => ['ok' => true, 'prompt' => null],
             'sessioneer/sendInput' => $this->failSend ? ['ok' => false, 'message' => 'bridge refused'] : ['ok' => true, 'result' => ['turn' => ['id' => 't1']]],
+            'model/list' => ['ok' => true, 'result' => ['data' => [
+                ['model' => 'gpt-hi', 'displayName' => 'Hi', 'isDefault' => true, 'defaultReasoningEffort' => 'medium', 'supportedReasoningEfforts' => [['reasoningEffort' => 'low'], ['reasoningEffort' => 'medium'], ['reasoningEffort' => 'high']]],
+                ['model' => 'gpt-plain', 'displayName' => 'Plain', 'supportedReasoningEfforts' => []],
+            ]]],
+            'thread/settings/update' => ['ok' => true, 'result' => (object)[]],
             'thread/archive' => ['ok' => true, 'result' => (object)[]],
             default => ['ok' => false, 'message' => 'Unexpected method ' . $method],
         };
@@ -81,7 +87,7 @@ class UnmaterializedClient extends ScriptedCodexClient
 }
 
 $client = new UnmaterializedClient();
-$launcher = new CodexSessionLauncher(new CodexHeadlessRuntime($client, static fn (): array => ['exit' => 1, 'stdout' => '', 'stderr' => 'codex binary must not run'], '/nonexistent/codex'));
+$launcher = new CodexSessionLauncher(new CodexHeadlessRuntime($client, static fn (): array => ['exit' => 1, 'stdout' => '', 'stderr' => 'codex binary must not run'], '/nonexistent/codex'), new CodexAdapter($client));
 $workdir = $root . '/work/project';
 @mkdir($workdir, 0700, true);
 
@@ -135,6 +141,38 @@ $launcher->launch(['prompt' => 'do it', 'workdir' => $workdir, 'starting_mode' =
 $full = $client->calls_of('thread/start')[0];
 assert_equal('danger-full-access', $full['sandbox'], '--mode full starts with no sandbox');
 assert_equal('never', $full['approvalPolicy'], 'and no approval prompts');
+
+echo "Effort\n";
+foreach ([
+    ['a level the model lacks', ['model' => 'gpt-hi', 'effort' => 'max'], "'max' is not supported by Codex model 'gpt-hi' (low, medium, high)"],
+    ['a model with no levels', ['model' => 'gpt-plain', 'effort' => 'low'], 'it lists none'],
+    ['an unlisted model', ['model' => 'gpt-nope', 'effort' => 'low'], "'gpt-nope' is not one"],
+    ['the default model lacking it', ['effort' => 'xhigh'], "'xhigh' is not supported by Codex model 'gpt-hi'"],
+] as [$label, $extra, $needle]) {
+    $client->calls = [];
+    $reply = $launcher->launch(['prompt' => 'hi', 'workdir' => $workdir] + $extra);
+    assert_equal(false, $reply['ok'] ?? null, "{$label} is refused");
+    assert_contains($needle, (string)$reply['message'], "{$label}: with a clear message");
+    assert_equal([], $client->calls_of('thread/start'), "{$label}: and starts no thread");
+}
+$client->calls = [];
+$eff = $launcher->launch(['prompt' => 'think', 'workdir' => $workdir, 'model' => 'gpt-hi', 'effort' => 'high']);
+assert_equal(true, $eff['ok'] ?? null, 'a listed level launches' . (($eff['ok'] ?? false) === true ? '' : ' - got ' . json_encode($eff)));
+$update = $client->calls_of('thread/settings/update')[0] ?? [];
+assert_equal(['threadId' => 'thr-new', 'effort' => 'high'], $update, 'the level is set on the new thread through thread/settings/update');
+$methods = array_column($client->calls, 'method');
+assert_true(array_search('thread/settings/update', $methods, true) < array_search('sessioneer/sendInput', $methods, true), 'before the prompt is sent');
+assert_equal('high', SidecarStore::read_sidecar('thr-new')['effort'] ?? null, 'and remembered on the sidecar');
+$defaulted = $launcher->launch(['prompt' => 'think', 'workdir' => $workdir, 'effort' => 'low']);
+assert_equal(true, $defaulted['ok'] ?? null, 'with no --model the default model\'s levels apply');
+$client->calls = [];
+$launcher->launch(['agent_session_id' => 'thr-new', 'prompt' => 'again', 'effort' => 'medium']);
+assert_equal('medium', $client->calls_of('thread/settings/update')[0]['effort'] ?? null, 'a reused thread can be retuned');
+$listedEffort = array_values(array_filter($launcher->list_sessions([])['sessions'], static fn (array $s): bool => $s['name'] === 'thr-new'))[0] ?? [];
+assert_equal('medium', $listedEffort['effort'] ?? null, 'the list shows it');
+$client->calls = [];
+$launcher->launch(['prompt' => 'plain', 'workdir' => $workdir]);
+assert_equal([], $client->calls_of('thread/settings/update'), 'a launch without --effort touches no settings');
 
 echo "Failed delivery\n";
 $client->failSend = true;

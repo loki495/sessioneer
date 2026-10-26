@@ -50,6 +50,8 @@ function usage(): string
       --workdir DIR     working directory (default: current directory; for
                         --resume, the directory recorded in the transcript)
       --model NAME      model for a new session
+      --effort LEVEL    reasoning level for a new or resumed session (Claude: low,
+                        medium, high, xhigh, max; Codex: the levels its model lists)
       --mode MODE       permission mode for a new session (e.g. plan)
       --profile NAME    account profile (default: the one matching this shell's
                         CLAUDE_CONFIG_DIR, else the default account)
@@ -94,7 +96,7 @@ function fail(string $message): never
     exit(1);
 }
 
-$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:'], $restIndex);
+$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:'], $restIndex);
 
 if ($opts === false) {
     fail("bad options\n\n" . usage());
@@ -181,6 +183,10 @@ if (isset($opts['no-tools'])) {
     }
 }
 
+if ($opt('effort') !== null && ($kill !== null || $list || $send !== null || $peers)) {
+    fail('--effort only applies to launching or resuming a session');
+}
+
 $action = $kill !== null ? 'launch_kill' : ($list ? 'launch_list' : ($send !== null ? 'launch_send' : ($peers ? 'launch_peers' : 'launch')));
 
 $reply = AgentClient::agent_call(array_filter([
@@ -190,6 +196,7 @@ $reply = AgentClient::agent_call(array_filter([
     'agent_session_id' => $resume,
     'workdir' => $workdir,
     'model' => $opt('model'),
+    'effort' => $opt('effort'),
     'starting_mode' => $opt('mode'),
     'profile' => $opt('profile'),
     'caller_config_dir' => $opt('profile') === null ? (getenv('CLAUDE_CONFIG_DIR') ?: null) : null,

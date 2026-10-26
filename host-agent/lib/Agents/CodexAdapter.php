@@ -12,6 +12,10 @@ use HostAgent\Services\PushHealthService;
 /** Codex is server-owned in Sessioneer; it is never spawned into tmux. */
 class CodexAdapter implements AgentAdapter
 {
+    public function __construct(private ?CodexBridgeClient $client = null)
+    {
+    }
+
     public function id(): string { return 'codex'; }
     public function label(): string { return 'Codex'; }
     public function session_name_prefix(): string { return 'cx'; }
@@ -53,7 +57,7 @@ class CodexAdapter implements AgentAdapter
 
     public function model_catalog(): array
     {
-        $reply = (new CodexBridgeClient())->request('model/list', ['limit' => 100, 'includeHidden' => false]);
+        $reply = ($this->client ?? new CodexBridgeClient())->request('model/list', ['limit' => 100, 'includeHidden' => false]);
 
         if ($reply['ok'] !== true) {
             return $reply;

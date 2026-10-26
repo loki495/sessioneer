@@ -784,6 +784,7 @@ final class ClaudeHeadlessManager
         $adapterOptions = [
             'profile' => $profile,
             'model' => $options['model'] ?? null,
+            'effort' => $sidecar['effort'] ?? null,
             'starting_mode' => is_string($mode) ? $mode : null,
             'enable_task_tools' => !empty($options['enable_task_tools']),
             // Sticky: the sidecar remembers it so a dormant respawn never regains tools.
