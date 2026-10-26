@@ -26,7 +26,7 @@ echo "Summarise the open TODOs" | sessioneer --json -
 | `--resume ID` | Existing conversation id. |
 | `--workdir DIR` | Working directory. Default for a new session: the current directory. With `--resume`: the directory recorded in the transcript. |
 | `--model NAME` | Model for a new session. |
-| `--mode MODE` | Permission mode for a new session (for example `plan`). Not validated by the CLI: a value that isn't a known Claude permission mode is ignored and the session starts in the default mode. |
+| `--mode MODE` | Permission mode for a new session (for example `plan`). Not validated by the CLI: for Claude, a value that isn't a known permission mode is ignored and the session starts in the default mode; for Codex, only `plan` and `full` are accepted (see "Codex" below). |
 | `--profile NAME` | Claude account profile (see `host-agent/config/agents.php`). Without it, the session runs under the profile whose `config_dir` matches the caller's `CLAUDE_CONFIG_DIR`, so a session started from a work-account shell stays on that account; no `CLAUDE_CONFIG_DIR` means the default account (the launched session runs with the variable unset, whatever the manager inherited), and a dir that matches no profile is refused. |
 | `--task-tools` | Enable the task tools in a new session. |
 | `--no-tools` | Start a new session with no tools at all: no built-in tools (`--tools ""`) and no MCP servers (`--strict-mcp-config`), so it can only answer in text. The setting is remembered, so the session stays tool-less when it is resumed after going dormant. Only for a new session: refused with `--resume`, `--kill`, `--send`, `--list` or `--peers`, and not combinable with `--task-tools`. |
@@ -37,7 +37,7 @@ echo "Summarise the open TODOs" | sessioneer --json -
 | `--whoami` | Print this session's own name (`SESSIONEER_SELF`, or `CODEX_THREAD_ID` inside Codex); exits 1 outside a session. |
 | `--peers` | List the other live sessions in this session's git repository (worktrees included) as tab-separated name, status, branch and directory. |
 | `--usage` | Print the last known usage (quota) stats as JSON and exit 0: `agents`, one entry per agent (`claude`, `antigravity`, `opencode`, `codex`), with Claude's configured accounts nested under `agents.claude.profiles` (the default account keyed `personal`). Each entry has `label`, `ok`, `quota`, `fetched_at` (unix time, or null) and `message` (why there is no data yet). Read-only: it returns what the dashboard footer shows and never refreshes anything. Exits 1 if the host agent is unreachable. |
-| `--wait` | With a launch or resume: block until the session is idle, then print the text of its final assistant message on stdout (the session name goes to stderr). Exits 1 if the launch is refused, the turn reports an error, or `--timeout` runs out. A session waiting on a permission prompt is not idle, so it keeps being waited on: answer it in the dashboard or set `--timeout`. Not combinable with `--kill`, `--list`, `--send` or `--peers`. A final message with no text (only tool calls) prints an empty line. |
+| `--wait` | With a launch or resume: block until the session is idle, then print the text of its final assistant message on stdout (the session name goes to stderr). Exits 1 if the launch is refused, the turn reports an error, or `--timeout` runs out. With `--agent codex` it also waits until the last message is the assistant's reply, because a new Codex thread reads idle for a few seconds before its turn starts (an interrupted turn therefore waits until `--timeout`). A session waiting on a permission prompt is not idle, so it keeps being waited on: answer it in the dashboard or set `--timeout`. Not combinable with `--kill`, `--list`, `--send` or `--peers`. A final message with no text (only tool calls) prints an empty line. |
 | `--timeout N` | With `--wait`, give up after N seconds (a positive integer). Default: no limit. The session keeps running after a timeout. |
 | `--json` | Print the full reply as JSON instead of the plain output. |
 
@@ -59,7 +59,7 @@ Every session Sessioneer spawns (headless or tmux) gets `SESSIONEER_SELF=<its na
 
 `--agent codex` launches through the Codex bridge (`CodexSessionLauncher`); `--wait`, `--resume`, `--list`, `--kill`, `--send` and `--peers` work the same way, always with `--agent codex` (the default agent is Claude). A Codex session's name is its thread id, so a conversation id and a session name are the same thing.
 
-- `--mode`: omitted means a `workspace-write` sandbox with on-request approvals (what the dashboard's New Session uses); `plan` means a `read-only` sandbox; `full` means no sandbox and no approvals (`danger-full-access`, approvals `never`), for trusted unattended work such as git in a worktree, docker or network access. Any other value is refused.
+- `--mode`: omitted means a `workspace-write` sandbox with on-request approvals (what the dashboard's New Session uses); `plan` means a `read-only` sandbox; `full` means no sandbox and no approvals (`danger-full-access`, approvals `never`), for trusted unattended work such as git in a worktree, docker or network access. Any other value is refused. `full` is a human-trust decision: any process that can reach the host-agent socket can request it, the same trust the socket already carries.
 - `--profile` and `--no-tools` are refused: they have no Codex meaning.
 - Inside Codex the caller is identified by `CODEX_THREAD_ID` (used when `SESSIONEER_SELF` is unset), so `--whoami`, `--send` and `--peers` work from a Codex session; the thread must be one Sessioneer tracks.
 - Questions and approvals a Codex session raises appear in the dashboard like any other blocked prompt. The session loads `~/.codex/config.toml`, so it has whatever MCP servers (for example Dibs) are configured there.
@@ -67,7 +67,7 @@ Every session Sessioneer spawns (headless or tmux) gets `SESSIONEER_SELF=<its na
 ## Design
 
 
-There is no separate "archive": stopping a session archives its conversation, exactly like the dashboard's Kill. `--kill` only manages headless Claude sessions; a terminal (tmux) session or a bare process is refused, and is stopped from the dashboard.
+There is no separate "archive": stopping a session archives its conversation, exactly like the dashboard's Kill. `--kill` only manages headless Claude sessions (or, with `--agent codex`, tracked Codex sessions); a terminal (tmux) session or a bare process is refused, and is stopped from the dashboard.
 
 `--usage` is the one option that is not a launcher action: it sends the dashboard's own `quota` request and prints its `agents` map with `claude_profiles` nested under the Claude entry. The other options combine only with their own modifiers (`--kill`, `--list`, `--send`, `--peers` and `--usage` are mutually exclusive).
 

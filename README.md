@@ -63,7 +63,7 @@ an installable PWA, meant to be added to an iOS/Android home screen):
   follow-up questions during a run (`"which one: A or B?"`); Sessioneer
   shows them and collects answers.
 - **Launch from the command line**: `bin/sessioneer` starts, resumes,
-  reuses, lists or stops headless Claude sessions (and prints the last known
+  reuses, lists or stops headless Claude and Codex sessions (and prints the last known
   usage stats as JSON with `--usage`, or blocks until a session is idle and
   prints its final message with `--wait`), so scripts and other
   sessions can spawn a continuation you then follow in the dashboard (see
