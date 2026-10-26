@@ -273,9 +273,9 @@ Docker-spawned, makes that impossible by construction — not by convention.
    freshness).
 
    `bin/sessioneer` (docs/cli.md) is a second socket client besides the web
-   container: it sends the `launch`, `launch_kill`, `launch_list`, `launch_send` and `launch_peers` actions (peer messaging: the host agent stamps the sender from `SESSIONEER_SELF`, which every spawned session carries), which `HostAgent\Launch\
+   container: it sends the `launch`, `launch_kill`, `launch_list`, `launch_send` and `launch_peers` actions (peer messaging: the host agent stamps the sender from `SESSIONEER_SELF`, which every spawned session carries, or from `CODEX_THREAD_ID` in a Codex session), which `HostAgent\Launch\
    LaunchService` routes to a per-agent `SessionLauncher` (the interface
-   documents the request/reply keys; only `ClaudeSessionLauncher` exists).
+   documents the request/reply keys; `ClaudeSessionLauncher` and `CodexSessionLauncher`, sharing the `PeerLookup` trait).
    A new agent's launch support is one class plus one line in
    `LaunchService::LAUNCHERS`, not a branch in `Sessions.php`. The Claude
    launcher creates a headless session, resumes one, or - when a sidecar
