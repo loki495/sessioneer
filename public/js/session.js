@@ -6,6 +6,7 @@
   var list = document.getElementById('history-list');
   var headerTitle = document.getElementById('header-title');
   var headerBranch = document.getElementById('header-branch');
+  var headerContext = document.getElementById('header-context');
 
   if (!list) {
     return; // session not found - nothing here to wire up
@@ -1037,15 +1038,7 @@
     });
   }
 
-  // The session-info card (title/name/workdir/attached/context-used%/
-  // worktree/activity) is gone - the fixed
-  // header now carries just title + cwd (see header.php), and only the
-  // title half needs live updating here (an AI-generated title can appear/
-  // change mid-session; cwd never changes for a session's lifetime, so
-  // header.php's own server-render is the only place it's ever needed).
-  // Keeps the tooltip (title attribute) in sync with the visible text too,
-  // not just textContent - otherwise a later title change would leave the
-  // hover tooltip showing a stale one from page load.
+  // Keep the header's title, branch and per-session context in sync with SSR.
   function renderStaticInfo(detail) {
     if (!headerTitle) {
       return;
@@ -1055,8 +1048,16 @@
     headerTitle.textContent = title;
     headerTitle.title = title;
 
-    // Mirrors header.php's own header-branch block - the branch can change
-    // mid-session (a `git checkout` in the same workdir), unlike the title.
+    if (headerContext) {
+      var contextPct = detail.context_used_percentage;
+      var knownContext = typeof contextPct === 'number' && isFinite(contextPct);
+      headerContext.dataset.contextPct = knownContext ? String(contextPct) : '';
+      headerContext.textContent = knownContext ? 'ctx ' + Math.round(contextPct) + '%' : 'ctx unavailable';
+      headerContext.classList.toggle('text-amber-400', knownContext && contextPct >= 80);
+      document.dispatchEvent(new Event('sessioneer-context-updated'));
+    }
+
+    // A checkout can change the branch while the session keeps running.
     if (headerBranch) {
       headerBranch.textContent = detail.git_branch || '';
       headerBranch.classList.toggle('hidden', !detail.git_branch);

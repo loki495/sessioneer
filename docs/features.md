@@ -48,7 +48,8 @@ tmux, agent daemons, process tables, or user configuration directly.
 | Dashboard-wide content search | ✓ | ✗ | ✓ | ✗ |
 | Per-session content search | ✓ | ✗ | ✓ | ✗ |
 | Usage / quota display | ✓ per configured account | ✓ optional timer | ✓ | ✓ app-server rate limits |
-| Context-window % and git worktree on the session page | ◐ tmux runtime only | ✗ | ✗ | ✗ |
+| Context-window % on the session page | ✓ both runtimes, when reported | ✗ | ✗ | ◐ bridge token-usage snapshot required |
+| Git worktree indicator | ◐ tmux runtime only | ✗ | ✗ | ✗ |
 | Multiple accounts (profiles) | ✓ | ✗ | ✗ | ✗ |
 | File upload / attachment send | ✓ | ✓ | ✓ | ✓ |
 | Web Push on blocked / finished state | ✓ | ✓ | ✓ | ✓, including observe-only Remote blocks |
@@ -420,14 +421,29 @@ Implementation entry points:
   only - see its implementation section above); the sidebar's own "This
   session" block shows the current session's id and working directory, each
   with a copy button.
-- The session page header shows the workdir's current git branch as the
-  first line under the title, above the workdir itself, for every agent (any
+- The session page header shows the workdir's current git branch under the
+  title for every agent (any
   session has a workdir, whatever runs in it) - a plain `git branch
   --show-current` in that directory, refreshed on poll, blank for a non-git
   workdir or a detached HEAD. Separate from Claude's own tmux-only,
-  statusline-derived worktree name (context-window/worktree parity gap
-  above). A headless session's title row also carries the same "Headless"
-  pill the dashboard and sidebar rows use.
+  statusline-derived worktree name. A headless session's title row also carries
+  the same "Headless" pill the dashboard and sidebar rows use.
+- Claude Code and Codex session pages show the current context-window percentage
+  beside the branch, with the same reading in the expanded quota footer. Both
+  update with session polling, including decreases after compaction. Missing
+  usage or a missing/invalid reported window shows `ctx unavailable`, rather than
+  zero; context remains visible even when account quota data is unavailable.
+  Claude terminal sessions read their own statusLine marker. Headless Claude
+  uses the latest main-thread assistant input snapshot (`input_tokens` plus
+  cache creation/read input tokens), divided by that model's reported
+  `modelUsage.contextWindow`; output, streamed copies and subagent usage are
+  excluded. Compaction, conversation/model changes and process respawn clear the
+  snapshot until a new response reports usable data. Dormant sessions retain
+  their last known reading. Existing records without a measured window stay
+  unavailable until a response from the updated manager supplies one. Codex uses
+  `thread/tokenUsage/updated.tokenUsage.last.totalTokens` and
+  `modelContextWindow`; cumulative `total` counters remain separate footer
+  totals and never supply context usage.
 
 ## Known parity gaps
 
@@ -445,9 +461,9 @@ Implementation entry points:
 6. The dashboard **Install hooks** action covers Claude Code and Codex.
    Antigravity hooks remain an explicit manual install, and OpenCode's plugin is
    installed by `host-agent/install.sh`.
-7. Claude headless sessions show no context-window percentage and no git
-   worktree: both come from the statusLine output a terminal renders and a
-   headless process never does.
+7. Claude headless sessions have no statusline-derived git worktree indicator:
+   a headless process renders no terminal statusLine. Context-window usage comes
+   from structured snapshots instead.
 8. Claude headless sessions have no session-page control to switch runtime and
    no copyable `claude --resume <id>` command to continue in a terminal; the
    switch is on the dashboard row and archived row only. The New Session form

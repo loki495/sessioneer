@@ -8,6 +8,7 @@ use HostAgent\Agents\AgentRegistry;
 use HostAgent\Services\BareProcessService;
 use HostAgent\Services\ClaudeModelCatalog;
 use HostAgent\Services\Config;
+use HostAgent\Services\ContextUsage;
 use HostAgent\Services\PermissionMode;
 use HostAgent\Services\SelectableModel;
 use HostAgent\Services\SessionLifecycleService;
@@ -514,7 +515,7 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
             'last_turn_error' => is_string($status['last_turn_error'] ?? null) ? $status['last_turn_error'] : null,
             'agent_session_id' => $agentSessionId,
             'last_message' => SessionService::session_last_message($agentSessionId, $profile),
-            'context_used_percentage' => null,
+            'context_used_percentage' => ContextUsage::claude_percentage($status['context_usage'] ?? null),
             'git_worktree' => null,
             'writable' => true,
             'read_only_reason' => null,

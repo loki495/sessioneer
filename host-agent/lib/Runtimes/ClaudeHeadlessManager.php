@@ -6,6 +6,7 @@ namespace HostAgent\Runtimes;
 
 use HostAgent\Agents\ClaudeCodeAdapter;
 use HostAgent\Services\Config;
+use HostAgent\Services\ContextUsage;
 use HostAgent\Services\PermissionMode;
 use HostAgent\Services\QuotaLiveStateWriter;
 use HostAgent\Stores\SessionStatusStore;
@@ -654,7 +655,7 @@ final class ClaudeHeadlessManager
             return ['ok' => false, 'message' => 'Could not write to the Claude process'];
         }
 
-        $child->controlWaiters[$requestId] = ['client' => $stream, 'deadline' => microtime(true) + self::CONTROL_TIMEOUT_SECONDS];
+        $child->controlWaiters[$requestId] = ['client' => $stream, 'deadline' => microtime(true) + self::CONTROL_TIMEOUT_SECONDS, 'reset_context' => ($request['subtype'] ?? null) === 'set_model'];
 
         return null;
     }
@@ -815,6 +816,7 @@ final class ClaudeHeadlessManager
         $child->requestedMode = $realMode;
         $child->profile = $profile;
         $this->children[$session] = $child;
+        $this->persist_status($session, ['context_usage' => null]);
 
         if ($spec['assigned_id'] !== null && $spec['assigned_id'] !== $existingId) {
             $this->rebind_session_id($session, $spec['assigned_id']);
@@ -1057,11 +1059,20 @@ final class ClaudeHeadlessManager
         }
 
         if ($type === 'assistant') {
+            $snapshot = ContextUsage::claude_assistant($event, $child->contextUsage);
+            if ($snapshot !== $child->contextUsage) {
+                $child->contextUsage = $snapshot;
+                $this->persist_status($child->name, ['context_usage' => $snapshot]);
+            }
             foreach (is_array($event['message']['content'] ?? null) ? $event['message']['content'] : [] as $block) {
                 if (is_array($block) && ($block['type'] ?? null) === 'tool_use') {
                     $child->turnUsedTools = true;
                 }
             }
+        }
+
+        if ($type === 'conversation_reset' || ($type === 'system' && (($event['subtype'] ?? null) === 'compact_boundary' || ($event['status'] ?? null) === 'compacting'))) {
+            $this->clear_context($child);
         }
 
         if ($type === 'system') {
@@ -1085,8 +1096,7 @@ final class ClaudeHeadlessManager
         } elseif ($type === 'rate_limit_event') {
             $this->on_rate_limit($child, $event);
         }
-        // assistant / user / conversation_reset / unknown types: nothing to do
-        // (the transcript file is the history; the next `init` carries any new id).
+        // The transcript file is the history; the next init carries any new id.
     }
 
     /** @param array<string, mixed> $event */
@@ -1123,6 +1133,7 @@ final class ClaudeHeadlessManager
         $sessionId = $event['session_id'] ?? null;
 
         if (is_string($sessionId) && $sessionId !== '' && $sessionId !== $child->agentSessionId) {
+            $this->clear_context($child);
             $this->rebind_session_id($child->name, $sessionId);
             $child->agentSessionId = $sessionId;
         }
@@ -1135,6 +1146,9 @@ final class ClaudeHeadlessManager
         }
 
         if (is_string($event['model'] ?? null)) {
+            if ($child->contextUsage !== null && ($child->contextUsage['model'] ?? null) !== $event['model']) {
+                $this->clear_context($child);
+            }
             $fields['model'] = $event['model'];
         }
 
@@ -1252,6 +1266,10 @@ final class ClaudeHeadlessManager
             return;
         }
 
+        if ($waiter['reset_context']) {
+            $this->clear_context($child);
+        }
+
         $this->reply($waiter['client'], ['ok' => true, 'response' => $response['response'] ?? null]);
     }
 
@@ -1345,10 +1363,12 @@ final class ClaudeHeadlessManager
             'has_tools' => $child->turnUsedTools,
         ];
 
+        $child->contextUsage = ContextUsage::claude_result($child->contextUsage, $event);
         $fields = [
             'status' => $child->state,
             'blocked' => $child->pending_head(),
             'last_turn_error' => $error,
+            'context_usage' => $child->contextUsage,
         ];
 
         if (is_array($event['usage'] ?? null)) {
@@ -1356,6 +1376,12 @@ final class ClaudeHeadlessManager
         }
 
         $this->persist_status($child->name, $fields);
+    }
+
+    private function clear_context(ClaudeHeadlessChild $child): void
+    {
+        $child->contextUsage = null;
+        $this->persist_status($child->name, ['context_usage' => null]);
     }
 
     /** @param array<string, mixed> $event */

@@ -28,7 +28,13 @@
       <?php // The workdir itself is NOT shown here - the sidebar's own "This session" block
             // already shows it, with a copy button the header never had. ?>
       <?php $gitBranch = $found && !empty($detail['git_branch']) ? (string)$detail['git_branch'] : ''; ?>
-      <div id="header-branch" class="text-[11px] text-slate-500 truncate<?= $gitBranch === '' ? ' hidden' : '' ?>"><?= htmlspecialchars($gitBranch, ENT_QUOTES) ?></div>
+      <div class="flex items-center justify-center gap-2 min-w-0 text-[11px] text-slate-500">
+        <div id="header-branch" class="truncate<?= $gitBranch === '' ? ' hidden' : '' ?>"><?= htmlspecialchars($gitBranch, ENT_QUOTES) ?></div>
+        <?php if ($found && in_array($detail['agent'] ?? 'claude', ['claude', 'codex'], true)): ?>
+          <?php $contextPct = $detail['context_used_percentage'] ?? null; ?>
+          <span id="header-context" data-context-pct="<?= $contextPct === null ? '' : htmlspecialchars((string)$contextPct, ENT_QUOTES) ?>" class="shrink-0<?= $contextPct !== null && $contextPct >= 80 ? ' text-amber-400' : '' ?>" title="Current context window usage; unavailable until the agent reports a snapshot and window size"><?= $contextPct === null ? 'ctx unavailable' : 'ctx ' . (int)round($contextPct) . '%' ?></span>
+        <?php endif ?>
+      </div>
     </div>
     <div class="flex items-center gap-1 justify-self-end">
       <button type="button" id="sidebar-toggle-btn" aria-label="Show other sessions"

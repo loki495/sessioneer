@@ -1337,7 +1337,7 @@ function sessioneer_headless_detail_shape(array $serve, string $agentId = 'openc
                 ? CodexTranscriptService::turn_error_message($serve['lastTurnError'])
                 : CodexTranscriptService::turn_error_message($status['last_turn_error'] ?? null))
             : null,
-        'context_used_percentage' => null,
+        'context_used_percentage' => $agentId === 'codex' ? \HostAgent\Services\ContextUsage::codex_percentage($status['token_usage'] ?? null) : null,
         'git_worktree' => null,
         // Read by `sessioneer --wait` to print the final answer.
         'last_message' => $id !== '' ? SessionService::session_last_message($id) : null,

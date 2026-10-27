@@ -65,3 +65,6 @@ test_quick_prompt.php 1
 test_quick_prompt_transport.php 6
 test_cli_wait.php 4
 test_launch_codex.php 3
+test_claude_context_usage.php 2
+test_context_browser.php 25
+test_context_usage.php 1

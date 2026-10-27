@@ -29,14 +29,12 @@ class QuotaService
      * overlays the selected thread's last structured token-usage event.
      * @return array{quota:array<string,mixed>, fetched_at:int}|null
      */
-    public static function codex_quota_state(?string $threadId = null): ?array
+    public static function codex_quota_state(?string $threadId = null, ?CodexBridgeClient $client = null): ?array
     {
-        $reply = (new CodexBridgeClient())->request('account/rateLimits/read', []);
-        if (($reply['ok'] ?? false) !== true) return null;
+        $reply = ($client ?? new CodexBridgeClient())->request('account/rateLimits/read', []);
         $snapshot = is_array($reply['result']['rateLimitsByLimitId']['codex'] ?? null)
             ? $reply['result']['rateLimitsByLimitId']['codex']
             : (is_array($reply['result']['rateLimits'] ?? null) ? $reply['result']['rateLimits'] : null);
-        if ($snapshot === null) return null;
 
         $quota = [];
         foreach (['primary' => 'session', 'secondary' => 'week_all'] as $source => $target) {
@@ -49,16 +47,16 @@ class QuotaService
         if ($threadId !== null && $threadId !== '') {
             $usage = SessionStatusStore::read_status($threadId)['token_usage'] ?? null;
             $total = is_array($usage['total'] ?? null) ? $usage['total'] : null;
-            $contextWindow = is_int($usage['modelContextWindow'] ?? null) ? $usage['modelContextWindow'] : null;
+            $contextPct = ContextUsage::codex_percentage(is_array($usage) ? $usage : null);
+            if ($contextPct !== null) {
+                $quota['context'] = ['pct' => (int)round($contextPct)];
+            }
             if ($total !== null) {
                 $quota['tokens_input'] = (int)($total['inputTokens'] ?? 0);
                 $quota['tokens_output'] = (int)($total['outputTokens'] ?? 0);
                 $quota['tokens_reasoning'] = (int)($total['reasoningOutputTokens'] ?? 0);
                 $quota['tokens_cached'] = (int)($total['cachedInputTokens'] ?? 0);
                 $quota['tokens_total'] = (int)($total['totalTokens'] ?? 0);
-                if ($contextWindow !== null && $contextWindow > 0) {
-                    $quota['context'] = ['pct' => min(100, (int)round($quota['tokens_total'] * 100 / $contextWindow))];
-                }
             }
         }
 
@@ -69,31 +67,19 @@ class QuotaService
     }
 
     /**
-     * Context-window usage for one specific session's own pane - unlike
-     * every other bucket in this class, this is genuinely per-session, not
-     * account-wide. A dedicated capture-pane call keyed to the requested
-     * session.
-     *
-     * Reads StatuslineMarkerService's own JSON marker (parse_marker_from_pane())
-     * rather than regexing Claude Code's own rendered status line text for
-     * "ctx: N%" (since removed). That used to be a second, independent path to the exact
-     * same underlying context_window.used_percentage number, and a
-     * fragile one: it only ever matched because Claude Code's DEFAULT
-     * status line happens to render that text, but this app always
-     * installs a CUSTOM statusLine script (see StatuslineMarkerService),
-     * which fully replaces whatever Claude Code's own default line would
-     * have shown - so this only worked at all when the user's own custom
-     * script happened to independently print matching "ctx:" text of its
-     * own. The marker's ctx_pct is this app's OWN guaranteed, controlled
-     * output format instead, always present regardless of anything else
-     * the user's custom script prints.
-     *
-     * Returns null if the session isn't live, the marker isn't installed
-     * yet, or its pane doesn't currently show a status line (e.g.
-     * mid-response, or mid a slash command).
+     * Per-session Claude context: a headless manager's persisted input snapshot,
+     * or the terminal session's own statusLine JSON marker. Account quota state
+     * cannot supply this value because two sessions can hold different contexts.
+     * Returns null when the required snapshot/window or pane marker is absent.
      */
     public static function live_context_pct(string $sessionName): ?int
     {
+        $sidecar = SidecarStore::read_sidecar($sessionName);
+        if (($sidecar['runtime'] ?? null) === \HostAgent\Runtimes\RuntimeType::HEADLESS) {
+            $pct = ContextUsage::claude_percentage(SessionStatusStore::read_status($sessionName)['context_usage'] ?? null);
+            return $pct === null ? null : (int)round($pct);
+        }
+
         $contextPct = StatuslineMarkerService::parse_marker_from_pane(TmuxService::tmux_capture_pane($sessionName))['context_used_percentage'];
 
         return $contextPct !== null ? (int)round($contextPct) : null;
@@ -362,8 +348,8 @@ class QuotaService
      * plus the full multi-agent `agents` map for consistency with the
      * dashboard. For a Claude Code session, additionally includes a top-level
      * `context` field with that session's own context-window percentage
-     * (see live_context_pct()), only when readable — naturally absent for
-     * every other agent and for the dashboard's own call.
+     * (see live_context_pct()), only when readable. Codex uses its stored
+     * tokenUsage.last snapshot; dashboard requests have no selected context.
      *
      * When $sessionName is omitted/empty (dashboard request), returns an
      * `agents` map with all agents' quotas so the dashboard footer can render
@@ -377,7 +363,7 @@ class QuotaService
      * or which agent a given session turns out to be) - one entry per
      * distinct configured Claude account, see claude_profiles_to_scan_keyed().
      *
-     * @return array{ok:bool, quota:?array, agents:array<string, array{label:string, ok:bool, quota:?array, fetched_at:?int, message:?string}>, claude_profiles:array<string, array{label:string, ok:bool, quota:?array, fetched_at:?int, message:?string}>, fetched_at:?int, cached:bool, stale:bool, refreshing:bool, agent?:string, agent_label?:string, context?:array{pct:int}, message?:?string}
+     * @return array{ok:bool, quota:?array, agents:array<string, array{label:string, ok:bool, quota:?array, fetched_at:?int, message:?string}>, claude_profiles:array<string, array{label:string, ok:bool, quota:?array, fetched_at:?int, message:?string}>, fetched_at:?int, cached:bool, stale:bool, refreshing:bool, agent?:string, agent_label?:string, context?:array{pct:int}|null, message?:?string}
      */
     public static function get_quota(?string $sessionName = null): array
     {
@@ -551,11 +537,14 @@ class QuotaService
                 'refreshing' => false,
                 'agent' => 'codex',
                 'agent_label' => 'Codex',
+                'context' => $codexSessionLive['quota']['context'] ?? null,
                 'message' => $codexSessionLive === null ? 'No Codex quota data available from app-server' : null,
             ];
         }
 
         // Claude Code session
+        $profile = is_string($sidecar['profile'] ?? null) ? $sidecar['profile'] : null;
+        $claudeLive = self::quota_from_statusline_state($profile);
         $contextPct = self::live_context_pct($sessionName);
 
         if ($claudeLive !== null) {
