@@ -59,6 +59,8 @@ $router->post('/session_send.php', [SessionController::class, 'send']);
 $router->post('/session_rename.php', [SessionController::class, 'rename']);
 $router->get('/session_mode.php', [SessionController::class, 'setMode']);
 $router->post('/session_mode.php', [SessionController::class, 'setMode']);
+$router->get('/session_effort.php', [SessionController::class, 'setEffort']);
+$router->post('/session_effort.php', [SessionController::class, 'setEffort']);
 $router->get('/session_model.php', [SessionController::class, 'setModel']);
 $router->post('/session_model.php', [SessionController::class, 'setModel']);
 $router->get('/session_antigravity_model.php', [SessionController::class, 'setAntigravityModel']);

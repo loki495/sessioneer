@@ -1179,6 +1179,16 @@
     }
   }
 
+  function renderEffortToggle(detail) {
+    if (!effortSelect || effortSaving) return;
+    var available = detail.effort_available === true;
+    lastEffortValue = detail.current_effort || '';
+    effortSelect.value = lastEffortValue;
+    effortSelect.disabled = !available;
+    effortSelect.options[0].textContent = available ? 'Default effort' : 'Unavailable';
+    effortSelect.title = detail.effort_message || 'Session-only reasoning effort';
+  }
+
   // Mirrors TranscriptView::render_model_toggle_html() - same shape as
   // renderModeToggle() above, just a different field/element. Never shows
   // "default" as a value (see SelectableModel::family_from_raw_model()'s
@@ -2053,6 +2063,7 @@
           renderTurnError(data);
           renderModeToggle(data);
           renderModelToggle(data);
+          renderEffortToggle(data);
           renderAntigravityModelToggle(data);
           renderTodoList(data);
           renderBlockedSection(data);
@@ -2658,6 +2669,39 @@
         })
         .catch(function () {
           modeSelect.disabled = false;
+        });
+    });
+  }
+
+  var effortSelect = document.getElementById('effort-select');
+  var effortError = document.getElementById('effort-setting-error');
+  var effortSaving = false;
+  var lastEffortValue = effortSelect ? effortSelect.value : '';
+
+  if (effortSelect) {
+    effortSelect.addEventListener('change', function () {
+      effortSaving = true;
+      effortSelect.disabled = true;
+      if (effortError) { effortError.textContent = ''; effortError.classList.add('hidden'); }
+      fetch('/session_effort.php', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ session: sessionName, csrf_token: csrfToken, effort: effortSelect.value }).toString()
+      }).then(function (response) { return response.json(); })
+        .then(function (data) {
+          if (!data || !data.ok) throw new Error(data && data.message ? data.message : 'Could not change effort');
+          effortSaving = false;
+          pollOnce();
+        }).catch(function (error) {
+          effortSaving = false;
+          effortSelect.value = lastEffortValue;
+          effortSelect.disabled = false;
+          if (effortError) {
+            effortError.textContent = error && error.message ? error.message : 'Could not change effort';
+            effortError.classList.remove('hidden');
+          }
+          pollOnce();
         });
     });
   }

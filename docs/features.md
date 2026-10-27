@@ -42,7 +42,7 @@ tmux, agent daemons, process tables, or user configuration directly.
 | Switch model in a live session | ✓ | ✓ account-wide setting | ✓ | ✓ |
 | Choose starting mode at creation | ✓ | ◐ `accept edits` / `plan` | ✗ | ✗ |
 | Switch interaction mode in a live session | ✓ | ✗ | ✗ | ✗ |
-| Switch reasoning effort in the UI | ✗ | ✗ | ✗ | ✓ |
+| Switch reasoning effort in the UI | ✓ headless | ✗ | ✗ | ✓ |
 | Live transcript and forward polling | ✓ | ✓ | ✓ | ✓ |
 | Archived transcript / cwd / title | ✓ | ✓ | ✓ | ✓ |
 | Dashboard-wide content search | ✓ | ✗ | ✓ | ✗ |
@@ -100,8 +100,8 @@ since a real Claude can take seconds to shut down; if it is still running at
 the deadline the conversation is left for the Archived list and the message
 says so. A row this can't identify
 with certainty still falls back to the pre-existing closest-start-time
-heuristic, clearly labeled as a guess. Model and permission-mode changes
-drive Claude's own pickers. The model dropdowns (session page and New Session
+heuristic, clearly labeled as a guess. In tmux, model and permission-mode
+changes drive Claude's own pickers. The model dropdowns (session page and New Session
 form) list Claude's families and label each with the newest full name Sessioneer
 has read for it ("Opus 5.5"), parsed from the raw model ids in transcripts and
 headless status; a family not seen yet keeps its plain name. Quota comes from the status-line JSON marker of
@@ -189,7 +189,7 @@ archived Claude row or the per-row switch between runtimes (the old process is
 stopped completely first, and a busy session or one with no transcript yet is
 refused); plain Resume and Take over still open a terminal session. Permission approvals, `AskUserQuestion`
 (single and multi-question), plan approval, interrupt, queued messages, image
-attachments and model and permission-mode changes all work through the process's
+attachments and model, permission-mode and reasoning-effort changes all work through the process's
 own structured events, and the transcript view still reads the same transcript
 file. Concurrent permission prompts (parallel subagents) queue by request id: the
 dashboard shows the oldest, the next appears once it is answered, and the session
@@ -200,6 +200,15 @@ or the process exiting clears them (see "Known parity gaps"). A permission mode 
 attach to; to continue a conversation in one, switch the session to the terminal
 runtime. A headless session's own process never appears under "other Claude
 processes", and Kill and Take over refuse it.
+
+The footer groups model, permission mode and reasoning effort on one row, including
+on narrow phones. Effort offers Default, Low, Medium, High, Xhigh and Max. Changes
+are session-only, apply to subsequent requests without restarting the process, and
+are saved for a dormant session's next message. Default clears the saved override.
+Polling displays the CLI's applied level, including model or environment limits,
+rather than assuming the requested level took effect. Rejections appear below
+the controls; tmux and CLIs/models without live effort reporting show a disabled
+effort selector. The control protocol was checked against Claude Code 2.1.306.
 
 Slash commands are ordinary messages that start with `/` (checked against Claude
 Code 2.1.278):
@@ -438,7 +447,7 @@ Implementation entry points:
   weekly resets appear as absolute dates and local clock times, including the
   date for resets today, rather than relative countdowns. Reset dates use smaller
   type and stay on one line. The mobile toggle fills its own row with three evenly spaced,
-  centered sections, with reset dates beneath the percentages and the model/mode
+  centered sections, with reset dates beneath the percentages and the model/mode/effort
   controls on the row below. Missing
   usage or a missing/invalid reported window shows `ctx unavailable`, rather than
   zero; context remains visible even when account quota data is unavailable.

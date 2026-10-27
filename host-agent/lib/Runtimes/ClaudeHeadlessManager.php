@@ -386,7 +386,8 @@ final class ClaudeHeadlessManager
         return match ($method) {
             'sessioneer/health' => $this->health(),
             'sessioneer/list' => $this->list_children(),
-            'sessioneer/status' => $this->status($session),
+            'sessioneer/status' => ($params['include_effort'] ?? false) === true ? $this->effort_status($session, $stream) : $this->status($session),
+            'sessioneer/setEffort' => $this->set_effort($session, $params, $stream),
             'sessioneer/spawn' => $this->spawn_request($session, $params),
             'sessioneer/sendInput' => $this->send_input($session, $params, $stream),
             'sessioneer/pendingPrompt' => $this->pending_prompt($session),
@@ -626,6 +627,49 @@ final class ClaudeHeadlessManager
     }
 
     /**
+     * @param array<string, mixed> $params
+     * @param resource $stream
+     * @return array<string, mixed>|null
+     */
+    private function set_effort(string $session, array $params, $stream): ?array
+    {
+        $effort = $params['effort'] ?? null;
+        if (!is_string($effort) || ($effort !== '' && !in_array($effort, ClaudeCodeAdapter::EFFORT_LEVELS, true))) {
+            return ['ok' => false, 'message' => 'Rejected: unknown or missing effort level'];
+        }
+        $tracked = $this->tracked($session);
+        if (!$tracked['ok']) {
+            return $tracked;
+        }
+        $effort = $effort === '' ? null : $effort;
+        if (!isset($this->children[$session])) {
+            SidecarStore::set_effort($session, $effort);
+            return ['ok' => true, 'message' => 'Effort saved for the next message'];
+        }
+        return $this->control_request($session, ['subtype' => 'apply_flag_settings', 'settings' => ['effortLevel' => $effort]], $stream, 'set_effort', $effort);
+    }
+
+    /**
+     * @param resource $stream
+     * @return array<string, mixed>|null
+     */
+    private function effort_status(string $session, $stream): ?array
+    {
+        $status = $this->status($session);
+        if (!$status['ok']) {
+            return $status;
+        }
+        if (!isset($this->children[$session])) {
+            return $status + [
+                'current_effort' => SidecarStore::read_sidecar($session)['effort'] ?? null,
+                'effort_available' => true,
+                'effort_message' => 'Saved effort applies when the session resumes',
+            ];
+        }
+        return $this->control_request($session, ['subtype' => 'get_settings'], $stream, 'effort_status');
+    }
+
+    /**
      * Sends a control_request and defers the client's reply until the child's
      * matching control_response arrives (or the child exits / it times out).
      *
@@ -633,7 +677,7 @@ final class ClaudeHeadlessManager
      * @param resource $stream
      * @return array<string, mixed>|null
      */
-    private function control_request(string $session, array $request, $stream): ?array
+    private function control_request(string $session, array $request, $stream, string $kind = 'control', ?string $effort = null): ?array
     {
         $tracked = $this->tracked($session);
 
@@ -655,7 +699,7 @@ final class ClaudeHeadlessManager
             return ['ok' => false, 'message' => 'Could not write to the Claude process'];
         }
 
-        $child->controlWaiters[$requestId] = ['client' => $stream, 'deadline' => microtime(true) + self::CONTROL_TIMEOUT_SECONDS, 'reset_context' => ($request['subtype'] ?? null) === 'set_model'];
+        $child->controlWaiters[$requestId] = ['client' => $stream, 'deadline' => microtime(true) + self::CONTROL_TIMEOUT_SECONDS, 'reset_context' => ($request['subtype'] ?? null) === 'set_model', 'kind' => $kind, 'effort' => $effort];
 
         return null;
     }
@@ -1259,11 +1303,33 @@ final class ClaudeHeadlessManager
 
         unset($child->controlWaiters[$requestId]);
 
+        if ($waiter['kind'] === 'effort_status') {
+            $effort = $response['response']['applied']['effort'] ?? null;
+            $available = ($response['subtype'] ?? null) === 'success'
+                && is_string($effort) && in_array($effort, ClaudeCodeAdapter::EFFORT_LEVELS, true);
+            // get_settings also contains private settings and source paths.
+            // Only the applied effort crosses the manager boundary.
+            $this->reply($waiter['client'], $this->status($child->name) + [
+                'current_effort' => $available ? $effort : null,
+                'effort_available' => $available,
+                'effort_message' => $available ? 'Session-only effort for subsequent requests' : 'Live effort is unavailable for this Claude CLI or model',
+            ]);
+            return;
+        }
+
         if (($response['subtype'] ?? null) === 'error') {
             $message = is_string($response['error'] ?? null) ? $response['error'] : 'Claude rejected the request';
             $this->reply($waiter['client'], ['ok' => false, 'message' => $message]);
 
             return;
+        }
+
+        if ($waiter['kind'] === 'set_effort') {
+            if (($response['subtype'] ?? null) !== 'success') {
+                $this->reply($waiter['client'], ['ok' => false, 'message' => 'Claude did not acknowledge the effort change']);
+                return;
+            }
+            SidecarStore::set_effort($child->name, $waiter['effort']);
         }
 
         if ($waiter['reset_context']) {

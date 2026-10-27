@@ -497,6 +497,17 @@ function sessioneer_dispatch_action(array $request): array
             }
             return PromptInteractionService::set_mode($modeSession, (string)($request['mode'] ?? ''));
 
+        case 'set_effort':
+            $effortSession = (string)($request['session'] ?? '');
+            if (!is_string($request['effort'] ?? null)) {
+                return ['ok' => false, 'message' => 'Rejected: effort must be supplied as a string'];
+            }
+            if (!sessioneer_is_headless_session($effortSession)) {
+                return ['ok' => false, 'message' => 'Live effort control is available for headless sessions'];
+            }
+            return sessioneer_headless_runtime($effortSession)?->update_settings($effortSession, null, $request['effort'])
+                ?? ['ok' => false, 'message' => 'Headless runtime unavailable'];
+
         case 'set_model':
             $modelSession = (string)($request['session'] ?? '');
             if (sessioneer_is_headless_session($modelSession)) {

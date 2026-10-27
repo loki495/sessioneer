@@ -262,6 +262,14 @@ Docker-spawned, makes that impossible by construction — not by convention.
    account quota availability. Existing Claude records need a new response from
    the updated manager before they can show a reading; installing manager changes
    still requires the idle/approved restart described above.
+   Claude's footer effort selector uses `POST /session_effort.php` → host-agent
+   `set_effort` → `RuntimeProvider::update_settings()` → manager `sessioneer/setEffort`.
+   Live changes use session-scoped `apply_flag_settings` and persist only after ACK;
+   an empty string clears the sidecar override, while dormant changes save without
+   spawning. Detail polling requests status with `include_effort: true`, whitelisting
+   only `get_settings.applied.effort` (never effective settings or source paths).
+   The displayed level reflects CLI limits; unsupported tmux/CLI/model controls
+   stay disabled. Model, mode and effort share the mobile footer row.
    A headless process renders no status line, so the manager writes each
    `rate_limit_event` into the per-account quota state itself, through
    `QuotaLiveStateWriter` (the same merge rule the statusLine script uses).
