@@ -111,7 +111,7 @@ function codex_bridge_ingest(string $chunk): void
 codex_bridge_write($appIn, [
     'method' => 'initialize',
     'id' => 1,
-    'params' => ['clientInfo' => ['name' => 'sessioneer', 'title' => 'Sessioneer', 'version' => '0.1']],
+    'params' => ['clientInfo' => ['name' => 'sessioneer', 'title' => 'Sessioneer', 'version' => '0.1'], 'capabilities' => ['experimentalApi' => true]],
 ]);
 
 $initialized = false;
