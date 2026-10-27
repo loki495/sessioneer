@@ -163,6 +163,7 @@ try {
 
     $init = $daemon->expect(method_is('initialize'));
     assert_equal(1, $init['id'] ?? null, 'the bridge initializes the connection');
+    assert_equal(true, $init['params']['capabilities']['experimentalApi'] ?? null, 'it opts into the experimental API, which thread/settings/update needs');
     $daemon->send(['id' => 1, 'result' => ['userAgent' => 'fake']]);
     assert_true($daemon->expect(method_is('initialized')) !== null, 'it then sends initialized');
 
