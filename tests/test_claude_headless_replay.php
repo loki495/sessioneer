@@ -201,6 +201,10 @@ foreach ($captures as $i => $file) {
     if (!$endsOnRequest && is_int($window) && $window > 0 && is_array($usage)
         && isset($usage['input_tokens'], $usage['cache_creation_input_tokens'], $usage['cache_read_input_tokens'])) {
         $expectedPct = min(100.0, ($usage['input_tokens'] + $usage['cache_creation_input_tokens'] + $usage['cache_read_input_tokens']) / $window * 100.0);
+        // The fixture has written its final bytes, but the manager may still
+        // be draining stdout. An earlier result can already have left the
+        // session idle; wait for this capture's final snapshot itself.
+        wait_until(static fn (): bool => ContextUsage::claude_percentage(SessionStatusStore::read_status($name)['context_usage'] ?? null) === $expectedPct);
         assert_equal($expectedPct, ContextUsage::claude_percentage(SessionStatusStore::read_status($name)['context_usage'] ?? null), "{$label}: captured latest main input snapshot uses its own model's reported window");
     }
 
