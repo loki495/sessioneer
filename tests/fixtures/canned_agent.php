@@ -519,7 +519,7 @@ if (is_string($contextStatePath) && is_file($contextStatePath)) {
         $response['profile'] = 'work';
         $response['context_used_percentage'] = $contextState['pct'];
     } elseif ($action === 'quota') {
-        $response = ['ok' => true, 'quota' => null, 'agents' => [], 'context' => $contextState['pct'] === null ? null : ['pct' => $contextState['pct']]];
+        $response = ['ok' => true, 'quota' => $contextState['quota'] ?? null, 'agents' => $contextState['agents'] ?? [], 'context' => $contextState['pct'] === null ? null : ['pct' => $contextState['pct']]];
     }
 }
 

@@ -4,6 +4,8 @@
   var toggleBtn = document.getElementById('quota-toggle-btn');
   var toggleIcon = document.getElementById('quota-toggle-icon');
   var el = document.getElementById('quota-info');
+  var toggleSummary = document.getElementById('quota-toggle-summary');
+  var latestQuota = null;
   var sessionName = (footer && footer.dataset.session) ? footer.dataset.session : '';
   var STORAGE_KEY = 'sessioneer-quota-collapsed';
 
@@ -20,6 +22,7 @@
   function applyCollapsed(collapsed) {
     el.classList.toggle('hidden', collapsed);
     toggleIcon.innerHTML = collapsed ? '&#9656;' : '&#9662;';
+    toggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
   }
 
   // Collapsed by default - only expanded if the user has explicitly
@@ -72,18 +75,16 @@
     return d > 0 ? (d + 'd ' + wh + 'h') : (wh + 'h');
   }
 
-  // The relative duration alone ("1h 53m") doesn't say WHEN that actually
-  // is on the clock - this appends the absolute local time next to it, only
-  // adding the date when the reset isn't today (the common case for the
-  // 5-hour session bucket), so the compact mobile footer doesn't carry a
-  // redundant date on every single line.
-  function formatAbsolute(unixSeconds) {
+  // The mobile summary always includes a calendar date; other callers can
+  // retain the shorter clock-only form for resets today.
+  function formatAbsolute(unixSeconds, includeDate) {
     var d = new Date(unixSeconds * 1000);
+    if (isNaN(d.getTime())) return '';
     var now = new Date();
     var timeStr = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     var sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
 
-    if (sameDay) return timeStr;
+    if (sameDay && !includeDate) return timeStr;
 
     return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + timeStr;
   }
@@ -141,15 +142,43 @@
     el.appendChild(line);
   }
 
-  function appendSessionContext(container, data) {
+  function sessionContextPct(data) {
     // Detail polling is fresher than the account quota's one-minute refresh.
     var headerContext = document.getElementById('header-context');
-    var pct = data && data.context ? data.context.pct : null;
     if (headerContext) {
-      pct = headerContext.dataset.contextPct === '' ? null : Number(headerContext.dataset.contextPct);
-    } else if (typeof pct !== 'number') {
-      return;
+      return headerContext.dataset.contextPct === '' ? null : Number(headerContext.dataset.contextPct);
     }
+    return data && data.context ? data.context.pct : null;
+  }
+
+  function summaryPercentage(pct) {
+    return typeof pct === 'number' && isFinite(pct) ? Math.round(pct) + '%' : '—';
+  }
+
+  function updateSummaryPart(name, label, bucket) {
+    var part = toggleSummary.querySelector('[data-quota-summary-part="' + name + '"]');
+    if (!part) return;
+    part.querySelector('[data-quota-summary-value]').textContent = label + ' ' + summaryPercentage(bucket && bucket.pct);
+    var reset = bucket && bucket.resets_at;
+    var date = typeof reset === 'number' && isFinite(reset) ? formatAbsolute(reset, true) : '';
+    var resetEl = part.querySelector('[data-quota-summary-reset]');
+    resetEl.textContent = date;
+    resetEl.classList.toggle('hidden', !date);
+  }
+
+  function updateToggleSummary() {
+    if (!toggleSummary) return;
+    // The top-level quota belongs to this session's selected account, while
+    // agents/claude_profiles describe every account in the expanded table.
+    var quota = latestQuota && latestQuota.quota ? latestQuota.quota : {};
+    updateSummaryPart('session', '5h', quota.session);
+    updateSummaryPart('week_all', 'wk', quota.week_all);
+    updateSummaryPart('context', 'ctx', { pct: sessionContextPct(latestQuota) });
+  }
+
+  function appendSessionContext(container, data) {
+    var pct = sessionContextPct(data);
+    if (!document.getElementById('header-context') && typeof pct !== 'number') return;
     var contextLine = container.querySelector('[data-session-context]');
     if (!contextLine) {
       contextLine = document.createElement('div');
@@ -163,6 +192,7 @@
 
   document.addEventListener('sessioneer-context-updated', function () {
     appendSessionContext(el, null);
+    updateToggleSummary();
   });
 
   function renderDashboardTable(data) {
@@ -402,6 +432,8 @@
   }
 
   function render(data) {
+    latestQuota = data;
+    updateToggleSummary();
     if (!data || (!data.quota && !data.agents)) {
       showUnavailable(data);
       appendSessionContext(el, data);
@@ -428,13 +460,14 @@
       .then(function (r) { return r.json(); })
       .then(render)
       .catch(function () {
-        showUnavailable(null);
+        render(null);
       })
       .finally(function () {
         loading = false;
       });
   }
 
+  updateToggleSummary();
   load();
   setInterval(load, 60000);
 })();

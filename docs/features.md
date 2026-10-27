@@ -430,7 +430,16 @@ Implementation entry points:
   the same "Headless" pill the dashboard and sidebar rows use.
 - Claude Code and Codex session pages show the current context-window percentage
   beside the branch, with the same reading in the expanded quota footer. Both
-  update with session polling, including decreases after compaction. Missing
+  update with session polling, including decreases after compaction. On mobile
+  session pages, the quota toggle shows compact `5h 24%`, `wk 61%`, and `ctx 18%`
+  sections for the selected session/account. Tapping it still opens the full
+  table. Quota values refresh with quota polling and context with session polling,
+  even while collapsed; unavailable values show a dash. Available 5-hour and
+  weekly resets appear as absolute dates and local clock times, including the
+  date for resets today, rather than relative countdowns. Reset dates use smaller
+  type and stay on one line. The mobile toggle fills its own row with three evenly spaced,
+  centered sections, with reset dates beneath the percentages and the model/mode
+  controls on the row below. Missing
   usage or a missing/invalid reported window shows `ctx unavailable`, rather than
   zero; context remains visible even when account quota data is unavailable.
   Claude terminal sessions read their own statusLine marker. Headless Claude
