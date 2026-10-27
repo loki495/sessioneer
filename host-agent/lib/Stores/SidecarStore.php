@@ -183,7 +183,7 @@ class SidecarStore
     }
 
     /** Own column for the same reason as no_tools: the effort a dormant respawn must re-apply. */
-    public static function set_effort(string $sessionName, string $effort): void
+    public static function set_effort(string $sessionName, ?string $effort): void
     {
         self::db()->prepare('UPDATE sidecars SET effort = ? WHERE session_name = ?')->execute([$effort, $sessionName]);
     }

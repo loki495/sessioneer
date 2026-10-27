@@ -47,6 +47,7 @@ Sessioneer is pre-1.0. Until 1.0:
 - Headless: a persistent manager runs one `claude -p` stream-json process per active session on your own claude.ai login (never an API key) and reports state, prompts and session-id changes from that process's own events; no hooks or pane are involved. See [features](features.md#headless-runtime)
 - Tool approval dialogs and blocked-on-input detection fully supported in both
 - Context usage percentage on session pages in both runtimes when a snapshot and window are reported; dashboard rows also show available Claude readings. Tmux uses its statusLine marker; headless uses the latest main-thread assistant input snapshot and that model's reported window. Unknown data is shown as unavailable.
+- Headless reasoning effort is selectable beside model and permission mode. Changes are session-only and persist for lazy resume; polling reads the applied level after model/environment limits. The control protocol was checked against 2.1.306. Unsupported CLIs/models and tmux show a disabled effort control.
 - The dashboard health box compares the installed `claude --version` with the version the headless handling was verified against and flags an older one; after a newer one, run `bash tests/run.sh --live`
 
 ### Antigravity

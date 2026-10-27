@@ -69,10 +69,17 @@ if ($found): ?>
             ? TranscriptView::render_antigravity_model_toggle_html($detail)
             : ($agent === 'opencode'
                 ? TranscriptView::render_opencode_model_toggle_html($detail)
-                : TranscriptView::render_model_toggle_html($detail) . TranscriptView::render_mode_toggle_html($detail)));
+                 : '<div id="claude-session-controls" class="flex min-w-0 w-full items-center justify-between gap-2 sm:w-auto">'
+                    . TranscriptView::render_model_toggle_html($detail)
+                    . TranscriptView::render_mode_toggle_html($detail)
+                    . TranscriptView::render_effort_toggle_html($detail)
+                    . '</div>'));
       ?>
       <div class="mt-2">
         <?= QuotaFooterView::quota_footer_html($agentExtras, $sessionName) ?>
+        <?php if ($agent === 'claude'): ?>
+          <div id="effort-setting-error" role="status" class="hidden mt-1 text-xs text-red-400"></div>
+        <?php endif; ?>
         <?= PushNotifyView::push_notify_button_html($vapidPublicKey, $csrfToken) ?>
       </div>
     </div>

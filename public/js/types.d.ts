@@ -54,7 +54,7 @@ interface Document {
     | 'compose-textarea' | 'fullscreen-edit-modal-textarea'): HTMLTextAreaElement | null;
   getElementById(elementId:
     | 'antigravity-model-select' | 'codex-effort-select' | 'codex-model-select'
-    | 'mode-select' | 'model-select' | 'new-session-agent'
+    | 'effort-select' | 'mode-select' | 'model-select' | 'new-session-agent'
     | 'new-session-model' | 'opencode-model-select'
     | 'poll-interval-select'): HTMLSelectElement | null;
   getElementById(elementId: 'new-session-details'): HTMLDetailsElement | null;

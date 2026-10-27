@@ -86,7 +86,7 @@ final class ClaudeHeadlessChild
     /** @var array<int, resource> client sockets waiting for this child to exit */
     public array $stopWaiters = [];
 
-    /** @var array<string, array{client: resource, deadline: float, reset_context: bool}> control_request id => client awaiting the control_response */
+    /** @var array<string, array{client: resource, deadline: float, reset_context: bool, kind: string, effort: ?string}> control_request id => client awaiting the control_response */
     public array $controlWaiters = [];
 
     /** @var list<array{client: resource, deadline: float, reply: array<string, mixed>}> sendInput callers waiting to learn whether the prompt got past the UserPromptSubmit hooks */

@@ -68,3 +68,5 @@ test_launch_codex.php 3
 test_claude_context_usage.php 2
 test_context_browser.php 150
 test_context_usage.php 1
+test_claude_effort.php 2
+test_effort_browser.php 25

@@ -523,4 +523,31 @@ if (is_string($contextStatePath) && is_file($contextStatePath)) {
     }
 }
 
+$effortStatePath = getenv('CANNED_EFFORT_STATE');
+if (is_string($effortStatePath) && is_file($effortStatePath)) {
+    $effortState = json_decode((string) file_get_contents($effortStatePath), true);
+    if ($action === 'session_detail' && ($request['session'] ?? null) === CANNED_SESSION_NAME) {
+        $response['runtime'] = $effortState['runtime'] ?? 'headless';
+        $response['agent'] = 'claude';
+        $response['current_model'] = 'opus';
+        $response['current_mode'] = 'accept edits';
+        $response['current_effort'] = $effortState['effort'] ?? null;
+        $response['effort_available'] = ($effortState['available'] ?? true) === true;
+        $response['effort_message'] = $response['effort_available'] ? 'Session-only effort' : 'Live effort unavailable';
+    } elseif ($action === 'set_effort') {
+        if (($request['session'] ?? null) !== CANNED_SESSION_NAME) {
+            $response = ['ok' => false, 'message' => 'Unknown session'];
+        } elseif (!empty($effortState['reject'])) {
+            $response = ['ok' => false, 'message' => 'Rejected: effort overridden by environment'];
+        } elseif (!in_array($request['effort'] ?? null, ['', 'low', 'medium', 'high', 'xhigh', 'max'], true)) {
+            $response = ['ok' => false, 'message' => 'Rejected: unknown effort'];
+        } else {
+            $effortState['requested'] = $request['effort'];
+            $effortState['effort'] = $request['effort'] === '' ? 'medium' : ($request['effort'] === 'max' ? 'high' : $request['effort']);
+            file_put_contents($effortStatePath, json_encode($effortState));
+            $response = ['ok' => true];
+        }
+    }
+}
+
 fwrite(STDOUT, json_encode($response));
