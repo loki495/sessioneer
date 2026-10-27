@@ -282,6 +282,26 @@ while (true) {
         ]]);
     }
 
+    // Synthetic context cases use the captured assistant/result wire shapes.
+    if (str_starts_with($text, 'CONTEXT')) {
+        if ($text === 'CONTEXT_COMPACT') {
+            emit(['type' => 'system', 'subtype' => 'status', 'status' => 'compacting']);
+            emit(['type' => 'system', 'subtype' => 'compact_boundary']);
+            result($text);
+            continue;
+        }
+        $usage = ['input_tokens' => $text === 'CONTEXT_SMALL' ? 10 : 100, 'cache_creation_input_tokens' => 200, 'cache_read_input_tokens' => 700, 'output_tokens' => 99999];
+        $event = ['type' => 'assistant', 'parent_tool_use_id' => null, 'message' => ['model' => $model, 'usage' => $usage, 'content' => []]];
+        emit($event);
+        emit($event); // the same API message can be streamed in several copies
+        emit(['type' => 'assistant', 'parent_tool_use_id' => 'subagent-tool', 'message' => ['model' => 'subagent-model', 'usage' => ['input_tokens' => 999999], 'content' => []]]);
+        emit(['type' => 'result', 'subtype' => 'success', 'is_error' => false, 'result' => $text, 'usage' => ['input_tokens' => 999999], 'modelUsage' => [
+            $model => ['contextWindow' => $text === 'CONTEXT_BADWINDOW' ? 0 : 10000],
+            'subagent-model' => ['contextWindow' => 1000000],
+        ]]);
+        continue;
+    }
+
     if (str_contains($text, 'GARBAGE')) {
         echo "this is not json\n";
         flush();

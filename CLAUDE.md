@@ -249,6 +249,19 @@ Docker-spawned, makes that impossible by construction — not by convention.
    process per transcript is enforced by
    `SessionLifecycleService::agent_session_id_already_live()`, which counts
    headless sessions as live, and by the per-conversation resume lock.
+   `ContextUsage` calculates per-session context snapshots separately from
+   cumulative token counters. The Claude manager persists the latest main-thread
+   assistant input/cache snapshot plus its matching result `modelUsage` window
+   in `SessionStatusStore.context_usage` (`context_usage_json`, an additive
+   column). It replaces streamed copies, ignores subagent snapshots, and clears
+   context on compaction, conversation/model changes and respawn. A missing
+   measured window stays unknown; no model-size constants are guessed. Codex's
+   stored bridge event already carries `tokenUsage.last` and `modelContextWindow`;
+   page detail and quota use those, keeping `total` counters separate. The session
+   header and quota footer follow the same detail-poll snapshot, independent of
+   account quota availability. Existing Claude records need a new response from
+   the updated manager before they can show a reading; installing manager changes
+   still requires the idle/approved restart described above.
    A headless process renders no status line, so the manager writes each
    `rate_limit_event` into the per-account quota state itself, through
    `QuotaLiveStateWriter` (the same merge rule the statusLine script uses).

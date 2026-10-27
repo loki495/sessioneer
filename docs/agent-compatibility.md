@@ -16,7 +16,7 @@ capability matrix and parity gaps.
 
 | Agent | Tier | Last verified | Runtimes | Main limitations |
 |-------|------|---------------|----------|------------------|
-| **Claude Code** | Primary | 2.1.278 and 2.1.302 (headless stream-json captures); tmux pane fixtures from 2.1.269 | Headless (default) or tmux | Headless sessions show no context % or worktree; concurrent permission prompts queue by request id |
+| **Claude Code** | Primary | 2.1.278 and 2.1.302 (headless stream-json captures); tmux pane fixtures from 2.1.269 | Headless (default) or tmux | Headless context % requires a measured window; no statusline-derived worktree; concurrent permission prompts queue by request id |
 | **OpenCode** | Supported | 1.18.21 | `opencode serve` (default) or tmux fallback | 1.x only: OpenCode 2.x is not supported yet (see below). No full status-hook plugin or mode vocabulary; tmux fallback is less complete |
 | **Codex** | Supported | 0.152.1 (app-server schema from 0.150.1) | Headless only | Approvals and input requests are answerable from Sessioneer and Codex Remote alike while the bridge is attached to the managed daemon; with only the private fallback, ones owned by Codex Remote are visible but can't be answered; no transcript search |
 | **Antigravity** | Experimental | `agy` 1.2.1 | tmux only | Approval dialogs read from the pane; model changes are account-wide; no transcript search; hooks are a manual install |
@@ -46,7 +46,7 @@ Sessioneer is pre-1.0. Until 1.0:
 - tmux: hooks are the primary integration point (`SessionStart`, `PreToolUse`, `PermissionRequest`, etc.); transcript rotation on `/clear`, `--resume`, `--fork-session` is tracked via `SessionStart`
 - Headless: a persistent manager runs one `claude -p` stream-json process per active session on your own claude.ai login (never an API key) and reports state, prompts and session-id changes from that process's own events; no hooks or pane are involved. See [features](features.md#headless-runtime)
 - Tool approval dialogs and blocked-on-input detection fully supported in both
-- Context usage percentage on the dashboard for tmux sessions (headless sessions have no status line to read it from)
+- Context usage percentage on session pages in both runtimes when a snapshot and window are reported; dashboard rows also show available Claude readings. Tmux uses its statusLine marker; headless uses the latest main-thread assistant input snapshot and that model's reported window. Unknown data is shown as unavailable.
 - The dashboard health box compares the installed `claude --version` with the version the headless handling was verified against and flags an older one; after a newer one, run `bash tests/run.sh --live`
 
 ### Antigravity
@@ -66,6 +66,7 @@ Sessioneer is pre-1.0. Until 1.0:
 - Uses thread UUIDs (not tmux pane names) for session identity
 - Private bridge protocol for turn ownership and Sessioneer-specific state
 - No pane scraping needed; all state comes from bridge
+- Session-page context usage uses the latest `tokenUsage.last` snapshot and reported `modelContextWindow`, separate from cumulative token totals; unavailable until both are reported.
 
 ## Known Compatibility Notes
 

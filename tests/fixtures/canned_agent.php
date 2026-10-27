@@ -228,6 +228,7 @@ $response = match ($action) {
             'spawned_by_app' => true,
             'title' => 'Fix the login redirect bug',
             'git_branch' => 'main',
+            'context_used_percentage' => 12.0,
             'working' => false,
             'blocked_reason' => 'Do you want to proceed?',
             'resume_hint' => 'tmux -S /fake/socket attach -t ' . CANNED_SESSION_NAME,
@@ -507,5 +508,19 @@ $response = match ($action) {
         : ['ok' => false, 'message' => 'Transcript file not found'],
     default => ['ok' => false, 'message' => 'Unknown action'],
 };
+
+// Mutable context-only browser fixture; unset for ordinary smoke tests.
+$contextStatePath = getenv('CANNED_CONTEXT_STATE');
+if (is_string($contextStatePath) && is_file($contextStatePath)) {
+    $contextState = json_decode((string)file_get_contents($contextStatePath), true);
+    if ($action === 'session_detail' && ($request['session'] ?? null) === CANNED_SESSION_NAME) {
+        $response['agent'] = $contextState['agent'];
+        $response['runtime'] = 'headless';
+        $response['profile'] = 'work';
+        $response['context_used_percentage'] = $contextState['pct'];
+    } elseif ($action === 'quota') {
+        $response = ['ok' => true, 'quota' => null, 'agents' => [], 'context' => $contextState['pct'] === null ? null : ['pct' => $contextState['pct']]];
+    }
+}
 
 fwrite(STDOUT, json_encode($response));

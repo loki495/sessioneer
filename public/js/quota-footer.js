@@ -141,6 +141,30 @@
     el.appendChild(line);
   }
 
+  function appendSessionContext(container, data) {
+    // Detail polling is fresher than the account quota's one-minute refresh.
+    var headerContext = document.getElementById('header-context');
+    var pct = data && data.context ? data.context.pct : null;
+    if (headerContext) {
+      pct = headerContext.dataset.contextPct === '' ? null : Number(headerContext.dataset.contextPct);
+    } else if (typeof pct !== 'number') {
+      return;
+    }
+    var contextLine = container.querySelector('[data-session-context]');
+    if (!contextLine) {
+      contextLine = document.createElement('div');
+      contextLine.setAttribute('data-session-context', '');
+      container.appendChild(contextLine);
+    }
+    var knownContext = typeof pct === 'number' && isFinite(pct);
+    contextLine.className = 'mt-2 pt-2 border-t border-slate-800/60 ' + (knownContext ? pctColorClass(pct) : 'text-slate-600');
+    contextLine.textContent = 'This session: ' + (knownContext ? 'ctx ' + Math.round(pct) + '%' : 'ctx unavailable');
+  }
+
+  document.addEventListener('sessioneer-context-updated', function () {
+    appendSessionContext(el, null);
+  });
+
   function renderDashboardTable(data) {
     var agents = data.agents || {};
     var claude = agents.claude;
@@ -155,6 +179,7 @@
 
     if (!hasClaude && !hasAg && !hasOc && !hasCodex) {
       showUnavailable(data);
+      appendSessionContext(el, data);
       return;
     }
 
@@ -358,13 +383,7 @@
     table.appendChild(tbody);
     container.appendChild(table);
 
-    // Append optional per-session context line when present
-    if (data.context && typeof data.context.pct === 'number') {
-      var contextLine = document.createElement('div');
-      contextLine.className = 'mt-2 pt-2 border-t border-slate-800/60 ' + pctColorClass(data.context.pct);
-      contextLine.textContent = 'This session: ctx ' + data.context.pct + '%';
-      container.appendChild(contextLine);
-    }
+    appendSessionContext(container, data);
 
     var claudeProfileCapturedAt = null;
     claudeProfileKeys.some(function (profileKey) {
@@ -385,6 +404,7 @@
   function render(data) {
     if (!data || (!data.quota && !data.agents)) {
       showUnavailable(data);
+      appendSessionContext(el, data);
       return;
     }
 
