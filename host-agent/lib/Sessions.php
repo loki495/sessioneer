@@ -789,7 +789,7 @@ function sessioneer_headless_sessions(): array
  * On each tick where the throttle interval has elapsed (HEADLESS_SYNC_SECONDS,
  * default 15), ONE serve round-trip adopts every live serve session into a
  * headless sidecar (keyed by its ses_* id, runtime=headless), batches the
- * serve `/session/status` map into SessionStatusStore, and prunes headless
+ * serve `/api/session/active` map into SessionStatusStore, and prunes headless
  * rows for sessions serve no longer has. Between ticks `list` reads the
  * sidecars/status locally. Serve unreachable: leaves the last-known
  * sidecars/status untouched (keeps the dashboard stable, not empty).
@@ -881,9 +881,9 @@ function sessioneer_headless_sync(): void
         }
     }
 
-    // Populate a status row for EVERY adopted session - GET /session/status
-    // only lists sessions it considers "live" (busy/retry), silently omitting
-    // idle ones, so relying on it alone left sessions with no status row at
+    // Populate a status row for EVERY adopted session - GET /api/session/active
+    // only lists sessions that are doing work, silently omitting idle ones, so
+    // relying on it alone left sessions with no status row at
     // all (sidecars populated, session_status
     // empty). Default to 'idle' for anything it didn't report, so status is
     // deterministic across every headless session. Clearing `blocked` here
@@ -896,15 +896,14 @@ function sessioneer_headless_sync(): void
         SessionStatusStore::update_status($id, ['status' => $statuses[$id] ?? 'idle', 'blocked' => null], true);
     }
 
-    // Blocked-prompt detection: ONE GET /permission + ONE GET /question
-    // batched across all sessions, then a headless session with a pending
-    // permission/question gets status 'blocked' + its normalized prompt
-    // shape (what the merged list's blocked panel + answer_prompt use).
+    // Blocked-prompt detection: ONE GET /api/permission/request batched across
+    // all sessions plus one per-session form read, then a headless session with
+    // a pending permission/question gets status 'blocked' + its normalized
+    // prompt shape (what the merged list's blocked panel + answer_prompt use).
     //
-    // GET /permission returns empty on opencode 1.18.21 (the permission
-    // lives in-memory in the session's own process). The Sessioneer plugin
-    // (sessioneer-permissions.js) bridges permission.ask events into a JSON store
-    // the host-agent reads here as the authoritative fallback.
+    // The Sessioneer plugin (sessioneer-permissions.js) bridges permission.ask
+    // events into a JSON store the host-agent reads here as the authoritative
+    // fallback for permissions that never reach the server's own request list.
     $permBySession = [];
     foreach ($client->pending_permissions() as $perm) {
         $sid = is_string($perm['sessionID'] ?? null) ? $perm['sessionID'] : null;
@@ -914,7 +913,7 @@ function sessioneer_headless_sync(): void
     }
 
     $questionBySession = [];
-    foreach ($client->pending_questions() as $q) {
+    foreach ($client->pending_questions(array_keys($liveIds)) as $q) {
         $sid = is_string($q['sessionID'] ?? null) ? $q['sessionID'] : null;
         if ($sid !== null) {
             $questionBySession[$sid] = $q;
@@ -1282,8 +1281,9 @@ function sessioneer_headless_detail_shape(array $serve, string $agentId = 'openc
         }
     }
 
-    // Fetch the todo/task list from the serve's GET /session/:id/todo
-    // endpoint. Each item is mapped to the Sessioneer sidebar shape
+    // Fetch the todo/task list for the session. OpenCode v2 exposes no todo
+    // endpoint, so this stays null there; other agents keep their own source.
+    // Each item is mapped to the Sessioneer sidebar shape
     // {content, activeForm, status} — opencode has no activeForm, so
     // content is used for both.
     $todos = null;
