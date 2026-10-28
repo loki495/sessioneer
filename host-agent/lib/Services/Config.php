@@ -561,6 +561,27 @@ class Config
     }
 
     /**
+     * Base URL of the Ollama server that backs `ollama` chat sessions
+     * (OllamaClient). Defaults to the host's own general-purpose server on
+     * 11434 - deliberately NOT the Quick Prompt router unit on 11435, which
+     * keeps one small model loaded for classification only.
+     */
+    public static function ollama_url(): string
+    {
+        return rtrim(self::sessioneer_config('OLLAMA_URL', OllamaClient::DEFAULT_URL), '/');
+    }
+
+    /**
+     * How long one turn may take before it is reported as a timeout. Generous
+     * by default: a 7B model on a CPU box can legitimately spend minutes on a
+     * long answer, and cutting it off mid-reply looks like a crash.
+     */
+    public static function ollama_timeout_seconds(): int
+    {
+        return (int)max(10, min(3600, (int)self::sessioneer_config('OLLAMA_TIMEOUT_SECONDS', '300')));
+    }
+
+    /**
      * Password for that server. Service mode (`opencode serve --service`)
      * keeps it in its own config file, so that file is the single source of
      * truth rather than a second copy in this repo's .env; OPENCODE_PASSWORD

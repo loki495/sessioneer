@@ -18,6 +18,14 @@
         <?php if ($found && ($detail['agent'] ?? 'claude') === 'claude'): ?>
           <span class="shrink-0 inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border <?= App\Views\SessionRowView::profile_badge_class($detail['profile'] ?? null) ?>"><?= htmlspecialchars(App\Views\SessionRowView::profile_label($detail['profile'] ?? null), ENT_QUOTES) ?></span>
         <?php endif ?>
+        <?php // Every other agent gets its own badge here - a Claude Code page is
+              // the default look, so without this an Ollama/Codex/OpenCode page
+              // is only distinguishable by tints and its control row. Same
+              // badge class as the dashboard row (SessionRowView::agent_badge_class). ?>
+        <?php if ($found && ($detail['agent'] ?? 'claude') !== 'claude'): ?>
+          <?php $headerAgent = (string)($detail['agent'] ?? 'claude'); ?>
+          <span class="shrink-0 inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border <?= App\Views\SessionRowView::agent_badge_class($headerAgent) ?>"><?= htmlspecialchars(App\Views\PageView::agent_label($headerAgent), ENT_QUOTES) ?></span>
+        <?php endif ?>
         <?php // Same pill/placement as SessionRowView's own headless badge
               // (sidebar-row.php, row.php) - kept literally identical so it
               // reads as the same signal everywhere it shows up. ?>

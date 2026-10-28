@@ -47,7 +47,7 @@ try {
     // --- AgentRegistry: identity/lookup ---
 
     assert_equal('claude', AgentRegistry::default_agent_id(), 'default_agent_id: claude, unchanged from every existing caller before this class existed');
-    assert_equal(['claude', 'antigravity', 'opencode', 'codex'], AgentRegistry::known_agent_ids(), 'known_agent_ids: all four agents registered');
+    assert_equal(['claude', 'antigravity', 'opencode', 'codex', 'ollama'], AgentRegistry::known_agent_ids(), 'known_agent_ids: every agent registered, including the local one');
 
     $adapter = AgentRegistry::get('claude');
     assert_true($adapter instanceof ClaudeCodeAdapter, 'AgentRegistry::get(\'claude\'): returns a ClaudeCodeAdapter instance');

@@ -1,9 +1,9 @@
 # Agent Compatibility
 
-Sessioneer drives four coding agents, each through its own protocol. This page
-lists how well each one is supported, the last agent version it was verified
-against, and the main limitations. [features.md](features.md) has the full
-capability matrix and parity gaps.
+Sessioneer drives four coding agents plus local Ollama models, each through its
+own protocol. This page lists how well each one is supported, the last agent
+version it was verified against, and the main limitations. [features.md](features.md)
+has the full capability matrix and parity gaps.
 
 ## Support tiers
 
@@ -20,6 +20,7 @@ capability matrix and parity gaps.
 | **OpenCode** | Supported | 2.2.0 | `opencode serve` (default) or tmux fallback | v2 only: no todo list (v2 dropped the endpoint). No full status-hook plugin or mode vocabulary; tmux fallback is less complete |
 | **Codex** | Supported | 0.152.1 (app-server schema from 0.150.1) | Headless only | Approvals and input requests are answerable from Sessioneer and Codex Remote alike while the bridge is attached to the managed daemon; with only the private fallback, ones owned by Codex Remote are visible but can't be answered; no transcript search |
 | **Antigravity** | Experimental | `agy` 1.2.1 | tmux only | Approval dialogs read from the pane; model changes are account-wide; no transcript search; hooks are a manual install |
+| **Ollama** | Supported | 0.9.6 (`/api/tags`, `/api/show`, streaming `/api/chat`) | Headless only | Chat only: no tools, attachments, permission prompts, modes or effort. One turn per session at a time. No quota row, and a killed session leaves its transcript on disk with nothing in the dashboard to reopen it from |
 
 "Last verified" is the newest version the integration was checked against live
 or captured in test fixtures, not a minimum. Older versions may work; newer ones

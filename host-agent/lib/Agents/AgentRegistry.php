@@ -19,6 +19,7 @@ class AgentRegistry
         'antigravity' => AntigravityAdapter::class,
         'opencode' => OpenCodeAdapter::class,
         'codex' => CodexAdapter::class,
+        'ollama' => OllamaAdapter::class,
     ];
 
     /** @var array<string, AgentAdapter> */

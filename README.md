@@ -6,7 +6,8 @@ A self-hosted, LAN-only web UI for managing coding-agent sessions - Claude
 Code (headless with no terminal by default, or `cc-*` in tmux), Antigravity
 (`ag-*`, tmux-driven), OpenCode (native `ses_*`
 IDs through its headless server by default, `oc-*` tmux as a fallback), and
-Codex (native thread UUIDs, headless only, no tmux at all) - on your own dev
+Codex (native thread UUIDs, headless only, no tmux at all), plus local Ollama
+models (`ollama-headless-*`, headless, chat only) - on your own dev
 box. See blocked prompts, answer
 them, send messages, view transcripts, and kill sessions, all from a phone
 or any browser on your network. No accounts, no login - see "Network
@@ -378,6 +379,34 @@ prompt from a Remote-owned thread is then observability-only (blocked, no answer
 buttons, "Approval required in Codex Remote").
 The persistent queue solves cross-owner **messages**, not cross-owner **prompt
 responses**.
+
+### Ollama (local models)
+
+A local model run by [Ollama](https://ollama.com) can be a session too: pick
+`Ollama (local)` in New Session, choose one of the models that server has
+pulled, and the conversation appears in the dashboard like any other, with its
+transcript, status and last message. It is chat only - no file access, no
+tools, no permission prompts - so it is useful for summaries, explanations and
+cheap drafts rather than for changing code.
+
+```bash
+ollama pull llama3.1:8b            # any chat model, on the server you point at
+# host-agent/.env
+OLLAMA_URL=http://127.0.0.1:11434  # the default; never the Quick Prompt router's 11435
+```
+
+- The model list is read from the server, so nothing needs configuring per
+  model; a server that is down is reported as unavailable rather than guessed
+  at.
+- One turn at a time per session, and a turn can take minutes on a small box:
+  the session shows working until the answer lands, and Interrupt stops it.
+- Turns run in a detached worker process, which needs PHP's `pcntl` extension
+  (standard in a CLI build; the health box says so when it is missing).
+- Keep the endpoint on loopback. Ollama has no authentication, so anything else
+  is an open model server on your network.
+- Conversations live under `$SIDECAR_DIR/ollama/`, which is tmpfs: they do not
+  survive a reboot, and killing a session leaves the file with no dashboard
+  entry to reopen it.
 
 ## Home screen bookmark
 

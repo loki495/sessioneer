@@ -7,8 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A personal, single-user web UI for managing Claude Code, Codex, OpenCode
-and Antigravity sessions (tmux sessions `cc-*`, `oc-*`, `ag-*`, plus
-headless ones) on this dev box — list sessions, see blocked prompts, answer them, send
+Antigravity and local Ollama sessions (tmux sessions `cc-*`, `oc-*`, `ag-*`,
+headless ones including `claude-headless-*`/`ollama-headless-*`) on this dev box — list sessions, see blocked prompts, answer them, send
 messages, view transcripts, kill sessions. No database server; state lives in a local SQLite file; no user accounts.
 Dashboard access control is the network binding (LAN-only); the optional Quick Prompt API additionally requires a dedicated bearer token.
 
@@ -157,15 +157,28 @@ Docker-spawned, makes that impossible by construction — not by convention.
    agent/runtime work belongs — keep per-agent branching out of the services:
    `host-agent/lib/Agents/*` is WHICH agent (`AgentAdapter` + `AgentRegistry`,
    with `ClaudeCodeAdapter`/`CodexAdapter`/`OpenCodeAdapter`/
-   `AntigravityAdapter` behind it; what a new agent must answer is the interface,
-   including `model_catalog()`, which feeds every model dropdown through
-   `list_models`, and `tests/test_agent_adapter_contract.php` runs the same
-   assertions against every registered adapter), and `host-agent/lib/Runtimes/*` is HOW it
+   `AntigravityAdapter`/`OllamaAdapter` behind it; what a new agent must answer
+   is the interface, including `model_catalog()`, which feeds every model
+   dropdown through `list_models`, and
+   `tests/test_agent_adapter_contract.php` runs the same assertions against
+   every registered adapter), and `host-agent/lib/Runtimes/*` is HOW it
    runs, independently of which agent it is (`TmuxRuntime` vs
    `HeadlessRuntime` behind `RuntimeProvider`/`RuntimeRegistry`/`RuntimeType`,
    plus `OpenCodeServeClient`, `CodexBridgeClient`, `CodexHeadlessRuntime`).
    All PSR-4 autoloaded under
    `HostAgent\Services`/`Stores`/`Agents`/`Runtimes`.
+
+   `OllamaAdapter`/`OllamaHeadlessRuntime` are the chat-only local-model agent:
+   no tmux, no tools, no permission prompts, one `POST /api/chat` turn run by
+   `host-agent/ollama_turn_worker.php` in a `pcntl_fork`+`pcntl_exec` child (a
+   local model takes minutes and `php -S` is single-threaded, so an inline turn
+   would freeze every page; `proc_close` is not used because it waits). The
+   conversation is Sessioneer's own JSONL under `$SIDECAR_DIR/ollama/`, written
+   in Claude's line shape so the existing transcript reader, search and copy
+   affordances work unchanged, and it is the only copy. `send_message` marks the
+   session working *before* spawning, because a fast model finishes inside the
+   spawn and the write would otherwise land on top of the worker's own idle; a
+   `working` row whose worker is gone self-heals to idle with an error.
 
    Claude Code's headless runtime (no tmux pane) is a second persistent
    host-native service in the Codex bridge's mould:
