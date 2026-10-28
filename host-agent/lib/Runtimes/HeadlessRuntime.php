@@ -12,10 +12,10 @@ use HostAgent\Services\OpenCodeTranscriptService;
  * process and are driven/observed over its HTTP API - no tmux pane.
  *
  * Lifecycle, status, and send go through OpenCodeServeClient; question
- * detection/answering reuses OpenCodeQuestionService (the proven live
- * `GET /question` surface); transcript reading stays with
- * OpenCodeTranscriptService (opencode.db) because it's the same DB
- * regardless of how the session was spawned.
+ * detection/answering reuses OpenCodeQuestionService (v2 per-session forms:
+ * `GET /api/session/{id}/form`, `POST .../form/{formID}/reply`); transcript
+ * reading stays with OpenCodeTranscriptService (opencode.db) because it's the
+ * same DB regardless of how the session was spawned.
  *
  * Phase 1 scope: contract + lifecycle/status/send + question prompts.
  * Permission-prompt detection/answering (the phase that needs the

@@ -14,14 +14,11 @@ use HostAgent\Stores\SessionStatusStore;
  * class owning the create/list/detail/kill/status/drive endpoints a
  * headless opencode session needs.
  *
- * Endpoint-generation note (per opencode 1.18.21's
- * /doc): create uses the richer
- * `/api/session` (its `location.directory` is what makes arbitrary-workdir
- * spawn work); reads/status/todo use the reliable `/session` and global
- * `/question` surface; the v2 `/api/session/:id/{history,question,
- * permission}` GETs 500 on a freshly-created session in a not-yet-registered
- * directory (it lands in the `global` project until realized), so they are
- * not used for reads here.
+ * Endpoint-generation note: create and list use the v2 `/api/session`
+ * (`location.directory` is what makes arbitrary-workdir spawn work). The
+ * server is v2-only now and requires HTTP Basic auth, so every call carries
+ * `Config::opencode_curl_auth_args()`. Detail/status/todo/prompt/permission
+ * replies still target v1 paths and are the remaining migration work.
  *
  * Every call goes through ProcessRunner (command as a string[] - no shell
  * string, this project's standard no-metacharacter-injection rule) and
@@ -444,8 +441,8 @@ class OpenCodeServeClient
     }
 
     /**
-     * Answers a pending question by label, via the global /question reply
-     * endpoint OpenCodeQuestionService already uses (proven live).
+     * Answers a pending question by label through OpenCodeQuestionService,
+     * which speaks the v2 form reply API.
      *
      * @param array<int, array<int, string>|string> $labels OpenCode option labels or custom text
      * @return array{ok:bool, message?:string}
@@ -547,6 +544,7 @@ class OpenCodeServeClient
             '--request', $method,
             '--write-out', "\n%{http_code}",
         ];
+        foreach (Config::opencode_curl_auth_args() as $arg) $cmd[] = $arg;
 
         $bodyFile = null;
 

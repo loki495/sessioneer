@@ -30,11 +30,11 @@ try {
     assert_true(is_resource($daemon), 'daemon starts against synthetic SSE server');
     for ($i = 0; $i < 80; $i++) {
         usleep(100000);
-        if ((SessionStatusStore::read_status('ses_sse_a')['blocked']['request_id'] ?? null) === 'que_sse_a'
-            && (SessionStatusStore::read_status('ses_sse_b')['blocked']['request_id'] ?? null) === 'que_sse_b') break;
+        if ((SessionStatusStore::read_status('ses_sse_a')['blocked']['request_id'] ?? null) === 'frm_sse_a'
+            && (SessionStatusStore::read_status('ses_sse_b')['blocked']['request_id'] ?? null) === 'frm_sse_b') break;
     }
-    assert_equal('que_sse_a', SessionStatusStore::read_status('ses_sse_a')['blocked']['request_id'] ?? null, 'split fixture event from directory A reaches only A');
-    assert_equal('que_sse_b', SessionStatusStore::read_status('ses_sse_b')['blocked']['request_id'] ?? null, 'split fixture event from directory B reaches only B');
+    assert_equal('frm_sse_a', SessionStatusStore::read_status('ses_sse_a')['blocked']['request_id'] ?? null, 'split fixture event from directory A reaches only A');
+    assert_equal('frm_sse_b', SessionStatusStore::read_status('ses_sse_b')['blocked']['request_id'] ?? null, 'split fixture event from directory B reaches only B');
     for ($i = 0; $i < 140; $i++) {
         usleep(100000);
         $counts = is_file($state) ? json_decode((string)file_get_contents($state), true) : [];
