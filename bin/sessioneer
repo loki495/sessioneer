@@ -187,6 +187,22 @@ if ($opt('effort') !== null && ($kill !== null || $list || $send !== null || $pe
     fail('--effort only applies to launching or resuming a session');
 }
 
+// An Ollama session is a local model reached over Sessioneer's own HTTP
+// client: no account, no reasoning levels, no permission modes, no tools.
+if ($opt('agent') === 'ollama') {
+    foreach ([
+        'profile' => '--profile has no meaning for --agent ollama: a local model runs under no account',
+        'effort' => '--effort has no meaning for --agent ollama: a local model has no reasoning levels',
+        'mode' => '--mode has no meaning for --agent ollama: its sessions have no permission modes',
+        'no-tools' => '--no-tools has no meaning for --agent ollama: its sessions never have tools',
+        'task-tools' => '--task-tools has no meaning for --agent ollama: its sessions never have tools',
+    ] as $option => $message) {
+        if (isset($opts[$option])) {
+            fail($message);
+        }
+    }
+}
+
 $action = $kill !== null ? 'launch_kill' : ($list ? 'launch_list' : ($send !== null ? 'launch_send' : ($peers ? 'launch_peers' : 'launch')));
 
 $reply = AgentClient::agent_call(array_filter([
@@ -247,6 +263,13 @@ if (isset($opts['wait'])) {
         $replied = $opt('agent') !== 'codex' || ($d['last_message']['role'] ?? null) === 'assistant';
 
         if ($replied && (($d['status'] ?? null) === 'idle' || (!isset($d['status']) && empty($d['working'])))) {
+            // An Ollama entry's last_message is the reply text itself (Sessioneer
+            // keeps that transcript), not a block entry like the CLI agents'.
+            if ($opt('agent') === 'ollama') {
+                echo is_string($d['last_message'] ?? null) ? $d['last_message'] . "\n" : "\n";
+                exit(0);
+            }
+
             $text = [];
 
             foreach ($d['last_message']['blocks'] ?? [] as $b) {

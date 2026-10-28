@@ -70,3 +70,5 @@ test_context_browser.php 150
 test_context_usage.php 1
 test_claude_effort.php 2
 test_effort_browser.php 25
+test_ollama_agent.php 4
+test_launch_ollama.php 2

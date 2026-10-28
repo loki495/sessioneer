@@ -34,7 +34,8 @@ class TranscriptRouter
         return TranscriptService::find_transcript_path($sessionId, $profile)
             ?? AntigravityTranscriptService::find_transcript_path($sessionId)
             ?? OpenCodeTranscriptService::find_transcript_path($sessionId)
-            ?? CodexTranscriptService::find_transcript_path($sessionId);
+            ?? CodexTranscriptService::find_transcript_path($sessionId)
+            ?? OllamaTranscriptService::find_transcript_path($sessionId);
     }
 
     /**
@@ -75,7 +76,8 @@ class TranscriptRouter
 
         $path = AntigravityTranscriptService::find_transcript_path($sessionId)
             ?? OpenCodeTranscriptService::find_transcript_path($sessionId)
-            ?? CodexTranscriptService::find_transcript_path($sessionId);
+            ?? CodexTranscriptService::find_transcript_path($sessionId)
+            ?? OllamaTranscriptService::find_transcript_path($sessionId);
 
         return ['path' => $path, 'profile' => null];
     }

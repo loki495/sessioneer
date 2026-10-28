@@ -1,6 +1,6 @@
 # Feature reference
 
-This is Sessioneer's current four-agent capability and implementation
+This is Sessioneer's current five-agent capability and implementation
 reference. The README is the installation guide; this document answers which
 agent supports a feature, what mechanism provides it, and where parity is
 intentionally incomplete.
@@ -16,6 +16,7 @@ Legend: **✓** supported · **◐** supported with a caveat · **✗** unavaila
 | Antigravity | `ag-*` | tmux | `transcript_full.jsonl` | Four Antigravity hooks plus the pane for approval visibility | tmux key input |
 | OpenCode | `ses_*` headless / `oc-*` tmux | `opencode serve` by default, tmux fallback | `opencode.db` | Serve API, SQLite, permissions plugin, and TUI pane where necessary | serve API or tmux key input |
 | Codex | native thread UUID | headless only | Codex rollout JSONL and app-server | Bridge attached to the managed daemon Codex Remote also uses (private app-server as fallback); Codex hooks as a fallback signal | Persistent queue after materialization; private bridge for a new thread's first turn and owned prompt replies |
+| Ollama | `ollama-headless-*` | headless only | Sessioneer's own JSONL under `$SIDECAR_DIR/ollama/` | The turn worker's own status writes; there are no prompts to answer | `POST /api/chat`, one detached worker per turn |
 
 All host-only work goes through `host-agent/`; the web container never controls
 tmux, agent daemons, process tables, or user configuration directly.
@@ -381,6 +382,46 @@ Implementation entry points:
 - `host-agent/lib/Services/CodexHookService.php`
 - `host-agent/hooks/codex/status.php`
 - `host-agent/lib/Services/CodexTranscriptService.php`
+
+## Ollama implementation
+
+A local Ollama model is an agent in Sessioneer's own sense: it has a session
+row, a transcript, a status and a dashboard page, and it is launched from the
+New Session form or `sessioneer --agent ollama --model <pulled-model>`. It is
+deliberately narrow.
+
+- **Headless only, and Sessioneer owns the conversation.** There is no tmux
+  pane and no agent-side session object. `OllamaTranscriptService` writes the
+  turns to `$SIDECAR_DIR/ollama/<session>.jsonl` in the same
+  `{type, message: {role, content}, timestamp}` shape a Claude line uses, so the
+  existing transcript viewer, paging and copy affordances read it unchanged.
+- **One detached worker per turn.** `OllamaHeadlessRuntime::send_message()`
+  appends nothing and returns at once: it stages the prompt and forks
+  `host-agent/ollama_turn_worker.php`, which streams `POST /api/chat`, writes
+  the answer and sets the final status. A local model can take minutes on one
+  answer, and the host agent answers one request per connection while the web
+  container runs a single-threaded `php -S`, so an inline turn would freeze the
+  dashboard. The worker is a cache, the transcript is the truth: a session whose
+  worker died reports idle with "the answer stopped before it finished" rather
+  than a permanent spinner. Requires PHP's `pcntl`; the health box says so when
+  it is missing.
+- **One turn at a time.** A second prompt while the model is answering is
+  refused with that reason instead of being queued, so two answers can never
+  interleave into one transcript. Interrupt stops the worker and discards the
+  partial answer.
+- **No tools, no prompts.** The model can only answer in text: no permission
+  dialog, no mode, no effort, no attachments. The reason is practical - a small
+  local model that invents tool calls is worse than one that answers, and a
+  tool loop wants to be built once, against real models.
+- **Models come from the server.** The picker lists whatever the configured
+  Ollama has pulled, filtered by `/api/show`'s `capabilities` so an embedding
+  model never appears as a chat choice. The endpoint is `OLLAMA_URL`
+  (default `http://127.0.0.1:11434`), not the Quick Prompt router on 11435:
+  that unit keeps one small classification model loaded and would evict it on
+  every turn.
+- **No quota row and no archive.** A local model has no usage window, and a
+  killed session's transcript file stays on disk: there is no agent-side store
+  to discover the conversation back from.
 
 ## Shared UI and platform features
 

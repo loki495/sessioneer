@@ -14,6 +14,7 @@ class LaunchService
     private const LAUNCHERS = [
         'claude' => ClaudeSessionLauncher::class,
         'codex' => CodexSessionLauncher::class,
+        'ollama' => OllamaSessionLauncher::class,
     ];
 
     /**

@@ -757,7 +757,56 @@ document.addEventListener('keydown', function (e) {
   var modelsCache = {};
 
   // Agents whose create request takes a model.
-  var MODEL_PICKER_AGENTS = { claude: true, opencode: true, codex: true };
+  var MODEL_PICKER_AGENTS = { claude: true, opencode: true, codex: true, ollama: true };
+
+  // Ollama runs nowhere but headless, has no permission modes and no task
+  // tools (OllamaAdapter::supported_runtimes() and its empty
+  // permission_mode_map() - keep in sync). Its controls are hidden AND
+  // disabled: a hidden <select> still submits, and create would then receive
+  // a runtime or a starting mode its adapter can never honour.
+  var HEADLESS_ONLY_AGENTS = { ollama: true };
+  var AGENT_SPECIFIC_FIELDS = ['runtime', 'starting_mode', 'enable_task_tools'];
+
+  function applyAgentSpecificFields(headlessOnly) {
+    var form = agentSelect.form;
+
+    if (!form) { return; }
+
+    AGENT_SPECIFIC_FIELDS.forEach(function (name) {
+      var fields = form.querySelectorAll('[name="' + name + '"]');
+
+      for (var i = 0; i < fields.length; i++) {
+        var field = fields[i];
+        var label = field.closest('label');
+
+        field.disabled = headlessOnly;
+
+        // The runtime picker's own visibility belongs to onAgentChange()'s
+        // Claude branch only, so it is never re-shown from here.
+        if (!label || name === 'runtime') { continue; }
+
+        if (headlessOnly) {
+          label.classList.add('hidden');
+          label.classList.remove('flex');
+        } else {
+          label.classList.remove('hidden');
+          label.classList.add('flex');
+        }
+      }
+    });
+  }
+
+  // Such an agent has no server-side default model to fall back on (Claude's
+  // "Default" is a real choice there), and create refuses an empty one, so
+  // the first catalog row is selected instead of the empty placeholder.
+  function selectFirstModelIfNeeded(agent) {
+    if (!HEADLESS_ONLY_AGENTS[agent] || modelSelect.value !== '' || modelSelect.options.length < 2) {
+      return;
+    }
+
+    modelSelect.selectedIndex = 1;
+    modelProviderInput.value = modelSelect.options[1].getAttribute('data-provider') || '';
+  }
 
   function modelRow(m) {
     return {
@@ -770,6 +819,7 @@ document.addEventListener('keydown', function (e) {
   function loadModels(agent) {
     if (modelsCache[agent]) {
       populateModels(modelsCache[agent]);
+      selectFirstModelIfNeeded(agent);
       return;
     }
 
@@ -786,7 +836,7 @@ document.addEventListener('keydown', function (e) {
     function done() {
       if (!fallback) {
         modelSelect.disabled = false;
-        modelSelect.options[0].textContent = 'Default';
+        modelSelect.options[0].textContent = HEADLESS_ONLY_AGENTS[agent] ? 'Choose a model…' : 'Default';
       }
     }
 
@@ -803,6 +853,7 @@ document.addEventListener('keydown', function (e) {
           var chosen = modelSelect.value;
           populateModels(modelsCache[agent]);
           modelSelect.value = chosen;
+          selectFirstModelIfNeeded(agent);
         }
       })
       .catch(done);
@@ -813,7 +864,13 @@ document.addEventListener('keydown', function (e) {
   function onAgentChange() {
     var agent = agentSelect.value;
     clearModels();
+    // Reset here, not only in loadModels(): the placeholder is shorthand for
+    // "empty value, agent picks", and loadModels rewrites it for agents that
+    // have no such default (see its own done()), so switching agents must not
+    // leave the previous agent's wording in place.
+    modelSelect.options[0].textContent = 'Default';
     loadClaudeProfiles();
+    applyAgentSpecificFields(HEADLESS_ONLY_AGENTS[agent] === true);
 
     // The runtime choice (terminal vs headless) only exists for Claude.
     if (runtimeLabel) {

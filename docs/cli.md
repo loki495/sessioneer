@@ -22,10 +22,10 @@ echo "Summarise the open TODOs" | sessioneer --json -
 | Option | Meaning |
 |---|---|
 | `PROMPT` / `-` | The message to deliver; `-` reads stdin. Required for a new session, optional with `--resume`. |
-| `--agent NAME` | Agent to launch: `claude` (default) or `codex`; see "Codex" below. |
+| `--agent NAME` | Agent to launch: `claude` (default), `codex` or `ollama`; see "Codex" and "Ollama" below. |
 | `--resume ID` | Existing conversation id. |
 | `--workdir DIR` | Working directory. Default for a new session: the current directory. With `--resume`: the directory recorded in the transcript. |
-| `--model NAME` | Model for a new session. |
+| `--model NAME` | Model for a new session. Required for `--agent ollama`, which has no default: it must be one the configured Ollama server has pulled. |
 | `--effort LEVEL` | Reasoning level for a new or resumed session, so a launch names agent, model and effort together. Claude: `low`, `medium`, `high`, `xhigh` or `max` (`claude --effort`, fixed when the process starts and re-applied whenever the session respawns after going dormant; the CLI itself rejects a level the model does not support). Codex: a level the chosen model lists (the default model when `--model` is absent), set on the thread with `thread/settings/update` before the prompt, so it also retunes a Codex thread you reuse or resume. An unknown level, a model without it, or a Claude session that is already tracked (its effort cannot change) is refused. Not offered for `--send`, and refused with `--kill`, `--list` and `--peers`. |
 | `--mode MODE` | Permission mode for a new session (for example `plan`). Not validated by the CLI: for Claude, a value that isn't a known permission mode is ignored and the session starts in the default mode; for Codex, only `plan` and `full` are accepted (see "Codex" below). |
 | `--profile NAME` | Claude account profile (see `host-agent/config/agents.php`). Without it, the session runs under the profile whose `config_dir` matches the caller's `CLAUDE_CONFIG_DIR`, so a session started from a work-account shell stays on that account; no `CLAUDE_CONFIG_DIR` means the default account (the launched session runs with the variable unset, whatever the manager inherited), and a dir that matches no profile is refused. |
@@ -65,6 +65,32 @@ Every session Sessioneer spawns (headless or tmux) gets `SESSIONEER_SELF=<its na
 - Inside Codex the caller is identified by `CODEX_THREAD_ID` (used when `SESSIONEER_SELF` is unset), so `--whoami`, `--send` and `--peers` work from a Codex session; the thread must be one Sessioneer tracks.
 - Questions and approvals a Codex session raises appear in the dashboard like any other blocked prompt. The session loads `~/.codex/config.toml`, so it has whatever MCP servers (for example Dibs) are configured there.
 
+## Ollama
+
+`--agent ollama` launches a local model: a headless chat session against the
+Ollama server at `OLLAMA_URL` (default `http://127.0.0.1:11434`), which appears
+in the dashboard with its transcript, status and last message like any other
+session.
+
+```bash
+sessioneer --agent ollama --model llama3:8b-instruct-q4_K_M --wait "Summarise this repository's open TODOs"
+```
+
+- `--model` is required and must already be pulled on that server. The refusal
+  names the models it does have, and an embedding-only model is never offered.
+- Chat only: no tools, no attachments, no permission prompts, so `--profile`,
+  `--effort`, `--mode`, `--no-tools` and `--task-tools` are each refused with
+  the reason rather than silently ignored.
+- A turn can take minutes on a small box. `--wait` blocks until the answer
+  lands and prints it (an Ollama `last_message` is the reply text itself, not a
+  block entry), and the session's own Interrupt in the dashboard stops it.
+- `--resume` takes a session name, not an agent conversation id, and reuses only
+  a session this app still tracks: a local model has no agent-side archive, so
+  a killed conversation cannot be resumed from its id. `--kill` stops the
+  session and removes it from the dashboard; its transcript file stays under
+  `$SIDECAR_DIR/ollama/` with nothing in the app pointing at it.
+- No quota data exists for a local model, so `--usage` carries no Ollama row.
+
 ## Design
 
 
@@ -72,8 +98,8 @@ There is no separate "archive": stopping a session archives its conversation, ex
 
 `--usage` is the one option that is not a launcher action: it sends the dashboard's own `quota` request and prints its `agents` map with `claude_profiles` nested under the Claude entry. The other options combine only with their own modifiers (`--kill`, `--list`, `--send`, `--peers` and `--usage` are mutually exclusive).
 
-The CLI sends one `launch`, `launch_kill`, `launch_list`, `launch_send` or `launch_peers` request to the host agent. `HostAgent\Launch\LaunchService` picks a `SessionLauncher` by agent id; the interface documents the request and reply keys for all five. Supporting another agent means one new class implementing `SessionLauncher` and one line in `LaunchService::LAUNCHERS`; the CLI and the action do not change. The optional `effort` request key is validated by each launcher; `list` rows carry the stored `effort`. Not yet offered: agents other than Claude and Codex.
+The CLI sends one `launch`, `launch_kill`, `launch_list`, `launch_send` or `launch_peers` request to the host agent. `HostAgent\Launch\LaunchService` picks a `SessionLauncher` by agent id; the interface documents the request and reply keys for all five. Supporting another agent means one new class implementing `SessionLauncher` and one line in `LaunchService::LAUNCHERS`; the CLI and the action do not change. The optional `effort` request key is validated by each launcher; `list` rows carry the stored `effort`. Launchable agents: `claude`, `codex` and `ollama`.
 
 `--wait` is client-side only: after the `launch` reply (sent once the prompt is accepted, so the turn has started) the CLI polls the dashboard's own `session_detail` request every 2 seconds and stops at status `idle` or a `last_turn_error`. No new host-agent action.
 
-Tests: `tests/test_launch.php`, `tests/test_launch_codex.php`, `tests/test_cli_usage.php`, `tests/test_cli_wait.php`.
+Tests: `tests/test_launch.php`, `tests/test_launch_codex.php`, `tests/test_launch_ollama.php`, `tests/test_cli_usage.php`, `tests/test_cli_wait.php`.
