@@ -72,3 +72,4 @@ test_claude_effort.php 2
 test_effort_browser.php 25
 test_ollama_agent.php 4
 test_launch_ollama.php 2
+test_opencode_health_probe.php 1
