@@ -9,12 +9,14 @@ if ($path === '/api/session') {
         ['id' => 'ses_waiting', 'location' => ['directory' => '/tmp/project-a'], 'time' => ['updated' => (time() - 7200) * 1000]],
         ['id' => 'ses_idle', 'location' => ['directory' => '/tmp/project-b'], 'time' => ['updated' => time() * 1000]],
     ]]);
-} elseif ($path === '/session/status') {
-    echo '{}';
-} elseif ($path === '/permission' || $path === '/question') {
-    echo '[]';
-} elseif ($path === '/config/providers') {
-    echo '{"providers":[]}';
+} elseif ($path === '/api/session/active') {
+    echo '{"data":{}}';
+} elseif (preg_match('#^/api/session/[^/]+/form$#', (string)$path) === 1) {
+    echo '{"data":[]}';
+} elseif ($path === '/api/permission/request') {
+    echo '{"data":[]}';
+} elseif ($path === '/api/model') {
+    echo '{"data":[]}';
 } else {
     http_response_code(404);
     echo '{"error":"Unexpected fixture route"}';

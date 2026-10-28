@@ -93,8 +93,8 @@ class HeadlessRuntime implements RuntimeProvider
     public function send_message(string $sessionRef, string $text, array $attachmentPaths = []): array
     {
         // Attachment relay for a headless opencode session isn't wired yet
-        // (Phase 3) - OpenCodeServeClient refuses it; the model it sends with
-        // is resolved there (session's own model, else the serve default).
+        // (Phase 3) - OpenCodeServeClient turns attachments into text lines;
+        // the model is the session's own (v2 prompts carry no model field).
         return $this->client->send_message($sessionRef, $text, $attachmentPaths);
     }
 

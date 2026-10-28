@@ -212,15 +212,14 @@ else
     echo "sessioneer-claude-headless-manager.service NOT installed - set CLAUDE_BIN in $SCRIPT_DIR/.env and re-run this script."
 fi
 
-# OpenCode Sessioneer plugin: the authoritative pending-permission signal (see
-# host-agent/opencode-plugins/sessioneer-permissions.js). opencode 1.18.21 keeps
-# permission state in-memory in the `opencode serve` process and exposes it
-# only as a `permission.asked` bus EVENT (the plugin `permission.ask` HOOK is
-# dormant, and /permission + the api return empty) - so the plugin subscribes
-# to that event and records it to a store the host-agent reads. It must load
-# in the SERVE process (not just the TUIs), so it's installed here as a global
-# plugin and the serve enable--now below picks it up. opencode-serve.service is
-# enabled/restarted earlier in this script.
+# OpenCode Sessioneer plugin: a fallback pending-permission signal (see
+# host-agent/opencode-plugins/sessioneer-permissions.js). v2 serves pending
+# permissions from GET /api/permission/request, which the host-agent reads
+# first; the plugin records permission.ask events to a store the host-agent
+# falls back to for any permission the server's own list does not show. It must
+# load in the SERVE process (not just the TUIs), so it's installed here as a
+# global plugin and the serve enable--now below picks it up.
+# opencode-serve.service is enabled/restarted earlier in this script.
 if [ -n "$OPENCODE_BIN" ]; then
     mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/opencode/plugins"
     cp "$SCRIPT_DIR/opencode-plugins/sessioneer-permissions.js" "${XDG_CONFIG_HOME:-$HOME/.config}/opencode/plugins/sessioneer-permissions.js"

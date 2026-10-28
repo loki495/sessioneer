@@ -374,13 +374,10 @@ that only `create_agent_session()`-spawned sessions have).
 
 ## Conventions worth knowing before editing
 
-- **OpenCode server integration: prefer the v2 `/api/session` API for
-  everything possible from now on**. v1 `/session`
-  only returns the tiny "currently live" set and is unreliable for
-  enumeration (caused the headless sync to prune just-resumed sessions);
-  v2 is the fuller, canonical surface. When touching any opencode-server
-  call, check whether a v2 endpoint exists and use it; fall back to v1
-  only where v2 genuinely isn't available/working for that operation.
+- **OpenCode server integration is v2-only.** Every call goes to the `/api`
+  surface (`/api/session`, `/api/session/active`, `/api/permission/request`,
+  `/api/model`); there is no v1 server left to fall back to. v2 has no todo
+  endpoint, so opencode sessions show no todo list in the sidebar.
  - **OpenCode question events (v2 forms):** `GET /api/event` delivers
    `form.created/replied/cancelled` when scoped with the URL-encoded
    **exact session directory** in `x-opencode-directory`. The `question`
