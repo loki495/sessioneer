@@ -38,7 +38,7 @@ If the manager is not running, the host agent returns a handled "Cannot reach Cl
 
 ## Other services
 
-The Codex bridge listens on `CODEX_BRIDGE_SOCKET` (default `/run/user/<uid>/sessioneer-codex-bridge.sock`) with the same one-request, one-reply JSON shape as the Claude manager. OpenCode is reached over HTTP at `OPENCODE_SERVE_URL` (default `http://localhost:4096`), not a socket.
+The Codex bridge listens on `CODEX_BRIDGE_SOCKET` (default `/run/user/<uid>/sessioneer-codex-bridge.sock`) with the same one-request, one-reply JSON shape as the Claude manager. OpenCode is reached over HTTP at `OPENCODE_SERVE_URL` (default `http://127.0.0.1:8889`), not a socket; it needs HTTP Basic auth (`opencode` plus the password in `~/.config/opencode/service.json`, overridable with `OPENCODE_PASSWORD`).
 
 ## Quick Prompt actions
 

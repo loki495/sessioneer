@@ -381,15 +381,20 @@ that only `create_agent_session()`-spawned sessions have).
   v2 is the fuller, canonical surface. When touching any opencode-server
   call, check whether a v2 endpoint exists and use it; fall back to v1
   only where v2 genuinely isn't available/working for that operation.
- - **OpenCode question events (1.18.21):** `GET /event` delivers
-   `question.asked/replied/rejected` when scoped with the URL-encoded
-   **exact session directory** in `x-opencode-directory`. An unscoped or
-   parent-directory connection can deliver only connected/heartbeat events.
-   The host-native `sessioneer-opencode-events.service` consumes these events
-   into `SessionStatusStore`; throttled headless polling must preserve its
-   live questions. Replies require the question request ID, not the tool
-   call ID. v2 replies use no-content success; scoped legacy replies return
-   JSON `true`.
+ - **OpenCode question events (v2 forms):** `GET /api/event` delivers
+   `form.created/replied/cancelled` when scoped with the URL-encoded
+   **exact session directory** in `x-opencode-directory`. The `question`
+   tool creates a form whose `metadata.kind` is `question`; each field is
+   one question (`key`, `title`, `description`, `options[{value,label}]`,
+   `type` `string` or `multiselect`, `custom`). The host-native
+   `sessioneer-opencode-events.service` consumes these into
+   `SessionStatusStore`; throttled headless polling must preserve its live
+   questions. Answer with `POST /api/session/{id}/form/{formID}/reply` and
+   `{"answer":{"q0":"<value>"}}` (204 on success, 404 once the form is
+   gone), mapping labels to option values. The serve server requires HTTP
+   Basic auth (user `opencode`, password from
+   `~/.config/opencode/service.json`), so every curl call carries
+   `Config::opencode_curl_auth_args()`.
 
 - **Claude Code multi-account ("profile") support: any new Claude-specific
   transcript/session-lookup function needs a `?string $profile = null`
