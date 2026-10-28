@@ -21,6 +21,7 @@ class SessionRowView extends View
             'opencode' => 'background-color: rgba(46, 16, 101, 0.22); border-color: rgba(109, 40, 217, 0.32)',
             'antigravity' => 'background-color: rgba(69, 26, 3, 0.18); border-color: rgba(180, 83, 9, 0.28)',
             'codex' => 'background-color: rgba(3, 78, 92, 0.18); border-color: rgba(8, 145, 178, 0.32)',
+            'ollama' => 'background-color: rgba(6, 78, 59, 0.18); border-color: rgba(16, 185, 129, 0.30)',
             default => 'background-color: rgba(15, 23, 42, 0.5); border-color: rgb(30, 41, 59)',
         };
     }
@@ -35,6 +36,7 @@ class SessionRowView extends View
             'opencode' => 'bg-violet-900/50 text-violet-300 border-violet-700/50',
             'antigravity' => 'bg-amber-900/40 text-amber-300 border-amber-700/40',
             'codex' => 'bg-cyan-900/40 text-cyan-300 border-cyan-700/40',
+            'ollama' => 'bg-emerald-900/40 text-emerald-300 border-emerald-700/40',
             default => 'bg-slate-800 text-slate-400 border-slate-700',
         };
     }

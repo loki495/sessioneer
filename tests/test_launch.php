@@ -99,7 +99,7 @@ assert_equal('claude', (new ClaudeSessionLauncher())->agent_id(), 'and names its
 echo "Refusals\n";
 $unsupported = launch(['agent' => 'antigravity', 'prompt' => 'hi', 'workdir' => $workdir]);
 assert_equal(false, $unsupported['ok'] ?? null, 'an agent with no launcher is refused');
-assert_contains("not supported for agent 'antigravity' (supported: claude, codex)", (string)$unsupported['message'], 'naming the agent and what is supported');
+assert_contains("not supported for agent 'antigravity' (supported: claude, codex, ollama)", (string)$unsupported['message'], 'naming the agent and what is supported');
 assert_contains('needs a prompt', (string)launch(['workdir' => $workdir])['message'], 'a new session without a prompt is refused');
 assert_contains('needs a prompt', (string)launch(['workdir' => $workdir, 'prompt' => "  \n"])['message'], 'a blank prompt counts as none');
 assert_contains('existing absolute workdir', (string)launch(['workdir' => 'relative', 'prompt' => 'hi'])['message'], 'a relative workdir is refused');

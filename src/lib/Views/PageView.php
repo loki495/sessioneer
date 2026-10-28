@@ -23,8 +23,25 @@ class PageView extends View
      * already uses for Claude Code's own mode vocabulary). Keep in sync
      * with HostAgent\Agents\AgentRegistry's own ADAPTERS list by hand when
      * a new adapter is added.
+     *
+     * Which runtime each of these sessions runs in is the adapter's own
+     * answer (AgentAdapter::supported_runtimes()); Ollama supports headless
+     * only, so index.js hides the "Runs in", starting-mode and task-tool
+     * controls for it rather than offering choices its adapter can't honour.
      */
-    public const AGENT_OPTIONS = ['claude' => 'Claude Code', 'antigravity' => 'Antigravity', 'opencode' => 'OpenCode', 'codex' => 'Codex'];
+    public const AGENT_OPTIONS = ['claude' => 'Claude Code', 'antigravity' => 'Antigravity', 'opencode' => 'OpenCode', 'codex' => 'Codex', 'ollama' => 'Ollama (local)'];
+
+    /**
+     * An agent's display name from AGENT_OPTIONS, for the places that only
+     * have a raw agent id (session.php's label fallback when the host agent's
+     * own agent_label is missing). Unknown ids keep the id itself instead of
+     * borrowing another agent's name, which is what a hardcoded
+     * claude/codex/antigravity chain did to every new adapter.
+     */
+    public static function agent_label(string $agentId): string
+    {
+        return self::AGENT_OPTIONS[$agentId] ?? ucfirst($agentId);
+    }
 
     public static function render_session_page(array $data): string
     {

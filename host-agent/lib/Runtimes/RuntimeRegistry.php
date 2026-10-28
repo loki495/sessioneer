@@ -73,6 +73,7 @@ class RuntimeRegistry
             RuntimeType::HEADLESS => match ($agentId) {
                 'codex' => new CodexHeadlessRuntime(),
                 'claude' => new ClaudeHeadlessRuntime(),
+                'ollama' => new OllamaHeadlessRuntime(),
                 default => new HeadlessRuntime(),
             },
             default => null,

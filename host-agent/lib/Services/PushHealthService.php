@@ -325,6 +325,8 @@ class PushHealthService
         $codexBridge['section'] = 'Codex';
         $checks[] = $codexBridge;
 
+        $checks = array_merge($checks, OllamaHealthService::checks());
+
         $checks[] = TuiLayoutMismatchService::health_check();
 
         $vendorAutoload = Config::sessioneer_repo_root() . '/vendor/autoload.php';

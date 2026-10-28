@@ -37,6 +37,7 @@ use HostAgent\Stores\GlobalStateStore;
 use HostAgent\Runtimes\RuntimeRegistry;
 use HostAgent\Runtimes\RuntimeType;
 use HostAgent\Runtimes\ClaudeHeadlessRuntime;
+use HostAgent\Runtimes\OllamaHeadlessRuntime;
 use HostAgent\Runtimes\OpenCodeServeClient;
 use HostAgent\Agents\AgentRegistry;
 use HostAgent\Launch\LaunchService;
@@ -144,10 +145,10 @@ function sessioneer_dispatch_action(array $request): array
                 $headless = $agent !== null ? RuntimeRegistry::runtime_for($agent, RuntimeType::HEADLESS) : null;
                 $serveDetail = $headless?->detail($session) ?? ['ok' => false, 'message' => 'Headless runtime unavailable'];
 
-                // A headless Claude session's detail is already a full session
-                // entry (same shape a tmux session's detail has), not a
+                // A headless Claude or Ollama session's detail is already a full
+                // session entry (same shape a tmux session's detail has), not a
                 // server object that needs reshaping.
-                if ($agent === 'claude' && $serveDetail['ok'] === true && is_array($serveDetail['session'] ?? null)) {
+                if (($agent === 'claude' || $agent === 'ollama') && $serveDetail['ok'] === true && is_array($serveDetail['session'] ?? null)) {
                     return sessioneer_with_git_branch(['ok' => true] + $serveDetail['session']);
                 }
 
@@ -170,7 +171,8 @@ function sessioneer_dispatch_action(array $request): array
             // OpenCode/Codex refs ARE their conversation ids; a headless Claude
             // ref is not (it is resolved through the sidecar, exactly like a
             // tmux session's), so it takes the tracked-session path below.
-            if (sessioneer_is_headless_session($historySession) && sessioneer_headless_agent($historySession) !== 'claude') {
+            // Ollama's ref is its own tracked session name, same as Claude's.
+            if (sessioneer_is_headless_session($historySession) && !in_array(sessioneer_headless_agent($historySession), ['claude', 'ollama'], true)) {
                 return SessionDetailService::archived_session_history(
                     $historySession,
                     isset($request['before']) ? (int)$request['before'] : null,
@@ -250,7 +252,7 @@ function sessioneer_dispatch_action(array $request): array
             // lands in the headless pool the dashboard already merges in.
             // Antigravity has no headless session mode and stays on the tmux
             // path; Claude chooses its runtime below.
-            if ($agentId === 'opencode' || $agentId === 'codex') {
+            if ($agentId === 'opencode' || $agentId === 'codex' || $agentId === 'ollama') {
                 $headless = RuntimeRegistry::runtime_for($agentId, RuntimeType::HEADLESS);
 
                 if ($headless === null) {
@@ -633,17 +635,18 @@ function sessioneer_merge_headless_sessions(array $sessions): array
     }
     unset($s);
 
-    $claudeHeadless = RuntimeRegistry::runtime_for('claude', RuntimeType::HEADLESS);
-
-    foreach (sessioneer_headless_sessions()['headless'] as $h) {
-        $blocked = is_array($h['blocked'] ?? null) ? $h['blocked'] : null;
+    foreach (sessioneer_headless_sessions()['headless'] as $h) {        $blocked = is_array($h['blocked'] ?? null) ? $h['blocked'] : null;
         $agentId = is_string($h['agent'] ?? null) ? $h['agent'] : 'opencode';
 
         // A headless Claude session already knows how to describe itself in
         // full (mode, model, last message, structured prompts), unlike the
-        // server-hosted agents' thin rows below.
-        if ($agentId === 'claude') {
-            $entry = $claudeHeadless instanceof ClaudeHeadlessRuntime ? $claudeHeadless->session_entry((string)$h['id']) : null;
+        // server-hosted agents' thin rows below. An Ollama session does too,
+        // from its own sidecar/status/transcript.
+        if ($agentId === 'claude' || $agentId === 'ollama') {
+            $runtime = RuntimeRegistry::runtime_for($agentId, RuntimeType::HEADLESS);
+            $entry = $agentId === 'claude'
+                ? ($runtime instanceof ClaudeHeadlessRuntime ? $runtime->session_entry((string)$h['id']) : null)
+                : ($runtime instanceof OllamaHeadlessRuntime ? $runtime->session_entry((string)$h['id']) : null);
 
             if ($entry !== null) {
                 $sessions[] = $entry;

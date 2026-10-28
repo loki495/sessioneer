@@ -62,6 +62,8 @@ if ($found): ?>
         // docblock (always a global-default switch, never session-only).
         // OpenCode likewise has no mode toggle and its model list is the
         // serve's dynamic /config/providers set, populated client-side.
+        // Ollama has no permission mode, no effort and no meaningful Claude
+        // subscription quota, so it gets only the model switch below.
         $agent = $detail['agent'] ?? 'claude';
         $agentExtras = $agent === 'codex'
             ? TranscriptView::render_codex_model_toggle_html($detail)
@@ -76,11 +78,18 @@ if ($found): ?>
                     . '</div>'));
       ?>
       <div class="mt-2">
-        <?= QuotaFooterView::quota_footer_html($agentExtras, $sessionName) ?>
-        <?php if ($agent === 'claude'): ?>
-          <div id="effort-setting-error" role="status" class="hidden mt-1 text-xs text-red-400"></div>
-        <?php endif; ?>
-        <?= PushNotifyView::push_notify_button_html($vapidPublicKey, $csrfToken) ?>
+        <?php if ($agent === 'ollama'): ?>
+          <div class="flex min-w-0 w-full items-center gap-2">
+            <?php include __DIR__ . '/transcript/ollama-model-toggle.php'; ?>
+          </div>
+          <?= PushNotifyView::push_notify_button_html($vapidPublicKey, $csrfToken) ?>
+        <?php else: ?>
+          <?= QuotaFooterView::quota_footer_html($agentExtras, $sessionName) ?>
+          <?php if ($agent === 'claude'): ?>
+            <div id="effort-setting-error" role="status" class="hidden mt-1 text-xs text-red-400"></div>
+          <?php endif; ?>
+          <?= PushNotifyView::push_notify_button_html($vapidPublicKey, $csrfToken) ?>
+        <?php endif ?>
       </div>
     </div>
   </div>
