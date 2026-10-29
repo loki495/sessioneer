@@ -398,7 +398,10 @@ that only `create_agent_session()`-spawned sessions have).
   `data.content[]` with text/reasoning/tool entries plus an optional
   `data.error` for an assistant one). New sessions exist only in the 2.x
   pair, so a reader that skips it shows every new opencode session as
-  "Nothing recorded yet." - keep both paths when touching that class.
+  "Nothing recorded yet." - keep both paths when touching that class, and
+  go through it (`list_all_transcripts()`, `find_transcript_path()`) rather
+  than querying either table directly from another service: the archived
+  list's own inline `session` query was hiding every post-upgrade session.
  - **OpenCode question events (v2 forms):** `GET /api/event` delivers
    `form.created/replied/cancelled` when scoped with the URL-encoded
    **exact session directory** in `x-opencode-directory`. The `question`
