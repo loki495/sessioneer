@@ -834,6 +834,35 @@ class OpenCodeTranscriptService
     }
 
     /**
+     * The session's last activity as a Unix timestamp in SECONDS, from the
+     * session row's `time_updated` (opencode stores milliseconds) - the
+     * archived view's "Last active" line. Falls back to `time_created` for a
+     * session that has never been updated.
+     */
+    public static function find_session_last_activity(string $sessionId): ?int
+    {
+        if (!self::is_opencode_id($sessionId)) {
+            return null;
+        }
+
+        $pdo = self::open_db_readonly();
+
+        if ($pdo === null) {
+            return null;
+        }
+
+        $updated = self::session_column($pdo, $sessionId, 'time_updated');
+
+        if (is_numeric($updated) && (int)$updated > 0) {
+            return intdiv((int)$updated, 1000);
+        }
+
+        $created = self::session_column($pdo, $sessionId, 'time_created');
+
+        return is_numeric($created) && (int)$created > 0 ? intdiv((int)$created, 1000) : null;
+    }
+
+    /**
      * One column of a session row, from the legacy `session` table or, when
      * that has no row, from 2.x's `session_v2`.
      */
