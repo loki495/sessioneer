@@ -98,6 +98,25 @@ class TranscriptRouter
     }
 
     /**
+     * The newest renderable entry of a transcript, for callers that only
+     * want a preview (the dashboard's per-row last message). Backends that
+     * can answer from the tail of their storage do so; the rest fall back to
+     * a one-entry page, exactly what they did before this existed.
+     *
+     * @return array{type:string, role:?string, timestamp:?string, blocks:array<int, array<string, mixed>>}|null
+     */
+    public static function read_last_entry(string $path): ?array
+    {
+        if (self::is_opencode_path($path)) {
+            return OpenCodeTranscriptService::read_last_entry($path);
+        }
+
+        $page = self::read_transcript_page($path, null, 1);
+
+        return $page['ok'] && !empty($page['entries']) ? $page['entries'][0] : null;
+    }
+
+    /**
      * @return array{ok:bool, entries:array<int, array>, next_before:?int, has_more:bool, message?:string}
      */
     public static function read_transcript_page(string $path, ?int $before, int $limit, bool $untilRealUserMessage = false): array

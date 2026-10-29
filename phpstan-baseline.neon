@@ -109,12 +109,6 @@ parameters:
 			path: host-agent/lib/Services/OpenCodeQuestionService.php
 
 		-
-			message: '#^Call to function is_array\(\) with array will always evaluate to true\.$#'
-			identifier: function.alreadyNarrowedType
-			count: 4
-			path: host-agent/lib/Services/OpenCodeTranscriptService.php
-
-		-
 			message: '#^Method HostAgent\\Services\\OpenCodeTranscriptService\:\:read_transcript_page\(\) return type has no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
@@ -124,30 +118,6 @@ parameters:
 			message: '#^Method HostAgent\\Services\\OpenCodeTranscriptService\:\:read_transcript_page_since\(\) return type has no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
-			path: host-agent/lib/Services/OpenCodeTranscriptService.php
-
-		-
-			message: '#^Offset ''line'' on array\{type\: string, role\: string\|null, timestamp\: string\|null, blocks\: array\<int, array\{kind\: string, text\: string\}\>, line\: int\} on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: host-agent/lib/Services/OpenCodeTranscriptService.php
-
-		-
-			message: '#^Offset ''text'' on array\{kind\: string, text\: string\} on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: host-agent/lib/Services/OpenCodeTranscriptService.php
-
-		-
-			message: '#^Result of \|\| is always false\.$#'
-			identifier: booleanOr.alwaysFalse
-			count: 2
-			path: host-agent/lib/Services/OpenCodeTranscriptService.php
-
-		-
-			message: '#^Strict comparison using \=\=\= between array and false will always evaluate to false\.$#'
-			identifier: identical.alwaysFalse
-			count: 2
 			path: host-agent/lib/Services/OpenCodeTranscriptService.php
 
 		-
@@ -350,12 +320,6 @@ parameters:
 
 		-
 			message: '#^Offset ''is_folder_trust'' on array\{question\: string, context\: string, options\: array\<int, array\{number\: int, label\: string\}\>, multi_question\: bool, is_folder_trust\: bool\} on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
-			path: host-agent/lib/Services/SessionService.php
-
-		-
-			message: '#^Offset ''ok'' on array\{ok\: bool, entries\: array\<int, array\>, next_before\: int\|null, has_more\: bool, message\?\: string\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
 			path: host-agent/lib/Services/SessionService.php

@@ -291,7 +291,10 @@ The TUI fallback is driven through tmux.
 OpenCode assigns its `ses_*` identifier only after the first prompt creates a
 database row. Sessioneer finds that row by workdir and spawn time and repairs
 the sidecar reactively. Transcripts, token/cost data, and archive metadata come
-from OpenCode's local SQLite database.
+from OpenCode's local SQLite database, reading both storage generations: the
+legacy `session`/`message`/`part` tables and the `session_v2`/`session_message`
+pair that 2.x writes new sessions to. A turn that ends in a provider error
+appears in the transcript as an `Error: …` line rather than an empty reply.
 
 The global `sessioneer-permissions.js` plugin subscribes to
 `permission.asked` and records pending permission details because the tested

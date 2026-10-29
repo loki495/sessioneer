@@ -57,10 +57,312 @@ class OpenCodeTranscriptService
             return null;
         }
 
+        return self::session_row_exists($pdo, $sessionId) ? $sessionId : null;
+    }
+
+    /**
+     * True if opencode.db has a session row for this id, in either storage
+     * generation: the legacy `session` table, or 2.x's `session_v2` (new
+     * sessions are written only there; the legacy tables are left as they
+     * were for sessions created before the upgrade).
+     */
+    private static function session_row_exists(\PDO $pdo, string $sessionId): bool
+    {
         $stmt = $pdo->prepare('SELECT id FROM session WHERE id = ? LIMIT 1');
         $stmt->execute([$sessionId]);
 
-        return $stmt->fetchColumn() !== false ? $sessionId : null;
+        if ($stmt->fetchColumn() !== false) {
+            return true;
+        }
+
+        if (!self::table_exists($pdo, 'session_v2')) {
+            return false;
+        }
+
+        $stmt = $pdo->prepare('SELECT id FROM session_v2 WHERE id = ? LIMIT 1');
+        $stmt->execute([$sessionId]);
+
+        return $stmt->fetchColumn() !== false;
+    }
+
+    /**
+     * sqlite_master lookup for a table this class optionally reads. Older
+     * opencode.db files simply don't have the 2.x tables, which is a
+     * "not this storage generation" answer, never an error.
+     */
+    private static function table_exists(\PDO $pdo, string $table): bool
+    {
+        try {
+            $stmt = $pdo->prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1");
+            $stmt->execute([$table]);
+
+            return $stmt->fetchColumn() !== false;
+        } catch (\PDOException $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Every message of a session as `['message' => <message data>,
+     * 'parts' => [<part data>, ...]]`, oldest first, whichever storage
+     * generation wrote it.
+     *
+     * 2.x replaced the per-part rows with one `session_message` row per
+     * message whose `data` already carries the content: `text` for a user
+     * message, `content[]` (text/reasoning/tool entries) plus an optional
+     * `error` for an assistant one. Shaping those into the legacy
+     * message+parts pair keeps message_to_entry() - and therefore the whole
+     * render path - unchanged for both generations. Legacy rows win when a
+     * session somehow has both.
+     *
+     * @return array<int, array{message:array<string, mixed>, parts:array<int, array<string, mixed>>}>
+     */
+    private static function load_message_records(\PDO $pdo, string $sessionId): array
+    {
+        $stmt = $pdo->prepare('SELECT id, data, time_created FROM message WHERE session_id = ? ORDER BY time_created ASC');
+        $stmt->execute([$sessionId]);
+        $messages = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+
+        if ($messages === []) {
+            return self::load_v2_message_records($pdo, $sessionId);
+        }
+
+        $messageIds = array_column($messages, 'id');
+        $partsByMessage = [];
+
+        // Chunk for SQLite IN clause safety (not needed for small sessions but cheap to do).
+        $chunkSize = 500;
+        for ($c = 0; $c < count($messageIds); $c += $chunkSize) {
+            $chunk = array_slice($messageIds, $c, $chunkSize);
+            $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+            $partStmt = $pdo->prepare("SELECT message_id, data FROM part WHERE message_id IN ({$placeholders}) ORDER BY time_created ASC");
+            $partStmt->execute($chunk);
+            $partRows = $partStmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+            foreach ($partRows as $row) {
+                $data = json_decode((string)($row['data'] ?? ''), true);
+                if (is_array($data)) {
+                    $partsByMessage[$row['message_id']][] = $data;
+                }
+            }
+        }
+
+        $records = [];
+        foreach ($messages as $msgRow) {
+            $messageData = json_decode((string)($msgRow['data'] ?? ''), true);
+            if (!is_array($messageData)) {
+                continue;
+            }
+            $records[] = [
+                'message' => $messageData,
+                'parts' => $partsByMessage[$msgRow['id']] ?? [],
+            ];
+        }
+
+        return $records;
+    }
+
+    /**
+     * The 2.x counterpart to load_message_records()'s legacy query. Every
+     * non-message row type in `session_message` (idle, model-switched,
+     * system, ...) is bookkeeping rather than chat content and is skipped.
+     *
+     * @return array<int, array{message:array<string, mixed>, parts:array<int, array<string, mixed>>}>
+     */
+    private static function load_v2_message_records(\PDO $pdo, string $sessionId): array
+    {
+        if (!self::table_exists($pdo, 'session_message')) {
+            return [];
+        }
+
+        $stmt = $pdo->prepare('SELECT type, data, time_created FROM session_message WHERE session_id = ? ORDER BY seq ASC');
+        $stmt->execute([$sessionId]);
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+
+        $records = [];
+
+        foreach ($rows as $row) {
+            $data = json_decode((string)($row['data'] ?? ''), true);
+            if (!is_array($data)) {
+                continue;
+            }
+
+            $record = self::v2_record(
+                is_string($row['type'] ?? null) ? $row['type'] : '',
+                $data,
+                (int)($row['time_created'] ?? 0)
+            );
+
+            if ($record !== null) {
+                $records[] = $record;
+            }
+        }
+
+        return $records;
+    }
+
+    /**
+     * One 2.x `session_message` row shaped like a legacy message+parts pair,
+     * or null for a row type that isn't chat content (idle, model-switched,
+     * system, ...).
+     *
+     * @param array<string, mixed> $data
+     * @return array{message:array<string, mixed>, parts:array<int, array<string, mixed>>}|null
+     */
+    private static function v2_record(string $type, array $data, int $timeCreated): ?array
+    {
+        $time = is_array($data['time'] ?? null) ? $data['time'] : ['created' => $timeCreated];
+
+        if ($type === 'user') {
+            return [
+                'message' => ['role' => 'user', 'time' => $time],
+                'parts' => [['type' => 'text', 'text' => is_string($data['text'] ?? null) ? $data['text'] : '']],
+            ];
+        }
+
+        if ($type === 'assistant') {
+            return [
+                'message' => [
+                    'role' => 'assistant',
+                    'time' => $time,
+                    'error' => is_array($data['error'] ?? null) ? $data['error'] : null,
+                ],
+                'parts' => is_array($data['content'] ?? null) ? $data['content'] : [],
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * The newest renderable entry, read from only the last handful of
+     * messages instead of the whole session. Used for the dashboard's
+     * per-row preview, which is fetched on every list poll - a full
+     * transcript read there cost hundreds of milliseconds on a long session.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function read_last_entry(string $sessionId): ?array
+    {
+        if (!self::is_opencode_id($sessionId)) {
+            return null;
+        }
+
+        $pdo = self::open_db_readonly();
+
+        if ($pdo === null) {
+            return null;
+        }
+
+        try {
+            $records = self::load_last_message_records($pdo, $sessionId, 20);
+
+            foreach (array_reverse($records) as $record) {
+                $entry = self::message_to_entry($record['message'], $record['parts']);
+
+                if ($entry !== null) {
+                    return $entry;
+                }
+            }
+
+            return null;
+        } catch (\PDOException $e) {
+            return null;
+        }
+    }
+
+    /**
+     * The newest $limit message records of a session, oldest-first (so
+     * read_last_entry() can walk them backwards), from either storage
+     * generation.
+     *
+     * @return array<int, array{message:array<string, mixed>, parts:array<int, array<string, mixed>>}>
+     */
+    private static function load_last_message_records(\PDO $pdo, string $sessionId, int $limit): array
+    {
+        $stmt = $pdo->prepare('SELECT id, data, time_created FROM message WHERE session_id = ? ORDER BY time_created DESC LIMIT ' . max(1, $limit));
+        $stmt->execute([$sessionId]);
+        $messages = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+
+        if ($messages !== []) {
+            $ids = array_column($messages, 'id');
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $partStmt = $pdo->prepare("SELECT message_id, data FROM part WHERE message_id IN ({$placeholders}) ORDER BY time_created ASC");
+            $partStmt->execute($ids);
+            $partsByMessage = [];
+
+            foreach ($partStmt->fetchAll(\PDO::FETCH_ASSOC) ?: [] as $row) {
+                $data = json_decode((string)($row['data'] ?? ''), true);
+
+                if (is_array($data)) {
+                    $partsByMessage[$row['message_id']][] = $data;
+                }
+            }
+
+            $records = array_reverse($messages);
+
+            return array_values(array_map(static function (array $row) use ($partsByMessage): array {
+                return [
+                    'message' => json_decode((string)($row['data'] ?? ''), true) ?: [],
+                    'parts' => $partsByMessage[$row['id']] ?? [],
+                ];
+            }, $records));
+        }
+
+        if (!self::table_exists($pdo, 'session_message')) {
+            return [];
+        }
+
+        $stmt = $pdo->prepare('SELECT type, data, time_created FROM session_message WHERE session_id = ? ORDER BY seq DESC LIMIT ' . max(1, $limit));
+        $stmt->execute([$sessionId]);
+        $rows = array_reverse($stmt->fetchAll(\PDO::FETCH_ASSOC) ?: []);
+
+        $records = [];
+
+        foreach ($rows as $row) {
+            $data = json_decode((string)($row['data'] ?? ''), true);
+
+            if (!is_array($data)) {
+                continue;
+            }
+
+            $record = self::v2_record(
+                is_string($row['type'] ?? null) ? $row['type'] : '',
+                $data,
+                (int)($row['time_created'] ?? 0)
+            );
+
+            if ($record !== null) {
+                $records[] = $record;
+            }
+        }
+
+        return $records;
+    }
+
+    /**
+     * One session's renderable entries, oldest first, with `line` set to the
+     * message's 1-indexed position in the full message list (non-renderable
+     * messages still consume a line, like AntigravityTranscriptService's own
+     * line numbers).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private static function load_renderable_entries(\PDO $pdo, string $sessionId): array
+    {
+        $renderable = [];
+        $index = 0;
+
+        foreach (self::load_message_records($pdo, $sessionId) as $record) {
+            $index++;
+            $entry = self::message_to_entry($record['message'], $record['parts']);
+
+            if ($entry !== null) {
+                $entry['line'] = $index;
+                $renderable[] = $entry;
+            }
+        }
+
+        return $renderable;
     }
 
     /**
@@ -121,7 +423,12 @@ class OpenCodeTranscriptService
      */
     private static function tool_part_to_blocks(array $partData): array
     {
-        $toolName = is_string($partData['tool'] ?? null) && $partData['tool'] !== '' ? $partData['tool'] : 'tool';
+        // 2.x names the field `name`; the legacy part shape used `tool`.
+        $toolName = match (true) {
+            is_string($partData['tool'] ?? null) && $partData['tool'] !== '' => $partData['tool'],
+            is_string($partData['name'] ?? null) && $partData['name'] !== '' => $partData['name'],
+            default => 'tool',
+        };
         $state = is_array($partData['state'] ?? null) ? $partData['state'] : [];
         $blocks = [];
 
@@ -160,7 +467,7 @@ class OpenCodeTranscriptService
             }
 
             $status = is_string($state['status'] ?? null) ? $state['status'] : '';
-            $output = $state['output'] ?? null;
+            $output = self::tool_state_output($state);
             $answer = null;
 
             if (is_string($output) && trim($output) !== '') {
@@ -218,7 +525,7 @@ class OpenCodeTranscriptService
                 'file_path' => in_array($toolName, ['write', 'read', 'edit'], true) && is_string($input['filePath'] ?? null) && $input['filePath'] !== ''
                     ? $input['filePath']
                     : null,
-                'command' => in_array($toolName, ['bash', 'execute', 'run_command'], true) && is_string($input['command'] ?? null) && $input['command'] !== ''
+                'command' => in_array($toolName, ['bash', 'shell', 'execute', 'run_command'], true) && is_string($input['command'] ?? null) && $input['command'] !== ''
                     ? $input['command']
                     : null,
                 'description' => is_string($input['description'] ?? null) && $input['description'] !== ''
@@ -232,13 +539,43 @@ class OpenCodeTranscriptService
             $blocks[] = ['kind' => 'tool_use', 'text' => $toolName, 'tool_name' => $toolName];
         }
 
-        $output = $state['output'] ?? null;
+        $output = self::tool_state_output($state);
 
         if (is_string($output) && trim($output) !== '') {
             $blocks[] = ['kind' => 'tool_result', 'text' => $output];
         }
 
         return $blocks;
+    }
+
+    /**
+     * A tool part's result text: the legacy shape's single `output` string,
+     * or 2.x's `content[]` chunks (flattened). Null when the tool has no
+     * output yet.
+     *
+     * @param array<string, mixed> $state
+     */
+    private static function tool_state_output(array $state): ?string
+    {
+        $output = $state['output'] ?? null;
+
+        if (is_string($output) && trim($output) !== '') {
+            return $output;
+        }
+
+        if (!is_array($state['content'] ?? null)) {
+            return null;
+        }
+
+        $chunks = [];
+
+        foreach ($state['content'] as $chunk) {
+            if (is_array($chunk) && is_string($chunk['text'] ?? null) && trim($chunk['text']) !== '') {
+                $chunks[] = $chunk['text'];
+            }
+        }
+
+        return $chunks !== [] ? implode("\n", $chunks) : null;
     }
 
     /**
@@ -333,6 +670,16 @@ class OpenCodeTranscriptService
             }
         }
 
+        // A turn that died before producing content (quota, provider error)
+        // still has to say so in the transcript - otherwise the page shows a
+        // sent message and then nothing at all, which reads as "broken".
+        $error = is_array($messageData['error'] ?? null) ? $messageData['error'] : null;
+        $errorMessage = is_string($error['message'] ?? null) ? trim($error['message']) : '';
+
+        if ($errorMessage !== '') {
+            $blocks[] = ['kind' => 'text', 'text' => 'Error: ' . $errorMessage];
+        }
+
         if ($blocks === []) {
             return null;
         }
@@ -372,52 +719,7 @@ class OpenCodeTranscriptService
         }
 
         try {
-            // Fetch all message ids + time_created for this session, ordered newest-first for backward paging.
-            $stmt = $pdo->prepare('SELECT id, data, time_created FROM message WHERE session_id = ? ORDER BY time_created ASC');
-            $stmt->execute([$path]);
-            $allMessages = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
-            if ($allMessages === false || !is_array($allMessages)) {
-                return ['ok' => false, 'entries' => [], 'next_before' => null, 'has_more' => false, 'message' => 'Failed to read messages'];
-            }
-
-            // Filter to renderable messages (those that produce at least one block).
-            // Build parts index first: message_id => list of part data
-            $messageIds = array_column($allMessages, 'id');
-            $partsByMessage = [];
-
-            if ($messageIds !== []) {
-                // Chunk for SQLite IN clause safety (not needed for small sessions but cheap to do).
-                $chunkSize = 500;
-                for ($c = 0; $c < count($messageIds); $c += $chunkSize) {
-                    $chunk = array_slice($messageIds, $c, $chunkSize);
-                    $placeholders = implode(',', array_fill(0, count($chunk), '?'));
-                    $partStmt = $pdo->prepare("SELECT message_id, data FROM part WHERE message_id IN ({$placeholders}) ORDER BY time_created ASC");
-                    $partStmt->execute($chunk);
-                    $partRows = $partStmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
-                    foreach ($partRows as $row) {
-                        $data = json_decode((string)($row['data'] ?? ''), true);
-                        if (is_array($data)) {
-                            $partsByMessage[$row['message_id']][] = $data;
-                        }
-                    }
-                }
-            }
-
-            $renderable = [];
-            foreach ($allMessages as $idx => $msgRow) {
-                $messageData = json_decode((string)($msgRow['data'] ?? ''), true);
-                if (!is_array($messageData)) {
-                    continue;
-                }
-                $parts = $partsByMessage[$msgRow['id']] ?? [];
-                $entry = self::message_to_entry($messageData, $parts);
-                if ($entry !== null) {
-                    // line is 1-indexed message position (like AntigravityTranscriptService's line number)
-                    $entry['line'] = $idx + 1;
-                    $renderable[] = $entry;
-                }
-            }
+            $renderable = self::load_renderable_entries($pdo, $path);
 
             $totalRenderable = count($renderable);
             $upperBound = $before !== null ? max(0, min($before - 1, $totalRenderable)) : $totalRenderable;
@@ -466,47 +768,7 @@ class OpenCodeTranscriptService
         }
 
         try {
-            $stmt = $pdo->prepare('SELECT id, data, time_created FROM message WHERE session_id = ? ORDER BY time_created ASC');
-            $stmt->execute([$path]);
-            $allMessages = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
-            if ($allMessages === false || !is_array($allMessages)) {
-                return ['ok' => false, 'entries' => [], 'message' => 'Failed to read messages'];
-            }
-
-            $messageIds = array_column($allMessages, 'id');
-            $partsByMessage = [];
-
-            if ($messageIds !== []) {
-                $chunkSize = 500;
-                for ($c = 0; $c < count($messageIds); $c += $chunkSize) {
-                    $chunk = array_slice($messageIds, $c, $chunkSize);
-                    $placeholders = implode(',', array_fill(0, count($chunk), '?'));
-                    $partStmt = $pdo->prepare("SELECT message_id, data FROM part WHERE message_id IN ({$placeholders}) ORDER BY time_created ASC");
-                    $partStmt->execute($chunk);
-                    $partRows = $partStmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
-                    foreach ($partRows as $row) {
-                        $data = json_decode((string)($row['data'] ?? ''), true);
-                        if (is_array($data)) {
-                            $partsByMessage[$row['message_id']][] = $data;
-                        }
-                    }
-                }
-            }
-
-            $renderable = [];
-            foreach ($allMessages as $idx => $msgRow) {
-                $messageData = json_decode((string)($msgRow['data'] ?? ''), true);
-                if (!is_array($messageData)) {
-                    continue;
-                }
-                $parts = $partsByMessage[$msgRow['id']] ?? [];
-                $entry = self::message_to_entry($messageData, $parts);
-                if ($entry !== null) {
-                    $entry['line'] = $idx + 1;
-                    $renderable[] = $entry;
-                }
-            }
+            $renderable = self::load_renderable_entries($pdo, $path);
 
             $entries = [];
             foreach ($renderable as $entry) {
@@ -545,9 +807,7 @@ class OpenCodeTranscriptService
             return null;
         }
 
-        $stmt = $pdo->prepare('SELECT title FROM session WHERE id = ? LIMIT 1');
-        $stmt->execute([$sessionId]);
-        $title = $stmt->fetchColumn();
+        $title = self::session_column($pdo, $sessionId, 'title');
 
         return is_string($title) && trim($title) !== '' ? $title : null;
     }
@@ -568,11 +828,34 @@ class OpenCodeTranscriptService
             return null;
         }
 
-        $stmt = $pdo->prepare('SELECT directory FROM session WHERE id = ? LIMIT 1');
-        $stmt->execute([$sessionId]);
-        $cwd = $stmt->fetchColumn();
+        $cwd = self::session_column($pdo, $sessionId, 'directory');
 
         return is_string($cwd) && trim($cwd) !== '' ? $cwd : null;
+    }
+
+    /**
+     * One column of a session row, from the legacy `session` table or, when
+     * that has no row, from 2.x's `session_v2`.
+     */
+    private static function session_column(\PDO $pdo, string $sessionId, string $column): mixed
+    {
+        $stmt = $pdo->prepare("SELECT {$column} FROM session WHERE id = ? LIMIT 1");
+        $stmt->execute([$sessionId]);
+        $value = $stmt->fetchColumn();
+
+        if ($value !== false) {
+            return $value;
+        }
+
+        if (!self::table_exists($pdo, 'session_v2')) {
+            return null;
+        }
+
+        $stmt = $pdo->prepare("SELECT {$column} FROM session_v2 WHERE id = ? LIMIT 1");
+        $stmt->execute([$sessionId]);
+        $value = $stmt->fetchColumn();
+
+        return $value !== false ? $value : null;
     }
 
     /**
@@ -663,6 +946,22 @@ class OpenCodeTranscriptService
         $stmt->execute([$sessionId]);
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
 
+        $candidateParts = [];
+
+        foreach ($rows as $row) {
+            $data = json_decode((string)($row['data'] ?? ''), true);
+
+            if (is_array($data)) {
+                $candidateParts[] = $data;
+            }
+        }
+
+        // 2.x keeps the same question tool inside a message's content[] (with
+        // `name` where the legacy part had `tool`), newest message first.
+        if ($candidateParts === []) {
+            $candidateParts = self::v2_question_tool_parts($pdo, $sessionId);
+        }
+
         // Staleness guard: opencode
         // leaves a question tool's state.status as "running" even after the
         // question is answered, but the NEWER re-ask of the same question is
@@ -673,12 +972,7 @@ class OpenCodeTranscriptService
         // if it's running/pending the session is blocked on it; if it's
         // completed the session is NOT blocked, no matter what earlier
         // "running" remnants say.
-        foreach ($rows as $row) {
-            $data = json_decode((string)($row['data'] ?? ''), true);
-            if (!is_array($data)) {
-                continue;
-            }
-
+        foreach ($candidateParts as $data) {
             $state = is_array($data['state'] ?? null) ? $data['state'] : [];
             $status = is_string($state['status'] ?? null) ? $state['status'] : '';
 
@@ -738,6 +1032,41 @@ class OpenCodeTranscriptService
     }
 
     /**
+     * The question tool parts of a 2.x session, newest message first, in the
+     * legacy part shape the caller already understands (`tool`, `state`).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private static function v2_question_tool_parts(\PDO $pdo, string $sessionId): array
+    {
+        if (!self::table_exists($pdo, 'session_message')) {
+            return [];
+        }
+
+        $stmt = $pdo->prepare("SELECT data FROM session_message WHERE session_id = ? AND type = 'assistant' AND data LIKE '%\"question\"%' ORDER BY seq DESC LIMIT 10");
+        $stmt->execute([$sessionId]);
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+
+        $parts = [];
+
+        foreach ($rows as $row) {
+            $data = json_decode((string)($row['data'] ?? ''), true);
+
+            if (!is_array($data) || !is_array($data['content'] ?? null)) {
+                continue;
+            }
+
+            foreach ($data['content'] as $part) {
+                if (is_array($part) && ($part['type'] ?? null) === 'tool' && ($part['name'] ?? null) === 'question') {
+                    $parts[] = ['tool' => 'question', 'state' => is_array($part['state'] ?? null) ? $part['state'] : []];
+                }
+            }
+        }
+
+        return $parts;
+    }
+
+    /**
      * No attachment mechanism has been observed in OpenCode's own parts yet
      * beyond file reference parts (which carry only a path). An honest
      * "not supported" rather than guessing.
@@ -767,36 +1096,46 @@ class OpenCodeTranscriptService
         }
 
         try {
-            $stmt = $pdo->query('SELECT id, title, time_created FROM session ORDER BY time_created DESC');
+            // Legacy rows first, then 2.x's - a session exists in exactly one
+            // of the two, so the id keyed merge below never has to choose.
+            $rows = [];
 
-            if ($stmt === false) {
-                return [];
-            }
+            foreach (['session', 'session_v2'] as $table) {
+                if ($table === 'session_v2' && !self::table_exists($pdo, $table)) {
+                    continue;
+                }
 
-            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                $stmt = $pdo->query("SELECT id, title, time_created FROM {$table} ORDER BY time_created DESC");
 
-            if (!is_array($rows)) {
-                return [];
+                if ($stmt === false) {
+                    continue;
+                }
+
+                foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [] as $row) {
+                    $id = is_string($row['id'] ?? null) ? $row['id'] : null;
+
+                    if ($id === null || !self::is_opencode_id($id)) {
+                        continue;
+                    }
+
+                    $rows[$id] = $row;
+                }
             }
 
             $results = [];
 
             foreach ($rows as $row) {
-                $id = is_string($row['id'] ?? null) ? $row['id'] : null;
-
-                if ($id === null || !self::is_opencode_id($id)) {
-                    continue;
-                }
-
                 $createdAt = is_int($row['time_created'] ?? null) ? (int)$row['time_created'] : 0;
 
                 $results[] = [
-                    'session_id' => $id,
+                    'session_id' => (string)$row['id'],
                     'title' => is_string($row['title'] ?? null) ? $row['title'] : null,
                     'cwd' => null,
                     'last_activity' => $createdAt,
                 ];
             }
+
+            usort($results, static fn(array $a, array $b): int => $b['last_activity'] <=> $a['last_activity']);
 
             return $results;
         } catch (\PDOException $e) {
@@ -828,57 +1167,14 @@ class OpenCodeTranscriptService
         }
 
         try {
-            // Fetch all messages for this session, newest-first for search.
-            $stmt = $pdo->prepare('SELECT id, data, time_created FROM message WHERE session_id = ? ORDER BY time_created DESC');
-            $stmt->execute([$sessionId]);
-            $messages = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
-            if (!is_array($messages)) {
-                return [];
-            }
-
-            // Build parts index: message_id => list of part data.
-            $messageIds = array_column($messages, 'id');
-            $partsByMessage = [];
-
-            if ($messageIds !== []) {
-                $chunkSize = 500;
-
-                for ($c = 0; $c < count($messageIds); $c += $chunkSize) {
-                    $chunk = array_slice($messageIds, $c, $chunkSize);
-                    $placeholders = implode(',', array_fill(0, count($chunk), '?'));
-                    $partStmt = $pdo->prepare("SELECT message_id, data FROM part WHERE message_id IN ({$placeholders}) ORDER BY time_created ASC");
-                    $partStmt->execute($chunk);
-                    $partRows = $partStmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
-
-                    foreach ($partRows as $row) {
-                        $data = json_decode((string)($row['data'] ?? ''), true);
-
-                        if (is_array($data)) {
-                            $partsByMessage[$row['message_id']][] = $data;
-                        }
-                    }
-                }
-            }
+            // Newest-first for search; entry 'line' is the message's own
+            // position in the (oldest-first) session, so matches come back
+            // newest-first without renumbering.
+            $renderable = array_reverse(self::load_renderable_entries($pdo, $sessionId));
 
             $matches = [];
-            $msgIdx = count($messages);
 
-            foreach ($messages as $msgRow) {
-                $msgIdx--;
-                $messageData = json_decode((string)($msgRow['data'] ?? ''), true);
-
-                if (!is_array($messageData)) {
-                    continue;
-                }
-
-                $parts = $partsByMessage[$msgRow['id']] ?? [];
-                $entry = self::message_to_entry($messageData, $parts);
-
-                if ($entry === null) {
-                    continue;
-                }
-
+            foreach ($renderable as $entry) {
                 // Search across all block text in this entry.
                 $blockText = '';
 
@@ -892,14 +1188,12 @@ class OpenCodeTranscriptService
                     continue;
                 }
 
-                $createdAt = is_int($msgRow['time_created'] ?? null) ? (int)$msgRow['time_created'] : 0;
-
                 $matches[] = [
-                    'line' => $msgIdx + 1,
+                    'line' => (int)($entry['line'] ?? 0),
                     'snippet' => self::build_search_snippet($blockText, $trimmedQuery),
                     'role' => $entry['role'] ?? null,
                     'kind' => $entry['blocks'][0]['kind'] ?? 'text',
-                    'timestamp' => $createdAt > 0 ? $createdAt : null,
+                    'timestamp' => is_string($entry['timestamp'] ?? null) ? ((int)strtotime($entry['timestamp'])) * 1000 : null,
                 ];
 
                 if (count($matches) >= $maxMatches) {

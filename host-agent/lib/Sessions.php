@@ -640,7 +640,9 @@ function sessioneer_merge_headless_sessions(array $sessions): array
 
         // A headless Claude session already knows how to describe itself in
         // full (mode, model, last message, structured prompts), unlike the
-        // server-hosted agents' thin rows below. An Ollama session does too,
+        // server-hosted agents' thin rows below (which have no mode/model
+        // concept here and only borrow a last-message preview from the
+        // transcript). An Ollama session does too,
         // from its own sidecar/status/transcript.
         if ($agentId === 'claude' || $agentId === 'ollama') {
             $runtime = RuntimeRegistry::runtime_for($agentId, RuntimeType::HEADLESS);
@@ -702,7 +704,10 @@ function sessioneer_merge_headless_sessions(array $sessions): array
             'current_antigravity_model' => null,
             'last_turn_error' => null,
             'agent_session_id' => $h['id'],
-            'last_message' => null,
+            // Same cheap per-row transcript read a tracked tmux row already
+            // gets (build_session_entry()), so an opencode/codex row shows
+            // what it last said instead of a permanently blank preview.
+            'last_message' => SessionService::session_last_message((string)$h['id']),
             'context_used_percentage' => null,
             'git_worktree' => null,
             'resume_hint' => null,
@@ -1315,7 +1320,13 @@ function sessioneer_headless_detail_shape(array $serve, string $agentId = 'openc
         'id' => $id,
         'session' => $id,
         'name' => $id,
-        'title' => is_string($serve['title'] ?? null) && $serve['title'] !== '' ? $serve['title'] : (is_string($serve['name'] ?? null) && $serve['name'] !== '' ? $serve['name'] : (is_string($serve['preview'] ?? null) ? $serve['preview'] : $id)),
+        'title' => is_string($serve['title'] ?? null) && $serve['title'] !== ''
+            ? $serve['title']
+            : (is_string($serve['name'] ?? null) && $serve['name'] !== ''
+                ? $serve['name']
+                : (is_string($serve['preview'] ?? null)
+                    ? $serve['preview']
+                    : ($workdir !== null && $workdir !== '' ? basename($workdir) : $id))),
         'workdir' => $workdir,
         'directory' => $workdir,
         'agent' => $agentId,
