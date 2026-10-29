@@ -279,13 +279,13 @@ try {
     // tables are left as they were), so a v2-only session must still resolve
     // and render - the exact gap that made every new opencode session show
     // "Nothing recorded yet." in the UI.
-    $pdo->exec('CREATE TABLE session_v2 (id TEXT PRIMARY KEY, title TEXT, directory TEXT, time_created INTEGER NOT NULL)');
+    $pdo->exec('CREATE TABLE session_v2 (id TEXT PRIMARY KEY, title TEXT, directory TEXT, time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL)');
     $pdo->exec('CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, type TEXT NOT NULL, seq INTEGER NOT NULL, time_created INTEGER NOT NULL, data TEXT NOT NULL)');
 
     $v2SessionId = 'ses_v2storage01';
 
-    $pdo->prepare('INSERT INTO session_v2 (id, title, directory, time_created) VALUES (?, ?, ?, ?)')
-        ->execute([$v2SessionId, 'V2 storage session', '/home/andres/v2project', 3000]);
+    $pdo->prepare('INSERT INTO session_v2 (id, title, directory, time_created, time_updated) VALUES (?, ?, ?, ?, ?)')
+        ->execute([$v2SessionId, 'V2 storage session', '/home/andres/v2project', 3000000, 3005000]);
 
     $insertV2 = $pdo->prepare('INSERT INTO session_message (id, session_id, type, seq, time_created, data) VALUES (?, ?, ?, ?, ?, ?)');
 
@@ -342,6 +342,18 @@ try {
         static fn(array $row): bool => ($row['session_id'] ?? null) === $v2SessionId
     );
     assert_equal(1, count($v2Listed), 'list_all_transcripts: session_v2 sessions are listed');
+
+    $v2ListedRow = array_values($v2Listed)[0] ?? [];
+    assert_equal('/home/andres/v2project', $v2ListedRow['cwd'] ?? null, 'list_all_transcripts: cwd comes from the session row (v2)');
+    assert_equal(3005, $v2ListedRow['last_activity'] ?? null, 'list_all_transcripts: last_activity is time_updated in SECONDS (v2)');
+
+    $legacyListed = array_filter(
+        OpenCodeTranscriptService::list_all_transcripts(),
+        static fn(array $row): bool => ($row['session_id'] ?? null) === $sessionId
+    );
+    $legacyListedRow = array_values($legacyListed)[0] ?? [];
+    assert_equal('/tmp', $legacyListedRow['cwd'] ?? null, 'list_all_transcripts: cwd comes from the session row (legacy)');
+    assert_equal(2, $legacyListedRow['last_activity'] ?? null, 'list_all_transcripts: last_activity is time_updated in SECONDS (legacy)');
 
     // --- read_last_entry: the dashboard's per-row preview ---
     $legacyLast = OpenCodeTranscriptService::read_last_entry($sessionId);

@@ -226,11 +226,9 @@ class QuotaService
         }
 
         if ($sessionId !== null && $sessionId !== '' && OpenCodeTranscriptService::is_opencode_id($sessionId)) {
-            $stmt = $pdo->prepare('SELECT cost, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write, time_updated FROM session WHERE id = ? LIMIT 1');
-            $stmt->execute([$sessionId]);
-            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $row = self::opencode_session_row($pdo, $sessionId);
 
-            if ($row === false) {
+            if ($row === null) {
                 return null;
             }
 
@@ -248,8 +246,27 @@ class QuotaService
             return ['quota' => $quota, 'fetched_at' => $fetchedAt];
         }
 
-        // Dashboard: aggregate across all sessions (mirrors `opencode stats` totals)
-        $row = $pdo->query('SELECT COUNT(*) as cnt, COALESCE(SUM(cost),0) as sum_cost, COALESCE(SUM(tokens_input),0) as sum_in, COALESCE(SUM(tokens_output),0) as sum_out, COALESCE(SUM(tokens_reasoning),0) as sum_reason, COALESCE(SUM(tokens_cache_read),0) as sum_cr, COALESCE(SUM(tokens_cache_write),0) as sum_cw FROM session')->fetch(\PDO::FETCH_ASSOC);
+        // Dashboard: aggregate across all sessions (mirrors `opencode stats`
+        // totals), across both storage generations - a session exists in only
+        // one of them, so the NOT IN keeps a migrated row from counting twice.
+        $hasLegacy = self::opencode_has_table($pdo, 'session');
+        $hasV2 = self::opencode_has_table($pdo, 'session_v2');
+
+        if (!$hasLegacy && !$hasV2) {
+            return null;
+        }
+
+        $columns = 'id, cost, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write';
+
+        $from = match (true) {
+            $hasLegacy && $hasV2 => "(SELECT {$columns} FROM session"
+                . " UNION ALL SELECT {$columns} FROM session_v2"
+                . ' WHERE id NOT IN (SELECT id FROM session))',
+            $hasV2 => 'session_v2',
+            default => 'session',
+        };
+
+        $row = $pdo->query("SELECT COUNT(*) as cnt, COALESCE(SUM(cost),0) as sum_cost, COALESCE(SUM(tokens_input),0) as sum_in, COALESCE(SUM(tokens_output),0) as sum_out, COALESCE(SUM(tokens_reasoning),0) as sum_reason, COALESCE(SUM(tokens_cache_read),0) as sum_cr, COALESCE(SUM(tokens_cache_write),0) as sum_cw FROM {$from}")->fetch(\PDO::FETCH_ASSOC);
 
         if ($row === false || (int)($row['cnt'] ?? 0) === 0) {
             return null;
@@ -268,6 +285,54 @@ class QuotaService
         ];
 
         return ['quota' => $quota, 'fetched_at' => $fetchedAt];
+    }
+
+    /**
+     * One opencode session's cost/token columns, from the legacy `session`
+     * table or, when that has no row, from 2.x's `session_v2` (new sessions
+     * are written only there).
+     *
+     * @return array<string, mixed>|null
+     */
+    private static function opencode_session_row(\PDO $pdo, string $sessionId): ?array
+    {
+        $select = 'SELECT cost, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write, time_updated FROM ';
+
+        if (self::opencode_has_table($pdo, 'session')) {
+            $stmt = $pdo->prepare($select . 'session WHERE id = ? LIMIT 1');
+            $stmt->execute([$sessionId]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (is_array($row)) {
+                return $row;
+            }
+        }
+
+        if (!self::opencode_has_table($pdo, 'session_v2')) {
+            return null;
+        }
+
+        $stmt = $pdo->prepare($select . 'session_v2 WHERE id = ? LIMIT 1');
+        $stmt->execute([$sessionId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        return is_array($row) ? $row : null;
+    }
+
+    /**
+     * sqlite_master lookup, same "older opencode.db has no 2.x tables" rule
+     * OpenCodeTranscriptService applies.
+     */
+    private static function opencode_has_table(\PDO $pdo, string $table): bool
+    {
+        try {
+            $stmt = $pdo->prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1");
+            $stmt->execute([$table]);
+
+            return $stmt->fetchColumn() !== false;
+        } catch (\PDOException $e) {
+            return false;
+        }
     }
 
     /**

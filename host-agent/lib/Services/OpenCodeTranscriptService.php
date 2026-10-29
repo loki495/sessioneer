@@ -1079,11 +1079,15 @@ class OpenCodeTranscriptService
     }
 
     /**
-     * All OpenCode sessions from opencode.db, as a list of transcript
-     * summaries — the OpenCode counterpart to TranscriptService::
-     * list_all_transcripts() and AntigravityTranscriptService::
-     * list_all_transcripts(). Used by the dashboard-wide search to iterate
-     * every session's content.
+     * All OpenCode sessions from opencode.db (both storage generations), as
+     * a list of transcript summaries — the OpenCode counterpart to
+     * TranscriptService::list_all_transcripts() and
+     * AntigravityTranscriptService::list_all_transcripts(). Used by the
+     * dashboard-wide search and the archived list to iterate every session's
+     * content.
+     *
+     * last_activity is in SECONDS (opencode stores milliseconds), matching
+     * the archived list's and the search UI's own convention.
      *
      * @return array<int, array{session_id:string, title:?string, cwd:?string, last_activity:int}>
      */
@@ -1105,7 +1109,7 @@ class OpenCodeTranscriptService
                     continue;
                 }
 
-                $stmt = $pdo->query("SELECT id, title, time_created FROM {$table} ORDER BY time_created DESC");
+                $stmt = $pdo->query("SELECT id, title, directory, time_created, time_updated FROM {$table} ORDER BY time_updated DESC");
 
                 if ($stmt === false) {
                     continue;
@@ -1125,13 +1129,19 @@ class OpenCodeTranscriptService
             $results = [];
 
             foreach ($rows as $row) {
-                $createdAt = is_int($row['time_created'] ?? null) ? (int)$row['time_created'] : 0;
+                $updated = is_numeric($row['time_updated'] ?? null) ? (int)$row['time_updated'] : 0;
+
+                if ($updated <= 0) {
+                    $updated = is_numeric($row['time_created'] ?? null) ? (int)$row['time_created'] : 0;
+                }
+
+                $cwd = is_string($row['directory'] ?? null) && trim($row['directory']) !== '' ? $row['directory'] : null;
 
                 $results[] = [
                     'session_id' => (string)$row['id'],
                     'title' => is_string($row['title'] ?? null) ? $row['title'] : null,
-                    'cwd' => null,
-                    'last_activity' => $createdAt,
+                    'cwd' => $cwd,
+                    'last_activity' => $updated > 0 ? intdiv($updated, 1000) : 0,
                 ];
             }
 

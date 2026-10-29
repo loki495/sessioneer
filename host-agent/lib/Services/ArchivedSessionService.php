@@ -71,42 +71,27 @@ class ArchivedSessionService
         }
 
         // OpenCode archived sessions: every session in opencode.db not
-        // currently tracked (i.e. dormant). Title comes from session.title
-        // directly (see OpenCodeTranscriptService::find_session_title), not
-        // a transcript-file ai-title.
-        $opencodeDbPath = Config::opencode_db_path();
+        // currently tracked (i.e. dormant), from BOTH storage generations
+        // (2.x moved new sessions to session_v2/session_message - reading
+        // only the legacy `session` table hid every session created after
+        // the upgrade). Title comes from the session row directly (see
+        // OpenCodeTranscriptService::find_session_title), not a
+        // transcript-file ai-title.
+        foreach (OpenCodeTranscriptService::list_all_transcripts() as $t) {
+            $id = $t['session_id'];
 
-        if (is_file($opencodeDbPath)) {
-            try {
-                $pdo = new \PDO('sqlite:' . $opencodeDbPath, null, null, [
-                    \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
-                    \PDO::SQLITE_ATTR_OPEN_FLAGS => \PDO::SQLITE_OPEN_READONLY,
-                ]);
-                $pdo->exec('PRAGMA busy_timeout=5000');
-                $stmt = $pdo->query('SELECT id, directory, title, time_updated FROM session ORDER BY time_updated DESC');
-                $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
-                foreach ($rows as $row) {
-                    $id = is_string($row['id'] ?? null) ? $row['id'] : null;
-                    if ($id === null || isset($exclude[$id])) {
-                        continue;
-                    }
-                    if (!OpenCodeTranscriptService::is_opencode_id($id)) {
-                        continue;
-                    }
-                    $cwd = is_string($row['directory'] ?? null) && $row['directory'] !== '' ? $row['directory'] : null;
-                    $title = is_string($row['title'] ?? null) && trim($row['title']) !== '' ? $row['title'] : $id;
-                    $archived[] = [
-                        'agent_session_id' => $id,
-                        'cwd' => $cwd,
-                        'title' => $title,
-                        'last_activity' => is_numeric($row['time_updated'] ?? null) ? (int)($row['time_updated'] / 1000) : 0,
-                        'agent' => 'opencode',
-                        'agent_label' => 'OpenCode',
-                    ];
-                }
-            } catch (\Throwable $e) {
-                // Best-effort: on DB error, just skip opencode archived
+            if (isset($exclude[$id])) {
+                continue;
             }
+
+            $archived[] = [
+                'agent_session_id' => $id,
+                'cwd' => is_string($t['cwd'] ?? null) ? $t['cwd'] : null,
+                'title' => is_string($t['title'] ?? null) && trim($t['title']) !== '' ? $t['title'] : $id,
+                'last_activity' => $t['last_activity'],
+                'agent' => 'opencode',
+                'agent_label' => 'OpenCode',
+            ];
         }
 
         // Codex threads live in app-server's durable catalog rather than a
