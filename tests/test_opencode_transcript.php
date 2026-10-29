@@ -334,6 +334,12 @@ try {
     $v2Since = OpenCodeTranscriptService::read_transcript_page_since($v2SessionId, 2, 10);
     assert_equal(2, count($v2Since['entries'] ?? []), 'v2 transcript: read_transcript_page_since pages past the given line');
 
+    // The archived view's "Last active": a ses_* id is not a file, so this
+    // comes from the session row's time_updated (ms → seconds), legacy or v2.
+    assert_equal(3005, OpenCodeTranscriptService::find_session_last_activity($v2SessionId), 'find_session_last_activity: v2 session row time_updated in seconds');
+    assert_equal(2, OpenCodeTranscriptService::find_session_last_activity($sessionId), 'find_session_last_activity: legacy session row time_updated in seconds');
+    assert_equal(null, OpenCodeTranscriptService::find_session_last_activity($missingSessionId), 'find_session_last_activity: unknown session → null');
+
     $v2Search = OpenCodeTranscriptService::search_transcript($v2SessionId, 'file-b', 5);
     assert_equal(1, count($v2Search), 'v2 transcript: search_transcript finds text inside a v2 tool result');
 

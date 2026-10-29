@@ -236,7 +236,11 @@ class SessionDetailService
         $aiTitle = $isOpenCodePath
             ? OpenCodeTranscriptService::find_session_title($agentSessionId)
             : TranscriptService::find_display_title($path);
-        $mtime = @filemtime($path);
+        // An opencode "path" is the session id, not a file, so filemtime()
+        // can never answer this - read the session row's own time_updated.
+        $mtime = $isOpenCodePath
+            ? OpenCodeTranscriptService::find_session_last_activity($agentSessionId)
+            : @filemtime($path);
 
         return [
             'ok' => true,
