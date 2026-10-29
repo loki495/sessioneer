@@ -495,13 +495,7 @@ class SessionService
             return null;
         }
 
-        $page = TranscriptRouter::read_transcript_page($path, null, 1);
-
-        if (!($page['ok'] ?? false) || empty($page['entries'])) {
-            return null;
-        }
-
-        return $page['entries'][0];
+        return TranscriptRouter::read_last_entry($path);
     }
 
     /**

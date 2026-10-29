@@ -391,6 +391,14 @@ that only `create_agent_session()`-spawned sessions have).
   surface (`/api/session`, `/api/session/active`, `/api/permission/request`,
   `/api/model`); there is no v1 server left to fall back to. v2 has no todo
   endpoint, so opencode sessions show no todo list in the sidebar.
+  **Transcripts are read from both storage generations**:
+  `OpenCodeTranscriptService` looks a session up in the legacy
+  `session`/`message`/`part` tables and, when it has no row there, in 2.x's
+  `session_v2`/`session_message` (`data.text` for a user message,
+  `data.content[]` with text/reasoning/tool entries plus an optional
+  `data.error` for an assistant one). New sessions exist only in the 2.x
+  pair, so a reader that skips it shows every new opencode session as
+  "Nothing recorded yet." - keep both paths when touching that class.
  - **OpenCode question events (v2 forms):** `GET /api/event` delivers
    `form.created/replied/cancelled` when scoped with the URL-encoded
    **exact session directory** in `x-opencode-directory`. The `question`
