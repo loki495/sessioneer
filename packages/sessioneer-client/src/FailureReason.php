@@ -20,4 +20,19 @@ enum FailureReason: string
 
     /** The CLI process could not be started or died without an answer. */
     case ProcessFailure = 'process_failure';
+
+    /**
+     * The `error.kind` from the CLI's `--json` envelope. An unknown kind is a
+     * process failure, never a guess: a kind a newer CLI adds must not look like
+     * a launch refusal to this client.
+     */
+    public static function fromCli(string $kind): self
+    {
+        return match ($kind) {
+            'launch_refused' => self::LaunchRefused,
+            'turn_error' => self::TurnError,
+            'timeout' => self::Timeout,
+            default => self::ProcessFailure,
+        };
+    }
 }

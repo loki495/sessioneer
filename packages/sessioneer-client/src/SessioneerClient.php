@@ -7,15 +7,23 @@ namespace Loki495\SessioneerClient;
 /**
  * One-shot execution of a Sessioneer CLI agent turn.
  *
- * Contract this client relies on (today's `sessioneer --wait`):
- *  - stdout is the final assistant text and nothing else;
- *  - stderr's first line is the name of the session the call created;
+ * Contract this client relies on (`sessioneer --wait --json`):
+ *  - stdout is one JSON envelope: `ok`, `answer`, `session`, `conversation_id`,
+ *    `agent`, `model`, `workdir`, `exit_code` and `error` (`kind` + `message`),
+ *    written on success and on failure alike;
+ *  - stderr carries the human message, its first line being the name of the
+ *    session the call created;
  *  - exit 0 means the turn finished, exit 1 means it was refused, errored or
- *    timed out, with the reason on stderr;
+ *    timed out;
  *  - a timeout leaves the session running, so the caller must stop it.
  *
+ * The envelope is the only thing the answer is read from: nothing guesses at
+ * prose. It also names the session to stop, except when the CLI was killed
+ * before it could write one (this client's own outer deadline) — then the first
+ * stderr line stands in for it.
+ *
  * The session is always cleaned up on the way out — success or failure — and
- * only the session whose name appeared on this call's own stderr is touched.
+ * only the session this call's own envelope or stderr named is touched.
  * Cleanup never happens on a reused or guessed name.
  */
 final readonly class SessioneerClient
@@ -52,7 +60,8 @@ final readonly class SessioneerClient
             $request->processTimeoutSeconds(),
         );
 
-        $session = self::parseSessionName($outcome->stderr);
+        $envelope = self::parseEnvelope($outcome->stdout);
+        $session = self::envelopeSession($envelope) ?? self::parseSessionName($outcome->stderr);
         $cleanup = $session === null ? null : $this->cleanup($binary, $request->agent, $session, $request->workdir);
 
         if ($outcome->timedOut) {
@@ -64,16 +73,67 @@ final readonly class SessioneerClient
             );
         }
 
-        if ($outcome->exitCode !== 0) {
+        if ($envelope === null) {
             throw new ExecutionFailed(
-                self::reason($outcome->stderr),
-                self::errorMessage($outcome->stderr, $outcome->exitCode),
+                $outcome->exitCode === 0 ? FailureReason::ProcessFailure : self::reason($outcome->stderr),
+                $outcome->exitCode === 0
+                    ? 'sessioneer exited 0 without a --json envelope'
+                    : self::errorMessage($outcome->stderr, $outcome->exitCode),
                 $session,
                 $cleanup,
             );
         }
 
-        return new ExecutionResult(rtrim($outcome->stdout, "\n"), $session, $outcome->exitCode, $cleanup);
+        if (($envelope['ok'] ?? false) !== true) {
+            throw self::envelopeFailure($envelope, $session, $cleanup);
+        }
+
+        if ($outcome->exitCode !== 0) {
+            throw new ExecutionFailed(
+                FailureReason::ProcessFailure,
+                "sessioneer reported success but exited {$outcome->exitCode}",
+                $session,
+                $cleanup,
+            );
+        }
+
+        $answer = $envelope['answer'] ?? null;
+
+        if (!is_string($answer)) {
+            throw new ExecutionFailed(
+                FailureReason::ProcessFailure,
+                'the --json envelope carried no answer',
+                $session,
+                $cleanup,
+            );
+        }
+
+        $conversationId = $envelope['conversation_id'] ?? null;
+
+        return new ExecutionResult(
+            $answer,
+            $session,
+            $outcome->exitCode,
+            $cleanup,
+            is_string($conversationId) && $conversationId !== '' ? $conversationId : null,
+        );
+    }
+
+    /**
+     * The `--json` envelope, or null when stdout is not one: an older CLI, or a
+     * CLI killed before it could write it.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function parseEnvelope(string $stdout): ?array
+    {
+        if (trim($stdout) === '') {
+            return null;
+        }
+
+        $decoded = json_decode($stdout, true);
+
+        return is_array($decoded) && array_key_exists('ok', $decoded) ? $decoded : null;
     }
 
     /** The session the CLI named on its own stderr, or null when it never got that far. */
@@ -82,6 +142,33 @@ final readonly class SessioneerClient
         $first = preg_split('/\R/', trim($stderr))[0] ?? '';
 
         return preg_match(self::SESSION, $first) === 1 ? $first : null;
+    }
+
+    /**
+     * The session the envelope names, if it is a well-formed one.
+     *
+     * @param  array<string, mixed>|null  $envelope
+     */
+    private static function envelopeSession(?array $envelope): ?string
+    {
+        $session = $envelope['session'] ?? null;
+
+        return is_string($session) && preg_match(self::SESSION, $session) === 1 ? $session : null;
+    }
+
+    /** @param  array<string, mixed>  $envelope */
+    private static function envelopeFailure(array $envelope, ?string $session, ?CleanupReport $cleanup): ExecutionFailed
+    {
+        $error = is_array($envelope['error'] ?? null) ? $envelope['error'] : [];
+        $kind = is_string($error['kind'] ?? null) ? $error['kind'] : '';
+        $message = is_string($error['message'] ?? null) ? trim($error['message']) : '';
+
+        return new ExecutionFailed(
+            FailureReason::fromCli($kind),
+            $message === '' ? 'the turn failed without a message' : $message,
+            $session,
+            $cleanup,
+        );
     }
 
     private function resolveBinary(): string
