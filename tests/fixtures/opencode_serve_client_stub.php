@@ -62,6 +62,18 @@ if ($path === '/api/session/ses_stub_other/form' && $method === 'GET') {
 }
 
 if ($path === '/api/permission/request' && $method === 'GET') {
+    $directory = $_GET['location']['directory'] ?? null;
+
+    if ($directory === '/broken') {
+        $json(500, ['error' => 'permission list failed']);
+        return;
+    }
+
+    if ($directory !== '/tmp/project') {
+        $json(200, ['location' => ['directory' => $directory], 'data' => []]);
+        return;
+    }
+
     $json(200, ['location' => ['directory' => '/tmp/project'], 'data' => [[
         'id' => 'per_stub',
         'sessionID' => 'ses_stub_create',

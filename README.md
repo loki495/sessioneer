@@ -300,10 +300,11 @@ systemctl --user restart opencode-serve.service
 Headless sessions are the preferred path: Sessioneer talks directly to the
 serve API for lifecycle, messages, questions, and permissions. The tmux TUI is
 retained as a fallback. OpenCode creates its `ses_*` ID only after the first
-prompt; Sessioneer binds it reactively from `opencode.db`. The permissions
-plugin records `permission.asked` events because the tested OpenCode version
-does not expose reliable persistent permission state through its HTTP API.
-The dashboard health section checks both the service and plugin file.
+prompt; Sessioneer binds it reactively from `opencode.db`. Pending permissions
+come from the directory-scoped `GET /api/permission/request`, which Sessioneer
+queries once per live session directory; the permissions plugin mirrors the
+same request into a local store as a fallback. The dashboard health section
+checks both the service and plugin file.
 
 The events service listens to each tracked headless session's exact OpenCode
 directory and records question prompts for Sessioneer's existing answer forms.

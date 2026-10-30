@@ -316,24 +316,60 @@ class OpenCodeServeClient
     }
 
     /**
-     * The pending permission requests for every session, from GET
-     * /api/permission/request (`{location, data: [Permission.Request]}`).
+     * The pending permission requests for the given session directories, from
+     * GET /api/permission/request (`{location, data: [Permission.Request]}`).
      * Each entry is `{id, sessionID, action, resources[], save[], metadata,
      * source, message}`.
      *
+     * v2 scopes this list by `location.directory`: an unscoped read only
+     * reports the server's own cwd, so a request raised in a project directory
+     * is invisible. Query once per directory and merge by request id. With no
+     * directories it falls back to the single unscoped read.
+     *
+     * @param array<int, string> $directories session workdirs to include
      * @return array<int, array<string, mixed>> the raw pending permission requests
      */
-    public function pending_permissions(): array
+    public function pending_permissions(array $directories = []): array
     {
-        [$status, $data, $error] = $this->request('GET', '/api/permission/request');
+        $directories = array_values(array_unique(array_filter(
+            $directories,
+            static fn($directory): bool => $directory !== ''
+        )));
 
-        if ($data === null) {
-            return [];
+        $paths = $directories === []
+            ? ['/api/permission/request']
+            : array_map(
+                static fn(string $directory): string => '/api/permission/request?location%5Bdirectory%5D=' . rawurlencode($directory),
+                $directories
+            );
+
+        $pending = [];
+
+        foreach ($paths as $path) {
+            [$status, $data, $error] = $this->request('GET', $path);
+
+            if ($data === null) {
+                continue;
+            }
+
+            $items = is_array($data['data'] ?? null) ? $data['data'] : $data;
+
+            foreach (is_array($items) ? $items : [] as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+
+                $id = is_string($item['id'] ?? null) ? $item['id'] : null;
+
+                if ($id !== null && isset($pending[$id])) {
+                    continue;
+                }
+
+                $pending[$id ?? 'request_' . count($pending)] = $item;
+            }
         }
 
-        $items = is_array($data['data'] ?? null) ? $data['data'] : $data;
-
-        return is_array($items) ? array_values(array_filter($items, 'is_array')) : [];
+        return array_values($pending);
     }
 
     /**

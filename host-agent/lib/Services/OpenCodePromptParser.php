@@ -92,9 +92,9 @@ class OpenCodePromptParser
             if (trim($line) === '') {
                 continue;
             }
-            // Skip the persistent OpenCode version/status line (the "• OpenCode
-            // 1.18.21" footer) - it is not an interaction hint, and it is what
-            // sits BELOW the real modal footer.
+            // Skip the persistent OpenCode version/status line (e.g.
+            // "• OpenCode 2.2.0") - it is not an interaction hint, and it is
+            // what sits BELOW the real modal footer.
             if (preg_match('#•+\s*OpenCode\s+[\d.]+#u', $line)) {
                 continue;
             }

@@ -56,8 +56,12 @@ try {
     $statuses = $client->status_map();
     assert_equal(['ses_stub_create' => 'working'], $statuses['statuses'] ?? null, 'status_map: only running sessions are reported, as working');
 
-    $permissions = $client->pending_permissions();
-    assert_equal('per_stub', $permissions[0]['id'] ?? null, 'pending_permissions: reads the v2 request list');
+    $permissions = $client->pending_permissions(['/tmp/project']);
+    assert_equal('per_stub', $permissions[0]['id'] ?? null, 'pending_permissions: reads the request list for a session directory');
+    assert_equal(0, count($client->pending_permissions(['/elsewhere'])), 'pending_permissions: a directory with no requests returns none');
+    assert_equal(0, count($client->pending_permissions(['/broken'])), 'pending_permissions: a failing directory read is skipped without throwing');
+    assert_equal(0, count($client->pending_permissions()), 'pending_permissions: the unscoped read does not report another directory');
+    assert_equal(1, count($client->pending_permissions(['/tmp/project', '/tmp/project'])), 'pending_permissions: duplicate directories are queried once');
 
     $questions = $client->pending_questions(['ses_stub_create', 'ses_stub_other']);
     assert_equal(1, count($questions), 'pending_questions: one pending question across the given sessions');

@@ -11,13 +11,13 @@ use HostAgent\Stores\GlobalStateStore;
 
 /**
  * Third AgentAdapter implementation, for the OpenCode TUI CLI
- * (binary `opencode`), as of `opencode`
- * 1.18.21. TUI positional arg is the project path
- * (`opencode [project]`), not `--session-id`; `--session` is resume-only
- * (confirmed: `opencode --session <nonexistent>` → "Session not found").
- * Plugin system (https://opencode.ai/docs/plugins/) provides
- * `permission.ask` / `event: permission.updated` etc. for blocked-prompt
- * detection - see Phase 5.
+ * (binary `opencode`). The TUI takes the project path as its positional arg
+ * (`opencode [project]`). `--session <id>` continues that session, creating it
+ * when it does not exist; `--model` and `--agent` belong to `opencode run`,
+ * not the TUI. Blocked prompts come from the directory-scoped serve API and
+ * the global plugin's `ctx.permission.hook("evaluate")` /
+ * `ctx.event.subscribe(...)` - see OpenCodeServeClient and
+ * opencode-plugins/sessioneer-permissions.js.
  */
 class OpenCodeAdapter implements AgentAdapter
 {
@@ -39,18 +39,16 @@ class OpenCodeAdapter implements AgentAdapter
     /**
      * $options['workdir'] (string, the New Session browser's chosen
      * directory) is the positional `opencode [project]` arg. $options['model']
-     * passes straight through to `--model provider/model` when non-empty;
-     * $options['agent'] to `--agent <name>` (OpenCode's own agent concept,
-     * distinct from Sessioneer's agent id). Other keys (enable_task_tools,
-     * starting_mode, effort) are silently ignored - OpenCode has no
-     * --permission-mode / --effort equivalent, only --auto for
-     * auto-approve (not wired here; Phase 7 stretch goal).
+     * and $options['agent'] are passed as `--model provider/model` and
+     * `--agent <name>`; the v2 TUI rejects both (they are `opencode run`
+     * flags), so a TUI spawned with either shows its usage text instead of a
+     * prompt. Other keys (enable_task_tools, starting_mode, effort) are
+     * silently ignored - OpenCode has no --permission-mode / --effort
+     * equivalent, only --auto for auto-approve (not wired here).
      *
-     * assigned_id is always null -
-     * no --session-id equivalent exists for starting a fresh TUI
-     * session; `--session <id>` only RESUMES an existing one. Real identity
-     * (`ses_*` from opencode.db) can only be learned reactively after the
-     * first prompt creates a DB row - Phase 2 polls opencode.db for it.
+     * assigned_id is always null - the TUI has no flag that reports the new
+     * session's id. Real identity (`ses_*` from opencode.db) is learned
+     * reactively after the first prompt creates a row.
      */
     public function build_spawn_argv(array $options): array
     {

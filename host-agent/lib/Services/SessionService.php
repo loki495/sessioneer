@@ -187,29 +187,22 @@ class SessionService
         $hookBlocked = is_array($hookStatus['blocked'] ?? null) ? $hookStatus['blocked'] : null;
         $hookBlockedToolName = is_string($hookBlocked['tool_name'] ?? null) ? $hookBlocked['tool_name'] : null;
 
-        // OpenCode: check opencode.db for a running `question` tool before
-        // falling through to hook/pane paths — capture-pane is blank when
-        // idle but does show the question when blocked (question tool status=running, pane shows
-        // "↑↓ select  enter submit  esc dismiss" with numbered options).
-        // This is the opencode equivalent of AskUserQuestion, but via DB
-        // polling rather than a SessionStatusStore hook (plugin will
-        // eventually provide the hook-fed path, like Claude's
-        // PermissionRequest — this DB poll is the interim that makes the
-        // blocked card appear without the plugin installed).
+        // OpenCode: a permission dialog the pane is rendering wins (it is what
+        // the user sees). Otherwise a question resolves from the strongest
+        // source first - the serve form API, then the live pane, then the
+        // opencode.db `question` tool row (the API can miss a just-created
+        // question, and capture-pane is blank when idle), then the hook status.
         if ($agentId === 'opencode') {
             $agentSessionIdForOc = is_string($sidecar['agent_session_id'] ?? null) ? $sidecar['agent_session_id'] : null;
 
-            // Pending PERMISSION. The PANE is the only trustworthy "is a
-            // permission actually on screen" signal in opencode 1.18.21: the
-            // pane always renders the true dialog (first-stage Allow/Reject or
-            // second-stage Confirm/Cancel), whereas PermissionStore's record is
-            // fed by permission.asked events that opencode doesn't reliably
-            // pair with a permission.replied to clear - so a store record can
-            // go STALE (outlive the dialog it described). Therefore a block is
-            // surfaced ONLY when the pane shows a permission dialog; PermissionStore
-            // is used just to corroborate the "permission" classification (and,
-            // when the pane shows the dialog but the store is empty/already-cleared,
-            // we still surface it - the pane is the more current source).
+            // Pending PERMISSION on a TUI session. The pane is the on-screen
+            // truth: it renders the dialog the user is looking at (first-stage
+            // Allow/Reject or second-stage Confirm/Cancel), and a pane-scraped
+            // prompt carries no request id to answer over HTTP. Headless
+            // sessions do not come through here: the status sync reads the
+            // directory-scoped GET /api/permission/request, with the plugin
+            // store as fallback (Sessions::sessioneer_headless_sync()). A pane
+            // block is surfaced only while that dialog is visible.
             $ocPanePrompt = OpenCodePromptParser::parse_blocking_prompt($paneContent);
             $paneIsPermission = $ocPanePrompt !== null && ($ocPanePrompt['tool_name'] ?? null) === 'permission';
 
@@ -217,10 +210,11 @@ class SessionService
                 $prompt = $ocPanePrompt;
             } else {
                 // QUESTION (opencode). Prefer the serve HTTP API - it's the
-                // authoritative, orphan-safe source (GET /question returns a
-                // live QuestionRequest, [] when nothing is pending or the modal
-                // is orphaned). Fall back to the DB question-tool poll, then the
-                // pane - each only if the stronger source found nothing.
+                // authoritative, orphan-safe source (GET /api/session/{id}/form
+                // returns the live forms, none when nothing is pending or the
+                // modal is orphaned). Fall back to the pane, then the DB
+                // question-tool poll - each only if the stronger source found
+                // nothing.
                 $ocPending = $agentSessionIdForOc !== null
                     ? OpenCodeQuestionService::pending_question($agentSessionIdForOc)
                     : null;
