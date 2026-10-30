@@ -7,3 +7,4 @@ parameters:
         - host-agent/lib
         - host-agent/hooks
         - src/lib
+        - packages/sessioneer-client/src

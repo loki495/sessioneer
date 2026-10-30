@@ -91,6 +91,17 @@ sessioneer --agent ollama --model llama3:8b-instruct-q4_K_M --wait "Summarise th
   `$SIDECAR_DIR/ollama/` with nothing in the app pointing at it.
 - No quota data exists for a local model, so `--usage` carries no Ollama row.
 
+## From a PHP app
+
+`packages/sessioneer-client` is a standalone Composer package (no dependencies) that runs one `--wait` turn from PHP: it builds the argv, writes the prompt to stdin, keeps stdout and stderr apart, enforces a hard deadline, and stops the session it created. Its README has the install (a path repository while the API settles), the usage example and the host-bridge recipe for a containerised app.
+
+Two parts of the contract matter to any client, in any language:
+
+- **stdout is the answer, stderr is diagnostics.** The session name is the first line of stderr, written before the turn is waited on. A client must read it there, not from stdout, and must not treat an error line as a session name.
+- **A timeout leaves the session running.** `--timeout` only stops the waiting; the session keeps its slot against the live-session cap. Whoever started the turn must `--kill` that exact session (with `--force` when it is still working) and report it if the kill is refused. Killing a session the call did not create is never acceptable.
+
+The binary is host-side: it needs the host agent's socket, which a container does not have. Run the client on the host (a host-side queue worker, for example), or use the bridge recipe in the package README.
+
 ## Design
 
 

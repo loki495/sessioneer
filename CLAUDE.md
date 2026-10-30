@@ -65,10 +65,16 @@ To exercise a single area, run that one `tests/test_*.php` file directly
 with `php` rather than the whole suite (check its own header comment for
 what it covers and what fixtures it needs).
 
+`packages/sessioneer-client` is a standalone Composer package with its own
+dependency-free runner (`php packages/sessioneer-client/tests/run.php`); the
+repo suite reaches it through `tests/test_sessioneer_client.php`, which just
+requires that runner.
+
 No Pint/Rector here — this is not a Laravel project. **PHPStan does run**,
-though: `composer phpstan` (level 6 over `host-agent/lib`, `host-agent/hooks`
-and `src/lib`), and CI gates on it, so run it before pushing. Findings that
-predate a change live in `phpstan-baseline.neon` — note that a baseline entry
+though: `composer phpstan` (level 6 over `host-agent/lib`, `host-agent/hooks`,
+`src/lib` and `packages/sessioneer-client/src`), and CI gates on it, so run it
+before pushing. Findings that predate a change live in
+`phpstan-baseline.neon` — note that a baseline entry
 is keyed to the exact method name, so renaming or extracting a method moves
 its body out from under its entry and resurfaces the error.
 
@@ -316,6 +322,14 @@ Docker-spawned, makes that impossible by construction — not by convention.
    already tracks the conversation id - sends the prompt to that session
    instead of opening a second process; a conversation held by a bare
    terminal process is refused (Take over is the dashboard's job).
+
+   `packages/sessioneer-client` is the PHP side of that same CLI contract: a
+   standalone Composer package a Laravel app uses to run one `sessioneer --wait`
+   turn (argv/stdin, safe option tokens, separate streams, a hard deadline,
+   cleanup of the session it created). It is host-side by nature - it needs the
+   agent socket - so a containerised app uses its host-bridge recipe instead of
+   calling the socket from the container. The repo consumes it in no code path
+   of its own; the package is tested through `tests/test_sessioneer_client.php`.
 5. `App\Views\*` (one render class per feature area — `TranscriptView`,
    `SessionRowView`, `BlockedPromptView`, `QuotaFooterView`,
    `HealthBoxView`, `PushNotifyView`, plus `PageView` for the two full-page
