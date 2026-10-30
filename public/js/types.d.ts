@@ -44,17 +44,18 @@ interface Document {
     | 'new-folder-btn' | 'new-session-submit' | 'new-session-summary'
     | 'push-notify-btn' | 'quota-toggle-btn' | 'session-search-input-clear-btn'
     | 'show-archived-btn' | 'sidebar-close-btn' | 'sidebar-toggle-btn'
-    | 'todo-file-link'): HTMLButtonElement | null;
+    | 'sidebar-session-filter-clear-btn' | 'todo-file-link'): HTMLButtonElement | null;
   getElementById(elementId:
     | 'archived-search' | 'compose-file-input' | 'confirm-before-answer-toggle'
     | 'dashboard-search-input' | 'new-session-model-provider'
     | 'session-search-input' | 'session-search-scope-global'
+    | 'sidebar-session-filter'
     | 'show-subagent-toggle' | 'show-worker-sessions-toggle' | 'workdir_value'): HTMLInputElement | null;
   getElementById(elementId:
     | 'compose-textarea' | 'fullscreen-edit-modal-textarea'): HTMLTextAreaElement | null;
   getElementById(elementId:
     | 'antigravity-model-select' | 'codex-effort-select' | 'codex-model-select'
-    | 'mode-select' | 'model-select' | 'new-session-agent'
+    | 'effort-select' | 'mode-select' | 'model-select' | 'new-session-agent'
     | 'new-session-model' | 'opencode-model-select'
     | 'poll-interval-select'): HTMLSelectElement | null;
   getElementById(elementId: 'new-session-details'): HTMLDetailsElement | null;

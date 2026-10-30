@@ -37,6 +37,7 @@ use HostAgent\Stores\GlobalStateStore;
 use HostAgent\Runtimes\RuntimeRegistry;
 use HostAgent\Runtimes\RuntimeType;
 use HostAgent\Runtimes\ClaudeHeadlessRuntime;
+use HostAgent\Runtimes\OllamaHeadlessRuntime;
 use HostAgent\Runtimes\OpenCodeServeClient;
 use HostAgent\Agents\AgentRegistry;
 use HostAgent\Launch\LaunchService;
@@ -144,10 +145,10 @@ function sessioneer_dispatch_action(array $request): array
                 $headless = $agent !== null ? RuntimeRegistry::runtime_for($agent, RuntimeType::HEADLESS) : null;
                 $serveDetail = $headless?->detail($session) ?? ['ok' => false, 'message' => 'Headless runtime unavailable'];
 
-                // A headless Claude session's detail is already a full session
-                // entry (same shape a tmux session's detail has), not a
+                // A headless Claude or Ollama session's detail is already a full
+                // session entry (same shape a tmux session's detail has), not a
                 // server object that needs reshaping.
-                if ($agent === 'claude' && $serveDetail['ok'] === true && is_array($serveDetail['session'] ?? null)) {
+                if (($agent === 'claude' || $agent === 'ollama') && $serveDetail['ok'] === true && is_array($serveDetail['session'] ?? null)) {
                     return sessioneer_with_git_branch(['ok' => true] + $serveDetail['session']);
                 }
 
@@ -170,7 +171,8 @@ function sessioneer_dispatch_action(array $request): array
             // OpenCode/Codex refs ARE their conversation ids; a headless Claude
             // ref is not (it is resolved through the sidecar, exactly like a
             // tmux session's), so it takes the tracked-session path below.
-            if (sessioneer_is_headless_session($historySession) && sessioneer_headless_agent($historySession) !== 'claude') {
+            // Ollama's ref is its own tracked session name, same as Claude's.
+            if (sessioneer_is_headless_session($historySession) && !in_array(sessioneer_headless_agent($historySession), ['claude', 'ollama'], true)) {
                 return SessionDetailService::archived_session_history(
                     $historySession,
                     isset($request['before']) ? (int)$request['before'] : null,
@@ -250,7 +252,7 @@ function sessioneer_dispatch_action(array $request): array
             // lands in the headless pool the dashboard already merges in.
             // Antigravity has no headless session mode and stays on the tmux
             // path; Claude chooses its runtime below.
-            if ($agentId === 'opencode' || $agentId === 'codex') {
+            if ($agentId === 'opencode' || $agentId === 'codex' || $agentId === 'ollama') {
                 $headless = RuntimeRegistry::runtime_for($agentId, RuntimeType::HEADLESS);
 
                 if ($headless === null) {
@@ -497,6 +499,17 @@ function sessioneer_dispatch_action(array $request): array
             }
             return PromptInteractionService::set_mode($modeSession, (string)($request['mode'] ?? ''));
 
+        case 'set_effort':
+            $effortSession = (string)($request['session'] ?? '');
+            if (!is_string($request['effort'] ?? null)) {
+                return ['ok' => false, 'message' => 'Rejected: effort must be supplied as a string'];
+            }
+            if (!sessioneer_is_headless_session($effortSession)) {
+                return ['ok' => false, 'message' => 'Live effort control is available for headless sessions'];
+            }
+            return sessioneer_headless_runtime($effortSession)?->update_settings($effortSession, null, $request['effort'])
+                ?? ['ok' => false, 'message' => 'Headless runtime unavailable'];
+
         case 'set_model':
             $modelSession = (string)($request['session'] ?? '');
             if (sessioneer_is_headless_session($modelSession)) {
@@ -622,17 +635,20 @@ function sessioneer_merge_headless_sessions(array $sessions): array
     }
     unset($s);
 
-    $claudeHeadless = RuntimeRegistry::runtime_for('claude', RuntimeType::HEADLESS);
-
-    foreach (sessioneer_headless_sessions()['headless'] as $h) {
-        $blocked = is_array($h['blocked'] ?? null) ? $h['blocked'] : null;
+    foreach (sessioneer_headless_sessions()['headless'] as $h) {        $blocked = is_array($h['blocked'] ?? null) ? $h['blocked'] : null;
         $agentId = is_string($h['agent'] ?? null) ? $h['agent'] : 'opencode';
 
         // A headless Claude session already knows how to describe itself in
         // full (mode, model, last message, structured prompts), unlike the
-        // server-hosted agents' thin rows below.
-        if ($agentId === 'claude') {
-            $entry = $claudeHeadless instanceof ClaudeHeadlessRuntime ? $claudeHeadless->session_entry((string)$h['id']) : null;
+        // server-hosted agents' thin rows below (which have no mode/model
+        // concept here and only borrow a last-message preview from the
+        // transcript). An Ollama session does too,
+        // from its own sidecar/status/transcript.
+        if ($agentId === 'claude' || $agentId === 'ollama') {
+            $runtime = RuntimeRegistry::runtime_for($agentId, RuntimeType::HEADLESS);
+            $entry = $agentId === 'claude'
+                ? ($runtime instanceof ClaudeHeadlessRuntime ? $runtime->session_entry((string)$h['id']) : null)
+                : ($runtime instanceof OllamaHeadlessRuntime ? $runtime->session_entry((string)$h['id']) : null);
 
             if ($entry !== null) {
                 $sessions[] = $entry;
@@ -688,7 +704,10 @@ function sessioneer_merge_headless_sessions(array $sessions): array
             'current_antigravity_model' => null,
             'last_turn_error' => null,
             'agent_session_id' => $h['id'],
-            'last_message' => null,
+            // Same cheap per-row transcript read a tracked tmux row already
+            // gets (build_session_entry()), so an opencode/codex row shows
+            // what it last said instead of a permanently blank preview.
+            'last_message' => SessionService::session_last_message((string)$h['id']),
             'context_used_percentage' => null,
             'git_worktree' => null,
             'resume_hint' => null,
@@ -778,7 +797,7 @@ function sessioneer_headless_sessions(): array
  * On each tick where the throttle interval has elapsed (HEADLESS_SYNC_SECONDS,
  * default 15), ONE serve round-trip adopts every live serve session into a
  * headless sidecar (keyed by its ses_* id, runtime=headless), batches the
- * serve `/session/status` map into SessionStatusStore, and prunes headless
+ * serve `/api/session/active` map into SessionStatusStore, and prunes headless
  * rows for sessions serve no longer has. Between ticks `list` reads the
  * sidecars/status locally. Serve unreachable: leaves the last-known
  * sidecars/status untouched (keeps the dashboard stable, not empty).
@@ -807,6 +826,7 @@ function sessioneer_headless_sync(): void
     }
 
     $liveIds = [];
+    $dirById = [];
     $sessions = $list['sessions'] ?? [];
 
     // A session is "active" (show it, adopt a sidecar) only if it's had
@@ -849,6 +869,10 @@ function sessioneer_headless_sync(): void
             : (is_array($s['location'] ?? null) && is_string($s['location']['directory'] ?? null) ? $s['location']['directory'] : null);
         $title = is_string($s['title'] ?? null) ? $s['title'] : null;
 
+        if ($workdir !== null) {
+            $dirById[$id] = $workdir;
+        }
+
         SidecarStore::write_sidecar($id, [
             'workdir' => $workdir,
             'spawned_at' => $createdMs > 0 ? (int)round($createdMs / 1000) : time(),
@@ -870,9 +894,9 @@ function sessioneer_headless_sync(): void
         }
     }
 
-    // Populate a status row for EVERY adopted session - GET /session/status
-    // only lists sessions it considers "live" (busy/retry), silently omitting
-    // idle ones, so relying on it alone left sessions with no status row at
+    // Populate a status row for EVERY adopted session - GET /api/session/active
+    // only lists sessions that are doing work, silently omitting idle ones, so
+    // relying on it alone left sessions with no status row at
     // all (sidecars populated, session_status
     // empty). Default to 'idle' for anything it didn't report, so status is
     // deterministic across every headless session. Clearing `blocked` here
@@ -885,17 +909,17 @@ function sessioneer_headless_sync(): void
         SessionStatusStore::update_status($id, ['status' => $statuses[$id] ?? 'idle', 'blocked' => null], true);
     }
 
-    // Blocked-prompt detection: ONE GET /permission + ONE GET /question
-    // batched across all sessions, then a headless session with a pending
-    // permission/question gets status 'blocked' + its normalized prompt
-    // shape (what the merged list's blocked panel + answer_prompt use).
+    // Blocked-prompt detection: one permission list read per live session
+    // directory (the v2 list is directory-scoped) plus one per-session form
+    // read, then a headless session with a pending permission/question gets
+    // status 'blocked' + its normalized prompt shape (what the merged list's
+    // blocked panel + answer_prompt use).
     //
-    // GET /permission returns empty on opencode 1.18.21 (the permission
-    // lives in-memory in the session's own process). The Sessioneer plugin
-    // (sessioneer-permissions.js) bridges permission.ask events into a JSON store
-    // the host-agent reads here as the authoritative fallback.
+    // The Sessioneer plugin (sessioneer-permissions.js) mirrors the same
+    // permission into a JSON store the host-agent reads here as a fallback for
+    // a request the API list does not expose.
     $permBySession = [];
-    foreach ($client->pending_permissions() as $perm) {
+    foreach ($client->pending_permissions(array_values($dirById)) as $perm) {
         $sid = is_string($perm['sessionID'] ?? null) ? $perm['sessionID'] : null;
         if ($sid !== null) {
             $permBySession[$sid] = $perm;
@@ -903,7 +927,7 @@ function sessioneer_headless_sync(): void
     }
 
     $questionBySession = [];
-    foreach ($client->pending_questions() as $q) {
+    foreach ($client->pending_questions(array_keys($liveIds)) as $q) {
         $sid = is_string($q['sessionID'] ?? null) ? $q['sessionID'] : null;
         if ($sid !== null) {
             $questionBySession[$sid] = $q;
@@ -916,8 +940,8 @@ function sessioneer_headless_sync(): void
         } elseif (isset($questionBySession[$id])) {
             SessionStatusStore::update_status($id, ['status' => 'blocked', 'blocked' => sessioneer_headless_question_prompt($questionBySession[$id])], true);
         } else {
-            // Plugin store fallback: the Sessioneer plugin writes permission.ask
-            // records to PermissionStore; GET /permission doesn't see them.
+            // Plugin store fallback: the Sessioneer plugin records a permission
+            // the serve's own request list does not expose for this directory.
             $pluginPerm = \HostAgent\Services\PermissionStore::read_pending_permission($id);
 
             if ($pluginPerm !== null) {
@@ -940,6 +964,18 @@ function sessioneer_headless_sync(): void
             'updated_at' => time(),
         ]);
     }
+}
+
+/**
+ * A Codex thread is not listed until its first message materializes it, so a
+ * sidecar written at create time must survive a sync that runs before then.
+ *
+ * @param array{session_name: string, spawned_at: ?int} $row
+ * @param array<string, true> $live
+ */
+function sessioneer_codex_sidecar_is_stale(array $row, array $live, int $now): bool
+{
+    return !isset($live[$row['session_name']]) && $now - (int)($row['spawned_at'] ?? 0) > 300;
 }
 
 /** Reconciles recent native Codex app-server threads into headless sidecars. */
@@ -986,7 +1022,7 @@ function sessioneer_codex_sync(): void
 
     foreach (SidecarStore::list_runtime_sidecars(RuntimeType::HEADLESS) as $row) {
         if (($row['agent'] ?? null) !== 'codex') continue;
-        if (!isset($live[$row['session_name']])) {
+        if (sessioneer_codex_sidecar_is_stale($row, $live, $now)) {
             SidecarStore::delete_sidecar($row['session_name']);
             SessionStatusStore::delete_status($row['session_name']);
         }
@@ -1244,6 +1280,17 @@ function sessioneer_headless_detail_shape(array $serve, string $agentId = 'openc
         $status['status'] = $serve['status']['type'] === 'active' ? 'working' : 'idle';
     }
 
+    // OpenCode's working/idle signal lives only in the serve's active map;
+    // the status store is written by the throttled headless sync, so a detail
+    // poll (and `sessioneer --wait`) would otherwise read a stale idle.
+    if ($agentId === 'opencode' && ($status['status'] ?? null) !== 'blocked') {
+        $liveStatus = (new OpenCodeServeClient())->status_map();
+
+        if ($liveStatus['ok'] === true) {
+            $status['status'] = $liveStatus['statuses'][$id] ?? 'idle';
+        }
+    }
+
     // OpenCode: 'blocked' is normally written by the throttled headless sync
     // (sessioneer_headless_sync(), which only runs off the dashboard `list`
     // action). A question that just appeared - or a session whose sync is
@@ -1259,8 +1306,9 @@ function sessioneer_headless_detail_shape(array $serve, string $agentId = 'openc
         }
     }
 
-    // Fetch the todo/task list from the serve's GET /session/:id/todo
-    // endpoint. Each item is mapped to the Sessioneer sidebar shape
+    // Fetch the todo/task list for the session. OpenCode v2 exposes no todo
+    // endpoint, so this stays null there; other agents keep their own source.
+    // Each item is mapped to the Sessioneer sidebar shape
     // {content, activeForm, status} — opencode has no activeForm, so
     // content is used for both.
     $todos = null;
@@ -1289,7 +1337,13 @@ function sessioneer_headless_detail_shape(array $serve, string $agentId = 'openc
         'id' => $id,
         'session' => $id,
         'name' => $id,
-        'title' => is_string($serve['title'] ?? null) && $serve['title'] !== '' ? $serve['title'] : (is_string($serve['name'] ?? null) && $serve['name'] !== '' ? $serve['name'] : (is_string($serve['preview'] ?? null) ? $serve['preview'] : $id)),
+        'title' => is_string($serve['title'] ?? null) && $serve['title'] !== ''
+            ? $serve['title']
+            : (is_string($serve['name'] ?? null) && $serve['name'] !== ''
+                ? $serve['name']
+                : (is_string($serve['preview'] ?? null)
+                    ? $serve['preview']
+                    : ($workdir !== null && $workdir !== '' ? basename($workdir) : $id))),
         'workdir' => $workdir,
         'directory' => $workdir,
         'agent' => $agentId,
@@ -1325,8 +1379,10 @@ function sessioneer_headless_detail_shape(array $serve, string $agentId = 'openc
                 ? CodexTranscriptService::turn_error_message($serve['lastTurnError'])
                 : CodexTranscriptService::turn_error_message($status['last_turn_error'] ?? null))
             : null,
-        'context_used_percentage' => null,
+        'context_used_percentage' => $agentId === 'codex' ? \HostAgent\Services\ContextUsage::codex_percentage($status['token_usage'] ?? null) : null,
         'git_worktree' => null,
+        // Read by `sessioneer --wait` to print the final answer.
+        'last_message' => $id !== '' ? SessionService::session_last_message($id) : null,
         'has_transcript' => true,
         'todos' => $todos,
     ];

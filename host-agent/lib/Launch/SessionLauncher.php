@@ -16,6 +16,9 @@ namespace HostAgent\Launch;
  *   agent_session_id  string   existing conversation to resume or reuse; absent = new session
  *   workdir           string   absolute directory; required for a new session
  *   model             string   optional
+ *   effort            string   optional reasoning level for a new or resumed session; refused
+ *                              when the agent/model has no such level or (Claude) the
+ *                              session is already live, since only a spawn sets it
  *   starting_mode     string   optional permission mode
  *   profile           string   optional account/profile
  *   caller_config_dir string   optional; the caller's CLAUDE_CONFIG_DIR, used to
@@ -52,7 +55,7 @@ interface SessionLauncher
     /**
      * The sessions this launcher can manage. Reply: ['ok' => true,
      * 'sessions' => list of {name, agent_session_id, status, workdir, title,
-     * model}].
+     * model, effort}].
      *
      * @param array<string, mixed> $request
      * @return array<string, mixed>

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace HostAgent\Services;
 
 use HostAgent\Agents\AgentRegistry;
+use HostAgent\Agents\ClaudeCodeAdapter;
 use HostAgent\Runtimes\RuntimeType;
 use HostAgent\Stores\SidecarStore;
 use HostAgent\Stores\PendingToolStore;
@@ -90,12 +91,7 @@ class SessionLifecycleService
         $agentArgv = $spawn['argv'];
         $agentSessionId = $spawn['assigned_id'];
 
-        $envFlags = [];
-
-        foreach ($spawn['env'] ?? [] as $envKey => $envValue) {
-            $envFlags[] = '-e';
-            $envFlags[] = "{$envKey}={$envValue}";
-        }
+        [$envFlags, $agentArgv] = self::apply_spawn_env($spawn['env'] ?? [], $agentArgv);
 
         $result = TmuxService::tmux_run(array_merge([
             // SESSIONEER_SESSION_NAME is how the SessionStart hook (see
@@ -305,11 +301,7 @@ class SessionLifecycleService
                 ? [Config::opencode_bin(), '--session', $agentSessionId]
                 : [Config::claude_bin($resumeProfile), '--resume', $agentSessionId];
 
-            $envFlags = [];
-
-            if ($resumeProfile !== null) {
-                $envFlags = ['-e', 'CLAUDE_CONFIG_DIR=' . Config::claude_config_dir($resumeProfile)];
-            }
+            [$envFlags, $resumeArgv] = self::apply_spawn_env($isOpencodeResume ? [] : ClaudeCodeAdapter::account_env($resumeProfile), $resumeArgv);
 
             $result = TmuxService::tmux_run(array_merge([
                 'new-session', '-d', '-s', $name,
@@ -398,5 +390,31 @@ class SessionLifecycleService
         }
 
         return ['ok' => empty($failed), 'killed' => $killed, 'failed' => $failed];
+    }
+
+    /**
+     * tmux `-e` can only set a variable, never remove one the tmux server
+     * already carries, so a null value (see AgentAdapter::build_spawn_argv())
+     * becomes an `env -u` prefix on the command; env execs the agent, so the
+     * pane's process is still the agent itself.
+     *
+     * @param array<string, ?string> $env
+     * @param string[] $argv
+     * @return array{0: string[], 1: string[]} [tmux -e flags, argv]
+     */
+    private static function apply_spawn_env(array $env, array $argv): array
+    {
+        $flags = [];
+        $unset = [];
+
+        foreach ($env as $key => $value) {
+            if ($value === null) {
+                array_push($unset, '-u', $key);
+            } else {
+                array_push($flags, '-e', "{$key}={$value}");
+            }
+        }
+
+        return [$flags, $unset === [] ? $argv : ['env', ...$unset, ...$argv]];
     }
 }

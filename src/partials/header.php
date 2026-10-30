@@ -18,6 +18,14 @@
         <?php if ($found && ($detail['agent'] ?? 'claude') === 'claude'): ?>
           <span class="shrink-0 inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border <?= App\Views\SessionRowView::profile_badge_class($detail['profile'] ?? null) ?>"><?= htmlspecialchars(App\Views\SessionRowView::profile_label($detail['profile'] ?? null), ENT_QUOTES) ?></span>
         <?php endif ?>
+        <?php // Every other agent gets its own badge here - a Claude Code page is
+              // the default look, so without this an Ollama/Codex/OpenCode page
+              // is only distinguishable by tints and its control row. Same
+              // badge class as the dashboard row (SessionRowView::agent_badge_class). ?>
+        <?php if ($found && ($detail['agent'] ?? 'claude') !== 'claude'): ?>
+          <?php $headerAgent = (string)($detail['agent'] ?? 'claude'); ?>
+          <span class="shrink-0 inline-block text-[10px] leading-none font-medium px-2 py-0.5 rounded-full border <?= App\Views\SessionRowView::agent_badge_class($headerAgent) ?>"><?= htmlspecialchars(App\Views\PageView::agent_label($headerAgent), ENT_QUOTES) ?></span>
+        <?php endif ?>
         <?php // Same pill/placement as SessionRowView's own headless badge
               // (sidebar-row.php, row.php) - kept literally identical so it
               // reads as the same signal everywhere it shows up. ?>
@@ -28,7 +36,13 @@
       <?php // The workdir itself is NOT shown here - the sidebar's own "This session" block
             // already shows it, with a copy button the header never had. ?>
       <?php $gitBranch = $found && !empty($detail['git_branch']) ? (string)$detail['git_branch'] : ''; ?>
-      <div id="header-branch" class="text-[11px] text-slate-500 truncate<?= $gitBranch === '' ? ' hidden' : '' ?>"><?= htmlspecialchars($gitBranch, ENT_QUOTES) ?></div>
+      <div class="flex items-center justify-center gap-2 min-w-0 text-[11px] text-slate-500">
+        <div id="header-branch" class="truncate<?= $gitBranch === '' ? ' hidden' : '' ?>"><?= htmlspecialchars($gitBranch, ENT_QUOTES) ?></div>
+        <?php if ($found && in_array($detail['agent'] ?? 'claude', ['claude', 'codex'], true)): ?>
+          <?php $contextPct = $detail['context_used_percentage'] ?? null; ?>
+          <span id="header-context" data-context-pct="<?= $contextPct === null ? '' : htmlspecialchars((string)$contextPct, ENT_QUOTES) ?>" class="shrink-0<?= $contextPct !== null && $contextPct >= 80 ? ' text-amber-400' : '' ?>" title="Current context window usage; unavailable until the agent reports a snapshot and window size"><?= $contextPct === null ? 'ctx unavailable' : 'ctx ' . (int)round($contextPct) . '%' ?></span>
+        <?php endif ?>
+      </div>
     </div>
     <div class="flex items-center gap-1 justify-self-end">
       <button type="button" id="sidebar-toggle-btn" aria-label="Show other sessions"

@@ -2,13 +2,14 @@
 
 declare(strict_types=1);
 
-/** Persistent, directory-scoped OpenCode v1 /event consumer. */
+/** Persistent, directory-scoped OpenCode v2 /api/event consumer. */
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use HostAgent\Runtimes\OpenCodeServeClient;
 use HostAgent\Runtimes\RuntimeType;
 use HostAgent\Services\Config;
+use HostAgent\Services\OpenCodeForm;
 use HostAgent\Services\OpenCodeSseConsumer;
 use HostAgent\Services\OpenCodeSseFrameParser;
 use HostAgent\Services\ProcessRunner;
@@ -30,16 +31,26 @@ function opencode_sse_recover(string $directory, array $tracked): void
 {
     // Empty/error is intentionally non-authoritative: it must never erase a
     // prompt learned from SSE. This is only a reconnect gap recovery attempt.
-    $result = ProcessRunner::run_process([
-        'curl', '--silent', '--show-error', '--fail-with-body', '--max-time', '3',
-        '--header', 'x-opencode-directory: ' . rawurlencode($directory),
-        Config::opencode_server_url() . '/question',
-    ]);
-    if ($result['exit'] !== 0) return;
-    $pending = json_decode($result['stdout'], true);
-    if (!is_array($pending)) return;
-    foreach ($pending as $question) {
-        if (is_array($question)) OpenCodeSseConsumer::handle(['type' => 'question.asked', 'properties' => $question], $directory, $tracked);
+    // v2 scopes forms to a session, so each tracked agent id is queried.
+    foreach ($tracked as $agentId => $storeId) {
+        $result = ProcessRunner::run_process([
+            'curl', '--silent', '--show-error', '--fail-with-body', '--max-time', '3',
+            ...Config::opencode_curl_auth_args(),
+            '--header', 'x-opencode-directory: ' . rawurlencode($directory),
+            Config::opencode_server_url() . '/api/session/' . rawurlencode($agentId) . '/form',
+        ]);
+        if ($result['exit'] !== 0) continue;
+        $body = json_decode($result['stdout'], true);
+        $forms = is_array($body) && is_array($body['data'] ?? null) ? $body['data'] : [];
+        foreach ($forms as $form) {
+            if (!is_array($form)) continue;
+            $questions = OpenCodeForm::questions($form);
+            if ($questions === null) continue;
+            OpenCodeSseConsumer::handle([
+                'type' => 'question.asked',
+                'properties' => ['id' => $form['id'] ?? null, 'sessionID' => $form['sessionID'] ?? $agentId, 'questions' => $questions],
+            ], $directory, $tracked);
+        }
     }
 }
 
@@ -49,9 +60,10 @@ function opencode_sse_start(string $directory, array $tracked): ?array
     $process = proc_open([
         'curl', '--silent', '--show-error', '--fail-with-body', '--no-buffer',
         '--connect-timeout', '3', '--speed-limit', '1', '--speed-time', '90',
+        ...Config::opencode_curl_auth_args(),
         '--header', 'Accept: text/event-stream',
         '--header', 'x-opencode-directory: ' . rawurlencode($directory),
-        Config::opencode_server_url() . '/event',
+        Config::opencode_server_url() . '/api/event',
     ], [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
     if (!is_resource($process)) {
         fwrite(STDERR, "OpenCode SSE: could not subscribe {$directory}\n");

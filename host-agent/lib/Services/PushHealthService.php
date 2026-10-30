@@ -136,10 +136,8 @@ class PushHealthService
             ];
         }
 
-        $healthResult = ProcessRunner::run_process([
-            'curl', '--silent', '--max-time', '3',
-            'http://localhost:4096/global/health',
-        ]);
+        $serverUrl = Config::opencode_server_url();
+        $healthResult = ProcessRunner::run_process(self::opencode_health_argv());
 
         $healthy = trim($healthResult['stdout']) !== '' && $healthResult['exit'] === 0;
 
@@ -148,9 +146,26 @@ class PushHealthService
             'label' => 'OpenCode server',
             'ok' => $healthy,
             'detail' => $healthy
-                ? "{$unitName} active, healthy on :4096"
-                : "{$unitName} active but /global/health did not answer",
+                ? "{$unitName} active, healthy on {$serverUrl}"
+                : "{$unitName} active but {$serverUrl}/global/health did not answer",
         ];
+    }
+
+    /**
+     * The curl argv for that health probe, built from the configured server
+     * rather than a literal: the serve unit's port moved (4096 -> 8889 with the
+     * v2 server) and every hardcoded copy of it silently kept probing a dead
+     * port, reporting a healthy server as broken.
+     *
+     * @return array<int, string>
+     */
+    public static function opencode_health_argv(): array
+    {
+        return array_merge(
+            ['curl', '--silent', '--max-time', '3'],
+            Config::opencode_curl_auth_args(),
+            [Config::opencode_server_url() . '/global/health']
+        );
     }
 
     /**
@@ -309,6 +324,8 @@ class PushHealthService
         $codexBridge = self::codex_bridge_check();
         $codexBridge['section'] = 'Codex';
         $checks[] = $codexBridge;
+
+        $checks = array_merge($checks, OllamaHealthService::checks());
 
         $checks[] = TuiLayoutMismatchService::health_check();
 

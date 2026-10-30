@@ -7,8 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A personal, single-user web UI for managing Claude Code, Codex, OpenCode
-and Antigravity sessions (tmux sessions `cc-*`, `oc-*`, `ag-*`, plus
-headless ones) on this dev box — list sessions, see blocked prompts, answer them, send
+Antigravity and local Ollama sessions (tmux sessions `cc-*`, `oc-*`, `ag-*`,
+headless ones including `claude-headless-*`/`ollama-headless-*`) on this dev box — list sessions, see blocked prompts, answer them, send
 messages, view transcripts, kill sessions. No database server; state lives in a local SQLite file; no user accounts.
 Dashboard access control is the network binding (LAN-only); the optional Quick Prompt API additionally requires a dedicated bearer token.
 
@@ -65,10 +65,16 @@ To exercise a single area, run that one `tests/test_*.php` file directly
 with `php` rather than the whole suite (check its own header comment for
 what it covers and what fixtures it needs).
 
+`packages/sessioneer-client` is a standalone Composer package with its own
+dependency-free runner (`php packages/sessioneer-client/tests/run.php`); the
+repo suite reaches it through `tests/test_sessioneer_client.php`, which just
+requires that runner.
+
 No Pint/Rector here — this is not a Laravel project. **PHPStan does run**,
-though: `composer phpstan` (level 6 over `host-agent/lib`, `host-agent/hooks`
-and `src/lib`), and CI gates on it, so run it before pushing. Findings that
-predate a change live in `phpstan-baseline.neon` — note that a baseline entry
+though: `composer phpstan` (level 6 over `host-agent/lib`, `host-agent/hooks`,
+`src/lib` and `packages/sessioneer-client/src`), and CI gates on it, so run it
+before pushing. Findings that predate a change live in
+`phpstan-baseline.neon` — note that a baseline entry
 is keyed to the exact method name, so renaming or extracting a method moves
 its body out from under its entry and resurfaces the error.
 
@@ -157,15 +163,28 @@ Docker-spawned, makes that impossible by construction — not by convention.
    agent/runtime work belongs — keep per-agent branching out of the services:
    `host-agent/lib/Agents/*` is WHICH agent (`AgentAdapter` + `AgentRegistry`,
    with `ClaudeCodeAdapter`/`CodexAdapter`/`OpenCodeAdapter`/
-   `AntigravityAdapter` behind it; what a new agent must answer is the interface,
-   including `model_catalog()`, which feeds every model dropdown through
-   `list_models`, and `tests/test_agent_adapter_contract.php` runs the same
-   assertions against every registered adapter), and `host-agent/lib/Runtimes/*` is HOW it
+   `AntigravityAdapter`/`OllamaAdapter` behind it; what a new agent must answer
+   is the interface, including `model_catalog()`, which feeds every model
+   dropdown through `list_models`, and
+   `tests/test_agent_adapter_contract.php` runs the same assertions against
+   every registered adapter), and `host-agent/lib/Runtimes/*` is HOW it
    runs, independently of which agent it is (`TmuxRuntime` vs
    `HeadlessRuntime` behind `RuntimeProvider`/`RuntimeRegistry`/`RuntimeType`,
    plus `OpenCodeServeClient`, `CodexBridgeClient`, `CodexHeadlessRuntime`).
    All PSR-4 autoloaded under
    `HostAgent\Services`/`Stores`/`Agents`/`Runtimes`.
+
+   `OllamaAdapter`/`OllamaHeadlessRuntime` are the chat-only local-model agent:
+   no tmux, no tools, no permission prompts, one `POST /api/chat` turn run by
+   `host-agent/ollama_turn_worker.php` in a `pcntl_fork`+`pcntl_exec` child (a
+   local model takes minutes and `php -S` is single-threaded, so an inline turn
+   would freeze every page; `proc_close` is not used because it waits). The
+   conversation is Sessioneer's own JSONL under `$SIDECAR_DIR/ollama/`, written
+   in Claude's line shape so the existing transcript reader, search and copy
+   affordances work unchanged, and it is the only copy. `send_message` marks the
+   session working *before* spawning, because a fast model finishes inside the
+   spawn and the write would otherwise land on top of the worker's own idle; a
+   `working` row whose worker is gone self-heals to idle with an error.
 
    Claude Code's headless runtime (no tmux pane) is a second persistent
    host-native service in the Codex bridge's mould:
@@ -249,6 +268,27 @@ Docker-spawned, makes that impossible by construction — not by convention.
    process per transcript is enforced by
    `SessionLifecycleService::agent_session_id_already_live()`, which counts
    headless sessions as live, and by the per-conversation resume lock.
+   `ContextUsage` calculates per-session context snapshots separately from
+   cumulative token counters. The Claude manager persists the latest main-thread
+   assistant input/cache snapshot plus its matching result `modelUsage` window
+   in `SessionStatusStore.context_usage` (`context_usage_json`, an additive
+   column). It replaces streamed copies, ignores subagent snapshots, and clears
+   context on compaction, conversation/model changes and respawn. A missing
+   measured window stays unknown; no model-size constants are guessed. Codex's
+   stored bridge event already carries `tokenUsage.last` and `modelContextWindow`;
+   page detail and quota use those, keeping `total` counters separate. The session
+   header and quota footer follow the same detail-poll snapshot, independent of
+   account quota availability. Existing Claude records need a new response from
+   the updated manager before they can show a reading; installing manager changes
+   still requires the idle/approved restart described above.
+   Claude's footer effort selector uses `POST /session_effort.php` → host-agent
+   `set_effort` → `RuntimeProvider::update_settings()` → manager `sessioneer/setEffort`.
+   Live changes use session-scoped `apply_flag_settings` and persist only after ACK;
+   an empty string clears the sidecar override, while dormant changes save without
+   spawning. Detail polling requests status with `include_effort: true`, whitelisting
+   only `get_settings.applied.effort` (never effective settings or source paths).
+   The displayed level reflects CLI limits; unsupported tmux/CLI/model controls
+   stay disabled. Model, mode and effort share the mobile footer row.
    A headless process renders no status line, so the manager writes each
    `rate_limit_event` into the per-account quota state itself, through
    `QuotaLiveStateWriter` (the same merge rule the statusLine script uses).
@@ -273,15 +313,32 @@ Docker-spawned, makes that impossible by construction — not by convention.
    freshness).
 
    `bin/sessioneer` (docs/cli.md) is a second socket client besides the web
-   container: it sends the `launch`, `launch_kill`, `launch_list`, `launch_send` and `launch_peers` actions (peer messaging: the host agent stamps the sender from `SESSIONEER_SELF`, which every spawned session carries), which `HostAgent\Launch\
+   container: it sends the `launch`, `launch_kill`, `launch_list`, `launch_send` and `launch_peers` actions (peer messaging: the host agent stamps the sender from `SESSIONEER_SELF`, which every spawned session carries, or from `CODEX_THREAD_ID` in a Codex session), which `HostAgent\Launch\
    LaunchService` routes to a per-agent `SessionLauncher` (the interface
-   documents the request/reply keys; only `ClaudeSessionLauncher` exists).
+   documents the request/reply keys; `ClaudeSessionLauncher`,
+   `CodexSessionLauncher`, `OllamaSessionLauncher` and
+   `OpenCodeSessionLauncher`, sharing the `PeerLookup` trait).
    A new agent's launch support is one class plus one line in
    `LaunchService::LAUNCHERS`, not a branch in `Sessions.php`. The Claude
    launcher creates a headless session, resumes one, or - when a sidecar
    already tracks the conversation id - sends the prompt to that session
    instead of opening a second process; a conversation held by a bare
    terminal process is refused (Take over is the dashboard's job).
+   `OpenCodeSessionLauncher` creates/resumes through `OpenCodeServeClient`
+   (a session's name is its `ses_*` id), applies `--model` as
+   `provider/model` with the session-scoped model endpoint, and kills by
+   interrupting then deleting the serve session; `session_detail` reads the
+   live `/api/session/active` map for an OpenCode working/idle state, which is
+   what makes `--wait` see a turn finish instead of a stale stored idle.
+
+   `packages/sessioneer-client` is the PHP side of that same CLI contract: a
+   standalone Composer package a Laravel app uses to run one `sessioneer --wait
+   --json` turn (argv/stdin, safe option tokens, separate streams, a hard
+   deadline, the JSON envelope it reads the answer from, cleanup of the session
+   it created). It is host-side by nature - it needs the
+   agent socket - so a containerised app uses its host-bridge recipe instead of
+   calling the socket from the container. The repo consumes it in no code path
+   of its own; the package is tested through `tests/test_sessioneer_client.php`.
 5. `App\Views\*` (one render class per feature area — `TranscriptView`,
    `SessionRowView`, `BlockedPromptView`, `QuotaFooterView`,
    `HealthBoxView`, `PushNotifyView`, plus `PageView` for the two full-page
@@ -353,29 +410,50 @@ that only `create_agent_session()`-spawned sessions have).
 
 ## Conventions worth knowing before editing
 
-- **OpenCode server integration: prefer the v2 `/api/session` API for
-  everything possible from now on**. v1 `/session`
-  only returns the tiny "currently live" set and is unreliable for
-  enumeration (caused the headless sync to prune just-resumed sessions);
-  v2 is the fuller, canonical surface. When touching any opencode-server
-  call, check whether a v2 endpoint exists and use it; fall back to v1
-  only where v2 genuinely isn't available/working for that operation.
- - **OpenCode question events (1.18.21):** `GET /event` delivers
-   `question.asked/replied/rejected` when scoped with the URL-encoded
-   **exact session directory** in `x-opencode-directory`. An unscoped or
-   parent-directory connection can deliver only connected/heartbeat events.
-   The host-native `sessioneer-opencode-events.service` consumes these events
-   into `SessionStatusStore`; throttled headless polling must preserve its
-   live questions. Replies require the question request ID, not the tool
-   call ID. v2 replies use no-content success; scoped legacy replies return
-   JSON `true`.
+- **OpenCode server integration is v2-only.** Every call goes to the `/api`
+  surface (`/api/session`, `/api/session/active`, `/api/permission/request`,
+  `/api/model`); there is no v1 server left to fall back to. The permission and
+  form lists are directory-scoped, so the headless sync queries them per live
+  session workdir. v2 has no todo endpoint, so opencode sessions show no todo
+  list in the sidebar.
+  **Transcripts are read from both storage generations**:
+  `OpenCodeTranscriptService` looks a session up in the legacy
+  `session`/`message`/`part` tables and, when it has no row there, in 2.x's
+  `session_v2`/`session_message` (`data.text` for a user message,
+  `data.content[]` with text/reasoning/tool entries plus an optional
+  `data.error` for an assistant one). New sessions exist only in the 2.x
+  pair, so a reader that skips it shows every new opencode session as
+  "Nothing recorded yet." - keep both paths when touching that class, and
+  go through it (`list_all_transcripts()`, `find_transcript_path()`) rather
+  than querying either table directly from another service: the archived
+  list's own inline `session` query was hiding every post-upgrade session.
+ - **OpenCode question events (v2 forms):** `GET /api/event` delivers
+   `form.created/replied/cancelled` when scoped with the URL-encoded
+   **exact session directory** in `x-opencode-directory`. The `question`
+   tool creates a form whose `metadata.kind` is `question`; each field is
+   one question (`key`, `title`, `description`, `options[{value,label}]`,
+   `type` `string` or `multiselect`, `custom`). The host-native
+   `sessioneer-opencode-events.service` consumes these into
+   `SessionStatusStore`; throttled headless polling must preserve its live
+   questions. Answer with `POST /api/session/{id}/form/{formID}/reply` and
+   `{"answer":{"q0":"<value>"}}` (204 on success, 404 once the form is
+   gone), mapping labels to option values. The serve server requires HTTP
+   Basic auth (user `opencode`, password from
+   `~/.config/opencode/service.json`), so every curl call carries
+   `Config::opencode_curl_auth_args()`.
 
 - **Claude Code multi-account ("profile") support: any new Claude-specific
   transcript/session-lookup function needs a `?string $profile = null`
   parameter, or it silently only works for the default account.** A session can be spawned under a
   different `CLAUDE_CONFIG_DIR` (a separate account, e.g. work), named in
   `host-agent/config/agents.php`. `Config::claude_config_dir($profile)` is
-  the base every Claude-account-scoped path is built from; the profile name
+  the base every Claude-account-scoped FILESYSTEM path is built from (the
+  default account is `~/.claude` there), whereas a spawned process's env comes
+  from `ClaudeCodeAdapter::account_env()`: a profile with a `config_dir` sets
+  `CLAUDE_CONFIG_DIR` explicitly, every other one (default, `personal`,
+  unknown) has it REMOVED (null; tmux gets an `env -u` prefix, the headless
+  manager drops it from the child env) because the CLI reads `~/.claude.json`
+  only when it is unset and the spawner may carry another account's value; the profile name
   itself lives on the sidecar's `profile` column and flows through
   `SessionService::build_session_entry()`'s own `profile` field. A caller
   with no sidecar to consult (a bare/untracked process, an archived-session

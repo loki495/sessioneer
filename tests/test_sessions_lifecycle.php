@@ -711,6 +711,11 @@ try {
         ? trim(TmuxService::tmux_run(['list-panes', '-t', $withoutTaskTools['name'], '-F', '#{pane_start_command}'])['stdout'])
         : '';
     assert_true(
+        str_starts_with($noTaskToolsPaneCommand, 'env -u CLAUDE_CONFIG_DIR ') || str_starts_with($noTaskToolsPaneCommand, '"env -u CLAUDE_CONFIG_DIR '),
+        'create (default account): the pane command runs under `env -u CLAUDE_CONFIG_DIR`, so a CLAUDE_CONFIG_DIR inherited from the tmux server cannot pick the account'
+    );
+
+    assert_true(
         !str_contains($noTaskToolsPaneCommand, '--allowedTools'),
         'create (enableTaskTools omitted, defaults to false): no --allowedTools flag at all - the default spawn command is unchanged'
     );
@@ -1184,6 +1189,62 @@ try {
     assert_true($resumedEntry !== null, 'resume: the new session appears in list_all_sessions()');
     assert_equal($resumeId, $resumedEntry['agent_session_id'] ?? null, 'resume: sidecar records the resumed agent_session_id, not a freshly generated one');
     assert_equal(Config::www_root() . '/project-a', $resumedEntry['workdir'] ?? null, 'resume: sidecar records the requested workdir');
+
+    // --- account env: a CLAUDE_CONFIG_DIR carried by the tmux server (as one
+    // inherited from a work-account shell would be) must not pick the account
+    // of a created or resumed pane; a profile with its own config_dir keeps it. ---
+    $paneEnv = static function (string $session): ?array {
+        $pid = trim(TmuxService::tmux_run(['list-panes', '-t', $session, '-F', '#{pane_pid}'])['stdout']);
+        $raw = $pid !== '' ? @file_get_contents("/proc/{$pid}/environ") : false;
+
+        return $raw === false ? null : explode("\0", $raw);
+    };
+    $hasConfigDir = static fn (?array $env, string $value): bool => $env !== null && in_array("CLAUDE_CONFIG_DIR={$value}", $env, true);
+    // Unreadable env (pane gone, /proc denied) must fail the negative assertion, not pass it.
+    $noConfigDir = static fn (?array $env): bool => $env !== null && array_filter($env, static fn (string $e): bool => str_starts_with($e, 'CLAUDE_CONFIG_DIR=')) === [];
+
+    TmuxService::tmux_run(['set-environment', '-g', 'CLAUDE_CONFIG_DIR', '/inherited/wrong']);
+    $envSessions = [];
+
+    $envDefault = SessionLifecycleService::create_agent_session(Config::www_root() . '/project-a');
+    preg_match('/Created session (cc-\S+) in/', (string)($envDefault['message'] ?? ''), $m1);
+    $envSessions[] = $m1[1] ?? null;
+    usleep(300000);
+    assert_true(isset($m1[1]) && $noConfigDir($paneEnv($m1[1])), 'create (default account): the tmux server\'s CLAUDE_CONFIG_DIR does not reach the pane');
+
+    sleep(1);
+    $envWork = SessionLifecycleService::create_agent_session(Config::www_root() . '/project-a', false, null, null, null, 'work');
+    preg_match('/Created session (cc-\S+) in/', (string)($envWork['message'] ?? ''), $m2);
+    $envSessions[] = $m2[1] ?? null;
+    usleep(300000);
+    assert_true(isset($m2[1]) && $hasConfigDir($paneEnv($m2[1]), Config::claude_config_dir('work')), 'create (work profile): its own config_dir is set explicitly');
+
+    sleep(1);
+    $envUnknown = SessionLifecycleService::create_agent_session(Config::www_root() . '/project-a', false, null, null, null, 'no-such-profile');
+    preg_match('/Created session (cc-\S+) in/', (string)($envUnknown['message'] ?? ''), $m3);
+    $envSessions[] = $m3[1] ?? null;
+    usleep(300000);
+    assert_true(isset($m3[1]) && $noConfigDir($paneEnv($m3[1])), 'create (unknown profile): falls back to the default account, CLAUDE_CONFIG_DIR removed');
+
+    $envResumeId = '77777777-7777-4777-8777-777777777771';
+    sleep(1);
+    $envResumeDefault = SessionLifecycleService::resume_agent_session(Config::www_root() . '/project-a', $envResumeId, 'personal');
+    $envSessions[] = $envResumeDefault['name'] ?? null;
+    usleep(300000);
+    assert_true(is_string($envResumeDefault['name'] ?? null) && $noConfigDir($paneEnv($envResumeDefault['name'])), 'resume (personal): the inherited CLAUDE_CONFIG_DIR is removed, not replaced by an explicit default dir');
+
+    $envResumeId2 = '77777777-7777-4777-8777-777777777772';
+    sleep(1);
+    $envResumeWork = SessionLifecycleService::resume_agent_session(Config::www_root() . '/project-a', $envResumeId2, 'work');
+    $envSessions[] = $envResumeWork['name'] ?? null;
+    usleep(300000);
+    assert_true(is_string($envResumeWork['name'] ?? null) && $hasConfigDir($paneEnv($envResumeWork['name']), Config::claude_config_dir('work')), 'resume (work profile): keeps its own config_dir');
+
+    foreach (array_filter($envSessions) as $envSession) {
+        SessionLifecycleService::kill_agent_session($envSession);
+    }
+
+    TmuxService::tmux_run(['set-environment', '-g', '-u', 'CLAUDE_CONFIG_DIR']);
 
     // --- resume: refuses a agent_session_id that already has a live pane
     // (the one just resumed above) - the guard against two panes fighting

@@ -6,6 +6,7 @@
   var list = document.getElementById('history-list');
   var headerTitle = document.getElementById('header-title');
   var headerBranch = document.getElementById('header-branch');
+  var headerContext = document.getElementById('header-context');
 
   if (!list) {
     return; // session not found - nothing here to wire up
@@ -1037,15 +1038,7 @@
     });
   }
 
-  // The session-info card (title/name/workdir/attached/context-used%/
-  // worktree/activity) is gone - the fixed
-  // header now carries just title + cwd (see header.php), and only the
-  // title half needs live updating here (an AI-generated title can appear/
-  // change mid-session; cwd never changes for a session's lifetime, so
-  // header.php's own server-render is the only place it's ever needed).
-  // Keeps the tooltip (title attribute) in sync with the visible text too,
-  // not just textContent - otherwise a later title change would leave the
-  // hover tooltip showing a stale one from page load.
+  // Keep the header's title, branch and per-session context in sync with SSR.
   function renderStaticInfo(detail) {
     if (!headerTitle) {
       return;
@@ -1055,8 +1048,16 @@
     headerTitle.textContent = title;
     headerTitle.title = title;
 
-    // Mirrors header.php's own header-branch block - the branch can change
-    // mid-session (a `git checkout` in the same workdir), unlike the title.
+    if (headerContext) {
+      var contextPct = detail.context_used_percentage;
+      var knownContext = typeof contextPct === 'number' && isFinite(contextPct);
+      headerContext.dataset.contextPct = knownContext ? String(contextPct) : '';
+      headerContext.textContent = knownContext ? 'ctx ' + Math.round(contextPct) + '%' : 'ctx unavailable';
+      headerContext.classList.toggle('text-amber-400', knownContext && contextPct >= 80);
+      document.dispatchEvent(new Event('sessioneer-context-updated'));
+    }
+
+    // A checkout can change the branch while the session keeps running.
     if (headerBranch) {
       headerBranch.textContent = detail.git_branch || '';
       headerBranch.classList.toggle('hidden', !detail.git_branch);
@@ -1176,6 +1177,16 @@
     if (detail.current_mode) {
       modeSelect.value = detail.current_mode;
     }
+  }
+
+  function renderEffortToggle(detail) {
+    if (!effortSelect || effortSaving) return;
+    var available = detail.effort_available === true;
+    lastEffortValue = detail.current_effort || '';
+    effortSelect.value = lastEffortValue;
+    effortSelect.disabled = !available;
+    effortSelect.options[0].textContent = available ? 'Default effort' : 'Unavailable';
+    effortSelect.title = detail.effort_message || 'Session-only reasoning effort';
   }
 
   // Mirrors TranscriptView::render_model_toggle_html() - same shape as
@@ -2052,6 +2063,7 @@
           renderTurnError(data);
           renderModeToggle(data);
           renderModelToggle(data);
+          renderEffortToggle(data);
           renderAntigravityModelToggle(data);
           renderTodoList(data);
           renderBlockedSection(data);
@@ -2661,6 +2673,39 @@
     });
   }
 
+  var effortSelect = document.getElementById('effort-select');
+  var effortError = document.getElementById('effort-setting-error');
+  var effortSaving = false;
+  var lastEffortValue = effortSelect ? effortSelect.value : '';
+
+  if (effortSelect) {
+    effortSelect.addEventListener('change', function () {
+      effortSaving = true;
+      effortSelect.disabled = true;
+      if (effortError) { effortError.textContent = ''; effortError.classList.add('hidden'); }
+      fetch('/session_effort.php', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ session: sessionName, csrf_token: csrfToken, effort: effortSelect.value }).toString()
+      }).then(function (response) { return response.json(); })
+        .then(function (data) {
+          if (!data || !data.ok) throw new Error(data && data.message ? data.message : 'Could not change effort');
+          effortSaving = false;
+          pollOnce();
+        }).catch(function (error) {
+          effortSaving = false;
+          effortSelect.value = lastEffortValue;
+          effortSelect.disabled = false;
+          if (effortError) {
+            effortError.textContent = error && error.message ? error.message : 'Could not change effort';
+            effortError.classList.remove('hidden');
+          }
+          pollOnce();
+        });
+    });
+  }
+
   // --- model select: drives Claude Code's real /model picker to switch
   // session-only (set_model() in Sessions.php works out and sends the
   // Up/Down/'s' key sequence - see its own docblock for the full mechanics). The request blocks until every press is
@@ -2736,11 +2781,15 @@
     fetch('/session_list_models.php', { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (data) {
+        var placeholder = opencodeModelSelect.options[0];
+
         if (!data || !data.ok || !data.models) {
+          if (placeholder) {
+            placeholder.textContent = 'Models unavailable';
+          }
           return;
         }
 
-        var placeholder = opencodeModelSelect.options[0];
         while (opencodeModelSelect.options.length > 1) {
           opencodeModelSelect.remove(1);
         }
@@ -2753,17 +2802,42 @@
           opencodeModelSelect.appendChild(opt);
         });
 
+        if (data.models.length === 0) {
+          if (placeholder) {
+            placeholder.textContent = 'No models available';
+          }
+          return;
+        }
+
         // preselect the session's current model (if it appears in the list)
+        var matchedCurrent = false;
         for (var i = 1; i < opencodeModelSelect.options.length; i++) {
           var o = opencodeModelSelect.options[i];
           if (o.value === ocCurrentModel && o.getAttribute('data-provider') === ocCurrentProvider) {
             opencodeModelSelect.selectedIndex = i;
+            matchedCurrent = true;
             break;
           }
         }
+
+        // A serve session can carry no model on its row (opencode stores it
+        // per message), so no option matches. Say so honestly instead of
+        // leaving the loading placeholder forever; the placeholder itself is
+        // not selectable, so this never posts an empty model.
+        if (placeholder) {
+          placeholder.disabled = true;
+          placeholder.textContent = matchedCurrent
+            ? 'Select model'
+            : (ocCurrentModel === '' ? 'Default model' : 'Select model');
+        }
         opencodeModelSelect.disabled = false;
       })
-      .catch(function () {});
+      .catch(function () {
+        var placeholder = opencodeModelSelect.options[0];
+        if (placeholder) {
+          placeholder.textContent = 'Models unavailable';
+        }
+      });
 
     opencodeModelSelect.addEventListener('change', function () {
       var opt = opencodeModelSelect.options[opencodeModelSelect.selectedIndex];

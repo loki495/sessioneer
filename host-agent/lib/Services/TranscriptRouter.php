@@ -34,7 +34,8 @@ class TranscriptRouter
         return TranscriptService::find_transcript_path($sessionId, $profile)
             ?? AntigravityTranscriptService::find_transcript_path($sessionId)
             ?? OpenCodeTranscriptService::find_transcript_path($sessionId)
-            ?? CodexTranscriptService::find_transcript_path($sessionId);
+            ?? CodexTranscriptService::find_transcript_path($sessionId)
+            ?? OllamaTranscriptService::find_transcript_path($sessionId);
     }
 
     /**
@@ -75,7 +76,8 @@ class TranscriptRouter
 
         $path = AntigravityTranscriptService::find_transcript_path($sessionId)
             ?? OpenCodeTranscriptService::find_transcript_path($sessionId)
-            ?? CodexTranscriptService::find_transcript_path($sessionId);
+            ?? CodexTranscriptService::find_transcript_path($sessionId)
+            ?? OllamaTranscriptService::find_transcript_path($sessionId);
 
         return ['path' => $path, 'profile' => null];
     }
@@ -93,6 +95,25 @@ class TranscriptRouter
     public static function is_codex_path(string $path): bool
     {
         return CodexTranscriptService::is_codex_path($path);
+    }
+
+    /**
+     * The newest renderable entry of a transcript, for callers that only
+     * want a preview (the dashboard's per-row last message). Backends that
+     * can answer from the tail of their storage do so; the rest fall back to
+     * a one-entry page, exactly what they did before this existed.
+     *
+     * @return array{type:string, role:?string, timestamp:?string, blocks:array<int, array<string, mixed>>}|null
+     */
+    public static function read_last_entry(string $path): ?array
+    {
+        if (self::is_opencode_path($path)) {
+            return OpenCodeTranscriptService::read_last_entry($path);
+        }
+
+        $page = self::read_transcript_page($path, null, 1);
+
+        return $page['ok'] && !empty($page['entries']) ? $page['entries'][0] : null;
     }
 
     /**

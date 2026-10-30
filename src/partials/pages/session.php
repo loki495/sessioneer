@@ -186,7 +186,7 @@ $this->layout('layout', [
      overflow-hidden flex ancestor risks it being clipped, exactly the
      kind of thing worth not risking on the same browser this is already
      working around a fixed-position bug on. */ ?>
-<div id="app-shell" class="flex flex-col h-full min-h-0" style="<?= ($detail['agent'] ?? 'claude') === 'opencode' ? 'background-color: rgba(46, 16, 101, 0.16)' : (($detail['agent'] ?? 'claude') === 'codex' ? 'background-color: rgba(3, 78, 92, 0.14)' : (($detail['agent'] ?? 'claude') === 'antigravity' ? 'background-color: rgba(69, 26, 3, 0.12)' : '')) ?>">
+<div id="app-shell" class="flex flex-col h-full min-h-0" style="<?= ($detail['agent'] ?? 'claude') === 'opencode' ? 'background-color: rgba(46, 16, 101, 0.16)' : (($detail['agent'] ?? 'claude') === 'codex' ? 'background-color: rgba(3, 78, 92, 0.14)' : (($detail['agent'] ?? 'claude') === 'antigravity' ? 'background-color: rgba(69, 26, 3, 0.12)' : (($detail['agent'] ?? 'claude') === 'ollama' ? 'background-color: rgba(6, 78, 59, 0.12)' : ''))) ?>">
 <?php include __DIR__ . '/../header.php'; ?>
 
 <div id="page-content" class="flex-1 min-h-0 overflow-y-auto overscroll-contain h-dvh">
@@ -201,7 +201,7 @@ $this->layout('layout', [
     <?php
     $agentLabel = is_string($detail['agent_label'] ?? null) && $detail['agent_label'] !== ''
         ? $detail['agent_label']
-        : (isset($detail['agent']) && $detail['agent'] === 'antigravity' ? 'Antigravity' : (isset($detail['agent']) && $detail['agent'] === 'codex' ? 'Codex' : 'Claude Code'));
+        : \App\Views\PageView::agent_label((string)($detail['agent'] ?? 'claude'));
     ?>
     <?php if ($jumpLine !== null): ?>
       <?php /* Landed here from a search result (see sidebar.php's search box/
@@ -345,3 +345,6 @@ window.SESSIONEER_BOOTSTRAP = <?= json_encode([
 <script src="<?= \App\Assets::versioned_url('/js/sidebar.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/search.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/session.js') ?>"></script>
+<?php if ($found && ($detail['agent'] ?? 'claude') === 'ollama'): ?>
+<script src="<?= \App\Assets::versioned_url('/js/ollama.js') ?>"></script>
+<?php endif ?>

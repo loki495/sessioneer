@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 const CANNED_SESSION_NAME = 'cc-20260101-1200';
 const CANNED_BLOCKED_SESSION_NAME = 'cc-20260101-1300';
+const CANNED_BLOCKED_AGENT_SESSION_ID = 'aaaaaaaa-1111-4111-8111-111111111111';
 const CANNED_BARE_PID = 54321;
 // Its own separate pid/row - the resolved_title case is deliberately kept
 // OUT of CANNED_BARE_PID's own row, which every other bare_* action
@@ -156,6 +157,7 @@ $response = match ($action) {
             'last_message' => CANNED_LAST_MESSAGE,
         ], [
             'name' => CANNED_BLOCKED_SESSION_NAME,
+            'agent_session_id' => CANNED_BLOCKED_AGENT_SESSION_ID,
             'activity' => time() - 60,
             'attached' => false,
             'pid' => 12346,
@@ -228,6 +230,7 @@ $response = match ($action) {
             'spawned_by_app' => true,
             'title' => 'Fix the login redirect bug',
             'git_branch' => 'main',
+            'context_used_percentage' => 12.0,
             'working' => false,
             'blocked_reason' => 'Do you want to proceed?',
             'resume_hint' => 'tmux -S /fake/socket attach -t ' . CANNED_SESSION_NAME,
@@ -507,5 +510,46 @@ $response = match ($action) {
         : ['ok' => false, 'message' => 'Transcript file not found'],
     default => ['ok' => false, 'message' => 'Unknown action'],
 };
+
+// Mutable context-only browser fixture; unset for ordinary smoke tests.
+$contextStatePath = getenv('CANNED_CONTEXT_STATE');
+if (is_string($contextStatePath) && is_file($contextStatePath)) {
+    $contextState = json_decode((string)file_get_contents($contextStatePath), true);
+    if ($action === 'session_detail' && ($request['session'] ?? null) === CANNED_SESSION_NAME) {
+        $response['agent'] = $contextState['agent'];
+        $response['runtime'] = 'headless';
+        $response['profile'] = 'work';
+        $response['context_used_percentage'] = $contextState['pct'];
+    } elseif ($action === 'quota') {
+        $response = ['ok' => true, 'quota' => $contextState['quota'] ?? null, 'agents' => $contextState['agents'] ?? [], 'context' => $contextState['pct'] === null ? null : ['pct' => $contextState['pct']]];
+    }
+}
+
+$effortStatePath = getenv('CANNED_EFFORT_STATE');
+if (is_string($effortStatePath) && is_file($effortStatePath)) {
+    $effortState = json_decode((string) file_get_contents($effortStatePath), true);
+    if ($action === 'session_detail' && ($request['session'] ?? null) === CANNED_SESSION_NAME) {
+        $response['runtime'] = $effortState['runtime'] ?? 'headless';
+        $response['agent'] = 'claude';
+        $response['current_model'] = 'opus';
+        $response['current_mode'] = 'accept edits';
+        $response['current_effort'] = $effortState['effort'] ?? null;
+        $response['effort_available'] = ($effortState['available'] ?? true) === true;
+        $response['effort_message'] = $response['effort_available'] ? 'Session-only effort' : 'Live effort unavailable';
+    } elseif ($action === 'set_effort') {
+        if (($request['session'] ?? null) !== CANNED_SESSION_NAME) {
+            $response = ['ok' => false, 'message' => 'Unknown session'];
+        } elseif (!empty($effortState['reject'])) {
+            $response = ['ok' => false, 'message' => 'Rejected: effort overridden by environment'];
+        } elseif (!in_array($request['effort'] ?? null, ['', 'low', 'medium', 'high', 'xhigh', 'max'], true)) {
+            $response = ['ok' => false, 'message' => 'Rejected: unknown effort'];
+        } else {
+            $effortState['requested'] = $request['effort'];
+            $effortState['effort'] = $request['effort'] === '' ? 'medium' : ($request['effort'] === 'max' ? 'high' : $request['effort']);
+            file_put_contents($effortStatePath, json_encode($effortState));
+            $response = ['ok' => true];
+        }
+    }
+}
 
 fwrite(STDOUT, json_encode($response));

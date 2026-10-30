@@ -1,8 +1,0 @@
-[Unit]
-Description=Re-apply OpenCode provider state fix
-After=network.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/bin/python3 @REPO_ROOT@/docs/opencode-serve-fix/apply-opencode-patch.py
-Environment=OPENCODE_SRC=@OPENCODE_SRC@

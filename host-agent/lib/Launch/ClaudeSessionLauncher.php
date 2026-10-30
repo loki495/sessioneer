@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace HostAgent\Launch;
 
+use HostAgent\Agents\ClaudeCodeAdapter;
 use HostAgent\Runtimes\ClaudeHeadlessRuntime;
 use HostAgent\Runtimes\RuntimeRegistry;
 use HostAgent\Runtimes\RuntimeType;
 use HostAgent\Services\BareProcessService;
 use HostAgent\Services\Config;
-use HostAgent\Services\ProcessRunner;
 use HostAgent\Services\PromptInteractionService;
 use HostAgent\Services\TranscriptRouter;
 use HostAgent\Services\TranscriptService;
@@ -24,6 +24,8 @@ use HostAgent\Stores\SidecarStore;
  */
 class ClaudeSessionLauncher implements SessionLauncher
 {
+    use PeerLookup;
+
     private const AGENT_ID = 'claude';
 
     public function agent_id(): string
@@ -47,6 +49,12 @@ class ClaudeSessionLauncher implements SessionLauncher
             $profile = $resolved;
         }
 
+        $effort = is_string($request['effort'] ?? null) ? trim($request['effort']) : '';
+
+        if ($effort !== '' && !in_array($effort, ClaudeCodeAdapter::EFFORT_LEVELS, true)) {
+            return ['ok' => false, 'message' => "--effort '{$effort}' is not a Claude level (" . implode(', ', ClaudeCodeAdapter::EFFORT_LEVELS) . ')'];
+        }
+
         $runtime = RuntimeRegistry::runtime_for(self::AGENT_ID, RuntimeType::HEADLESS);
 
         if (!$runtime instanceof ClaudeHeadlessRuntime) {
@@ -65,6 +73,7 @@ class ClaudeSessionLauncher implements SessionLauncher
                 'enable_task_tools' => !empty($request['enable_task_tools']),
                 'no_tools' => !empty($request['no_tools']),
                 'profile' => $profile,
+                'effort' => $effort,
             ]);
 
             return $created['ok'] === true ? $this->deliver((string)$created['name'], 'created', $prompt, $runtime) : $created;
@@ -73,6 +82,10 @@ class ClaudeSessionLauncher implements SessionLauncher
         $existing = $this->tracked_session($conversationId);
 
         if ($existing !== null) {
+            if ($effort !== '') {
+                return ['ok' => false, 'name' => $existing['name'], 'message' => "Session {$existing['name']} already exists; Claude's effort is fixed when its process starts, so --effort cannot change it"];
+            }
+
             return $prompt === ''
                 ? ['ok' => true, 'name' => $existing['name'], 'action' => 'reused', 'prompt_sent' => false, 'message' => "Session {$existing['name']} already tracks that conversation"]
                 : $this->deliver($existing['name'], 'reused', $prompt, $runtime, $existing['runtime']);
@@ -93,7 +106,7 @@ class ClaudeSessionLauncher implements SessionLauncher
             return ['ok' => false, 'message' => 'No transcript found for that conversation; pass a workdir if it lives under another account'];
         }
 
-        $resumed = $runtime->resume($workdir, $conversationId, $profile);
+        $resumed = $runtime->resume($workdir, $conversationId, $profile, $effort !== '' ? $effort : null);
 
         if ($resumed['ok'] !== true) {
             return $resumed;
@@ -162,6 +175,7 @@ class ClaudeSessionLauncher implements SessionLauncher
                 'workdir' => $entry['workdir'],
                 'title' => $entry['title'],
                 'model' => $entry['current_model'],
+                'effort' => SidecarStore::read_sidecar($entry['name'])['effort'] ?? null,
             ];
         }
 
@@ -201,50 +215,9 @@ class ClaudeSessionLauncher implements SessionLauncher
             return ['ok' => false, 'message' => 'Headless runtime unavailable for claude'];
         }
 
-        $workdir = (string)($sender['workdir'] ?? '-');
-        $branch = $this->branch_of($workdir) ?? '-';
-        // The stamp comes from the host agent's own records of the sender, never from the message.
-        $stamp = "[sessioneer peer: {$from} · {$workdir} · {$branch}]";
+        $stamp = $this->peer_stamp($from, $sender);
 
         return $this->deliver($name, 'sent', "{$stamp} {$message}", $runtime, (string)($receiver['runtime'] ?? RuntimeType::TMUX));
-    }
-
-    public function peers(array $request): array
-    {
-        $from = is_string($request['from'] ?? null) ? trim($request['from']) : '';
-        $sender = $from !== '' ? SidecarStore::read_sidecar($from) : null;
-        $workdir = is_string($sender['workdir'] ?? null) ? $sender['workdir'] : (is_string($request['workdir'] ?? null) ? $request['workdir'] : '');
-        $repo = $workdir !== '' ? $this->repo_of($workdir) : null;
-
-        if ($repo === null) {
-            return ['ok' => false, 'message' => 'Peers needs a session (SESSIONEER_SELF) or a workdir inside a git repository'];
-        }
-
-        $peers = [];
-
-        foreach ($this->list_sessions($request)['sessions'] ?? [] as $s) {
-            if ($s['name'] === $from || !is_string($s['workdir']) || $this->repo_of($s['workdir']) !== $repo) {
-                continue;
-            }
-
-            $peers[] = ['name' => $s['name'], 'status' => $s['status'], 'workdir' => $s['workdir'], 'branch' => $this->branch_of($s['workdir']), 'title' => $s['title']];
-        }
-
-        return ['ok' => true, 'self' => $from !== '' ? $from : null, 'peers' => $peers];
-    }
-
-    private function repo_of(string $dir): ?string
-    {
-        $r = is_dir($dir) ? ProcessRunner::run_process(['git', '-C', $dir, 'rev-parse', '--path-format=absolute', '--git-common-dir']) : null;
-
-        return $r !== null && $r['exit'] === 0 && trim($r['stdout']) !== '' ? trim($r['stdout']) : null;
-    }
-
-    private function branch_of(string $dir): ?string
-    {
-        $r = is_dir($dir) ? ProcessRunner::run_process(['git', '-C', $dir, 'branch', '--show-current']) : null;
-
-        return $r !== null && $r['exit'] === 0 && trim($r['stdout']) !== '' ? trim($r['stdout']) : null;
     }
 
     /**

@@ -58,25 +58,41 @@ final class OpenCodeSseFrameParser
     }
 
     /**
-     * Direct v1, legacy global ({directory,payload}), and v2
-     * ({location,data}, question.v2.*) event envelopes.
+     * v2 envelopes ({location,data}) carrying the form lifecycle events that
+     * replaced the v1 question API. Normalized onto the question shape the
+     * consumer and status store already speak; anything else returns null.
      * @param array<string,mixed> $event
      * @return array{type:string,directory:?string,properties:array<string,mixed>}|null
      */
     public static function normalize(array $event): ?array
     {
-        $directory = is_string($event['directory'] ?? null) ? $event['directory'] : null;
-        if ($directory === null && is_array($event['location'] ?? null)) {
-            $directory = is_string($event['location']['directory'] ?? null) ? $event['location']['directory'] : null;
-        }
-        $inner = is_array($event['payload'] ?? null) ? $event['payload'] : (is_array($event['data'] ?? null) ? $event['data'] : null);
         $type = is_string($event['type'] ?? null) ? $event['type'] : '';
-        if ($inner !== null && is_string($inner['type'] ?? null)) $type = $inner['type'];
-        $type = str_replace('question.v2.', 'question.', $type);
-        if (!in_array($type, ['question.asked', 'question.replied', 'question.rejected'], true)) return null;
-        $properties = $inner !== null
-            ? (is_array($inner['properties'] ?? null) ? $inner['properties'] : $inner)
-            : (is_array($event['properties'] ?? null) ? $event['properties'] : []);
-        return ['type' => $type, 'directory' => $directory, 'properties' => $properties];
+        if (!in_array($type, ['form.created', 'form.replied', 'form.cancelled'], true)) return null;
+
+        $directory = is_array($event['location'] ?? null) && is_string($event['location']['directory'] ?? null)
+            ? $event['location']['directory'] : null;
+        $data = is_array($event['data'] ?? null) ? $event['data'] : [];
+        // form.created nests the form; replied/cancelled carry id/sessionID
+        // (and the answer or cancellation message) directly.
+        $form = is_array($data['form'] ?? null) ? $data['form'] : $data;
+        $formId = is_string($form['id'] ?? null) ? $form['id'] : '';
+        $sessionId = is_string($form['sessionID'] ?? null) ? $form['sessionID'] : '';
+        if ($formId === '' || $sessionId === '') return null;
+
+        if ($type === 'form.created') {
+            $questions = OpenCodeForm::questions($form);
+            if ($questions === null) return null;
+            return [
+                'type' => 'question.asked',
+                'directory' => $directory,
+                'properties' => ['id' => $formId, 'sessionID' => $sessionId, 'questions' => $questions],
+            ];
+        }
+
+        return [
+            'type' => $type === 'form.replied' ? 'question.replied' : 'question.rejected',
+            'directory' => $directory,
+            'properties' => ['id' => $formId, 'sessionID' => $sessionId],
+        ];
     }
 }

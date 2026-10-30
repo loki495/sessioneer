@@ -1,5 +1,5 @@
 [Unit]
-Description=OpenCode headless server (Sessioneer)
+Description=OpenCode v2 headless server (API + web UI)
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=0
@@ -11,14 +11,19 @@ Type=simple
 # so a fresh clone on a different machine gets units pointing at ITS OWN
 # paths instead of the original author's.
 WorkingDirectory=@HOME@
-ExecStart=@OPENCODE_BIN@ serve --hostname 0.0.0.0 --port 4096 --mdns
-Restart=always
+# --service joins the shared background service, so the CLI, TUI and apps
+# discover this server instead of spawning their own. In that mode the
+# web/API password comes from ~/.config/opencode/service.json and the
+# process exits 0 on purpose when a healthy server already answers at this
+# address - Restart=always would loop on that, so restart only on failure.
+ExecStart=@OPENCODE_BIN@ serve --hostname 0.0.0.0 --port 8889 --service
+Restart=on-failure
 RestartSec=5
 Environment=HOME=@HOME@
 # opencode resolves its plugins/tools via these - a systemd user unit's
 # default PATH is often JUST /usr/bin, which wouldn't see npm-global or
 # ~/.local/bin tooling the way an interactive shell does.
-Environment=PATH=@HOME@/.local/bin:@HOME@/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/bin
+Environment=PATH=@HOME@/.opencode/bin:@HOME@/.local/bin:@HOME@/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/bin
 
 [Install]
 WantedBy=default.target

@@ -334,6 +334,20 @@ class SessionController extends Controller
         echo json_encode(AgentClient::agent_call(['action' => 'set_mode', 'session' => $sessionName, 'mode' => $mode]));
     }
 
+    public function setEffort(): void
+    {
+        $this->require_post_json();
+        if (!is_string($_POST['effort'] ?? null)) {
+            echo json_encode(['ok' => false, 'message' => 'Rejected: effort must be supplied as a string']);
+            return;
+        }
+        echo json_encode(AgentClient::agent_call([
+            'action' => 'set_effort',
+            'session' => trim((string)($_POST['session'] ?? '')),
+            'effort' => trim($_POST['effort']),
+        ]));
+    }
+
     /**
      * POST-only JSON endpoint for session.php's "Select model" dropdown;
      * same AJAX pattern as setMode() above.

@@ -14,14 +14,11 @@ use HostAgent\Stores\SessionStatusStore;
  * class owning the create/list/detail/kill/status/drive endpoints a
  * headless opencode session needs.
  *
- * Endpoint-generation note (per opencode 1.18.21's
- * /doc): create uses the richer
- * `/api/session` (its `location.directory` is what makes arbitrary-workdir
- * spawn work); reads/status/todo use the reliable `/session` and global
- * `/question` surface; the v2 `/api/session/:id/{history,question,
- * permission}` GETs 500 on a freshly-created session in a not-yet-registered
- * directory (it lands in the `global` project until realized), so they are
- * not used for reads here.
+ * Endpoint-generation note: create and list use the v2 `/api/session`
+ * (`location.directory` is what makes arbitrary-workdir spawn work). The
+ * server is v2-only now and requires HTTP Basic auth, so every call carries
+ * `Config::opencode_curl_auth_args()`. Detail/status/todo/prompt/permission
+ * replies still target v1 paths and are the remaining migration work.
  *
  * Every call goes through ProcessRunner (command as a string[] - no shell
  * string, this project's standard no-metacharacter-injection rule) and
@@ -119,13 +116,13 @@ class OpenCodeServeClient
      */
     public function get_session(string $sessionId): array
     {
-        [$status, $data, $error] = $this->request('GET', '/session/' . rawurlencode($sessionId));
+        [$status, $data, $error] = $this->request('GET', '/api/session/' . rawurlencode($sessionId));
 
         if ($status < 200 || $status >= 300 || $data === null) {
             return ['ok' => false, 'message' => "Get session failed (HTTP $status): $error"];
         }
 
-        return ['ok' => true, 'session' => $data];
+        return ['ok' => true, 'session' => is_array($data['data'] ?? null) ? $data['data'] : $data];
     }
 
     /**
@@ -133,7 +130,7 @@ class OpenCodeServeClient
      */
     public function delete_session(string $sessionId): array
     {
-        [$status, $data, $error] = $this->request('DELETE', '/session/' . rawurlencode($sessionId));
+        [$status, $data, $error] = $this->request('DELETE', '/api/session/' . rawurlencode($sessionId));
 
         if ($data === null) {
             // Some DELETE endpoints return an empty 200 body; a 20x with no
@@ -150,55 +147,37 @@ class OpenCodeServeClient
     }
 
     /**
-     * The serve's default model, from GET /config/providers' `default` map
-     * (per provider). A freshly created session has model=null and a v2
-     * /session/{id}/prompt only ADMITS the prompt without running a turn,
-     * so sending needs an explicit model - this is the fallback when the
-     * session doesn't carry one. Returns {providerID, modelID} (empty when no
-     * provider default is configured).
+     * The serve's default model, from GET /api/model/default. Returns
+     * {providerID, modelID} (empty when the server reports none).
      *
      * @return array{providerID:string, modelID:string}
      */
     public function default_model(): array
     {
-        [$status, $data, $error] = $this->request('GET', '/config/providers');
+        [$status, $data, $error] = $this->request('GET', '/api/model/default');
 
-        if ($data === null) {
+        $model = is_array($data['data'] ?? null) ? $data['data'] : null;
+        if ($model === null) {
             return ['providerID' => '', 'modelID' => ''];
         }
 
-        $default = is_array($data['default'] ?? null) ? $data['default'] : [];
-
-        foreach ($default as $providerID => $modelID) {
-            if (is_string($providerID) && is_string($modelID) && $modelID !== '') {
-                return ['providerID' => $providerID, 'modelID' => $modelID];
-            }
-        }
-
-        foreach (($data['providers'] ?? []) as $p) {
-            if (is_array($p) && is_string($p['id'] ?? null) && is_array($p['models'] ?? null)) {
-                foreach ($p['models'] as $mid => $m) {
-                    if (is_string($mid)) {
-                        return ['providerID' => $p['id'], 'modelID' => $mid];
-                    }
-                }
-            }
-        }
-
-        return ['providerID' => '', 'modelID' => ''];
+        return [
+            'providerID' => is_string($model['providerID'] ?? null) ? $model['providerID'] : '',
+            'modelID' => is_string($model['modelID'] ?? null) ? $model['modelID'] : (is_string($model['id'] ?? null) ? $model['id'] : ''),
+        ];
     }
 
     /**
-     * The serve's available models, flattened from GET /config/providers -
-     * one entry per model: {providerID, id, name, family}. The sync caches
-     * this (GlobalStateStore) so the session page's model dropdown can be
+     * The serve's available models, flattened from GET /api/model - one entry
+     * per model: {providerID, id, name, family}. The sync caches this
+     * (GlobalStateStore) so the session page's model dropdown can be
      * populated without a serve round-trip on every render.
      *
      * @return array<int, array{providerID:string, id:string, name:string, family:?string}>
      */
     public function available_models(): array
     {
-        [$status, $data, $error] = $this->request('GET', '/config/providers');
+        [$status, $data, $error] = $this->request('GET', '/api/model');
 
         if ($data === null) {
             return [];
@@ -214,31 +193,30 @@ class OpenCodeServeClient
         /** @var array<string, array{providerID:string, id:string, name:string, family:?string, _priority:int}> */
         $byId = [];
 
-        foreach (($data['providers'] ?? []) as $provider) {
-            if (!is_array($provider) || !is_string($provider['id'] ?? null)) {
+        foreach (is_array($data['data'] ?? null) ? $data['data'] : [] as $model) {
+            if (!is_array($model) || !is_string($model['providerID'] ?? null)) {
                 continue;
             }
 
-            $pid = $provider['id'];
+            $pid = $model['providerID'];
+            $mid = is_string($model['modelID'] ?? null) ? $model['modelID'] : (is_string($model['id'] ?? null) ? $model['id'] : null);
+            if ($mid === null || $mid === '') {
+                continue;
+            }
+
             $prio = $priority[$pid] ?? 99;
 
-            foreach (is_array($provider['models'] ?? null) ? $provider['models'] : [] as $mid => $m) {
-                if (!is_string($mid)) {
-                    continue;
-                }
-
-                if (isset($byId[$mid]) && $byId[$mid]['_priority'] <= $prio) {
-                    continue;
-                }
-
-                $byId[$mid] = [
-                    'providerID' => $pid,
-                    'id' => $mid,
-                    'name' => is_string($m['name'] ?? null) ? $m['name'] : $mid,
-                    'family' => is_string($m['family'] ?? null) ? $m['family'] : null,
-                    '_priority' => $prio,
-                ];
+            if (isset($byId[$mid]) && $byId[$mid]['_priority'] <= $prio) {
+                continue;
             }
+
+            $byId[$mid] = [
+                'providerID' => $pid,
+                'id' => $mid,
+                'name' => is_string($model['name'] ?? null) ? $model['name'] : $mid,
+                'family' => is_string($model['family'] ?? null) ? $model['family'] : null,
+                '_priority' => $prio,
+            ];
         }
 
         $out = [];
@@ -270,58 +248,23 @@ class OpenCodeServeClient
     }
 
     /**
-     * The model a session runs under, from its own record (GET
-     * /session/{id}), falling back to the serve's default model when the
-     * session was created bare (model=null) - which is the common case for a
-     * Sessioneer-created headless session. The v2 /api/session/{id}/prompt endpoint
-     * only admits a prompt without running a turn, so sending always needs an
-     * explicit model to hand the v1 /session/{id}/message call.
-     *
-     * @return array{providerID:string, modelID:string}
-     */
-    private function resolve_model(string $sessionId): array
-    {
-        $detail = $this->get_session($sessionId);
-
-        if (($detail['ok'] === true) && is_array($detail['session']['model'] ?? null)) {
-            $m = $detail['session']['model'];
-            $pid = is_string($m['providerID'] ?? null) ? $m['providerID'] : null;
-            $mid = is_string($m['id'] ?? null) ? $m['id'] : (is_string($m['modelID'] ?? null) ? $m['modelID'] : null);
-
-            if ($pid !== null && $mid !== null && $mid !== '') {
-                return ['providerID' => $pid, 'modelID' => $mid];
-            }
-        }
-
-        return $this->default_model();
-    }
-
-    /**
-     * Sends a free-text message asynchronously via POST /session/{id}/prompt_async
-     * - the app-style `parts` + `model` body that actually runs the agent loop,
-     * but returns 204 immediately (no waiting on the full turn), so Sessioneer's send
+     * Sends a free-text message via POST /api/session/{id}/prompt, which
+     * returns as soon as the prompt is admitted (a `Session.Inbox.User`
+     * record) instead of waiting for the whole turn, so Sessioneer's send
      * doesn't time out on a long turn ("curl 28"). The reply arrives in the
      * transcript via the session page's poll. The model is the session's own
-     * if it has one, else the serve default.
+     * (set with set_model); the prompt body has no model field in v2.
      *
      * @param array<int, string> $attachmentPaths
-     * @param array{providerID:string, modelID:string}|null $model
      * @return array{ok:bool, message?:string}
      */
-    public function send_message(string $sessionId, string $text, array $attachmentPaths = [], ?array $model = null): array
+    public function send_message(string $sessionId, string $text, array $attachmentPaths = []): array
     {
         $attachmentLines = array_map(static fn(string $path): string => '[Attached: ' . $path . ']', $attachmentPaths);
         $text = $attachmentLines === [] ? $text : trim(rtrim($text) . "\n" . implode("\n", $attachmentLines));
 
-        $model = $model ?? $this->resolve_model($sessionId);
-
-        if ($model['providerID'] === '' || $model['modelID'] === '') {
-            return ['ok' => false, 'message' => 'No opencode model is available to send with'];
-        }
-
-        [$status, $data, $error] = $this->request('POST', '/session/' . rawurlencode($sessionId) . '/prompt_async', [
-            'parts' => [['type' => 'text', 'text' => $text]],
-            'model' => ['providerID' => $model['providerID'], 'modelID' => $model['modelID']],
+        [$status, $data, $error] = $this->request('POST', '/api/session/' . rawurlencode($sessionId) . '/prompt', [
+            'text' => $text,
         ]);
 
         if ($status >= 200 && $status < 300) {
@@ -346,11 +289,10 @@ class OpenCodeServeClient
     }
 
     /**
-     * Live status for one session, from the session record's own
-     * permission/token/status summary where available. This is a best-effort
-     * read; the authoritative working/idle/blocked signal for headless
-     * opencode currently comes from GET /question (questions) and the serve
-     * /permission surface (permission) - see HeadlessRuntime::status().
+     * Live status for one session. The authoritative working/idle signal comes
+     * from GET /api/session/active (status_map); blocked state comes from the
+     * per-session forms (questions) and /api/permission/request (permissions)
+     * - see HeadlessRuntime::status().
      *
      * @return array{ok:bool, status?:string, blocked?:?array<string,mixed>, message?:string}
      */
@@ -374,42 +316,89 @@ class OpenCodeServeClient
     }
 
     /**
-     * The pending prompt (question or permission) for a session, normalized
-     * to the shape OpenCodeQuestionService::to_prompt() produces for
-     * questions, or a permission-shaped prompt for a pending permission.
+     * The pending permission requests for the given session directories, from
+     * GET /api/permission/request (`{location, data: [Permission.Request]}`).
+     * Each entry is `{id, sessionID, action, resources[], save[], metadata,
+     * source, message}`.
      *
+     * v2 scopes this list by `location.directory`: an unscoped read only
+     * reports the server's own cwd, so a request raised in a project directory
+     * is invisible. Query once per directory and merge by request id. With no
+     * directories it falls back to the single unscoped read.
+     *
+     * @param array<int, string> $directories session workdirs to include
      * @return array<int, array<string, mixed>> the raw pending permission requests
      */
-    public function pending_permissions(): array
+    public function pending_permissions(array $directories = []): array
     {
-        [$status, $data, $error] = $this->request('GET', '/permission');
+        $directories = array_values(array_unique(array_filter(
+            $directories,
+            static fn($directory): bool => $directory !== ''
+        )));
 
-        if ($data === null) {
-            return [];
+        $paths = $directories === []
+            ? ['/api/permission/request']
+            : array_map(
+                static fn(string $directory): string => '/api/permission/request?location%5Bdirectory%5D=' . rawurlencode($directory),
+                $directories
+            );
+
+        $pending = [];
+
+        foreach ($paths as $path) {
+            [$status, $data, $error] = $this->request('GET', $path);
+
+            if ($data === null) {
+                continue;
+            }
+
+            $items = is_array($data['data'] ?? null) ? $data['data'] : $data;
+
+            foreach (is_array($items) ? $items : [] as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+
+                $id = is_string($item['id'] ?? null) ? $item['id'] : null;
+
+                if ($id !== null && isset($pending[$id])) {
+                    continue;
+                }
+
+                $pending[$id ?? 'request_' . count($pending)] = $item;
+            }
         }
 
-        $items = is_array($data['data'] ?? null) ? $data['data'] : $data;
-
-        return is_array($items) ? array_values(array_filter($items, 'is_array')) : [];
+        return array_values($pending);
     }
 
     /**
-     * Every pending question request across all sessions, from the global
-     * GET /question (the batched source the blocked-prompt sync uses).
+     * Every pending question form across the given sessions. v2 has no global
+     * question list, so this asks each session for its own forms and keeps
+     * only `metadata.kind == question` ones, normalized to the question shape
+     * the status store speaks.
      *
-     * @return array<int, array<string, mixed>> the raw pending question requests
+     * @param array<int, string> $sessionIds the sessions to check
+     * @return array<int, array<string, mixed>> one normalized pending question per session
      */
-    public function pending_questions(): array
+    public function pending_questions(array $sessionIds): array
     {
-        [$status, $data, $error] = $this->request('GET', '/question');
+        $pending = [];
 
-        if ($data === null) {
-            return [];
+        foreach ($sessionIds as $sessionId) {
+            $question = \HostAgent\Services\OpenCodeQuestionService::pending_question($sessionId);
+            if ($question === null) {
+                continue;
+            }
+
+            $pending[] = [
+                'id' => $question['requestID'],
+                'sessionID' => $sessionId,
+                'questions' => $question['questions'],
+            ];
         }
 
-        $items = is_array($data['data'] ?? null) ? $data['data'] : $data;
-
-        return is_array($items) ? array_values(array_filter($items, 'is_array')) : [];
+        return $pending;
     }
 
     /**
@@ -444,8 +433,8 @@ class OpenCodeServeClient
     }
 
     /**
-     * Answers a pending question by label, via the global /question reply
-     * endpoint OpenCodeQuestionService already uses (proven live).
+     * Answers a pending question by label through OpenCodeQuestionService,
+     * which speaks the v2 form reply API.
      *
      * @param array<int, array<int, string>|string> $labels OpenCode option labels or custom text
      * @return array{ok:bool, message?:string}
@@ -456,12 +445,9 @@ class OpenCodeServeClient
     }
 
     /**
-     * Answers a pending permission request via the v1 reply endpoint -
-     * POST /session/{id}/permissions/{requestID} with
-     * `{ response: once | always | reject }`.
-     *
-     * The v2 equivalent (POST /api/session/{id}/permission/{requestID}/reply)
-     * returns PermissionNotFoundError on 1.18.21; the v1 path works.
+     * Answers a pending permission request - POST
+     * /api/session/{id}/permission/{requestID}/reply with
+     * `{decision: once | always | reject}`.
      *
      * @param string $reply one of 'once' | 'always' | 'reject'
      * @return array{ok:bool, message?:string}
@@ -470,8 +456,8 @@ class OpenCodeServeClient
     {
         [$status, $data, $error] = $this->request(
             'POST',
-            '/session/' . rawurlencode($sessionId) . '/permissions/' . rawurlencode($requestId),
-            ['response' => $reply]
+            '/api/session/' . rawurlencode($sessionId) . '/permission/' . rawurlencode($requestId) . '/reply',
+            ['decision' => $reply]
         );
 
         if ($status >= 200 && $status < 300) {
@@ -483,20 +469,20 @@ class OpenCodeServeClient
 
     /**
      * Live status for EVERY session on the serve, in one call (GET
-     * /session/status). This is the batched source the headless status sync
-     * uses - one HTTP request per tick updates all headless sessions, so the
-     * dashboard's per-poll list read never has to hit serve.
+     * /api/session/active). This is the batched source the headless status
+     * sync uses - one HTTP request per tick updates all headless sessions, so
+     * the dashboard's per-poll list read never has to hit serve.
      *
-     * Maps opencode's SessionStatus tagged union (idle / busy / retry) to
-     * Sessioneer's own 'idle' | 'working' (retry is "trying to do work", so treat it
-     * as working). Blocked-prompt state is a separate surface (GET /question
-     * / GET /permission) and is not included here.
+     * v2 reports only sessions that are doing work, as `{ses_x: {type:
+     * "running"}}`; anything absent is idle. Blocked-prompt state is a
+     * separate surface (/api/permission/request and the per-session forms)
+     * and is not included here.
      *
      * @return array{ok:bool, statuses?:array<string, string>, message?:string}
      */
     public function status_map(): array
     {
-        [$status, $data, $error] = $this->request('GET', '/session/status');
+        [$status, $data, $error] = $this->request('GET', '/api/session/active');
 
         if ($data === null) {
             return ['ok' => false, 'message' => "Session status failed (HTTP $status): $error"];
@@ -504,12 +490,12 @@ class OpenCodeServeClient
 
         $statuses = [];
 
-        foreach (is_array($data) ? $data : [] as $id => $state) {
-            if (!is_string($id) || !is_array($state)) {
+        foreach (is_array($data['data'] ?? null) ? $data['data'] : [] as $id => $state) {
+            if (!is_string($id)) {
                 continue;
             }
 
-            $type = is_string($state['type'] ?? null) ? $state['type'] : null;
+            $type = is_array($state) && is_string($state['type'] ?? null) ? $state['type'] : null;
             $statuses[$id] = $type === 'idle' ? 'idle' : 'working';
         }
 
@@ -517,20 +503,16 @@ class OpenCodeServeClient
     }
 
     /**
-     * The todo list for a session (GET /session/:id/todo - the proven v1
-     * surface).
+     * OpenCode v2 has no todo endpoint (v1's GET /session/:id/todo is gone and
+     * nothing in the v2 schema replaces it), so there is no source for the
+     * session page's todo list. Kept as an explicit unsupported result so the
+     * caller renders no todos instead of failing.
      *
      * @return array{ok:bool, todos?:array<string,mixed>, message?:string}
      */
     public function get_todo(string $sessionId): array
     {
-        [$status, $data, $error] = $this->request('GET', '/session/' . rawurlencode($sessionId) . '/todo');
-
-        if ($data === null) {
-            return ['ok' => false, 'message' => "Todo read failed (HTTP $status): $error"];
-        }
-
-        return ['ok' => true, 'todos' => $data];
+        return ['ok' => false, 'message' => 'OpenCode v2 does not expose a todo list'];
     }
 
     /**
@@ -547,6 +529,7 @@ class OpenCodeServeClient
             '--request', $method,
             '--write-out', "\n%{http_code}",
         ];
+        foreach (Config::opencode_curl_auth_args() as $arg) $cmd[] = $arg;
 
         $bodyFile = null;
 

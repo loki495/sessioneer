@@ -24,6 +24,7 @@ require_once __DIR__ . '/lib/assert.php';
 require_once __DIR__ . '/lib/claude_headless.php';
 
 use HostAgent\Services\Config;
+use HostAgent\Services\ContextUsage;
 use HostAgent\Stores\SessionStatusStore;
 use HostAgent\Stores\SidecarStore;
 
@@ -90,10 +91,15 @@ foreach ($captures as $i => $file) {
     $requests = [];
     $lastInit = null;
     $lastResult = null;
+    $lastMainAssistant = null;
     $sawRateLimit = false;
 
     foreach ($events as $e) {
         $type = $e['type'] ?? '';
+
+        if ($type === 'assistant' && ($e['parent_tool_use_id'] ?? null) === null) {
+            $lastMainAssistant = $e;
+        }
 
         if ($type === 'control_request' && ($e['request']['subtype'] ?? '') === 'can_use_tool') {
             $requests[] = $e;
@@ -187,6 +193,19 @@ foreach ($captures as $i => $file) {
         if (is_array($lastResult['usage'] ?? null)) {
             assert_true(is_array($final['token_usage']), "{$label}: the final result's usage is recorded");
         }
+    }
+
+    $mainModel = $lastMainAssistant['message']['model'] ?? null;
+    $window = is_string($mainModel) ? ($lastResult['modelUsage'][$mainModel]['contextWindow'] ?? null) : null;
+    $usage = $lastMainAssistant['message']['usage'] ?? null;
+    if (!$endsOnRequest && is_int($window) && $window > 0 && is_array($usage)
+        && isset($usage['input_tokens'], $usage['cache_creation_input_tokens'], $usage['cache_read_input_tokens'])) {
+        $expectedPct = min(100.0, ($usage['input_tokens'] + $usage['cache_creation_input_tokens'] + $usage['cache_read_input_tokens']) / $window * 100.0);
+        // The fixture has written its final bytes, but the manager may still
+        // be draining stdout. An earlier result can already have left the
+        // session idle; wait for this capture's final snapshot itself.
+        wait_until(static fn (): bool => ContextUsage::claude_percentage(SessionStatusStore::read_status($name)['context_usage'] ?? null) === $expectedPct);
+        assert_equal($expectedPct, ContextUsage::claude_percentage(SessionStatusStore::read_status($name)['context_usage'] ?? null), "{$label}: captured latest main input snapshot uses its own model's reported window");
     }
 
     $health = call($m, 'sessioneer/health');

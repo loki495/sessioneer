@@ -6,7 +6,7 @@ The web UI runs in a Docker container that **never touches tmux, the host proces
 
 For tmux-backed sessions (Claude Code's tmux runtime, Antigravity, and OpenCode's tmux fallback), this split exists so the container can never accidentally become the process that spawns tmux's own server (which would put it inside the container's filesystem namespace, unreachable from the host).
 
-For headless runtimes (Codex always, OpenCode and Claude Code by default), the host agent instead proxies to a local server process: `codex app-server`, `opencode serve`, or, for Claude Code, a persistent host-native manager that owns one `claude -p` stream-json process per active session. Either way, everything that has to run in the host's own namespace stays in one place.
+For headless runtimes (Codex always, OpenCode and Claude Code by default), the host agent instead proxies to a local server process: `codex app-server`, `opencode serve`, or, for Claude Code, a persistent host-native manager that owns one `claude -p` stream-json process per active session. Ollama is the exception that needs no server of its own: the conversation lives in Sessioneer's stores and each turn is a detached worker that calls the model's HTTP API. Either way, everything that has to run in the host's own namespace stays in one place.
 
 **Practically, this means setup has two independent parts:**
 - The host agent (native, via systemd `--user`)
@@ -30,7 +30,7 @@ Session state (blocked/working/idle) comes exclusively from each agent's own str
 - **Claude Code** uses hooks (tmux runtime) or, for a headless session, the structured events of its own process, written to the session status store by the manager
 - **Antigravity** uses hooks for lifecycle/identity and its pane for the actual approval dialog
 - **OpenCode** uses its serve API, SQLite, permissions plugin, and (for TUI permissions) its pane
-- **Codex** uses the private bridge for Sessioneer-owned turns and hooks for Remote-owned activity
+- **Codex** uses a bridge attached to the managed app-server daemon that Codex Remote also uses (a private `app-server --stdio` is the fallback when the daemon is down), and hooks as a fallback signal
 
 Pane parsing is therefore limited to prompt shapes whose owning agent exposes no authoritative structured equivalent, rather than being a generic activity detector.
 

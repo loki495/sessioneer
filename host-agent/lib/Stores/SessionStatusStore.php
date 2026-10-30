@@ -45,6 +45,7 @@ class SessionStatusStore
         SqliteDb::add_column_if_missing($pdo, 'session_status', 'last_turn_error', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'session_status', 'token_usage_json', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'session_status', 'model', 'TEXT');
+        SqliteDb::add_column_if_missing($pdo, 'session_status', 'context_usage_json', 'TEXT');
 
         return $pdo;
     }
@@ -67,11 +68,11 @@ class SessionStatusStore
      * this never permanently shadows a model change made outside this
      * app's own dropdown (e.g. typing `/model` by hand).
      *
-     * @return array{mode:?string, status:?string, blocked:?array, last_message:?string, last_turn_error:?string, token_usage:?array<string,mixed>, model:?string, updated_at:?int}|null
+     * @return array{mode:?string, status:?string, blocked:?array, last_message:?string, last_turn_error:?string, token_usage:?array<string,mixed>, context_usage:?array<string,mixed>, model:?string, updated_at:?int}|null
      */
     public static function read_status(string $sessionName): ?array
     {
-        $stmt = self::db()->prepare('SELECT status, blocked_json, mode, last_message, last_turn_error, token_usage_json, model, updated_at FROM session_status WHERE session_name = ?');
+        $stmt = self::db()->prepare('SELECT status, blocked_json, mode, last_message, last_turn_error, token_usage_json, context_usage_json, model, updated_at FROM session_status WHERE session_name = ?');
         $stmt->execute([$sessionName]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
 
@@ -83,6 +84,7 @@ class SessionStatusStore
                 'last_message' => $row['last_message'],
                 'last_turn_error' => $row['last_turn_error'],
                 'token_usage' => $row['token_usage_json'] !== null ? json_decode($row['token_usage_json'], true) : null,
+                'context_usage' => $row['context_usage_json'] !== null ? json_decode($row['context_usage_json'], true) : null,
                 'model' => $row['model'],
                 'updated_at' => $row['updated_at'] !== null ? (int)$row['updated_at'] : null,
             ];
@@ -137,6 +139,11 @@ class SessionStatusStore
         if (array_key_exists('token_usage', $fields)) {
             $sets[] = 'token_usage_json = :token_usage_json';
             $params[':token_usage_json'] = $fields['token_usage'] !== null ? json_encode($fields['token_usage']) : null;
+        }
+
+        if (array_key_exists('context_usage', $fields)) {
+            $sets[] = 'context_usage_json = :context_usage_json';
+            $params[':context_usage_json'] = $fields['context_usage'] !== null ? json_encode($fields['context_usage']) : null;
         }
 
         $sets[] = 'updated_at = :updated_at';

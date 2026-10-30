@@ -412,6 +412,17 @@ class TranscriptView extends View
         return $options;
     }
 
+    /** @param array<string, mixed> $detail */
+    public static function render_effort_toggle_html(array $detail): string
+    {
+        return self::render('transcript/effort-toggle', [
+            'effort' => is_string($detail['current_effort'] ?? null) ? $detail['current_effort'] : null,
+            'available' => ($detail['effort_available'] ?? false) === true,
+            'message' => is_string($detail['effort_message'] ?? null) ? $detail['effort_message'] : 'Live effort is available for headless Claude sessions',
+            'options' => ['low' => 'Low', 'medium' => 'Medium', 'high' => 'High', 'xhigh' => 'Xhigh', 'max' => 'Max'],
+        ]);
+    }
+
     public static function render_model_toggle_html(array $detail): string
     {
         $model = is_string($detail['current_model'] ?? null) ? $detail['current_model'] : null;

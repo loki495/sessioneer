@@ -274,6 +274,105 @@ try {
     assert_true(strlen($longBlock['text'] ?? '') <= TranscriptService::TRANSCRIPT_BLOCK_HARD_CAP_LENGTH + 20, 'long text block is capped via hard cap + truncation suffix');
     assert_true(str_contains($longBlock['text'] ?? '', '… (truncated)'), 'capped block ends with truncation suffix');
 
+    // --- OpenCode 2.x storage: session_v2/session_message ---
+    // 2.x writes NEW sessions only here (the legacy session/message/part
+    // tables are left as they were), so a v2-only session must still resolve
+    // and render - the exact gap that made every new opencode session show
+    // "Nothing recorded yet." in the UI.
+    $pdo->exec('CREATE TABLE session_v2 (id TEXT PRIMARY KEY, title TEXT, directory TEXT, time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL)');
+    $pdo->exec('CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, type TEXT NOT NULL, seq INTEGER NOT NULL, time_created INTEGER NOT NULL, data TEXT NOT NULL)');
+
+    $v2SessionId = 'ses_v2storage01';
+
+    $pdo->prepare('INSERT INTO session_v2 (id, title, directory, time_created, time_updated) VALUES (?, ?, ?, ?, ?)')
+        ->execute([$v2SessionId, 'V2 storage session', '/home/andres/v2project', 3000000, 3005000]);
+
+    $insertV2 = $pdo->prepare('INSERT INTO session_message (id, session_id, type, seq, time_created, data) VALUES (?, ?, ?, ?, ?, ?)');
+
+    $insertV2->execute(['msg_v2_1', $v2SessionId, 'user', 1, 3001, json_encode(['time' => ['created' => 3001000], 'text' => 'Hello from v2'])]);
+    $insertV2->execute(['msg_v2_2', $v2SessionId, 'assistant', 2, 3002, json_encode([
+        'time' => ['created' => 3002000],
+        'content' => [['type' => 'text', 'text' => 'Hi from v2']],
+    ])]);
+    $insertV2->execute(['msg_v2_3', $v2SessionId, 'assistant', 3, 3003, json_encode([
+        'time' => ['created' => 3003000],
+        'content' => [
+            ['type' => 'tool', 'id' => 'call_v2', 'name' => 'shell', 'state' => [
+                'status' => 'completed',
+                'input' => ['command' => 'ls'],
+                'content' => [['type' => 'text', 'text' => "file-a\nfile-b"]],
+            ]],
+        ],
+    ])]);
+    $insertV2->execute(['msg_v2_4', $v2SessionId, 'assistant', 4, 3004, json_encode([
+        'time' => ['created' => 3004000],
+        'content' => [],
+        'error' => ['type' => 'provider.quota', 'message' => 'The usage limit has been reached'],
+    ])]);
+    // Bookkeeping rows are not chat content and must not render.
+    $insertV2->execute(['msg_v2_5', $v2SessionId, 'idle', 5, 3005, json_encode(['time' => ['created' => 3005000], 'outcome' => 'failed'])]);
+
+    assert_equal($v2SessionId, OpenCodeTranscriptService::find_transcript_path($v2SessionId), 'find_transcript_path: session_v2-only id resolves (2.x storage)');
+    assert_equal('V2 storage session', OpenCodeTranscriptService::find_session_title($v2SessionId), 'find_session_title: falls back to session_v2');
+    assert_equal('/home/andres/v2project', OpenCodeTranscriptService::find_session_cwd($v2SessionId), 'find_session_cwd: falls back to session_v2');
+
+    $v2Page = OpenCodeTranscriptService::read_transcript_page($v2SessionId, null, 10);
+    assert_true($v2Page['ok'] ?? false, 'v2 transcript: ok=true');
+    assert_equal(4, count($v2Page['entries'] ?? []), 'v2 transcript: user + text + tool + error entries, bookkeeping row skipped');
+    assert_equal('user', $v2Page['entries'][0]['role'] ?? null, 'v2 transcript: first entry is the user message');
+    assert_equal('Hello from v2', $v2Page['entries'][0]['blocks'][0]['text'] ?? null, 'v2 transcript: user text renders from session_message.data.text');
+    assert_equal('Hi from v2', $v2Page['entries'][1]['blocks'][0]['text'] ?? null, 'v2 transcript: assistant text renders from content[]');
+
+    $v2ToolBlocks = $v2Page['entries'][2]['blocks'] ?? [];
+    assert_equal('tool_use', $v2ToolBlocks[0]['kind'] ?? null, 'v2 transcript: tool content entry becomes tool_use');
+    assert_equal('shell', $v2ToolBlocks[0]['tool_name'] ?? null, 'v2 transcript: tool name comes from the content entry\'s name field');
+    assert_equal('ls', $v2ToolBlocks[0]['command'] ?? null, 'v2 transcript: tool input still drives the summary command');
+    assert_equal("file-a\nfile-b", $v2ToolBlocks[1]['text'] ?? null, 'v2 transcript: tool result is flattened from state.content chunks');
+
+    assert_equal('Error: The usage limit has been reached', $v2Page['entries'][3]['blocks'][0]['text'] ?? null, 'v2 transcript: a failed turn surfaces its error message instead of rendering nothing');
+
+    $v2Since = OpenCodeTranscriptService::read_transcript_page_since($v2SessionId, 2, 10);
+    assert_equal(2, count($v2Since['entries'] ?? []), 'v2 transcript: read_transcript_page_since pages past the given line');
+
+    // The archived view's "Last active": a ses_* id is not a file, so this
+    // comes from the session row's time_updated (ms → seconds), legacy or v2.
+    assert_equal(3005, OpenCodeTranscriptService::find_session_last_activity($v2SessionId), 'find_session_last_activity: v2 session row time_updated in seconds');
+    assert_equal(2, OpenCodeTranscriptService::find_session_last_activity($sessionId), 'find_session_last_activity: legacy session row time_updated in seconds');
+    assert_equal(null, OpenCodeTranscriptService::find_session_last_activity($missingSessionId), 'find_session_last_activity: unknown session → null');
+
+    $v2Search = OpenCodeTranscriptService::search_transcript($v2SessionId, 'file-b', 5);
+    assert_equal(1, count($v2Search), 'v2 transcript: search_transcript finds text inside a v2 tool result');
+
+    $v2Listed = array_filter(
+        OpenCodeTranscriptService::list_all_transcripts(),
+        static fn(array $row): bool => ($row['session_id'] ?? null) === $v2SessionId
+    );
+    assert_equal(1, count($v2Listed), 'list_all_transcripts: session_v2 sessions are listed');
+
+    $v2ListedRow = array_values($v2Listed)[0] ?? [];
+    assert_equal('/home/andres/v2project', $v2ListedRow['cwd'] ?? null, 'list_all_transcripts: cwd comes from the session row (v2)');
+    assert_equal(3005, $v2ListedRow['last_activity'] ?? null, 'list_all_transcripts: last_activity is time_updated in SECONDS (v2)');
+
+    $legacyListed = array_filter(
+        OpenCodeTranscriptService::list_all_transcripts(),
+        static fn(array $row): bool => ($row['session_id'] ?? null) === $sessionId
+    );
+    $legacyListedRow = array_values($legacyListed)[0] ?? [];
+    assert_equal('/tmp', $legacyListedRow['cwd'] ?? null, 'list_all_transcripts: cwd comes from the session row (legacy)');
+    assert_equal(2, $legacyListedRow['last_activity'] ?? null, 'list_all_transcripts: last_activity is time_updated in SECONDS (legacy)');
+
+    // --- read_last_entry: the dashboard's per-row preview ---
+    $legacyLast = OpenCodeTranscriptService::read_last_entry($sessionId);
+    assert_equal('Thanks!', $legacyLast['blocks'][0]['text'] ?? null, 'read_last_entry: newest entry of a legacy session');
+
+    $v2Last = OpenCodeTranscriptService::read_last_entry($v2SessionId);
+    assert_equal('Error: The usage limit has been reached', $v2Last['blocks'][0]['text'] ?? null, 'read_last_entry: newest entry of a v2 session');
+
+    $routerLast = TranscriptRouter::read_last_entry($v2SessionId);
+    assert_equal('Error: The usage limit has been reached', $routerLast['blocks'][0]['text'] ?? null, 'TranscriptRouter::read_last_entry: routes a ses_* id to the opencode tail read');
+
+    assert_equal(null, OpenCodeTranscriptService::read_last_entry($missingSessionId), 'read_last_entry: unknown session → null');
+
     // --- DB missing file returns error (find path returns null, but direct read also handles missing DB) ---
     putenv('OPENCODE_DB_PATH=/tmp/nonexistent-opencode-' . bin2hex(random_bytes(8)) . '.db');
     $missingDbFind = OpenCodeTranscriptService::find_transcript_path($sessionId);

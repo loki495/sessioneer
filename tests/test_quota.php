@@ -209,6 +209,37 @@ try {
     assert_true(isset($dashQuota['agents']['antigravity']), 'get_quota(dashboard): contains agents.antigravity');
     assert_equal(70, $dashQuota['agents']['claude']['quota']['session']['pct'] ?? null, 'get_quota(dashboard): claude session pct');
     assert_equal(25, $dashQuota['agents']['antigravity']['quota']['gemini-weekly']['pct'] ?? null, 'get_quota(dashboard): antigravity gemini pct');
+
+    // --- opencode cost/tokens: both storage generations, no double counting ---
+    // OpenCode 2.x writes new sessions only to session_v2; the aggregate must
+    // include them, and a session that exists in BOTH tables (migrated) must
+    // count once.
+    @mkdir(dirname($opencodeDbFixture), 0700, true);
+    $ocPdo = new PDO('sqlite:' . $opencodeDbFixture);
+    $ocPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $ocPdo->exec('CREATE TABLE session (id TEXT PRIMARY KEY, cost REAL DEFAULT 0, tokens_input INTEGER DEFAULT 0, tokens_output INTEGER DEFAULT 0, tokens_reasoning INTEGER DEFAULT 0, tokens_cache_read INTEGER DEFAULT 0, tokens_cache_write INTEGER DEFAULT 0, time_updated INTEGER NOT NULL)');
+    $ocPdo->exec('CREATE TABLE session_v2 (id TEXT PRIMARY KEY, cost REAL DEFAULT 0, tokens_input INTEGER DEFAULT 0, tokens_output INTEGER DEFAULT 0, tokens_reasoning INTEGER DEFAULT 0, tokens_cache_read INTEGER DEFAULT 0, tokens_cache_write INTEGER DEFAULT 0, time_updated INTEGER NOT NULL)');
+    $insLegacy = $ocPdo->prepare('INSERT INTO session (id, cost, tokens_input, tokens_output, time_updated) VALUES (?, ?, ?, ?, ?)');
+    $insV2 = $ocPdo->prepare('INSERT INTO session_v2 (id, cost, tokens_input, tokens_output, time_updated) VALUES (?, ?, ?, ?, ?)');
+    $insLegacy->execute(['ses_migrated01', 0.25, 100, 10, 1700000000000]);
+    $insV2->execute(['ses_migrated01', 0.25, 100, 10, 1700000000000]);
+    $insV2->execute(['ses_v2only0001', 0.50, 200, 20, 1700000100000]);
+    $ocPdo = null;
+
+    $ocV2Only = QuotaService::opencode_quota_state('ses_v2only0001');
+    assert_equal(0.5, $ocV2Only['quota']['cost'] ?? null, 'opencode_quota_state: a session_v2-only session resolves (2.x storage)');
+    assert_equal(200, $ocV2Only['quota']['tokens_input'] ?? null, 'opencode_quota_state: v2 token counters are read from session_v2');
+    assert_equal(1700000100, $ocV2Only['fetched_at'] ?? null, 'opencode_quota_state: fetched_at is the row time_updated in seconds (v2)');
+
+    $ocLegacy = QuotaService::opencode_quota_state('ses_migrated01');
+    assert_equal(0.25, $ocLegacy['quota']['cost'] ?? null, 'opencode_quota_state: a migrated session still resolves via the legacy row');
+
+    assert_equal(null, QuotaService::opencode_quota_state('ses_nothere001'), 'opencode_quota_state: unknown session → null, not a fabricated zero row');
+
+    $ocDash = QuotaService::opencode_quota_state();
+    assert_equal(2, $ocDash['quota']['session_count'] ?? null, 'opencode_quota_state(dashboard): counts both tables once each (migrated row not double counted)');
+    assert_equal(0.75, $ocDash['quota']['cost'] ?? null, 'opencode_quota_state(dashboard): cost sums both generations');
+    assert_equal(300, $ocDash['quota']['tokens_input'] ?? null, 'opencode_quota_state(dashboard): token counters sum both generations');
 } finally {
     @unlink($pushSqliteFixture);
     @unlink($pushSqliteFixture . '-wal');

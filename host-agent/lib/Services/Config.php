@@ -149,11 +149,11 @@ class Config
     /**
      * The CLAUDE_CONFIG_DIR a given profile's session should run under -
      * $profile's own 'config_dir' when set, else this process's own
-     * default (home_root() . '/.claude', i.e. today's single-account
-     * behavior unchanged). This is what gets injected as the spawned tmux
-     * pane's CLAUDE_CONFIG_DIR env (see SessionLifecycleService) and is
-     * the base every other Claude-account-scoped path below is now built
-     * from, instead of home_root() directly.
+     * default (home_root() . '/.claude'). This is the FILESYSTEM location of
+     * the account's transcripts/settings, the base every other Claude-
+     * account-scoped path below is built from - NOT the env a spawned
+     * process gets: the default account runs with CLAUDE_CONFIG_DIR unset
+     * (ClaudeCodeAdapter::account_env()).
      */
     public static function claude_config_dir(?string $profile = null): string
     {
@@ -234,6 +234,12 @@ class Config
     public static function codex_bridge_socket(): string
     {
         return self::sessioneer_config('CODEX_BRIDGE_SOCKET', '/run/user/' . getmyuid() . '/sessioneer-codex-bridge.sock');
+    }
+
+    /** The managed daemon Codex Remote (the phone app) also talks to; empty disables it for the bridge. */
+    public static function codex_daemon_socket(): string
+    {
+        return self::sessioneer_config('CODEX_DAEMON_SOCKET', self::home_root() . '/.codex/app-server-control/app-server-control.sock');
     }
 
     public static function claude_headless_socket(): string
@@ -543,16 +549,67 @@ class Config
 
     /**
      * Base URL of the `opencode serve` HTTP server (see host-agent/systemd/
-     * opencode-serve.service, port 4096). opencode 1.18.21 exposes pending
-     * permission/question state ONLY through this server's in-memory API
-     * (GET /permission, GET /question and their reply endpoints return non-
-     * empty arrays while a modal is live, [] when orphaned/none) - so the
-     * host-agent talks to it for blocked-prompt detection/answering.
+     * opencode-serve.service, port 8889). Pending questions are v2 forms
+     * (GET /api/session/{id}/form, POST .../form/{formID}/reply), and the
+     * server requires HTTP Basic auth, so every call also needs
+     * opencode_curl_auth_args().
      * Overridable via env for tests (OPENCODE_SERVE_URL).
      */
     public static function opencode_server_url(): string
     {
-        return rtrim(self::sessioneer_config('OPENCODE_SERVE_URL', 'http://localhost:4096'), '/');
+        return rtrim(self::sessioneer_config('OPENCODE_SERVE_URL', 'http://127.0.0.1:8889'), '/');
+    }
+
+    /**
+     * Base URL of the Ollama server that backs `ollama` chat sessions
+     * (OllamaClient). Defaults to the host's own general-purpose server on
+     * 11434 - deliberately NOT the Quick Prompt router unit on 11435, which
+     * keeps one small model loaded for classification only.
+     */
+    public static function ollama_url(): string
+    {
+        return rtrim(self::sessioneer_config('OLLAMA_URL', OllamaClient::DEFAULT_URL), '/');
+    }
+
+    /**
+     * How long one turn may take before it is reported as a timeout. Generous
+     * by default: a 7B model on a CPU box can legitimately spend minutes on a
+     * long answer, and cutting it off mid-reply looks like a crash.
+     */
+    public static function ollama_timeout_seconds(): int
+    {
+        return (int)max(10, min(3600, (int)self::sessioneer_config('OLLAMA_TIMEOUT_SECONDS', '300')));
+    }
+
+    /**
+     * Password for that server. Service mode (`opencode serve --service`)
+     * keeps it in its own config file, so that file is the single source of
+     * truth rather than a second copy in this repo's .env; OPENCODE_PASSWORD
+     * still wins when set, for tests and one-off runs.
+     */
+    public static function opencode_server_password(): ?string
+    {
+        $env = getenv('OPENCODE_PASSWORD');
+        if ($env !== false && $env !== '') return $env;
+
+        $file = self::sessioneer_config('OPENCODE_SERVICE_CONFIG', self::home_root() . '/.config/opencode/service.json');
+        $raw = @file_get_contents($file);
+        if ($raw === false) return null;
+        $config = json_decode($raw, true);
+        $password = is_array($config) ? ($config['password'] ?? null) : null;
+        return is_string($password) && $password !== '' ? $password : null;
+    }
+
+    /**
+     * curl arguments carrying that Basic auth, or none when no password is
+     * configured (the server then answers 401, which surfaces as a normal
+     * transport failure instead of a crash).
+     * @return array<int,string>
+     */
+    public static function opencode_curl_auth_args(): array
+    {
+        $password = self::opencode_server_password();
+        return $password === null ? [] : ['--user', 'opencode:' . $password];
     }
 
     /**

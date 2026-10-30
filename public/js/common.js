@@ -878,14 +878,30 @@ if (fullscreenEditModal && fullscreenEditModalTextarea && fullscreenEditModalClo
   // decide between saving and discarding.
   var fullscreenEditModalSource = null;
   var fullscreenEditModalBodyOverflowBefore = '';
+  var fullscreenEditModalBodyPositionBefore = '';
+  var fullscreenEditModalBodyTopBefore = '';
+  var fullscreenEditModalBodyWidthBefore = '';
+  var fullscreenEditModalScrollY = 0;
 
   function openFullscreenEditModal(sourceTextarea) {
     fullscreenEditModalSource = sourceTextarea;
     fullscreenEditModalTextarea.value = sourceTextarea.value;
     fullscreenEditModalTextarea.placeholder = sourceTextarea.placeholder || '';
     fullscreenEditModal.classList.remove('hidden');
+    // iOS Safari ignores body{overflow:hidden} for its own rubber-band scroll,
+    // so the page behind the fixed editor could still move and snap the
+    // viewport back to the top. A fixed body pinned at the current scroll
+    // offset is the reliable lock; it is restored, with the same offset, on
+    // close.
+    fullscreenEditModalScrollY = window.scrollY || document.documentElement.scrollTop || 0;
     fullscreenEditModalBodyOverflowBefore = document.body.style.overflow;
+    fullscreenEditModalBodyPositionBefore = document.body.style.position;
+    fullscreenEditModalBodyTopBefore = document.body.style.top;
+    fullscreenEditModalBodyWidthBefore = document.body.style.width;
     document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.top = '-' + fullscreenEditModalScrollY + 'px';
+    document.body.style.width = '100%';
     fullscreenEditModalTextarea.focus();
     // Cursor at the end - matches where continuing to type would land if
     // the user had just kept typing in the original field instead of
@@ -899,6 +915,10 @@ if (fullscreenEditModal && fullscreenEditModalTextarea && fullscreenEditModalClo
     fullscreenEditModalTextarea.value = '';
     fullscreenEditModalSource = null;
     document.body.style.overflow = fullscreenEditModalBodyOverflowBefore;
+    document.body.style.position = fullscreenEditModalBodyPositionBefore;
+    document.body.style.top = fullscreenEditModalBodyTopBefore;
+    document.body.style.width = fullscreenEditModalBodyWidthBefore;
+    window.scrollTo(0, fullscreenEditModalScrollY);
   }
 
   // A real, dispatched `input` event (bubbles:true), not just a value

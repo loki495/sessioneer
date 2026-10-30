@@ -8,6 +8,7 @@ use HostAgent\Agents\AgentRegistry;
 use HostAgent\Services\BareProcessService;
 use HostAgent\Services\ClaudeModelCatalog;
 use HostAgent\Services\Config;
+use HostAgent\Services\ContextUsage;
 use HostAgent\Services\PermissionMode;
 use HostAgent\Services\SelectableModel;
 use HostAgent\Services\SessionLifecycleService;
@@ -129,6 +130,10 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
             SidecarStore::set_no_tools($name);
         }
 
+        if (is_string($options['effort'] ?? null) && $options['effort'] !== '') {
+            SidecarStore::set_effort($name, $options['effort']);
+        }
+
         $reply = $this->client->request('sessioneer/spawn', [
             'session' => $name,
             'fresh' => true,
@@ -157,7 +162,7 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
      *
      * @return array{ok:bool, name?:string, id?:string, session?:array<string,mixed>, message?:string}
      */
-    public function resume(string $workdir, string $agentSessionId, ?string $profile = null): array
+    public function resume(string $workdir, string $agentSessionId, ?string $profile = null, ?string $effort = null): array
     {
         if ($workdir === '' || $workdir[0] !== '/' || !is_dir($workdir)) {
             return ['ok' => false, 'message' => 'Working directory must be an existing absolute path'];
@@ -199,6 +204,10 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
                 'title' => null,
                 'profile' => $profile,
             ]);
+
+            if ($effort !== null && $effort !== '') {
+                SidecarStore::set_effort($name, $effort);
+            }
 
             $reply = $this->client->request('sessioneer/spawn', ['session' => $name]);
 
@@ -273,11 +282,18 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
      */
     private function reconcile_with_live_status(string $sessionRef, array $entry): array
     {
-        $live = $this->client->request('sessioneer/status', ['session' => $sessionRef]);
+        $live = $this->client->request('sessioneer/status', ['session' => $sessionRef, 'include_effort' => true]);
 
         if (($live['ok'] ?? false) !== true || !is_string($live['state'] ?? null)) {
             return $entry;
         }
+
+        $effortFields = [
+            'current_effort' => is_string($live['current_effort'] ?? null) ? $live['current_effort'] : null,
+            'effort_available' => ($live['effort_available'] ?? false) === true,
+            'effort_message' => is_string($live['effort_message'] ?? null) ? $live['effort_message'] : 'Live effort is unavailable with this manager',
+        ];
+        $entry = array_merge($entry, $effortFields);
 
         $liveWorking = $live['state'] === 'working';
         $liveBlocked = $live['state'] === 'blocked';
@@ -302,7 +318,7 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
         // Re-derive the full entry from the now-corrected row rather than
         // duplicating session_entry()'s own prompt/mode/model field mapping
         // here - a second, cheap single-row read.
-        return $this->session_entry($sessionRef) ?? $entry;
+        return array_merge($this->session_entry($sessionRef) ?? $entry, $effortFields);
     }
 
     public function kill(string $sessionRef): array
@@ -407,6 +423,16 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
 
     public function update_settings(string $sessionRef, ?string $model = null, ?string $effort = null, ?string $provider = null): array
     {
+        if ($model === null && $effort !== null) {
+            if ($effort !== '' && !in_array($effort, \HostAgent\Agents\ClaudeCodeAdapter::EFFORT_LEVELS, true)) {
+                return ['ok' => false, 'message' => 'Rejected: unknown effort level'];
+            }
+            $reply = $this->client->request('sessioneer/setEffort', ['session' => $sessionRef, 'effort' => $effort]);
+            return ($reply['ok'] ?? false) === true
+                ? ['ok' => true, 'message' => $reply['message'] ?? 'Effort updated for subsequent requests']
+                : ['ok' => false, 'message' => self::message($reply, 'Could not change effort')];
+        }
+
         // Only Claude's model families are selectable, exactly as in the tmux
         // picker; "default" has no live in-band equivalent, so it is refused.
         if ($model === null || $model === '' || $model === 'default' || !array_key_exists($model, SelectableModel::PICKER_OPTIONS)) {
@@ -502,11 +528,14 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
             'current_mode' => is_string($status['mode'] ?? null) ? $status['mode'] : null,
             'current_model' => $model,
             'model_labels' => ClaudeModelCatalog::labels(),
+            'current_effort' => $sidecar['effort'] ?? null,
+            'effort_available' => false,
+            'effort_message' => 'Claude manager has not reported live effort',
             'current_antigravity_model' => null,
             'last_turn_error' => is_string($status['last_turn_error'] ?? null) ? $status['last_turn_error'] : null,
             'agent_session_id' => $agentSessionId,
             'last_message' => SessionService::session_last_message($agentSessionId, $profile),
-            'context_used_percentage' => null,
+            'context_used_percentage' => ContextUsage::claude_percentage($status['context_usage'] ?? null),
             'git_worktree' => null,
             'writable' => true,
             'read_only_reason' => null,

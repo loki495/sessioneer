@@ -93,6 +93,13 @@ try {
     assert_equal('Input required in Codex Remote.', $question['blocked']['question'] ?? null, 'request_user_input is visible as a Remote-owned input block');
     assert_equal('Which environment?', $question['blocked']['context'] ?? null, 'request_user_input preserves readable question context');
 
+    // A real prompt the bridge holds is answerable; the hook's observe-only notice must not replace it.
+    $realPrompt = ['tool_name' => 'permission', 'question' => 'Allow Codex to run this command?', 'options' => [['number' => 1, 'label' => 'Allow once']]];
+    SessionStatusStore::update_status('codex-hook-session', ['status' => 'blocked', 'blocked' => $realPrompt]);
+    run_codex_status_hook($base + ['hook_event_name' => 'PermissionRequest', 'tool_name' => 'Bash', 'tool_input' => ['command' => 'deploy']], $statusDb);
+    $kept = SessionStatusStore::read_status('codex-hook-session');
+    assert_equal('Allow Codex to run this command?', $kept['blocked']['question'] ?? null, 'the external notice never replaces a real answerable prompt');
+
     run_codex_status_hook($base + ['hook_event_name' => 'PostToolUse', 'tool_name' => 'Bash'], $statusDb);
     assert_equal('working', SessionStatusStore::read_status('codex-hook-session')['status'] ?? null, 'the approved Remote tool completing returns the session to working');
 

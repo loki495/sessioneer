@@ -6,6 +6,7 @@ namespace HostAgent\Runtimes;
 
 use HostAgent\Agents\ClaudeCodeAdapter;
 use HostAgent\Services\Config;
+use HostAgent\Services\ContextUsage;
 use HostAgent\Services\PermissionMode;
 use HostAgent\Services\QuotaLiveStateWriter;
 use HostAgent\Stores\SessionStatusStore;
@@ -385,7 +386,8 @@ final class ClaudeHeadlessManager
         return match ($method) {
             'sessioneer/health' => $this->health(),
             'sessioneer/list' => $this->list_children(),
-            'sessioneer/status' => $this->status($session),
+            'sessioneer/status' => ($params['include_effort'] ?? false) === true ? $this->effort_status($session, $stream) : $this->status($session),
+            'sessioneer/setEffort' => $this->set_effort($session, $params, $stream),
             'sessioneer/spawn' => $this->spawn_request($session, $params),
             'sessioneer/sendInput' => $this->send_input($session, $params, $stream),
             'sessioneer/pendingPrompt' => $this->pending_prompt($session),
@@ -625,6 +627,49 @@ final class ClaudeHeadlessManager
     }
 
     /**
+     * @param array<string, mixed> $params
+     * @param resource $stream
+     * @return array<string, mixed>|null
+     */
+    private function set_effort(string $session, array $params, $stream): ?array
+    {
+        $effort = $params['effort'] ?? null;
+        if (!is_string($effort) || ($effort !== '' && !in_array($effort, ClaudeCodeAdapter::EFFORT_LEVELS, true))) {
+            return ['ok' => false, 'message' => 'Rejected: unknown or missing effort level'];
+        }
+        $tracked = $this->tracked($session);
+        if (!$tracked['ok']) {
+            return $tracked;
+        }
+        $effort = $effort === '' ? null : $effort;
+        if (!isset($this->children[$session])) {
+            SidecarStore::set_effort($session, $effort);
+            return ['ok' => true, 'message' => 'Effort saved for the next message'];
+        }
+        return $this->control_request($session, ['subtype' => 'apply_flag_settings', 'settings' => ['effortLevel' => $effort]], $stream, 'set_effort', $effort);
+    }
+
+    /**
+     * @param resource $stream
+     * @return array<string, mixed>|null
+     */
+    private function effort_status(string $session, $stream): ?array
+    {
+        $status = $this->status($session);
+        if (!$status['ok']) {
+            return $status;
+        }
+        if (!isset($this->children[$session])) {
+            return $status + [
+                'current_effort' => SidecarStore::read_sidecar($session)['effort'] ?? null,
+                'effort_available' => true,
+                'effort_message' => 'Saved effort applies when the session resumes',
+            ];
+        }
+        return $this->control_request($session, ['subtype' => 'get_settings'], $stream, 'effort_status');
+    }
+
+    /**
      * Sends a control_request and defers the client's reply until the child's
      * matching control_response arrives (or the child exits / it times out).
      *
@@ -632,7 +677,7 @@ final class ClaudeHeadlessManager
      * @param resource $stream
      * @return array<string, mixed>|null
      */
-    private function control_request(string $session, array $request, $stream): ?array
+    private function control_request(string $session, array $request, $stream, string $kind = 'control', ?string $effort = null): ?array
     {
         $tracked = $this->tracked($session);
 
@@ -654,7 +699,7 @@ final class ClaudeHeadlessManager
             return ['ok' => false, 'message' => 'Could not write to the Claude process'];
         }
 
-        $child->controlWaiters[$requestId] = ['client' => $stream, 'deadline' => microtime(true) + self::CONTROL_TIMEOUT_SECONDS];
+        $child->controlWaiters[$requestId] = ['client' => $stream, 'deadline' => microtime(true) + self::CONTROL_TIMEOUT_SECONDS, 'reset_context' => ($request['subtype'] ?? null) === 'set_model', 'kind' => $kind, 'effort' => $effort];
 
         return null;
     }
@@ -784,6 +829,7 @@ final class ClaudeHeadlessManager
         $adapterOptions = [
             'profile' => $profile,
             'model' => $options['model'] ?? null,
+            'effort' => $sidecar['effort'] ?? null,
             'starting_mode' => is_string($mode) ? $mode : null,
             'enable_task_tools' => !empty($options['enable_task_tools']),
             // Sticky: the sidecar remembers it so a dormant respawn never regains tools.
@@ -814,6 +860,7 @@ final class ClaudeHeadlessManager
         $child->requestedMode = $realMode;
         $child->profile = $profile;
         $this->children[$session] = $child;
+        $this->persist_status($session, ['context_usage' => null]);
 
         if ($spec['assigned_id'] !== null && $spec['assigned_id'] !== $existingId) {
             $this->rebind_session_id($session, $spec['assigned_id']);
@@ -826,7 +873,7 @@ final class ClaudeHeadlessManager
      * The child environment: everything inherited MINUS the variables that
      * would override the subscription login or re-enable Claude's hooks.
      *
-     * @param array<string, string> $extra
+     * @param array<string, ?string> $extra
      * @return array<string, string>
      */
     private function child_env(array $extra): array
@@ -839,7 +886,8 @@ final class ClaudeHeadlessManager
             }
         }
 
-        return $extra + $env;
+        // A null in $extra removes the inherited variable (see ClaudeCodeAdapter::account_env()).
+        return array_filter($extra + $env, static fn (?string $v): bool => $v !== null);
     }
 
     /**
@@ -1055,11 +1103,20 @@ final class ClaudeHeadlessManager
         }
 
         if ($type === 'assistant') {
+            $snapshot = ContextUsage::claude_assistant($event, $child->contextUsage);
+            if ($snapshot !== $child->contextUsage) {
+                $child->contextUsage = $snapshot;
+                $this->persist_status($child->name, ['context_usage' => $snapshot]);
+            }
             foreach (is_array($event['message']['content'] ?? null) ? $event['message']['content'] : [] as $block) {
                 if (is_array($block) && ($block['type'] ?? null) === 'tool_use') {
                     $child->turnUsedTools = true;
                 }
             }
+        }
+
+        if ($type === 'conversation_reset' || ($type === 'system' && (($event['subtype'] ?? null) === 'compact_boundary' || ($event['status'] ?? null) === 'compacting'))) {
+            $this->clear_context($child);
         }
 
         if ($type === 'system') {
@@ -1083,8 +1140,7 @@ final class ClaudeHeadlessManager
         } elseif ($type === 'rate_limit_event') {
             $this->on_rate_limit($child, $event);
         }
-        // assistant / user / conversation_reset / unknown types: nothing to do
-        // (the transcript file is the history; the next `init` carries any new id).
+        // The transcript file is the history; the next init carries any new id.
     }
 
     /** @param array<string, mixed> $event */
@@ -1121,6 +1177,7 @@ final class ClaudeHeadlessManager
         $sessionId = $event['session_id'] ?? null;
 
         if (is_string($sessionId) && $sessionId !== '' && $sessionId !== $child->agentSessionId) {
+            $this->clear_context($child);
             $this->rebind_session_id($child->name, $sessionId);
             $child->agentSessionId = $sessionId;
         }
@@ -1133,6 +1190,9 @@ final class ClaudeHeadlessManager
         }
 
         if (is_string($event['model'] ?? null)) {
+            if ($child->contextUsage !== null && ($child->contextUsage['model'] ?? null) !== $event['model']) {
+                $this->clear_context($child);
+            }
             $fields['model'] = $event['model'];
         }
 
@@ -1243,11 +1303,37 @@ final class ClaudeHeadlessManager
 
         unset($child->controlWaiters[$requestId]);
 
+        if ($waiter['kind'] === 'effort_status') {
+            $effort = $response['response']['applied']['effort'] ?? null;
+            $available = ($response['subtype'] ?? null) === 'success'
+                && is_string($effort) && in_array($effort, ClaudeCodeAdapter::EFFORT_LEVELS, true);
+            // get_settings also contains private settings and source paths.
+            // Only the applied effort crosses the manager boundary.
+            $this->reply($waiter['client'], $this->status($child->name) + [
+                'current_effort' => $available ? $effort : null,
+                'effort_available' => $available,
+                'effort_message' => $available ? 'Session-only effort for subsequent requests' : 'Live effort is unavailable for this Claude CLI or model',
+            ]);
+            return;
+        }
+
         if (($response['subtype'] ?? null) === 'error') {
             $message = is_string($response['error'] ?? null) ? $response['error'] : 'Claude rejected the request';
             $this->reply($waiter['client'], ['ok' => false, 'message' => $message]);
 
             return;
+        }
+
+        if ($waiter['kind'] === 'set_effort') {
+            if (($response['subtype'] ?? null) !== 'success') {
+                $this->reply($waiter['client'], ['ok' => false, 'message' => 'Claude did not acknowledge the effort change']);
+                return;
+            }
+            SidecarStore::set_effort($child->name, $waiter['effort']);
+        }
+
+        if ($waiter['reset_context']) {
+            $this->clear_context($child);
         }
 
         $this->reply($waiter['client'], ['ok' => true, 'response' => $response['response'] ?? null]);
@@ -1343,10 +1429,12 @@ final class ClaudeHeadlessManager
             'has_tools' => $child->turnUsedTools,
         ];
 
+        $child->contextUsage = ContextUsage::claude_result($child->contextUsage, $event);
         $fields = [
             'status' => $child->state,
             'blocked' => $child->pending_head(),
             'last_turn_error' => $error,
+            'context_usage' => $child->contextUsage,
         ];
 
         if (is_array($event['usage'] ?? null)) {
@@ -1354,6 +1442,12 @@ final class ClaudeHeadlessManager
         }
 
         $this->persist_status($child->name, $fields);
+    }
+
+    private function clear_context(ClaudeHeadlessChild $child): void
+    {
+        $child->contextUsage = null;
+        $this->persist_status($child->name, ['context_usage' => null]);
     }
 
     /** @param array<string, mixed> $event */

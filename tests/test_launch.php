@@ -97,9 +97,9 @@ assert_true(new ClaudeSessionLauncher() instanceof SessionLauncher, 'the Claude 
 assert_equal('claude', (new ClaudeSessionLauncher())->agent_id(), 'and names its agent');
 
 echo "Refusals\n";
-$unsupported = launch(['agent' => 'codex', 'prompt' => 'hi', 'workdir' => $workdir]);
+$unsupported = launch(['agent' => 'antigravity', 'prompt' => 'hi', 'workdir' => $workdir]);
 assert_equal(false, $unsupported['ok'] ?? null, 'an agent with no launcher is refused');
-assert_contains("not supported for agent 'codex' (supported: claude)", (string)$unsupported['message'], 'naming the agent and what is supported');
+assert_contains("not supported for agent 'antigravity' (supported: claude, codex, ollama, opencode)", (string)$unsupported['message'], 'naming the agent and what is supported');
 assert_contains('needs a prompt', (string)launch(['workdir' => $workdir])['message'], 'a new session without a prompt is refused');
 assert_contains('needs a prompt', (string)launch(['workdir' => $workdir, 'prompt' => "  \n"])['message'], 'a blank prompt counts as none');
 assert_contains('existing absolute workdir', (string)launch(['workdir' => 'relative', 'prompt' => 'hi'])['message'], 'a relative workdir is refused');
@@ -166,6 +166,35 @@ $argv = $spawnArgv();
 assert_equal(['--tools', '', '--strict-mcp-config'], array_slice($argv, (int)array_search('--tools', $argv, true), 3), 'which is still started with no tools');
 assert_true(in_array('--resume', $argv, true) || in_array('--session-id', $argv, true), 'on the same conversation');
 
+echo "Effort\n";
+$badEffort = launch(['prompt' => 'hi', 'workdir' => $workdir, 'effort' => 'extreme']);
+assert_equal(false, $badEffort['ok'] ?? null, 'an unknown effort level is refused');
+assert_contains('low, medium, high, xhigh, max', (string)$badEffort['message'], 'naming the levels Claude accepts');
+$effortDir = $root . '/work/effortful';
+@mkdir($effortDir, 0700, true);
+$eff = launch(['prompt' => 'think words', 'workdir' => $effortDir, 'effort' => 'high']);
+assert_true(($eff['ok'] ?? false) === true, 'a session launches with an effort' . (($eff['ok'] ?? false) === true ? '' : ' - got ' . json_encode($eff)));
+$effName = (string)($eff['name'] ?? '');
+$made[] = $effName;
+assert_equal('high', SidecarStore::read_sidecar($effName)['effort'] ?? null, 'the sidecar remembers the effort');
+assert_true((bool)wait_until(static fn (): bool => status_of($effName) === 'idle' && has_result($m, 'echo: think words')), 'and the prompt is answered');
+$argv = $spawnArgv();
+assert_equal(['--effort', 'high'], array_slice($argv, (int)array_search('--effort', $argv, true), 2), 'the process is started with --effort high');
+$effId = (string)(dispatch_action(['action' => 'session_detail', 'session' => $effName])['agent_session_id'] ?? '');
+assert_true(($stopped = call($m, 'sessioneer/stop', ['session' => $effName]))['ok'] ?? false, 'the process is stopped, leaving the session dormant');
+launch(['agent_session_id' => $effId, 'prompt' => 'think again']);
+assert_true((bool)wait_until(static fn (): bool => has_result($m, 'echo: think again')), 'a message respawns it');
+$argv = $spawnArgv();
+assert_equal(['--effort', 'high'], array_slice($argv, (int)array_search('--effort', $argv, true), 2), 'with the same effort re-applied');
+$retune = launch(['agent_session_id' => $effId, 'prompt' => 'x', 'effort' => 'low']);
+assert_equal(false, $retune['ok'] ?? null, 'a tracked session cannot be retuned');
+assert_contains('fixed when its process starts', (string)$retune['message'], 'with the reason');
+assert_equal('high', SidecarStore::read_sidecar($effName)['effort'] ?? null, 'and keeps its effort');
+$listedEffort = array_values(array_filter(dispatch_action(['action' => 'launch_list'])['sessions'] ?? [], static fn (array $s): bool => $s['name'] === $effName))[0] ?? [];
+assert_equal('high', $listedEffort['effort'] ?? null, 'the list shows the effort');
+$plain = array_values(array_filter(fake_log($m), static fn (array $r): bool => isset($r['argv'])))[0]['argv'];
+assert_true(!in_array('--effort', $plain, true), 'while a launch without one passes no --effort');
+
 echo "Resume\n";
 $transcriptDir = $root . '/home/.claude/projects/' . preg_replace('/[^A-Za-z0-9]/', '-', $workdir);
 @mkdir($transcriptDir, 0700, true);
@@ -187,12 +216,12 @@ $row = array_values(array_filter($listed['sessions'] ?? [], static fn (array $s)
 assert_equal($conversationId, $row['agent_session_id'] ?? null, 'the session is listed with its conversation id');
 assert_equal('idle', $row['status'] ?? null, 'and its status');
 assert_equal($workdir, $row['workdir'] ?? null, 'and its directory');
-assert_contains('not supported for agent', (string)dispatch_action(['action' => 'launch_list', 'agent' => 'codex'])['message'], 'listing an agent with no launcher is a handled failure');
+assert_contains('not supported for agent', (string)dispatch_action(['action' => 'launch_list', 'agent' => 'antigravity'])['message'], 'listing an agent with no launcher is a handled failure');
 
 echo "Kill\n";
 assert_contains('needs a session name', (string)dispatch_action(['action' => 'launch_kill', 'target' => ' '])['message'], 'a blank target is refused');
 assert_contains('No headless Claude session found', (string)dispatch_action(['action' => 'launch_kill', 'target' => 'no-such-session'])['message'], 'an unknown target is a handled failure');
-assert_contains('not supported for agent', (string)dispatch_action(['action' => 'launch_kill', 'agent' => 'codex', 'target' => $resumedName])['message'], 'an agent with no launcher is refused');
+assert_contains('not supported for agent', (string)dispatch_action(['action' => 'launch_kill', 'agent' => 'antigravity', 'target' => $resumedName])['message'], 'an agent with no launcher is refused');
 SessionStatusStore::update_status($resumedName, ['status' => 'working']);
 $busy = dispatch_action(['action' => 'launch_kill', 'target' => $resumedName]);
 assert_equal(false, $busy['ok'] ?? null, 'a working session is not stopped');
@@ -282,7 +311,7 @@ assert_contains('No tracked Claude session', (string)dispatch_action(['action' =
 assert_contains('inside a Sessioneer session', (string)dispatch_action(['action' => 'launch_send', 'target' => $resumedName, 'message' => 'x'])['message'], 'a sender outside any session is refused');
 assert_contains('inside a Sessioneer session', (string)dispatch_action(['action' => 'launch_send', 'from' => 'cc-forged', 'target' => $resumedName, 'message' => 'x'])['message'], 'so is one naming an untracked session');
 assert_contains('to itself', (string)dispatch_action(['action' => 'launch_send', 'from' => $senderName, 'target' => $senderName, 'message' => 'x'])['message'], 'a session cannot message itself');
-assert_contains('not supported for agent', (string)dispatch_action(['action' => 'launch_send', 'agent' => 'codex', 'from' => $senderName, 'target' => $resumedName, 'message' => 'x'])['message'], 'an agent with no launcher is refused');
+assert_contains('not supported for agent', (string)dispatch_action(['action' => 'launch_send', 'agent' => 'antigravity', 'from' => $senderName, 'target' => $resumedName, 'message' => 'x'])['message'], 'an agent with no launcher is refused');
 
 echo "Failure: manager down\n";
 proc_terminate($m['proc'], SIGTERM);
@@ -294,6 +323,6 @@ assert_equal($resumedName, $down['name'] ?? null, 'and still names the session s
 $downNew = launch(['prompt' => 'anyone?', 'workdir' => $workdir]);
 assert_equal(false, $downNew['ok'] ?? null, 'a new launch with the manager down fails');
 assert_contains('Cannot reach Claude headless manager', (string)$downNew['message'], 'with the same error');
-assert_equal(4, count(SidecarStore::list_runtime_sidecars('headless')), 'and leaves no half-created session');
+assert_equal(5, count(SidecarStore::list_runtime_sidecars('headless')), 'and leaves no half-created session');
 
 test_exit();

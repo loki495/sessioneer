@@ -1,6 +1,6 @@
 # Feature reference
 
-This is Sessioneer's current four-agent capability and implementation
+This is Sessioneer's current five-agent capability and implementation
 reference. The README is the installation guide; this document answers which
 agent supports a feature, what mechanism provides it, and where parity is
 intentionally incomplete.
@@ -15,7 +15,8 @@ Legend: **✓** supported · **◐** supported with a caveat · **✗** unavaila
 | Claude Code | `claude-headless-*` headless (default) / `cc-*` tmux | headless (`claude -p` owned by the headless manager) by default, or tmux | Claude JSONL | tmux: five Claude hooks, narrow pane fallbacks; headless: the process's own event stream | tmux key input, or the manager's stdin |
 | Antigravity | `ag-*` | tmux | `transcript_full.jsonl` | Four Antigravity hooks plus the pane for approval visibility | tmux key input |
 | OpenCode | `ses_*` headless / `oc-*` tmux | `opencode serve` by default, tmux fallback | `opencode.db` | Serve API, SQLite, permissions plugin, and TUI pane where necessary | serve API or tmux key input |
-| Codex | native thread UUID | headless only | Codex rollout JSONL and app-server | Private bridge for Sessioneer-owned turns; Codex hooks for Remote-owned activity | Persistent queue after materialization; private bridge for a new thread's first turn and owned prompt replies |
+| Codex | native thread UUID | headless only | Codex rollout JSONL and app-server | Bridge attached to the managed daemon Codex Remote also uses (private app-server as fallback); Codex hooks as a fallback signal | Persistent queue after materialization; private bridge for a new thread's first turn and owned prompt replies |
+| Ollama | `ollama-headless-*` | headless only | Sessioneer's own JSONL under `$SIDECAR_DIR/ollama/` | The turn worker's own status writes; there are no prompts to answer | `POST /api/chat`, one detached worker per turn |
 
 All host-only work goes through `host-agent/`; the web container never controls
 tmux, agent daemons, process tables, or user configuration directly.
@@ -42,13 +43,14 @@ tmux, agent daemons, process tables, or user configuration directly.
 | Switch model in a live session | ✓ | ✓ account-wide setting | ✓ | ✓ |
 | Choose starting mode at creation | ✓ | ◐ `accept edits` / `plan` | ✗ | ✗ |
 | Switch interaction mode in a live session | ✓ | ✗ | ✗ | ✗ |
-| Switch reasoning effort in the UI | ✗ | ✗ | ✗ | ✓ |
+| Switch reasoning effort in the UI | ✓ headless | ✗ | ✗ | ✓ |
 | Live transcript and forward polling | ✓ | ✓ | ✓ | ✓ |
 | Archived transcript / cwd / title | ✓ | ✓ | ✓ | ✓ |
 | Dashboard-wide content search | ✓ | ✗ | ✓ | ✗ |
 | Per-session content search | ✓ | ✗ | ✓ | ✗ |
 | Usage / quota display | ✓ per configured account | ✓ optional timer | ✓ | ✓ app-server rate limits |
-| Context-window % and git worktree on the session page | ◐ tmux runtime only | ✗ | ✗ | ✗ |
+| Context-window % on the session page | ✓ both runtimes, when reported | ✗ | ✗ | ◐ bridge token-usage snapshot required |
+| Git worktree indicator | ◐ tmux runtime only | ✗ | ✗ | ✗ |
 | Multiple accounts (profiles) | ✓ | ✗ | ✗ | ✗ |
 | File upload / attachment send | ✓ | ✓ | ✓ | ✓ |
 | Web Push on blocked / finished state | ✓ | ✓ | ✓ | ✓, including observe-only Remote blocks |
@@ -99,8 +101,8 @@ since a real Claude can take seconds to shut down; if it is still running at
 the deadline the conversation is left for the Archived list and the message
 says so. A row this can't identify
 with certainty still falls back to the pre-existing closest-start-time
-heuristic, clearly labeled as a guess. Model and permission-mode changes
-drive Claude's own pickers. The model dropdowns (session page and New Session
+heuristic, clearly labeled as a guess. In tmux, model and permission-mode
+changes drive Claude's own pickers. The model dropdowns (session page and New Session
 form) list Claude's families and label each with the newest full name Sessioneer
 has read for it ("Opus 5.5"), parsed from the raw model ids in transcripts and
 headless status; a family not seen yet keeps its plain name. Quota comes from the status-line JSON marker of
@@ -111,7 +113,10 @@ one merge rule, and it is unavailable until either has run once.
 Claude Code alone also supports multiple accounts ("profiles") - a session can
 be spawned under a different `CLAUDE_CONFIG_DIR` (e.g. a separate work
 account) instead of always using this process's own default, named in
-`host-agent/config/agents.php`. A profile is picked from the New Session
+`host-agent/config/agents.php`. The default (and a profile without a
+`config_dir`) runs with `CLAUDE_CONFIG_DIR` removed from the launched
+process's environment, so a value inherited from the spawner can never pick
+the account (tmux and headless, new and resumed alike). A profile is picked from the New Session
 form's Account selector when more than one is configured, persists on the
 session's sidecar, and is threaded through spawn/resume, transcript lookup,
 archived-session listing, and hook install/health checks so a work-profile
@@ -129,13 +134,15 @@ prompt itself.
 
 ### Launch from the command line
 
-`bin/sessioneer` starts a headless Claude session with a first prompt, resumes
+`bin/sessioneer` starts a headless Claude (or, with `--agent codex`, Codex, or
+`--agent opencode`, a serve-hosted OpenCode) session with a first prompt, resumes
 an archived conversation, or delivers a prompt to the session already tracking a
 conversation id, so scripts and other sessions can spawn a continuation that
-shows up in the dashboard. `--list` shows headless sessions and `--kill` stops
+shows up in the dashboard. `--agent ollama` launches a local chat model.
+`--list` shows headless sessions and `--kill` stops
 one (refusing a working or blocked session without `--force`). `--usage` prints
 the last known usage stats for every agent and Claude account as JSON. `--wait [--timeout N]` blocks until the launched session is idle and
-prints its final assistant message, exiting 1 on an error or timeout. Claude only; see
+prints its final assistant message, exiting 1 on an error or timeout. `--effort LEVEL` sets the reasoning level of a new or resumed session (agent + model + effort in one launch). Claude and Codex; see
 [cli.md](cli.md).
 
 ### Headless runtime
@@ -185,7 +192,7 @@ archived Claude row or the per-row switch between runtimes (the old process is
 stopped completely first, and a busy session or one with no transcript yet is
 refused); plain Resume and Take over still open a terminal session. Permission approvals, `AskUserQuestion`
 (single and multi-question), plan approval, interrupt, queued messages, image
-attachments and model and permission-mode changes all work through the process's
+attachments and model, permission-mode and reasoning-effort changes all work through the process's
 own structured events, and the transcript view still reads the same transcript
 file. Concurrent permission prompts (parallel subagents) queue by request id: the
 dashboard shows the oldest, the next appears once it is answered, and the session
@@ -196,6 +203,15 @@ or the process exiting clears them (see "Known parity gaps"). A permission mode 
 attach to; to continue a conversation in one, switch the session to the terminal
 runtime. A headless session's own process never appears under "other Claude
 processes", and Kill and Take over refuse it.
+
+The footer groups model, permission mode and reasoning effort on one row, including
+on narrow phones. Effort offers Default, Low, Medium, High, Xhigh and Max. Changes
+are session-only, apply to subsequent requests without restarting the process, and
+are saved for a dormant session's next message. Default clears the saved override.
+Polling displays the CLI's applied level, including model or environment limits,
+rather than assuming the requested level took effect. Rejections appear below
+the controls; tmux and CLIs/models without live effort reporting show a disabled
+effort selector. The control protocol was checked against Claude Code 2.1.306.
 
 Slash commands are ordinary messages that start with `/` (checked against Claude
 Code 2.1.278):
@@ -277,14 +293,19 @@ The TUI fallback is driven through tmux.
 OpenCode assigns its `ses_*` identifier only after the first prompt creates a
 database row. Sessioneer finds that row by workdir and spawn time and repairs
 the sidecar reactively. Transcripts, token/cost data, and archive metadata come
-from OpenCode's local SQLite database.
+from OpenCode's local SQLite database, reading both storage generations: the
+legacy `session`/`message`/`part` tables and the `session_v2`/`session_message`
+pair that 2.x writes new sessions to. A turn that ends in a provider error
+appears in the transcript as an `Error: …` line rather than an empty reply.
 
-The global `sessioneer-permissions.js` plugin subscribes to
-`permission.asked` and records pending permission details because the tested
-OpenCode API does not persist a reliable equivalent. For TUI sessions, the
-pane is the final authority that the permission dialog is still visible; this
-prevents a stale plugin record from showing answer controls after the dialog
-has gone away. Headless questions arrive over directory-scoped SSE and retain
+The global `sessioneer-permissions.js` plugin mirrors a pending permission into
+a local store, using v2's `ctx.permission.hook("evaluate")` and
+`ctx.event.subscribe(...)`; the primary source is the directory-scoped
+`GET /api/permission/request`, queried once per live session directory, so a
+project-directory request is not hidden behind the server's own cwd. For TUI
+sessions, the pane is the final authority that the permission dialog is still
+visible; this prevents a stale plugin record from showing answer controls after
+the dialog has gone away. Headless questions arrive over directory-scoped SSE and retain
 their server request IDs in the status store, protected from polling resets.
 Replies validate selections/custom text and use HTTP, including the scoped
 legacy reply endpoint when the v2 route is unavailable. Transcript question
@@ -310,10 +331,13 @@ Implementation entry points:
 `CodexAdapter` supports only `RuntimeType::HEADLESS`; there is no Codex tmux
 path. Two separate transports serve different purposes:
 
-1. `sessioneer-codex-bridge.service` owns a long-lived private
-   `codex app-server --stdio` connection. It creates threads, handles the first
-   turn before a rollout exists, reads/archives threads, updates model/effort,
-   and owns the request IDs for prompts raised by its turns.
+1. `sessioneer-codex-bridge.service` holds a long-lived connection to the
+   managed app-server daemon (WebSocket on `CODEX_DAEMON_SOCKET`), the one Codex
+   Remote uses, or a private `codex app-server --stdio` child when the daemon is
+   down. It creates threads, handles the first turn before a rollout exists,
+   reads/archives threads, updates model/effort, and loads (`thread/resume`)
+   every thread the daemon reports or that becomes active so it receives that
+   thread's prompts.
 2. `codex queue --thread <id> --message <text>` appends normal user messages
    through Codex's persistent thread queue once a rollout exists. This path is
    not tied to the private connection, so it works for a materialized thread
@@ -327,13 +351,18 @@ Codex's reset guidance when supplied. The latest turn is read directly so queued
 turns are covered even when they run outside Sessioneer's private bridge. Starting
 a new turn clears the previous error.
 
-This is bidirectional at the normal-message level, not at the pending-prompt
-protocol level. Approval and `request_user_input` response IDs are scoped to
-the app-server connection that created them. A prompt raised while Sessioneer's
-private bridge owns the turn is answerable in Sessioneer. A prompt raised by
-Codex Remote or the shared queue/managed transport is recorded by hooks as an
-external block and shown without fake answer controls; the user must open Codex
-Remote to answer it. Queueing another message neither answers that prompt nor
+Approval and `request_user_input` response IDs are scoped to a connection, but
+the daemon sends each request to every connection that has the thread loaded
+and tells the others (`serverRequest/resolved`) once one has answered. With the
+bridge attached to the daemon, a prompt is answerable in Sessioneer and in
+Codex Remote, whoever started the thread. A request the bridge cannot receive
+(the private fallback, or a thread it has not loaded yet) shows only as a
+blocked status from the thread's `waitingOnApproval`/`waitingOnUserInput` flag
+and the hooks, without answer controls. A pending prompt is dropped only by its
+own resolved notice, an answer, or the thread leaving the active state, never
+by an unrelated status event; an approval the automatic reviewer
+(`approvals_reviewer`) settles itself clears the observe-only notice when its
+review completes. Queueing another message neither answers a prompt nor
 transfers ownership.
 
 Sessioneer installs one neutral observer command for eight Codex hook events:
@@ -349,7 +378,7 @@ load the trusted configuration; sessions already open when it changes should
 be reopened or resumed. The managed daemon used by Codex Remote is bootstrapped
 separately with `codex app-server daemon bootstrap --remote-control`. Its
 restart preserves persisted threads but may interrupt an active turn. The
-private Sessioneer bridge has its own systemd lifecycle and clears prompts
+Sessioneer bridge has its own systemd lifecycle and clears prompts
 whose connection-scoped response IDs became stale after a restart.
 
 Implementation entry points:
@@ -360,6 +389,46 @@ Implementation entry points:
 - `host-agent/lib/Services/CodexHookService.php`
 - `host-agent/hooks/codex/status.php`
 - `host-agent/lib/Services/CodexTranscriptService.php`
+
+## Ollama implementation
+
+A local Ollama model is an agent in Sessioneer's own sense: it has a session
+row, a transcript, a status and a dashboard page, and it is launched from the
+New Session form or `sessioneer --agent ollama --model <pulled-model>`. It is
+deliberately narrow.
+
+- **Headless only, and Sessioneer owns the conversation.** There is no tmux
+  pane and no agent-side session object. `OllamaTranscriptService` writes the
+  turns to `$SIDECAR_DIR/ollama/<session>.jsonl` in the same
+  `{type, message: {role, content}, timestamp}` shape a Claude line uses, so the
+  existing transcript viewer, paging and copy affordances read it unchanged.
+- **One detached worker per turn.** `OllamaHeadlessRuntime::send_message()`
+  appends nothing and returns at once: it stages the prompt and forks
+  `host-agent/ollama_turn_worker.php`, which streams `POST /api/chat`, writes
+  the answer and sets the final status. A local model can take minutes on one
+  answer, and the host agent answers one request per connection while the web
+  container runs a single-threaded `php -S`, so an inline turn would freeze the
+  dashboard. The worker is a cache, the transcript is the truth: a session whose
+  worker died reports idle with "the answer stopped before it finished" rather
+  than a permanent spinner. Requires PHP's `pcntl`; the health box says so when
+  it is missing.
+- **One turn at a time.** A second prompt while the model is answering is
+  refused with that reason instead of being queued, so two answers can never
+  interleave into one transcript. Interrupt stops the worker and discards the
+  partial answer.
+- **No tools, no prompts.** The model can only answer in text: no permission
+  dialog, no mode, no effort, no attachments. The reason is practical - a small
+  local model that invents tool calls is worse than one that answers, and a
+  tool loop wants to be built once, against real models.
+- **Models come from the server.** The picker lists whatever the configured
+  Ollama has pulled, filtered by `/api/show`'s `capabilities` so an embedding
+  model never appears as a chat choice. The endpoint is `OLLAMA_URL`
+  (default `http://127.0.0.1:11434`), not the Quick Prompt router on 11435:
+  that unit keeps one small classification model loaded and would evict it on
+  every turn.
+- **No quota row and no archive.** A local model has no usage window, and a
+  killed session's transcript file stays on disk: there is no agent-side store
+  to discover the conversation back from.
 
 ## Shared UI and platform features
 
@@ -409,14 +478,38 @@ Implementation entry points:
   only - see its implementation section above); the sidebar's own "This
   session" block shows the current session's id and working directory, each
   with a copy button.
-- The session page header shows the workdir's current git branch as the
-  first line under the title, above the workdir itself, for every agent (any
+- The session page header shows the workdir's current git branch under the
+  title for every agent (any
   session has a workdir, whatever runs in it) - a plain `git branch
   --show-current` in that directory, refreshed on poll, blank for a non-git
   workdir or a detached HEAD. Separate from Claude's own tmux-only,
-  statusline-derived worktree name (context-window/worktree parity gap
-  above). A headless session's title row also carries the same "Headless"
-  pill the dashboard and sidebar rows use.
+  statusline-derived worktree name. A headless session's title row also carries
+  the same "Headless" pill the dashboard and sidebar rows use.
+- Claude Code and Codex session pages show the current context-window percentage
+  beside the branch, with the same reading in the expanded quota footer. Both
+  update with session polling, including decreases after compaction. On mobile
+  session pages, the quota toggle shows compact `5h 24%`, `wk 61%`, and `ctx 18%`
+  sections for the selected session/account. Tapping it still opens the full
+  table. Quota values refresh with quota polling and context with session polling,
+  even while collapsed; unavailable values show a dash. Available 5-hour and
+  weekly resets appear as absolute dates and local clock times, including the
+  date for resets today, rather than relative countdowns. Reset dates use smaller
+  type and stay on one line. The mobile toggle fills its own row with three evenly spaced,
+  centered sections, with reset dates beneath the percentages and the model/mode/effort
+  controls on the row below. Missing
+  usage or a missing/invalid reported window shows `ctx unavailable`, rather than
+  zero; context remains visible even when account quota data is unavailable.
+  Claude terminal sessions read their own statusLine marker. Headless Claude
+  uses the latest main-thread assistant input snapshot (`input_tokens` plus
+  cache creation/read input tokens), divided by that model's reported
+  `modelUsage.contextWindow`; output, streamed copies and subagent usage are
+  excluded. Compaction, conversation/model changes and process respawn clear the
+  snapshot until a new response reports usable data. Dormant sessions retain
+  their last known reading. Existing records without a measured window stay
+  unavailable until a response from the updated manager supplies one. Codex uses
+  `thread/tokenUsage/updated.tokenUsage.last.totalTokens` and
+  `modelContextWindow`; cumulative `total` counters remain separate footer
+  totals and never supply context usage.
 
 ## Known parity gaps
 
@@ -426,16 +519,17 @@ Implementation entry points:
 3. Antigravity must use its pane to confirm/answer approval UI because its hook
    signal is insufficient; model changes are account-wide.
 4. OpenCode has no full status-hook plugin or Claude-style mode vocabulary.
-5. Codex Remote-owned approvals and `request_user_input` prompts are visible
-   but cannot be answered from Sessioneer because the response IDs are owned by
-   Remote's app-server connection. Normal messages remain cross-owner through
-   the persistent queue.
+5. Codex approvals and `request_user_input` prompts are answerable from
+   Sessioneer only while the bridge is attached to the managed daemon and has the
+   thread loaded (see the Codex section); with the private fallback they are
+   visible but not answerable. Interrupt works only for a turn the bridge saw
+   start, so it does not yet cover a turn the phone app started.
 6. The dashboard **Install hooks** action covers Claude Code and Codex.
    Antigravity hooks remain an explicit manual install, and OpenCode's plugin is
    installed by `host-agent/install.sh`.
-7. Claude headless sessions show no context-window percentage and no git
-   worktree: both come from the statusLine output a terminal renders and a
-   headless process never does.
+7. Claude headless sessions have no statusline-derived git worktree indicator:
+   a headless process renders no terminal statusLine. Context-window usage comes
+   from structured snapshots instead.
 8. Claude headless sessions have no session-page control to switch runtime and
    no copyable `claude --resume <id>` command to continue in a terminal; the
    switch is on the dashboard row and archived row only. The New Session form

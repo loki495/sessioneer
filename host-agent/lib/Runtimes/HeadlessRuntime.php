@@ -12,16 +12,16 @@ use HostAgent\Services\OpenCodeTranscriptService;
  * process and are driven/observed over its HTTP API - no tmux pane.
  *
  * Lifecycle, status, and send go through OpenCodeServeClient; question
- * detection/answering reuses OpenCodeQuestionService (the proven live
- * `GET /question` surface); transcript reading stays with
- * OpenCodeTranscriptService (opencode.db) because it's the same DB
+ * detection/answering reuses OpenCodeQuestionService (v2 per-session forms:
+ * `GET /api/session/{id}/form`, `POST .../form/{formID}/reply`); permission
+ * prompts come from the directory-scoped `GET /api/permission/request` (with
+ * the plugin store as fallback) and are answered through
+ * `POST /api/session/{id}/permission/{requestID}/reply`; transcript reading
+ * stays with OpenCodeTranscriptService (opencode.db) because it's the same DB
  * regardless of how the session was spawned.
  *
- * Phase 1 scope: contract + lifecycle/status/send + question prompts.
- * Permission-prompt detection/answering (the phase that needs the
- * permission.ask/`GET /permission` wiring) and a live-status event feed
- * are Phase 3/4 - methods that aren't wired yet return a handled
- * "not wired" failure, never a throw.
+ * A method this runtime cannot serve returns a handled `ok=false` failure,
+ * never a throw.
  */
 class HeadlessRuntime implements RuntimeProvider
 {
@@ -93,8 +93,8 @@ class HeadlessRuntime implements RuntimeProvider
     public function send_message(string $sessionRef, string $text, array $attachmentPaths = []): array
     {
         // Attachment relay for a headless opencode session isn't wired yet
-        // (Phase 3) - OpenCodeServeClient refuses it; the model it sends with
-        // is resolved there (session's own model, else the serve default).
+        // (Phase 3) - OpenCodeServeClient turns attachments into text lines;
+        // the model is the session's own (v2 prompts carry no model field).
         return $this->client->send_message($sessionRef, $text, $attachmentPaths);
     }
 
@@ -111,14 +111,10 @@ class HeadlessRuntime implements RuntimeProvider
             return ['ok' => false, 'message' => 'Rejected: no prompt is currently pending on this session'];
         }
 
-        // Permission prompt: POST the v2 permission reply endpoint.
-        // Note: on opencode 1.18.21, GET /permission returns empty and the
-        // permission.ask hook is dormant, so this endpoint may also fail
-        // (PermissionNotFoundError). The Sessioneer plugin's intent mechanism
-        // requires the hook to fire, which it doesn't on this version.
-        // Permission detection works (via PermissionStore fed by the
-        // permission.asked event), but answering from Sessioneer is not yet
-        // possible — the user must answer in the opencode webui/TUI.
+        // Permission prompt: POST the v2 permission reply endpoint. v2 serves
+        // pending requests from the directory-scoped
+        // GET /api/permission/request, so the blocked shape carries a live
+        // request id and this reply is the answer path.
         if ($pending['tool_name'] === 'permission') {
             $reply = match ($answers['option'] ?? 0) {
                 1 => 'once',

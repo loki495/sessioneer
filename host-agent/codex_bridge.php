@@ -12,6 +12,7 @@ require_once __DIR__ . '/../vendor/autoload.php';
 
 use HostAgent\Services\CodexPromptProtocol;
 use HostAgent\Services\CodexTranscriptService;
+use HostAgent\Services\CodexWebSocketFrames;
 use HostAgent\Services\Config;
 use HostAgent\Stores\SessionStatusStore;
 
@@ -21,20 +22,56 @@ if ($codexBin === '') {
     exit(1);
 }
 
-$process = proc_open([$codexBin, 'app-server', '--stdio'], [
-    0 => ['pipe', 'r'],
-    1 => ['pipe', 'w'],
-    2 => ['pipe', 'w'],
-], $pipes);
+/**
+ * Prefer the managed daemon Codex Remote (the phone app) uses: a thread that
+ * lives there is visible to the phone, and the daemon sends a server request
+ * (approval, request_user_input) to every connection that has the thread loaded,
+ * so either side can answer. A private `app-server --stdio` child is the
+ * fallback when the daemon is not running; its threads belong to this bridge alone.
+ *
+ * @return array{0:resource,1:resource,2:resource|null,3:resource|null,4:CodexWebSocketFrames|null}
+ */
+function codex_bridge_connect(string $codexBin): array
+{
+    $daemonSocket = Config::codex_daemon_socket();
+    if ($daemonSocket !== '' && file_exists($daemonSocket)) {
+        $socket = @stream_socket_client('unix://' . $daemonSocket, $errno, $error, 3);
+        if ($socket !== false) {
+            fwrite($socket, CodexWebSocketFrames::handshake_request());
+            $response = '';
+            $deadline = microtime(true) + 3;
+            while (!str_contains($response, "\r\n\r\n") && microtime(true) < $deadline) {
+                $chunk = fread($socket, 1);
+                if ($chunk === false || $chunk === '') break;
+                $response .= $chunk;
+            }
+            if (str_starts_with($response, 'HTTP/1.1 101')) {
+                return [null, $socket, null, null, new CodexWebSocketFrames()];
+            }
+            fclose($socket);
+        }
+        fwrite(STDERR, "Codex daemon socket unusable, falling back to a private app-server\n");
+    }
 
-if (!is_resource($process)) {
-    fwrite(STDERR, "Failed to start codex app-server\n");
-    exit(1);
+    $process = proc_open([$codexBin, 'app-server', '--stdio'], [
+        0 => ['pipe', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ], $pipes);
+    if (!is_resource($process)) {
+        fwrite(STDERR, "Failed to start codex app-server\n");
+        exit(1);
+    }
+    [$in, $out, $err] = $pipes;
+    stream_set_blocking($out, false);
+    stream_set_blocking($err, false);
+    return [$in, $out, $err, $process, null];
 }
 
-[$appIn, $appOut, $appErr] = $pipes;
-stream_set_blocking($appOut, false);
-stream_set_blocking($appErr, false);
+[$appIn, $appOut, $appErr, $process, $wsFrames] = codex_bridge_connect($codexBin);
+// The daemon connection is one duplex socket; the read side is $appOut either way.
+if ($wsFrames !== null) $appIn = $appOut;
+$appOutBuffer = '';
 
 /**
  * @param resource $stream
@@ -42,17 +79,39 @@ stream_set_blocking($appErr, false);
  */
 function codex_bridge_write($stream, array $message): void
 {
+    global $wsFrames;
     $json = json_encode($message, JSON_UNESCAPED_SLASHES);
-    if ($json === false || fwrite($stream, $json . "\n") === false) {
+    if ($json === false) {
         throw new RuntimeException('Codex app-server pipe closed');
     }
+    $payload = $wsFrames !== null ? CodexWebSocketFrames::encode($json) : $json . "\n";
+    $offset = 0;
+    while ($offset < strlen($payload)) {
+        $written = @fwrite($stream, substr($payload, $offset));
+        if ($written === false || $written === 0) throw new RuntimeException('Codex app-server pipe closed');
+        $offset += $written;
+    }
     fflush($stream);
+}
+
+/** Turns raw bytes from the app-server into newline-delimited JSON lines in $appOutBuffer. */
+function codex_bridge_ingest(string $chunk): void
+{
+    global $wsFrames, $appIn, $appOutBuffer;
+    if ($wsFrames === null) {
+        $appOutBuffer .= $chunk;
+        return;
+    }
+    $decoded = $wsFrames->feed($chunk);
+    if ($decoded['reply'] !== '') @fwrite($appIn, $decoded['reply']);
+    if ($decoded['closed']) throw new RuntimeException('Codex daemon closed the connection');
+    foreach ($decoded['messages'] as $message) $appOutBuffer .= $message . "\n";
 }
 
 codex_bridge_write($appIn, [
     'method' => 'initialize',
     'id' => 1,
-    'params' => ['clientInfo' => ['name' => 'sessioneer', 'title' => 'Sessioneer', 'version' => '0.1']],
+    'params' => ['clientInfo' => ['name' => 'sessioneer', 'title' => 'Sessioneer', 'version' => '0.1'], 'capabilities' => ['experimentalApi' => true]],
 ]);
 
 $initialized = false;
@@ -61,19 +120,28 @@ while (!$initialized && microtime(true) < $deadline) {
     $read = [$appOut];
     $write = $except = [];
     if (stream_select($read, $write, $except, 1) > 0) {
-        while (($line = fgets($appOut)) !== false) {
+        $chunk = fread($appOut, 65536);
+        if ($chunk !== false && $chunk !== '') codex_bridge_ingest($chunk);
+        // Take only the initialize reply out of the buffer; anything the
+        // server sent alongside it stays for the main loop.
+        $lines = explode("\n", $appOutBuffer);
+        $appOutBuffer = array_pop($lines);
+        $kept = '';
+        foreach ($lines as $line) {
             $message = json_decode($line, true);
-            if (is_array($message) && ($message['id'] ?? null) === 1 && isset($message['result'])) {
+            if (!$initialized && is_array($message) && ($message['id'] ?? null) === 1 && isset($message['result'])) {
                 $initialized = true;
-                break;
+                continue;
             }
+            $kept .= $line . "\n";
         }
+        $appOutBuffer = $kept . $appOutBuffer;
     }
 }
 
 if (!$initialized) {
     fwrite(STDERR, "Codex app-server initialize timed out\n");
-    proc_terminate($process);
+    if ($process !== null) proc_terminate($process);
     exit(1);
 }
 
@@ -96,7 +164,7 @@ if (file_exists($socketPath)) @unlink($socketPath);
 $server = @stream_socket_server('unix://' . $socketPath, $errno, $error);
 if ($server === false) {
     fwrite(STDERR, "Cannot bind Codex bridge socket: {$error}\n");
-    proc_terminate($process);
+    if ($process !== null) proc_terminate($process);
     exit(1);
 }
 @chmod($socketPath, 0660);
@@ -111,7 +179,8 @@ $pendingPrompts = [];
 /** @var array<string,string> $activeTurns */
 $activeTurns = [];
 $nextRpcId = 100;
-$appOutBuffer = '';
+/** @var array<int,string> $rpcMethods method behind each in-flight client request, to learn which ones attach a thread */
+$rpcMethods = [];
 
 /**
  * @param resource $client
@@ -133,11 +202,59 @@ function codex_bridge_reply($client, array $response): void
     @fclose($client);
 }
 
+/**
+ * Threads this connection has loaded: the daemon only sends a thread's server
+ * requests (approvals, questions) to connections that have it loaded, and a
+ * thread another client (the phone app) started is not loaded here until we
+ * resume it. A brand-new thread has no rollout to resume until its first turn
+ * has run, so a refused resume is retried a few times.
+ * @var array<string,true> $attached
+ */
+$attached = [];
+/** @var array<string,array{at:float,tries:int}> $resumeDue */
+$resumeDue = [];
+/** @var array<int,array{kind:string,thread?:string,tries?:int}> $internalRpc replies to requests the bridge made for itself */
+$internalRpc = [];
+$nextInternalId = 1000000;
+const CODEX_BRIDGE_RESUME_TRIES = 10;
+
+/** @param array<string,mixed> $params @param array{kind:string,thread?:string,tries?:int} $meta */
+function codex_bridge_internal(string $method, array $params, array $meta): void
+{
+    global $appIn, $internalRpc, $nextInternalId;
+    $id = $nextInternalId++;
+    $internalRpc[$id] = $meta;
+    codex_bridge_write($appIn, ['method' => $method, 'id' => $id, 'params' => (object)$params]);
+}
+
+function codex_bridge_schedule_resume(string $threadId, int $tries = 0, float $delay = 0.0): void
+{
+    global $attached, $resumeDue;
+    if ($threadId === '' || isset($attached[$threadId]) || isset($resumeDue[$threadId])) return;
+    $resumeDue[$threadId] = ['at' => microtime(true) + $delay, 'tries' => $tries];
+}
+
+/** Status-store fields for a thread that is waiting on a human but whose request this connection never received. */
+function codex_bridge_external_block(string $question): array
+{
+    return ['tool_name' => 'external_input', 'question' => $question, 'context' => '', 'options' => [], 'multi_question' => false, 'is_folder_trust' => false, 'tool_input' => [], 'external' => true];
+}
+
+// Threads already running in the daemon when the bridge starts.
+if ($wsFrames !== null) codex_bridge_internal('thread/loaded/list', [], ['kind' => 'loaded']);
+
 try {
     while (true) {
-        $read = array_merge([$server, $appOut, $appErr], array_values($clients));
+        $read = array_merge([$server, $appOut], $appErr !== null ? [$appErr] : [], array_values($clients));
         $write = $except = [];
-        if (stream_select($read, $write, $except, null) === false) continue;
+        if (stream_select($read, $write, $except, 1) === false) continue;
+
+        $now = microtime(true);
+        foreach ($resumeDue as $dueThread => $due) {
+            if ($due['at'] > $now) continue;
+            unset($resumeDue[$dueThread]);
+            codex_bridge_internal('thread/resume', ['threadId' => $dueThread, 'excludeTurns' => true], ['kind' => 'resume', 'thread' => $dueThread, 'tries' => $due['tries']]);
+        }
 
         foreach ($read as $stream) {
             if ($stream === $server) {
@@ -149,14 +266,14 @@ try {
                 continue;
             }
 
-            if ($stream === $appErr) {
+            if ($appErr !== null && $stream === $appErr) {
                 while (($line = fgets($appErr)) !== false) fwrite(STDERR, $line);
                 continue;
             }
 
             if ($stream === $appOut) {
                 $chunk = fread($appOut, 65536);
-                if ($chunk !== false && $chunk !== '') $appOutBuffer .= $chunk;
+                if ($chunk !== false && $chunk !== '') codex_bridge_ingest($chunk);
 
                 // app-server speaks newline-delimited JSON, but stdout is a
                 // nonblocking pipe: a large thread/read response can arrive
@@ -170,6 +287,26 @@ try {
 
                     if (array_key_exists('id', $message) && !isset($message['method'])) {
                         $id = (int)$message['id'];
+                        if (isset($internalRpc[$id])) {
+                            $meta = $internalRpc[$id];
+                            unset($internalRpc[$id]);
+                            if ($meta['kind'] === 'loaded' && is_array($message['result']['data'] ?? null)) {
+                                foreach ($message['result']['data'] as $loadedId) {
+                                    if (is_string($loadedId)) codex_bridge_schedule_resume($loadedId);
+                                }
+                            } elseif ($meta['kind'] === 'resume') {
+                                $resumed = $meta['thread'] ?? '';
+                                if (isset($message['error'])) {
+                                    $tries = ($meta['tries'] ?? 0) + 1;
+                                    if ($tries < CODEX_BRIDGE_RESUME_TRIES && str_contains((string)($message['error']['message'] ?? ''), 'no rollout')) {
+                                        codex_bridge_schedule_resume($resumed, $tries, 1.0);
+                                    }
+                                } elseif ($resumed !== '') {
+                                    $attached[$resumed] = true;
+                                }
+                            }
+                            continue;
+                        }
                         if (isset($rpcClients[$id])) {
                             $client = $rpcClients[$id];
                             unset($rpcClients[$id], $clients[(int)$client]);
@@ -193,6 +330,8 @@ try {
                                     ? $thread['id']
                                     : '';
                                 if ($resultThreadId !== '') {
+                                    if (($rpcMethods[$id] ?? '') === 'thread/start') $attached[$resultThreadId] = true;
+                                    unset($rpcMethods[$id]);
                                     $statusType = $thread['status']['type'] ?? 'idle';
                                     if ($statusType !== 'active') {
                                         unset($activeTurns[$resultThreadId]);
@@ -217,6 +356,10 @@ try {
                     $method = is_string($message['method'] ?? null) ? $message['method'] : '';
                     $params = is_array($message['params'] ?? null) ? $message['params'] : [];
                     $threadId = is_string($params['threadId'] ?? null) ? $params['threadId'] : '';
+                    // thread/started nests the thread rather than carrying a threadId.
+                    if ($threadId === '' && $method === 'thread/started' && is_string($params['thread']['id'] ?? null)) {
+                        $threadId = $params['thread']['id'];
+                    }
 
                     if (array_key_exists('id', $message) && $threadId !== '' && in_array($method, [
                         'item/commandExecution/requestApproval',
@@ -230,9 +373,42 @@ try {
                         continue;
                     }
 
-                    if ($threadId !== '' && $method === 'thread/status/changed') {
+                    if ($threadId !== '' && $method === 'thread/started') {
+                        codex_bridge_schedule_resume($threadId);
+                    } elseif ($threadId !== '' && $method === 'serverRequest/resolved') {
+                        // Answered by us, by the phone app, or withdrawn: only the request
+                        // this notice names goes away, never a newer prompt.
+                        if (isset($pendingPrompts[$threadId]) && (string)$pendingPrompts[$threadId]['request_id'] === (string)($params['requestId'] ?? '')) {
+                            unset($pendingPrompts[$threadId]);
+                            SessionStatusStore::update_status($threadId, ['status' => 'working', 'blocked' => null]);
+                        }
+                    } elseif ($threadId !== '' && $method === 'item/autoApprovalReview/completed') {
+                        // The reviewer settled this approval on its own, so a human never
+                        // needed to; drop the observe-only notice the hook recorded for it.
+                        $current = SessionStatusStore::read_status($threadId);
+                        if (!isset($pendingPrompts[$threadId]) && ($current['blocked']['external'] ?? false) === true) {
+                            SessionStatusStore::update_status($threadId, ['status' => 'working', 'blocked' => null]);
+                        }
+                    } elseif ($threadId !== '' && $method === 'thread/status/changed') {
                         $type = $params['status']['type'] ?? 'idle';
-                        SessionStatusStore::update_status($threadId, ['status' => $type === 'active' ? 'working' : 'idle', 'blocked' => null]);
+                        $flags = is_array($params['status']['activeFlags'] ?? null) ? $params['status']['activeFlags'] : [];
+                        if ($type === 'active') codex_bridge_schedule_resume($threadId);
+                        if ($type === 'notLoaded') unset($attached[$threadId]);
+                        if ($type !== 'active') {
+                            unset($pendingPrompts[$threadId]);
+                            SessionStatusStore::update_status($threadId, ['status' => 'idle', 'blocked' => null]);
+                        } elseif (!isset($pendingPrompts[$threadId])) {
+                            // A real prompt we hold must outlive unrelated status events; with none held,
+                            // a waiting flag means a request we cannot answer (not attached yet).
+                            if (in_array('waitingOnApproval', $flags, true) || in_array('waitingOnUserInput', $flags, true)) {
+                                $current = SessionStatusStore::read_status($threadId);
+                                SessionStatusStore::update_status($threadId, ['status' => 'blocked'] + (($current['blocked'] ?? null) === null
+                                    ? ['blocked' => codex_bridge_external_block(in_array('waitingOnUserInput', $flags, true) ? 'Input required in Codex Remote.' : 'Approval required in Codex Remote.')]
+                                    : []));
+                            } else {
+                                SessionStatusStore::update_status($threadId, ['status' => 'working', 'blocked' => null]);
+                            }
+                        }
                     } elseif ($threadId !== '' && $method === 'turn/started') {
                         $turnId = is_string($params['turn']['id'] ?? null) ? $params['turn']['id'] : '';
                         if ($turnId !== '') $activeTurns[$threadId] = $turnId;
@@ -320,6 +496,7 @@ try {
 
             $rpcId = $nextRpcId++;
             $rpcClients[$rpcId] = $stream;
+            $rpcMethods[$rpcId] = $method;
             codex_bridge_write($appIn, ['method' => $method, 'id' => $rpcId, 'params' => (object)$params]);
         }
     }
@@ -327,5 +504,6 @@ try {
     foreach ($clients as $client) @fclose($client);
     @fclose($server);
     @unlink($socketPath);
-    @proc_terminate($process);
+    if ($process !== null) @proc_terminate($process);
+    @fclose($appOut);
 }
