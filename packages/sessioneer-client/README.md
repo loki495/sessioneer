@@ -131,9 +131,11 @@ Two deadlines, on purpose:
 Whatever happened — answer, launch refusal, turn error, inner timeout or outer
 deadline — the session this call created is stopped before the call returns:
 
-1. `sessioneer --kill <session>` (never a reused or guessed name);
-2. if the CLI refuses because the session is still working, `sessioneer --kill
-   <session> --force`;
+1. `sessioneer --agent <agent> --kill <session>` (never a reused or guessed name;
+   the agent is explicit because the CLI routes a kill by it and defaults to
+   Claude, so a Codex, Ollama or OpenCode session is only reachable with it);
+2. if the CLI refuses because the session is still working, the same command
+   with `--force`;
 3. every refused or failed attempt is kept in `CleanupReport::$failures`, and a
    session that survives is reported through `cleanupFailed()` or
    `ExecutionFailed::describe()`.

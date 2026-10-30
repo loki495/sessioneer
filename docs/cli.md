@@ -98,7 +98,7 @@ sessioneer --agent ollama --model llama3:8b-instruct-q4_K_M --wait "Summarise th
 Two parts of the contract matter to any client, in any language:
 
 - **stdout is the answer, stderr is diagnostics.** The session name is the first line of stderr, written before the turn is waited on. A client must read it there, not from stdout, and must not treat an error line as a session name.
-- **A timeout leaves the session running.** `--timeout` only stops the waiting; the session keeps its slot against the live-session cap. Whoever started the turn must `--kill` that exact session (with `--force` when it is still working) and report it if the kill is refused. Killing a session the call did not create is never acceptable.
+- **A timeout leaves the session running.** `--timeout` only stops the waiting; the session keeps its slot against the live-session cap. Whoever started the turn must `--kill` that exact session, naming its agent with `--agent` when it is not Claude (the CLI routes a kill by agent and defaults to Claude), with `--force` when it is still working, and report it if the kill is refused. Killing a session the call did not create is never acceptable.
 
 The binary is host-side: it needs the host agent's socket, which a container does not have. Run the client on the host (a host-side queue worker, for example), or use the bridge recipe in the package README.
 

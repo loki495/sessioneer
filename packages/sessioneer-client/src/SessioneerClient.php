@@ -53,7 +53,7 @@ final readonly class SessioneerClient
         );
 
         $session = self::parseSessionName($outcome->stderr);
-        $cleanup = $session === null ? null : $this->cleanup($binary, $session, $request->workdir);
+        $cleanup = $session === null ? null : $this->cleanup($binary, $request->agent, $session, $request->workdir);
 
         if ($outcome->timedOut) {
             throw new ExecutionFailed(
@@ -115,17 +115,17 @@ final readonly class SessioneerClient
         );
     }
 
-    private function cleanup(string $binary, string $session, string $workdir): CleanupReport
+    private function cleanup(string $binary, Agent $agent, string $session, string $workdir): CleanupReport
     {
         $failures = [];
-        $refused = $this->kill($binary, $session, $workdir, false);
+        $refused = $this->kill($binary, $agent, $session, $workdir, false);
 
         if ($refused === null) {
             return new CleanupReport($session, true, false, []);
         }
 
         $failures[] = $refused;
-        $forcedRefusal = $this->kill($binary, $session, $workdir, true);
+        $forcedRefusal = $this->kill($binary, $agent, $session, $workdir, true);
 
         if ($forcedRefusal === null) {
             return new CleanupReport($session, true, true, $failures);
@@ -137,17 +137,20 @@ final readonly class SessioneerClient
     }
 
     /**
+     * The kill names the agent whose launcher owns the session: without it the
+     * CLI defaults to Claude and refuses a Codex, Ollama or OpenCode session.
+     *
      * @return string|null null when the session is gone, the failure message otherwise.
      */
-    private function kill(string $binary, string $session, string $workdir, bool $force): ?string
+    private function kill(string $binary, Agent $agent, string $session, string $workdir, bool $force): ?string
     {
-        $command = [$binary, '--kill', $session];
+        $command = [$binary, '--agent', $agent->value, '--kill', $session];
 
         if ($force) {
             $command[] = '--force';
         }
 
-        $what = 'kill' . ($force ? ' --force' : '') . " {$session}";
+        $what = 'kill ' . $session . ($force ? ' --force' : '') . " (agent {$agent->value})";
 
         try {
             $outcome = (new ProcessRunner)->run($command, null, $workdir, $this->cleanupTimeoutSeconds);

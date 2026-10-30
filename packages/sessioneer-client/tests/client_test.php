@@ -54,7 +54,7 @@ test('a successful turn returns the answer and stops its own session', function 
 
     $calls = invocations($log);
     same(2, count($calls), 'one launch and one kill');
-    contains('--kill claude-headless-abc123', $calls[1] ?? '', 'the kill targets exactly that session');
+    contains('--agent claude --kill claude-headless-abc123', $calls[1] ?? '', 'the kill names the agent and exactly that session');
     check(!str_contains($calls[1] ?? '', '--force'), 'no --force on a normal kill');
 });
 
@@ -116,10 +116,15 @@ test('Codex is asked for tools explicitly, never sent --no-tools', function (): 
 
     same('0199d0f4-6f5b-7c2e-9a1d-3c4b5a697887', $result->session, 'a Codex thread id is a session name');
     check(!str_contains(invocations($log)[0] ?? '', '--no-tools'), 'Codex is not sent --no-tools');
+    same(
+        '--agent codex --kill 0199d0f4-6f5b-7c2e-9a1d-3c4b5a697887',
+        invocations($log)[1] ?? '',
+        'the kill names the Codex launcher, not the Claude default',
+    );
 });
 
 test('Ollama needs a model and is never sent --no-tools', function (): void {
-    [$binary] = fake_binary(<<<'PHP'
+    [$binary, $log] = fake_binary(<<<'PHP'
         if (in_array('--kill', $argv, true)) {
             exit(0);
         }
@@ -143,6 +148,11 @@ test('Ollama needs a model and is never sent --no-tools', function (): void {
         'noTools' => false,
     ]), 'label this');
     same('ok', $result->answer, 'Ollama runs with its model');
+    same(
+        '--agent ollama --kill ollama-llama3-8b-headless-7f3a',
+        invocations($log)[1] ?? '',
+        'the kill names the Ollama launcher',
+    );
 });
 
 test('an option token that could be another flag or a shell fragment is refused', function (): void {
@@ -204,6 +214,11 @@ test('OpenCode is asked for provider/model and never sent --no-tools or --effort
         invocations($log)[0] ?? '',
         'the provider/model goes through and no Claude-only option is added',
     );
+    same(
+        '--agent opencode --kill ses_71e3daa3ffeWX46yL0WKKGf5j',
+        invocations($log)[1] ?? '',
+        'the kill names the OpenCode launcher',
+    );
 
     try {
         request(['agent' => Agent::OpenCode, 'noTools' => false, 'effort' => 'high']);
@@ -244,7 +259,7 @@ test('a turn error still stops the session it created', function (): void {
     same('claude-headless-err', $failure->session, 'the owned session is known');
     check($failure->cleanup !== null && $failure->cleanup->ok(), 'the session is stopped');
     contains('errored: boom', $failure->getMessage(), 'the turn error is the message');
-    contains('--kill claude-headless-err', invocations($log)[1] ?? '', 'the kill targets that session');
+    contains('--agent claude --kill claude-headless-err', invocations($log)[1] ?? '', 'the kill targets that session');
 });
 
 test('the CLI own timeout is treated as a timeout and cleaned up', function (): void {
@@ -281,7 +296,7 @@ test('the outer deadline cannot bypass cleanup', function (): void {
     same(FailureReason::Timeout, $failure->reason, 'the outer deadline is a timeout');
     same('claude-headless-hang', $failure->session, 'the session was captured before the deadline');
     check($failure->cleanup !== null && $failure->cleanup->killed, 'the hung session is killed anyway');
-    contains('--kill claude-headless-hang', invocations($log)[1] ?? '', 'the kill names that session');
+    contains('--agent claude --kill claude-headless-hang', invocations($log)[1] ?? '', 'the kill names that session');
 });
 
 test('a refused kill is retried with --force and reported', function (): void {
@@ -305,7 +320,7 @@ test('a refused kill is retried with --force and reported', function (): void {
     check($result->cleanup !== null && $result->cleanup->forced, 'the report says --force was needed');
     check($result->cleanup !== null && count($result->cleanup->failures) === 1, 'the refusal is kept as evidence');
     contains('is working', $result->cleanup?->failures[0] ?? '', 'the refusal message is kept');
-    contains('--kill claude-headless-busy --force', invocations($log)[2] ?? '', 'the retry uses --force');
+    contains('--agent claude --kill claude-headless-busy --force', invocations($log)[2] ?? '', 'the retry uses --force');
 });
 
 test('a cleanup that never succeeds is reported, never swallowed', function (): void {
