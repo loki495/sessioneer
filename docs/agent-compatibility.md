@@ -69,6 +69,7 @@ Sessioneer is pre-1.0. Until 1.0:
 - Private bridge protocol for turn ownership and Sessioneer-specific state
 - No pane scraping needed; all state comes from bridge
 - Session-page context usage uses the latest `tokenUsage.last` snapshot and reported `modelContextWindow`, separate from cumulative token totals; unavailable until both are reported.
+- The `sessioneer` CLI talks to the host agent over a UNIX socket, and Codex's Linux sandbox denies `connect()` for every socket family (AF_UNIX included) while the thread's network sandbox policy is restricted. A `workspace-write` thread therefore needs `[sandbox_workspace_write] network_access = true` in the Codex config, or `sessioneer --peers/--send/--usage` fails with "Cannot reach host agent (Operation not permitted)". A `read-only` thread (`--mode plan`) has no network setting at all, so it can never reach the host agent: the orchestrating session has to run the peer and quota checks for it.
 
 ## Known Compatibility Notes
 
