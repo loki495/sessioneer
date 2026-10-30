@@ -315,13 +315,21 @@ Docker-spawned, makes that impossible by construction — not by convention.
    `bin/sessioneer` (docs/cli.md) is a second socket client besides the web
    container: it sends the `launch`, `launch_kill`, `launch_list`, `launch_send` and `launch_peers` actions (peer messaging: the host agent stamps the sender from `SESSIONEER_SELF`, which every spawned session carries, or from `CODEX_THREAD_ID` in a Codex session), which `HostAgent\Launch\
    LaunchService` routes to a per-agent `SessionLauncher` (the interface
-   documents the request/reply keys; `ClaudeSessionLauncher` and `CodexSessionLauncher`, sharing the `PeerLookup` trait).
+   documents the request/reply keys; `ClaudeSessionLauncher`,
+   `CodexSessionLauncher`, `OllamaSessionLauncher` and
+   `OpenCodeSessionLauncher`, sharing the `PeerLookup` trait).
    A new agent's launch support is one class plus one line in
    `LaunchService::LAUNCHERS`, not a branch in `Sessions.php`. The Claude
    launcher creates a headless session, resumes one, or - when a sidecar
    already tracks the conversation id - sends the prompt to that session
    instead of opening a second process; a conversation held by a bare
    terminal process is refused (Take over is the dashboard's job).
+   `OpenCodeSessionLauncher` creates/resumes through `OpenCodeServeClient`
+   (a session's name is its `ses_*` id), applies `--model` as
+   `provider/model` with the session-scoped model endpoint, and kills by
+   interrupting then deleting the serve session; `session_detail` reads the
+   live `/api/session/active` map for an OpenCode working/idle state, which is
+   what makes `--wait` see a turn finish instead of a stale stored idle.
 
    `packages/sessioneer-client` is the PHP side of that same CLI contract: a
    standalone Composer package a Laravel app uses to run one `sessioneer --wait`
