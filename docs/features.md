@@ -296,12 +296,14 @@ legacy `session`/`message`/`part` tables and the `session_v2`/`session_message`
 pair that 2.x writes new sessions to. A turn that ends in a provider error
 appears in the transcript as an `Error: …` line rather than an empty reply.
 
-The global `sessioneer-permissions.js` plugin subscribes to
-`permission.asked` and records pending permission details because the tested
-OpenCode API does not persist a reliable equivalent. For TUI sessions, the
-pane is the final authority that the permission dialog is still visible; this
-prevents a stale plugin record from showing answer controls after the dialog
-has gone away. Headless questions arrive over directory-scoped SSE and retain
+The global `sessioneer-permissions.js` plugin mirrors a pending permission into
+a local store, using v2's `ctx.permission.hook("evaluate")` and
+`ctx.event.subscribe(...)`; the primary source is the directory-scoped
+`GET /api/permission/request`, queried once per live session directory, so a
+project-directory request is not hidden behind the server's own cwd. For TUI
+sessions, the pane is the final authority that the permission dialog is still
+visible; this prevents a stale plugin record from showing answer controls after
+the dialog has gone away. Headless questions arrive over directory-scoped SSE and retain
 their server request IDs in the status store, protected from polling resets.
 Replies validate selections/custom text and use HTTP, including the scoped
 legacy reply endpoint when the v2 route is unavailable. Transcript question

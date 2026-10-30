@@ -1,42 +1,41 @@
 /**
- * Sessioneer OpenCode plugin: bridge OpenCode's permission.ask hook into Claude
- * Session Manager.
+ * Sessioneer OpenCode plugin: mirror OpenCode's pending permission into the
+ * store the host-agent reads.
  *
- * OpenCode has NO queryable server-side state for a pending permission (the
- * permission lives in-memory in the session's own process; GET /permission,
- * /api/permission/request and /api/session/:id/permission all return empty,
- * and the DB stores no permission records). The
- * pane can show a STALE dialog while a session is actively working, so a
- * footer heuristic false-positives. The authoritative signal is this plugin
- * hook: opencode fires permission.ask precisely when a permission is pending.
+ * OpenCode v2 serves pending permission requests from
+ * GET /api/permission/request, but that list is directory-scoped: an unscoped
+ * read only reports the server's own working directory. The host-agent asks
+ * once per live session directory (OpenCodeServeClient::pending_permissions()),
+ * so the API is the primary source. This plugin is the fallback for a prompt
+ * the API list does not expose, and it is the only place that can answer a
+ * permission in-process from an intent staged by the host-agent.
  *
- * It mirrors Claude Code's PermissionRequest hook -> SessionStatusStore
- * pattern: record the pending permission into a JSON store the host-agent
- * reads, and answer from an intent the host-agent writes back (applied
- * in-process, in the same process that owns the permission).
+ * v2 plugin shape: a default export with an `id` and `setup(ctx)`. Hooks are
+ * registered on their domain (`ctx.permission.hook("evaluate", ...)`), and
+ * server events arrive through `ctx.event.subscribe(...)`, an async iterable.
+ * A setup-returned hook map is V1 and is ignored by v2.
  *
  * Store: one JSON file per ses_* id under OPENCODE_PERMISSION_DIR (default
- * /run/user/<uid>/sessioneer-sessions/opencode-permissions/), same dir the PHP
- * host-agent's PermissionStore reads/writes.
+ * $SIDECAR_DIR/opencode-permissions, else
+ * /run/user/<uid>/sessioneer-sessions/opencode-permissions), resolved the same
+ * way as the PHP Config::opencode_permission_dir() so both sides agree when the
+ * server and the host-agent see the same environment.
  *
  *   { "permission": {<Permission>|null}, "intent": "allow"|"deny"|null }
  *
- * This is a global plugin (installed by Sessioneer's install.sh to
- * ~/.config/opencode/plugins/) so it loads for every oc-* session regardless
- * of cwd. It is pure-observe (never blocks the permission itself) except for
- * answering when Sessioneer has recorded an intent.
+ * Installed by Sessioneer's install.sh to ~/.config/opencode/plugins/ so it
+ * loads for every oc-* session regardless of cwd. It is pure-observe (never
+ * changes an effect unless Sessioneer staged an intent).
  */
 
 import { mkdirSync, readFileSync, writeFileSync, renameSync, unlinkSync, existsSync } from "node:fs"
 import { dirname, join } from "node:path"
-import { tmpdir } from "node:os"
 
 const SESSION_ID_PATTERN = /^ses_[A-Za-z0-9]+$/
 
 function storeDir() {
-  // OPENCODE_PERMISSION_DIR env override (tests / custom layouts), else the
-  // same default the PHP Config::opencode_permission_dir() uses.
   if (process.env.OPENCODE_PERMISSION_DIR) return process.env.OPENCODE_PERMISSION_DIR
+  if (process.env.SIDECAR_DIR) return join(process.env.SIDECAR_DIR, "opencode-permissions")
   const uid = typeof process.getuid === "function" ? process.getuid() : 1000
   return `/run/user/${uid}/sessioneer-sessions/opencode-permissions`
 }
@@ -76,106 +75,100 @@ function clearRecord(sessionId) {
   }
 }
 
-// Map a permission.asked event payload into the canonical Permission shape the
-// PHP host-agent's PermissionStore reads (sessionID-keyed record; the pane is
-// the authoritative on-screen source for the option set, this record only
-// corroborates "a permission is pending"). Payload shape (from the opencode
-// bundle): { id, sessionID, permission, patterns, metadata, always, tool }.
-// `permission` is the action/tool key (e.g. "bash", "read",
-// "external_directory"); `patterns` is an array of {permission, pattern}
-// (or a plain string array); `metadata` carries details like the command.
+function heartbeat(line) {
+  try {
+    mkdirSync(storeDir(), { recursive: true, mode: 0o700 })
+    writeFileSync(join(storeDir(), "_sessioneer-heartbeat.txt"), `${line} ${new Date().toISOString()}\n`, { flag: "a", mode: 0o600 })
+  } catch {
+    // a missing store directory must never break a permission decision
+  }
+}
+
+// Canonical Permission shape the PHP host-agent's PermissionStore reads:
+// { id, type, sessionID, pattern, patterns, title, metadata, time }.
+// v2 sources: the evaluate hook event {sessionID, agent, action, resources,
+// source, effect} (no request id yet) and the permission.asked event data
+// {id, sessionID, action, resources, save, source}. `action` is the tool key
+// (e.g. "read", "shell"); `resources` are the patterns being asked about.
 function toPermissionRecord(p) {
   if (!p) return null
-  const patterns = Array.isArray(p.patterns)
-    ? p.patterns.map((x) => (typeof x === "string" ? x : x?.pattern ?? x?.permission ?? "")).filter(Boolean)
+  const resources = Array.isArray(p.resources)
+    ? p.resources.filter((x) => typeof x === "string" && x !== "")
     : []
-  const metadata = p.metadata && typeof p.metadata === "object" ? p.metadata : {}
-  // Build a human title: the tool/action plus a short detail from metadata.
-  const permKey = typeof p.permission === "string" ? p.permission : "permission"
-  const detail = metadata?.command || metadata?.filePath || metadata?.description || patterns[0] || ""
+  const action = typeof p.action === "string" && p.action !== "" ? p.action : "permission"
+  const detail = resources[0] || (typeof p.message === "string" ? p.message : "")
   return {
-    id: String(p.id ?? `per_${Date.now()}`),
-    type: typeof p.permission === "string" ? p.permission : "",
+    id: typeof p.id === "string" ? p.id : null,
+    type: action,
     sessionID: p.sessionID,
-    pattern: patterns.length === 1 ? patterns[0] : patterns,
-    title: detail ? `${permKey}: ${detail}` : permKey,
-    metadata: { ...metadata, message: detail || permKey },
+    pattern: resources.length === 1 ? resources[0] : resources,
+    patterns: resources,
+    title: detail ? `${action}: ${detail}` : action,
+    metadata: { patterns: resources },
     time: { created: Date.now() },
   }
 }
 
-export const SessioneerPermissionsPlugin = async ({ project, directory }) => {
-  mkdirSync(storeDir(), { recursive: true, mode: 0o700 })
-  // Heartbeat: prove the plugin actually runs (opencode registers it in debug
-  // config but there was no log/event evidence it fires — this file's presence
-  // is the cheapest way to confirm invocation from outside).
-  writeFileSync(join(storeDir(), "_sessioneer-heartbeat.txt"), `init ${new Date().toISOString()}\n`, { flag: "a", mode: 0o600 })
+export default {
+  id: "sessioneer.permissions",
+  async setup(ctx) {
+    const instanceDirectory = ctx.location && typeof ctx.location.directory === "string" ? ctx.location.directory : null
 
-  return {
-    // Authoritative pending-permission signal. Record it (so the host-agent
-    // can surface the blocked prompt), then decide whether to auto-answer.
-    "permission.ask": async (input, output) => {
-      const sessionId = input?.sessionID
+    heartbeat("init")
+
+    await ctx.permission.hook("evaluate", (event) => {
+      const sessionId = event && event.sessionID
       if (!sessionId || !SESSION_ID_PATTERN.test(sessionId)) return
 
-      writeFileSync(join(storeDir(), "_sessioneer-heartbeat.txt"), `permission.ask ${sessionId} ${input?.title} ${new Date().toISOString()}\n`, { flag: "a", mode: 0o600 })
-
       const record = readRecord(sessionId)
-      record.permission = input
 
-      // If Sessioneer has already staged an answer intent, consume it and respond -
-      // this is how the host-agent answers a permission it surfaced.
-      if (record.intent === "allow" || record.intent === "deny") {
-        output.status = record.intent
-        writeRecord(sessionId, { permission: null, intent: null })
+      // An intent staged by Sessioneer answers the prompt in the process that
+      // owns it. Only an "ask" may be overridden: turning an already-allowed
+      // action into a deny would be a silent policy change.
+      if (event.effect === "ask" && (record.intent === "allow" || record.intent === "deny")) {
+        event.effect = record.intent
+        clearRecord(sessionId)
+        heartbeat(`intent ${record.intent} ${sessionId}`)
         return
       }
 
-      // Otherwise record the pending permission and defer to the TUI (ask).
-      writeRecord(sessionId, record)
-      output.status = "ask"
-    },
+      if (event.effect === "ask") {
+        record.permission = toPermissionRecord(event)
+        writeRecord(sessionId, record)
+        heartbeat(`evaluate ask ${sessionId}`)
+      }
+    })
 
-    event: async ({ event }) => {
-      const type = event?.type
-      writeFileSync(join(storeDir(), "_sessioneer-heartbeat.txt"), `event ${type} ${event?.properties?.sessionID ?? ""} ${new Date().toISOString()}\n`, { flag: "a", mode: 0o600 })
+    const controller = new AbortController()
 
-      // permission.asked: a permission is genuinely pending right now. This is
-      // the authoritative "blocked" signal (the plugin permission.ask HOOK is
-      // dormant in opencode 1.18.21 but the permission.asked EVENT fires on
-      // the bus). Record it so the host-agent can surface the prompt. Payload
-      // shape (from the opencode bundle): { id, sessionID, permission,
-      // patterns, metadata, always, tool }.
-      if (type === "permission.asked") {
-        const sessionId = event?.properties?.sessionID
-        if (sessionId && SESSION_ID_PATTERN.test(sessionId)) {
+    void (async () => {
+      for await (const event of ctx.event.subscribe({
+        types: ["permission.asked", "permission.updated", "permission.replied"],
+        signal: controller.signal,
+      })) {
+        // Every location's plugin instance sees the same server event stream;
+        // act only on events from this instance's own directory.
+        const eventDirectory = event && event.location && typeof event.location.directory === "string" ? event.location.directory : null
+        if (eventDirectory !== null && instanceDirectory !== null && eventDirectory !== instanceDirectory) continue
+
+        const data = event && event.data ? event.data : null
+        const sessionId = data && data.sessionID
+        if (!sessionId || !SESSION_ID_PATTERN.test(sessionId)) continue
+
+        if (event.type === "permission.asked" || event.type === "permission.updated") {
           const record = readRecord(sessionId)
-          record.permission = toPermissionRecord(event.properties)
+          record.permission = toPermissionRecord(data)
           writeRecord(sessionId, record)
-        }
-        return
-      }
-
-      // permission.replied carries { sessionID, permissionID, response } -
-      // the block is resolved, so clear the record.
-      if (type === "permission.replied") {
-        const sessionId = event?.properties?.sessionID
-        if (sessionId && SESSION_ID_PATTERN.test(sessionId)) {
+          heartbeat(`${event.type} ${sessionId}`)
+        } else if (event.type === "permission.replied") {
           clearRecord(sessionId)
+          heartbeat(`replied ${sessionId}`)
         }
-        return
       }
+    })().catch(() => {
+      // The subscription ends when the plugin unloads; nothing to report.
+    })
 
-      // permission.updated carries the full Permission (with sessionID) -
-      // refresh the recorded record to match the live object.
-      if (type === "permission.updated") {
-        const sessionId = event?.properties?.sessionID
-        if (sessionId && SESSION_ID_PATTERN.test(sessionId)) {
-          const record = readRecord(sessionId)
-          record.permission = event.properties
-          writeRecord(sessionId, record)
-        }
-      }
-    },
-  }
+    return () => controller.abort()
+  },
 }

@@ -389,8 +389,10 @@ that only `create_agent_session()`-spawned sessions have).
 
 - **OpenCode server integration is v2-only.** Every call goes to the `/api`
   surface (`/api/session`, `/api/session/active`, `/api/permission/request`,
-  `/api/model`); there is no v1 server left to fall back to. v2 has no todo
-  endpoint, so opencode sessions show no todo list in the sidebar.
+  `/api/model`); there is no v1 server left to fall back to. The permission and
+  form lists are directory-scoped, so the headless sync queries them per live
+  session workdir. v2 has no todo endpoint, so opencode sessions show no todo
+  list in the sidebar.
   **Transcripts are read from both storage generations**:
   `OpenCodeTranscriptService` looks a session up in the legacy
   `session`/`message`/`part` tables and, when it has no row there, in 2.x's

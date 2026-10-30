@@ -826,6 +826,7 @@ function sessioneer_headless_sync(): void
     }
 
     $liveIds = [];
+    $dirById = [];
     $sessions = $list['sessions'] ?? [];
 
     // A session is "active" (show it, adopt a sidecar) only if it's had
@@ -868,6 +869,10 @@ function sessioneer_headless_sync(): void
             : (is_array($s['location'] ?? null) && is_string($s['location']['directory'] ?? null) ? $s['location']['directory'] : null);
         $title = is_string($s['title'] ?? null) ? $s['title'] : null;
 
+        if ($workdir !== null) {
+            $dirById[$id] = $workdir;
+        }
+
         SidecarStore::write_sidecar($id, [
             'workdir' => $workdir,
             'spawned_at' => $createdMs > 0 ? (int)round($createdMs / 1000) : time(),
@@ -904,16 +909,17 @@ function sessioneer_headless_sync(): void
         SessionStatusStore::update_status($id, ['status' => $statuses[$id] ?? 'idle', 'blocked' => null], true);
     }
 
-    // Blocked-prompt detection: ONE GET /api/permission/request batched across
-    // all sessions plus one per-session form read, then a headless session with
-    // a pending permission/question gets status 'blocked' + its normalized
-    // prompt shape (what the merged list's blocked panel + answer_prompt use).
+    // Blocked-prompt detection: one permission list read per live session
+    // directory (the v2 list is directory-scoped) plus one per-session form
+    // read, then a headless session with a pending permission/question gets
+    // status 'blocked' + its normalized prompt shape (what the merged list's
+    // blocked panel + answer_prompt use).
     //
-    // The Sessioneer plugin (sessioneer-permissions.js) bridges permission.ask
-    // events into a JSON store the host-agent reads here as the authoritative
-    // fallback for permissions that never reach the server's own request list.
+    // The Sessioneer plugin (sessioneer-permissions.js) mirrors the same
+    // permission into a JSON store the host-agent reads here as a fallback for
+    // a request the API list does not expose.
     $permBySession = [];
-    foreach ($client->pending_permissions() as $perm) {
+    foreach ($client->pending_permissions(array_values($dirById)) as $perm) {
         $sid = is_string($perm['sessionID'] ?? null) ? $perm['sessionID'] : null;
         if ($sid !== null) {
             $permBySession[$sid] = $perm;
@@ -934,8 +940,8 @@ function sessioneer_headless_sync(): void
         } elseif (isset($questionBySession[$id])) {
             SessionStatusStore::update_status($id, ['status' => 'blocked', 'blocked' => sessioneer_headless_question_prompt($questionBySession[$id])], true);
         } else {
-            // Plugin store fallback: the Sessioneer plugin writes permission.ask
-            // records to PermissionStore; GET /permission doesn't see them.
+            // Plugin store fallback: the Sessioneer plugin records a permission
+            // the serve's own request list does not expose for this directory.
             $pluginPerm = \HostAgent\Services\PermissionStore::read_pending_permission($id);
 
             if ($pluginPerm !== null) {

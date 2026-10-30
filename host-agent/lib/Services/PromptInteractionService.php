@@ -230,15 +230,14 @@ class PromptInteractionService
             return ['ok' => true, 'message' => "Answered '{$chosenLabel}' for {$name}"];
         }
 
-        // OpenCode permission prompt: answer it in the pane via the tab bar
-        // (Left/Right to move the highlight, Enter to confirm). The permission
-        // dialog is owned by the `opencode serve` process's in-memory state
-        // (see PermissionStore's docblock - no queryable state, and the plugin
-        // permission.ask HOOK is dormant in opencode 1.18.21, so an intent-
-        // based answer can't be auto-applied). The pane reliably renders the
-        // dialog and accepts arrow+Enter, so that's the answer path here. The
-        // option numbers mirror tab order (1=Allow once, 2=Allow always,
-        // 3=Reject / Confirm, Cancel).
+        // OpenCode permission prompt on a TUI session: answer it in the pane
+        // via the tab bar (Left/Right to move the highlight, Enter to confirm).
+        // The parsed pane prompt carries no request id - the dialog is what the
+        // user sees - so there is nothing to POST; v2's directory-scoped
+        // GET /api/permission/request is what feeds headless detection, and a
+        // headless session answers through the reply endpoint instead
+        // (HeadlessRuntime::answer_prompt). The option numbers mirror tab order
+        // (1=Allow once, 2=Allow always, 3=Reject / Confirm, Cancel).
         if (($prompt['tool_name'] ?? null) === 'permission') {
             for ($i = 1; $i < $option; $i++) {
                 usleep(self::TMUX_KEY_STEP_DELAY_USEC);
