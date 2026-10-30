@@ -310,6 +310,7 @@ class SessionRowView extends View
             'name' => $name,
             'title' => $title,
             'workdir' => $s['workdir'] ?? null,
+            'agentSessionId' => $s['agent_session_id'] ?? null,
             'blockedHtml' => $blockedHtml,
             'csrfToken' => $csrfToken,
             'agentId' => $agentId,
