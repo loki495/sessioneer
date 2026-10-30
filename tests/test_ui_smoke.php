@@ -22,6 +22,7 @@ const CANNED_TEST_IMAGE_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAA
 const CANNED_VAPID_PUBLIC_KEY = 'BAhRdSrCIQS6QqCKKxkfmfSQ_DyQk63-8zoSMWlb2PXjhuTym7Lxyboe7HSFwi79IJN7-wqbUbZmYR1CkLvXZSc';
 const CANNED_ARCHIVED_CLAUDE_SESSION_ID = '99999999-8888-4777-a666-555555555555';
 const CANNED_ARCHIVED_CLAUDE_PROFILE = 'work';
+const CANNED_BLOCKED_AGENT_SESSION_ID = 'aaaaaaaa-1111-4111-8111-111111111111';
 const CANNED_RESUMED_SESSION_NAME = 'cc-20260101-1400';
 const CANNED_HEADLESS_RESUMED_SESSION_NAME = 'claude-headless-20260101-1700';
 const CANNED_TAKEN_OVER_SESSION_NAME = 'cc-20260101-1500';
@@ -550,6 +551,8 @@ try {
     assert_contains("container.querySelector('.markdown-body')", $commonJs['body'], 'GET /js/common.js: the fullscreen trigger handler looks for a .markdown-body sibling alongside .copy-source');
     assert_contains('openFullscreenTextModal(pre.textContent, markdownBody ? markdownBody.innerHTML : null)', $commonJs['body'], 'GET /js/common.js: the raw source always goes through, the rendered HTML only when a .markdown-body sibling exists');
     assert_contains('function openFullscreenTextModal(text, html)', $commonJs['body'], 'GET /js/common.js: openFullscreenTextModal() accepts an optional html param');
+    assert_contains("document.body.style.position = 'fixed'", $commonJs['body'], 'GET /js/common.js: opening the fullscreen editor pins the body at the current scroll offset (iOS ignores overflow:hidden)');
+    assert_contains('window.scrollTo(0, fullscreenEditModalScrollY)', $commonJs['body'], 'GET /js/common.js: closing the fullscreen editor restores the previous scroll position');
     assert_contains('fullscreenTextModalContent.innerHTML = html', $commonJs['body'], 'GET /js/common.js: when html is given, the modal content is set via innerHTML (rendered markdown), not textContent');
     assert_contains("fullscreenTextModalContent.classList.add('markdown-body')", $commonJs['body'], 'GET /js/common.js: the modal content container itself gets the markdown-body class when showing rendered markdown');
     assert_contains("fullscreenTextModalWrapToggle.classList.add('hidden')", $commonJs['body'], 'GET /js/common.js: the Wrap toggle is hidden for rendered markdown - it doesn\'t apply (markdown already wraps via its own classes)');
@@ -597,6 +600,9 @@ try {
         'GET /js/session.js: BOTH renderBlockedSection() branches (multi-question and regular) carry mt-2 on the card, matching blocked-prompt/rich.php\'s own top-level element (codebase audit): missing here meant a session that only BECOMES blocked mid-poll rendered its card sitting closer to the wrapper edge than a fresh page load would'
     );
     assert_contains('function renderTodoList(', $sessionJs['body'], 'GET /js/session.js: renderTodoList() (sidebar live task checklist, mirrors TranscriptView::render_todo_list_html()) is shipped');
+    assert_contains("'Default model'", $sessionJs['body'], 'GET /js/session.js: an OpenCode session with no model on its row labels the picker placeholder "Default model" after the list loads');
+    assert_contains("'No models available'", $sessionJs['body'], 'GET /js/session.js: an empty OpenCode model catalog says so instead of leaving "Loading models…" forever');
+    assert_contains('placeholder.disabled = true', $sessionJs['body'], 'GET /js/session.js: the OpenCode placeholder is not selectable, so it can never post an empty model');
     assert_contains("todoListSection = document.getElementById('todo-list-section')", $sessionJs['body'], 'GET /js/session.js: renderTodoList() targets the same #todo-list-section wrapper the PHP side renders into on initial load');
     assert_contains("loadedElements = renderEntriesGrouped(data.entries || [], createPendingCallState(), fragment)", $sessionJs['body'], 'GET /js/session.js: loadMore() captures the loaded elements to pass to highlightLoadedOlderContent()');
     assert_contains('.older-content-highlight', $result['body'], 'GET /session.php: the older-content-highlight CSS (distinct cyan glow) is shipped');
@@ -605,6 +611,8 @@ try {
     assert_contains("closestEventTarget(e, 'a, #header-title, #sidebar-toggle-btn')", $sessionJs['body'], 'GET /js/session.js: the tap-to-scroll-to-top handler excludes the header\'s own real tap targets through the safe event-target helper');
     assert_contains('sidebarCurrentlyOpen ? refreshSidebarList() : Promise.resolve()', $sessionJs['body'], 'GET /js/session.js: pollOnce() refreshes the sidebar\'s other-sessions list while the panel is open, not just on open/answer (a session\'s card stayed on "working" after being answered from the sidebar until the panel was closed and reopened)');
     assert_contains('function refreshSidebarList(', $sidebarJs['body'], 'GET /js/sidebar.js: refreshSidebarList() (the poll-time other-sessions refresh) is shipped');
+    assert_contains('function applySidebarSessionFilter(', $sidebarJs['body'], 'GET /js/sidebar.js: applySidebarSessionFilter() (the Find session filter) is shipped');
+    assert_contains("row.getAttribute('data-session-id')", $sidebarJs['body'], 'GET /js/sidebar.js: the filter matches a row by its agent session id');
     assert_contains('if (html === lastRenderedSidebarHtml)', $sidebarJs['body'], 'GET /js/sidebar.js: the other-sessions list only actually re-renders when its HTML changed, so a poll tick never tears out an in-progress interaction (e.g. typing a free-text reply to another session\'s prompt) for nothing');
     // renderStaticInfo() no longer carries a session-info card (removed:
     // just title+cwd in the fixed header now, see header.php)
@@ -829,6 +837,14 @@ try {
         preg_match('#<form method="post" action="/"[^>]*>\s*<input type="hidden" name="action" value="kill">\s*<input type="hidden" name="csrf_token"[^>]*>\s*<input type="hidden" name="session" value="cc-20260101-1200">\s*<button type="submit"[^>]*>\s*Archive#', $result['body']) === 1,
         'GET /session.php: sidebar has an "Archive" action that kills THIS session'
     );
+    assert_contains('id="sidebar-session-filter"', $result['body'], 'GET /session.php: sidebar has a Find session filter (name, directory or session id)');
+    assert_contains('id="sidebar-session-filter-clear-btn"', $result['body'], 'GET /session.php: the Find session filter has its own clear button');
+
+    $sidebarResult = curl_request('GET', "{$baseUrl}/sidebar_sessions.php?session=" . urlencode('cc-20260101-1200'));
+    assert_equal(200, $sidebarResult['status'], 'GET /sidebar_sessions.php: 200');
+    $sidebarBody = json_decode($sidebarResult['body'], true);
+    assert_contains('data-session-id="' . CANNED_BLOCKED_AGENT_SESSION_ID . '"', $sidebarBody['sessions_html'] ?? '', 'GET /sidebar_sessions.php: each row carries the agent session id, so the sidebar filter can match a pasted ses_*/UUID');
+    assert_contains('data-session-workdir="/home/user/www/other-project"', $sidebarBody['sessions_html'] ?? '', 'GET /sidebar_sessions.php: each row carries its workdir for the same filter');
     assert_true(
         strpos($result['body'], 'id="history-list"') < strpos($result['body'], 'id="blocked-prompt-section"'),
         'GET /session.php: the blocked-prompt section is placed after the history list, not above it'
@@ -915,6 +931,14 @@ try {
     assert_true(
         preg_match('/id="compose-textarea"[^>]*class="[^"]*\btext-base\b/', $result['body']) === 1,
         'GET /session.php: compose textarea uses a >=16px font size, so focusing it does not trigger iOS zoom'
+    );
+    assert_true(
+        preg_match('/id="fullscreen-edit-modal"[^>]*class="[^"]*\bh-dvh\b[^"]*\boverflow-hidden\b/', $result['body']) === 1,
+        'GET /session.php: the fullscreen editor is sized to the dynamic viewport and does not scroll its own container'
+    );
+    assert_true(
+        preg_match('/id="fullscreen-edit-modal-textarea"[^>]*class="[^"]*\bmin-h-0\b[^"]*\boverscroll-contain\b/', $result['body']) === 1,
+        'GET /session.php: the fullscreen editor textarea is the scroll container (min-h-0, overscroll-contain), so scrolling it does not chain into the page behind it'
     );
     assert_contains('minimum-scale=1', $result['body'], 'GET /session.php: viewport meta blocks zoom-out below the normal layout');
     assert_true(

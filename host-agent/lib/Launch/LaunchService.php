@@ -15,6 +15,7 @@ class LaunchService
         'claude' => ClaudeSessionLauncher::class,
         'codex' => CodexSessionLauncher::class,
         'ollama' => OllamaSessionLauncher::class,
+        'opencode' => OpenCodeSessionLauncher::class,
     ];
 
     /**

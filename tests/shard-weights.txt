@@ -75,3 +75,7 @@ test_launch_ollama.php 2
 test_opencode_health_probe.php 1
 test_ollama_health.php 1
 test_view_agent_labels.php 1
+test_launch_opencode.php 5
+test_same_origin.php 1
+test_session_rename.php 1
+test_sessioneer_client.php 1

@@ -1280,6 +1280,17 @@ function sessioneer_headless_detail_shape(array $serve, string $agentId = 'openc
         $status['status'] = $serve['status']['type'] === 'active' ? 'working' : 'idle';
     }
 
+    // OpenCode's working/idle signal lives only in the serve's active map;
+    // the status store is written by the throttled headless sync, so a detail
+    // poll (and `sessioneer --wait`) would otherwise read a stale idle.
+    if ($agentId === 'opencode' && ($status['status'] ?? null) !== 'blocked') {
+        $liveStatus = (new OpenCodeServeClient())->status_map();
+
+        if ($liveStatus['ok'] === true) {
+            $status['status'] = $liveStatus['statuses'][$id] ?? 'idle';
+        }
+    }
+
     // OpenCode: 'blocked' is normally written by the throttled headless sync
     // (sessioneer_headless_sync(), which only runs off the dashboard `list`
     // action). A question that just appeared - or a session whose sync is

@@ -18,6 +18,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 
 use App\Views\PageView;
 use App\Views\SessionRowView;
+use App\Views\TranscriptView;
 
 $options = PageView::AGENT_OPTIONS;
 
@@ -35,5 +36,17 @@ assert_equal('claude', PageView::agent_label('claude') === 'Claude Code' ? 'clau
 // The row badge is the other half: a new agent must not silently fall back to
 // the generic slate badge if a colour was chosen for it.
 assert_true(SessionRowView::agent_badge_class('ollama') !== SessionRowView::agent_badge_class('nope'), 'row badge: ollama has its own style');
+
+// OpenCode model toggle: a serve session can have no model on its row, so the
+// placeholder must carry empty data attributes; session.js then labels it
+// "Default model" after the list loads instead of leaving "Loading models…"
+// forever.
+$ocEmpty = TranscriptView::render_opencode_model_toggle_html(['current_model' => null, 'current_provider' => null]);
+assert_contains('data-current-model=""', $ocEmpty, 'opencode model toggle: no current model is an empty data-current-model');
+assert_contains('data-current-provider=""', $ocEmpty, 'opencode model toggle: no current provider is an empty data-current-provider');
+assert_contains('Loading models&hellip;', $ocEmpty, 'opencode model toggle: starts on the loading placeholder');
+$ocCurrent = TranscriptView::render_opencode_model_toggle_html(['current_model' => 'gpt-6.1', 'current_provider' => 'openai']);
+assert_contains('data-current-model="gpt-6.1"', $ocCurrent, 'opencode model toggle: a known model is exposed for preselection');
+assert_contains('data-current-provider="openai"', $ocCurrent, 'opencode model toggle: its provider too');
 
 test_exit();

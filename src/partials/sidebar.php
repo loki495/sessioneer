@@ -64,6 +64,16 @@
       <div id="session-search-results" class="mt-2 flex flex-col gap-1.5 text-sm"></div>
     </div>
   <?php endif; ?>
+  <div class="px-4 py-3 border-b border-slate-800">
+    <label for="sidebar-session-filter" class="block text-xs font-medium text-slate-500 mb-2">Find session</label>
+    <div class="relative">
+      <input type="search" id="sidebar-session-filter" placeholder="Name, directory or session ID&hellip;" autocomplete="off"
+        class="appearance-none w-full rounded-lg border border-slate-700 bg-slate-800 pl-2 pr-8 py-1.5 text-base text-slate-200 placeholder:text-slate-500">
+      <button type="button" id="sidebar-session-filter-clear-btn" aria-label="Clear session filter" tabindex="-1"
+        class="hidden absolute top-1/2 right-1 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded text-slate-500 active:text-slate-300 text-lg leading-none">&times;</button>
+    </div>
+    <div id="sidebar-session-filter-status" class="hidden mt-1 text-xs text-slate-500"></div>
+  </div>
   <div id="sidebar-list" class="flex flex-col gap-2 px-3 py-3 text-sm">
     <div class="px-1 text-slate-500">Loading&hellip;</div>
   </div>

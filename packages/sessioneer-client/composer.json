@@ -1,0 +1,23 @@
+{
+    "name": "loki495/sessioneer-client",
+    "description": "Run one Sessioneer CLI agent turn to completion from PHP: argv and stdin handling, safe option tokens, separate streams, owned-session cleanup and observable failures.",
+    "type": "library",
+    "version": "0.2.0",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "Loki495\\SessioneerClient\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Andres Crucitti"
+        }
+    ],
+    "scripts": {
+        "test": "php tests/run.php"
+    }
+}

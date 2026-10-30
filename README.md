@@ -64,7 +64,8 @@ an installable PWA, meant to be added to an iOS/Android home screen):
   follow-up questions during a run (`"which one: A or B?"`); Sessioneer
   shows them and collects answers.
 - **Launch from the command line**: `bin/sessioneer` starts, resumes,
-  reuses, lists or stops headless Claude and Codex sessions (and prints the last known
+  reuses, lists or stops headless Claude, Codex and OpenCode sessions and
+  local Ollama chats (and prints the last known
   usage stats as JSON with `--usage`, or blocks until a session is idle and
   prints its final message with `--wait`), so scripts and other
   sessions can spawn a continuation you then follow in the dashboard (see
@@ -206,6 +207,9 @@ answered in Sessioneer.
 | Antigravity | tmux only | Hooks provide lifecycle and conversation identity; the live pane identifies approval dialogs | Install its global hooks; optionally enable its quota timer |
 | OpenCode | `opencode serve` by default; tmux fallback | Serve API + SQLite + global permissions plugin; tmux permissions also consult the live pane | Re-run `host-agent/install.sh` after setting `OPENCODE_BIN` |
 | Codex | headless only | Bridge attached to the managed app-server daemon shared with Codex Remote (private app-server fallback); persistent queue + Codex hooks | Click **Install hooks**, trust them in Codex, and bootstrap Remote control when sharing with Codex Remote |
+
+`bin/sessioneer --agent opencode` launches a serve-hosted session, reuses a
+tracked one or resumes a `ses_*` id; see [`docs/cli.md`](docs/cli.md).
 
 For detailed agent version compatibility and known quirks, see [`docs/agent-compatibility.md`](docs/agent-compatibility.md).
 

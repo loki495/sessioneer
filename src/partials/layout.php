@@ -91,11 +91,11 @@
      editable textarea is a normal text-selection/cursor gesture, not
      something to disambiguate from "the user wants to leave" the way it
      safely can be over read-only content. */ ?>
-<div id="fullscreen-edit-modal" class="hidden fixed inset-0 z-50 bg-slate-950 flex flex-col">
+<div id="fullscreen-edit-modal" class="hidden fixed inset-0 z-50 h-dvh overflow-hidden bg-slate-950 flex flex-col">
   <div class="select-none flex items-center justify-end px-2 py-2 border-b border-slate-800 shrink-0">
     <button type="button" id="fullscreen-edit-modal-close" aria-label="Close full screen editor" class="text-slate-400 active:text-slate-200 text-2xl leading-none px-3 py-1">&times;</button>
   </div>
-  <textarea id="fullscreen-edit-modal-textarea" aria-label="Full screen text editor" class="flex-1 resize-none bg-slate-950 text-slate-100 text-base px-3 py-2 focus:outline-none"></textarea>
+  <textarea id="fullscreen-edit-modal-textarea" aria-label="Full screen text editor" class="flex-1 min-h-0 w-full resize-none overflow-y-auto overscroll-contain bg-slate-950 text-slate-100 text-base px-3 py-2 focus:outline-none"></textarea>
 </div>
 <?= $this->section('content') ?>
 </body>
