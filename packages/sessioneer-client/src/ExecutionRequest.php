@@ -81,6 +81,7 @@ final readonly class ExecutionRequest
         $command = [
             $binary,
             '--wait',
+            '--json',
             '--timeout',
             (string) $this->timeoutSeconds,
             '--workdir',

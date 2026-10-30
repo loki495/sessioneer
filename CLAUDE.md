@@ -332,9 +332,10 @@ Docker-spawned, makes that impossible by construction — not by convention.
    what makes `--wait` see a turn finish instead of a stale stored idle.
 
    `packages/sessioneer-client` is the PHP side of that same CLI contract: a
-   standalone Composer package a Laravel app uses to run one `sessioneer --wait`
-   turn (argv/stdin, safe option tokens, separate streams, a hard deadline,
-   cleanup of the session it created). It is host-side by nature - it needs the
+   standalone Composer package a Laravel app uses to run one `sessioneer --wait
+   --json` turn (argv/stdin, safe option tokens, separate streams, a hard
+   deadline, the JSON envelope it reads the answer from, cleanup of the session
+   it created). It is host-side by nature - it needs the
    agent socket - so a containerised app uses its host-bridge recipe instead of
    calling the socket from the container. The repo consumes it in no code path
    of its own; the package is tested through `tests/test_sessioneer_client.php`.

@@ -103,3 +103,64 @@ function temp_workdir(): string
 
     return $directory;
 }
+
+/**
+ * The `--wait` half of a fake CLI: names $session on its first stderr line, then
+ * writes the `--json` envelope to stdout and exits with $exit.
+ *
+ * @param  array<string, mixed>  $overrides
+ */
+function envelope_body(?string $session, array $overrides = [], int $exit = 0): string
+{
+    $envelope = array_merge([
+        'ok' => true,
+        'answer' => 'keeper',
+        'session' => $session,
+        'conversation_id' => null,
+        'agent' => 'claude',
+        'model' => null,
+        'workdir' => null,
+        'exit_code' => $exit === 0 ? 0 : 1,
+        'error' => null,
+    ], $overrides);
+
+    $body = $session === null ? '' : 'fwrite(STDERR, ' . var_export($session . "\n", true) . ');' . "\n";
+
+    return $body
+        . 'echo json_encode(' . var_export($envelope, true) . '), "\n";' . "\n"
+        . "exit({$exit});\n";
+}
+
+/** The `--wait` half of a fake CLI that failed: `ok` false with the given kind and message. */
+function failure_body(?string $session, string $kind, string $message, int $exit = 1): string
+{
+    return envelope_body($session, [
+        'ok' => false,
+        'answer' => null,
+        'exit_code' => $exit,
+        'error' => ['kind' => $kind, 'message' => $message],
+    ], $exit);
+}
+
+/**
+ * A fake CLI that stops whatever it is told to kill ($kill is the body run on a
+ * kill) and otherwise completes one `--wait --json` turn.
+ *
+ * @param  array<string, mixed>  $envelope
+ * @return array{0: string, 1: string}
+ */
+function fake_turn(?string $session, array $envelope = [], string $kill = 'exit(0);'): array
+{
+    return fake_binary("if (in_array('--kill', \$argv, true)) {\n{$kill}\n}\n" . envelope_body($session, $envelope));
+}
+
+/**
+ * A fake CLI that stops whatever it is told to kill and otherwise fails one
+ * `--wait --json` turn with the given kind and message.
+ *
+ * @return array{0: string, 1: string}
+ */
+function fake_failure(?string $session, string $kind, string $message, int $exit = 1): array
+{
+    return fake_binary("if (in_array('--kill', \$argv, true)) {\n    exit(0);\n}\n" . failure_body($session, $kind, $message, $exit));
+}

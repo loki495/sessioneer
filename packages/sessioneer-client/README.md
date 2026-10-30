@@ -58,6 +58,7 @@ try {
     );
 
     $answer = $result->answer;      // the final assistant text
+    $conversation = $result->conversationId; // the session's agent-side id, when reported
 
     if ($result->cleanupFailed()) {
         report($result->cleanup?->describe()); // the session outlived the call
@@ -76,23 +77,29 @@ what lets a chain try Claude, then Codex, then a local model.
 
 ## The contract it relies on
 
-`sessioneer --wait` today:
+`sessioneer --wait --json`:
 
 | Stream | Content |
 |---|---|
-| stdout | the final assistant text, and nothing else |
-| stderr | first line: the name of the session the call created; later lines: the error, if any |
+| stdout | one JSON object: `ok`, `answer`, `session`, `conversation_id`, `agent`, `model`, `workdir`, `exit_code`, `error` (`kind` + `message`) — written on success and on failure alike |
+| stderr | first line: the name of the session the call created; later lines: the human error, if any |
 | exit 0 | the turn finished |
-| exit 1 | refused (`sessioneer: ...`), turn error (`session NAME errored: ...`) or timeout (`timed out after Ns ...`) |
+| exit 1 | refused, turn error or timeout, with `ok: false` and the reason in `error` |
 
-The client keeps stdout and stderr apart (a caller must never parse an answer
-out of a stream that also carries diagnostics), takes the session name from
-stderr's first line only, and refuses to treat any line that is not a plain
-argv-safe token as a session name.
+`answer` is the final assistant text verbatim; the envelope is the only place
+the client reads an answer from, so nothing ever guesses at prose. `error.kind`
+is `launch_refused`, `turn_error`, `timeout` or `session_error`; a kind this
+client does not know becomes `process_failure` rather than a guess.
 
-A machine-readable `--json` envelope is a separate piece of Sessioneer work. When
-it lands, only the parsing inside this client changes; `answer`, `session` and
-the failure reasons stay the same.
+The one thing the envelope cannot always carry is the session, because the CLI
+writes it at the end: when this client's own outer deadline kills the CLI first,
+stderr's first line is the fallback, and only a plain argv-safe token is ever
+treated as a session name.
+
+`sessioneer --wait --json` requires a Sessioneer with the envelope. Against an
+older CLI (stdout is bare text) the call fails with `process_failure` and the
+message names the missing envelope, instead of silently returning the wrong
+thing.
 
 ## Safety
 
@@ -189,17 +196,19 @@ harness:
 php packages/sessioneer-client/tests/run.php
 ```
 
-They use fake `sessioneer` executables (written to a temp directory) to cover a
-successful turn, a launch refusal, a turn error, the CLI's own timeout, the outer
-deadline, a refused kill that needs `--force`, a cleanup that never succeeds, an
-invalid option token and a missing binary. The repo suite runs the same checks
-through `tests/test_sessioneer_client.php`.
+They use fake `sessioneer` executables (written to a temp directory) that write
+the real `--json` envelope, and cover a successful turn, a launch refusal, a
+turn error, the CLI's own timeout, the outer deadline (no envelope, so the
+stderr fallback), an unknown error kind, a CLI that prints no envelope, a
+refused kill that needs `--force`, a cleanup that never succeeds, an unsafe
+session name, an invalid option token and a missing binary. The repo suite runs
+the same checks through `tests/test_sessioneer_client.php`.
 
 ## Limits
 
 - One attempt per call: no retry, no fallback, no conversation reuse.
 - No streaming: the answer arrives when the turn ends.
-- No `--json`: the envelope is a separate Sessioneer feature; the client's public
-  API does not depend on the current parsing.
+- The CLI must have the `--json` envelope (Sessioneer with `--wait --json`); an
+  older binary fails the call rather than degrading to text parsing.
 - Codex, Ollama and OpenCode run with their own tools/MCP configuration; only
   Claude can be asked for `--no-tools`.

@@ -34,19 +34,13 @@ function request(array $overrides = []): ExecutionRequest
 }
 
 test('a successful turn returns the answer and stops its own session', function (): void {
-    [$binary, $log] = fake_binary(<<<'PHP'
-        if (in_array('--kill', $argv, true)) {
-            exit(0);
-        }
-        fwrite(STDERR, "claude-headless-abc123\n");
-        echo "keeper\n";
-        exit(0);
-        PHP);
+    [$binary, $log] = fake_turn('claude-headless-abc123', ['conversation_id' => '0f0e1d2c-aaaa-bbbb-cccc-1234567890ab']);
 
     $result = (new SessioneerClient($binary))->execute(request(), 'label this');
 
-    same('keeper', $result->answer, 'answer is stdout without the trailing newline');
-    same('claude-headless-abc123', $result->session, 'the session comes from stderr');
+    same('keeper', $result->answer, 'answer is the envelope answer, verbatim');
+    same('claude-headless-abc123', $result->session, 'the session comes from the envelope');
+    same('0f0e1d2c-aaaa-bbbb-cccc-1234567890ab', $result->conversationId, 'the conversation id is carried');
     same(0, $result->exitCode, 'exit code is kept');
     check($result->cleanup !== null && $result->cleanup->ok(), 'the owned session is stopped');
     check($result->cleanup !== null && !$result->cleanup->forced, 'a normal kill needs no --force');
@@ -64,7 +58,17 @@ test('the prompt goes to the CLI on stdin, not argv', function (): void {
             exit(0);
         }
         fwrite(STDERR, "claude-headless-stdin\n");
-        echo trim((string) stream_get_contents(STDIN));
+        echo json_encode([
+            'ok' => true,
+            'answer' => trim((string) stream_get_contents(STDIN)),
+            'session' => 'claude-headless-stdin',
+            'conversation_id' => null,
+            'agent' => 'claude',
+            'model' => null,
+            'workdir' => null,
+            'exit_code' => 0,
+            'error' => null,
+        ]), "\n";
         exit(0);
         PHP);
 
@@ -75,14 +79,7 @@ test('the prompt goes to the CLI on stdin, not argv', function (): void {
 });
 
 test('the argv carries the whole one-attempt contract for Claude', function (): void {
-    [$binary, $log] = fake_binary(<<<'PHP'
-        if (in_array('--kill', $argv, true)) {
-            exit(0);
-        }
-        fwrite(STDERR, "claude-headless-argv\n");
-        echo "ok\n";
-        exit(0);
-        PHP);
+    [$binary, $log] = fake_turn('claude-headless-argv');
     $workdir = temp_workdir();
 
     (new SessioneerClient($binary))->execute(request([
@@ -92,21 +89,14 @@ test('the argv carries the whole one-attempt contract for Claude', function (): 
     ]), 'label this');
 
     same(
-        "--wait --timeout 60 --workdir {$workdir} --agent claude --no-tools --model sonnet --effort high -",
+        "--wait --json --timeout 60 --workdir {$workdir} --agent claude --no-tools --model sonnet --effort high -",
         invocations($log)[0] ?? '',
         'argv is exactly the documented shape',
     );
 });
 
 test('Codex is asked for tools explicitly, never sent --no-tools', function (): void {
-    [$binary, $log] = fake_binary(<<<'PHP'
-        if (in_array('--kill', $argv, true)) {
-            exit(0);
-        }
-        fwrite(STDERR, "0199d0f4-6f5b-7c2e-9a1d-3c4b5a697887\n");
-        echo "ok\n";
-        exit(0);
-        PHP);
+    [$binary, $log] = fake_turn('0199d0f4-6f5b-7c2e-9a1d-3c4b5a697887', ['agent' => 'codex']);
 
     $result = (new SessioneerClient($binary))->execute(request([
         'agent' => Agent::Codex,
@@ -124,14 +114,7 @@ test('Codex is asked for tools explicitly, never sent --no-tools', function (): 
 });
 
 test('Ollama needs a model and is never sent --no-tools', function (): void {
-    [$binary, $log] = fake_binary(<<<'PHP'
-        if (in_array('--kill', $argv, true)) {
-            exit(0);
-        }
-        fwrite(STDERR, "ollama-llama3-8b-headless-7f3a\n");
-        echo "ok\n";
-        exit(0);
-        PHP);
+    [$binary, $log] = fake_turn('ollama-llama3-8b-headless-7f3a', ['agent' => 'ollama', 'answer' => 'ok']);
 
     $client = new SessioneerClient($binary);
 
@@ -192,14 +175,7 @@ test('an agent Sessioneer cannot launch is refused with the reason', function ()
 });
 
 test('OpenCode is asked for provider/model and never sent --no-tools or --effort', function (): void {
-    [$binary, $log] = fake_binary(<<<'PHP'
-        if (in_array('--kill', $argv, true)) {
-            exit(0);
-        }
-        fwrite(STDERR, "ses_71e3daa3ffeWX46yL0WKKGf5j\n");
-        echo "ok\n";
-        exit(0);
-        PHP);
+    [$binary, $log] = fake_turn('ses_71e3daa3ffeWX46yL0WKKGf5j', ['agent' => 'opencode', 'answer' => 'ok']);
 
     $request = request([
         'agent' => Agent::OpenCode,
@@ -210,7 +186,7 @@ test('OpenCode is asked for provider/model and never sent --no-tools or --effort
 
     same('ok', $result->answer, 'an OpenCode turn returns its answer');
     same(
-        "--wait --timeout 60 --workdir {$request->workdir} --agent opencode --model opencode-go/gpt-6.1 -",
+        "--wait --json --timeout 60 --workdir {$request->workdir} --agent opencode --model opencode-go/gpt-6.1 -",
         invocations($log)[0] ?? '',
         'the provider/model goes through and no Claude-only option is added',
     );
@@ -229,10 +205,7 @@ test('OpenCode is asked for provider/model and never sent --no-tools or --effort
 });
 
 test('a launch refusal fails without a session to clean up', function (): void {
-    [$binary, $log] = fake_binary(<<<'PHP'
-        fwrite(STDERR, "sessioneer: launch refused: no quota left\n");
-        exit(1);
-        PHP);
+    [$binary, $log] = fake_failure(null, 'launch_refused', 'launch refused: no quota left');
 
     $failure = failed_call(new SessioneerClient($binary), request());
 
@@ -244,14 +217,7 @@ test('a launch refusal fails without a session to clean up', function (): void {
 });
 
 test('a turn error still stops the session it created', function (): void {
-    [$binary, $log] = fake_binary(<<<'PHP'
-        if (in_array('--kill', $argv, true)) {
-            exit(0);
-        }
-        fwrite(STDERR, "claude-headless-err\n");
-        fwrite(STDERR, "session claude-headless-err errored: boom\n");
-        exit(1);
-        PHP);
+    [$binary, $log] = fake_failure('claude-headless-err', 'turn_error', 'session claude-headless-err errored: boom');
 
     $failure = failed_call(new SessioneerClient($binary), request());
 
@@ -263,14 +229,7 @@ test('a turn error still stops the session it created', function (): void {
 });
 
 test('the CLI own timeout is treated as a timeout and cleaned up', function (): void {
-    [$binary] = fake_binary(<<<'PHP'
-        if (in_array('--kill', $argv, true)) {
-            exit(0);
-        }
-        fwrite(STDERR, "claude-headless-slow\n");
-        fwrite(STDERR, "timed out after 1s waiting for claude-headless-slow\n");
-        exit(1);
-        PHP);
+    [$binary] = fake_failure('claude-headless-slow', 'timeout', 'timed out after 1s waiting for claude-headless-slow');
 
     $failure = failed_call(new SessioneerClient($binary), request(['timeoutSeconds' => 1]));
 
@@ -279,6 +238,8 @@ test('the CLI own timeout is treated as a timeout and cleaned up', function (): 
 });
 
 test('the outer deadline cannot bypass cleanup', function (): void {
+    // The CLI is killed before it can write an envelope, so its first stderr
+    // line is the only record of the session it created.
     [$binary, $log] = fake_binary(<<<'PHP'
         if (in_array('--kill', $argv, true)) {
             exit(0);
@@ -294,23 +255,18 @@ test('the outer deadline cannot bypass cleanup', function (): void {
 
     check(microtime(true) - $started < 10, 'the call gives up instead of waiting out the sleep');
     same(FailureReason::Timeout, $failure->reason, 'the outer deadline is a timeout');
-    same('claude-headless-hang', $failure->session, 'the session was captured before the deadline');
+    same('claude-headless-hang', $failure->session, 'the session was captured from stderr before the deadline');
     check($failure->cleanup !== null && $failure->cleanup->killed, 'the hung session is killed anyway');
     contains('--agent claude --kill claude-headless-hang', invocations($log)[1] ?? '', 'the kill names that session');
 });
 
 test('a refused kill is retried with --force and reported', function (): void {
-    [$binary, $log] = fake_binary(<<<'PHP'
-        if (in_array('--kill', $argv, true)) {
-            if (in_array('--force', $argv, true)) {
-                exit(0);
-            }
-            fwrite(STDERR, "sessioneer: session claude-headless-busy is working\n");
-            exit(1);
+    [$binary, $log] = fake_turn('claude-headless-busy', [], <<<'PHP'
+        if (in_array('--force', $argv, true)) {
+            exit(0);
         }
-        fwrite(STDERR, "claude-headless-busy\n");
-        echo "keeper\n";
-        exit(0);
+        fwrite(STDERR, "sessioneer: session claude-headless-busy is working\n");
+        exit(1);
         PHP);
 
     $result = (new SessioneerClient($binary))->execute(request(), 'label this');
@@ -324,14 +280,9 @@ test('a refused kill is retried with --force and reported', function (): void {
 });
 
 test('a cleanup that never succeeds is reported, never swallowed', function (): void {
-    [$binary, $log] = fake_binary(<<<'PHP'
-        if (in_array('--kill', $argv, true)) {
-            fwrite(STDERR, "sessioneer: cannot reach host agent\n");
-            exit(1);
-        }
-        fwrite(STDERR, "claude-headless-stuck\n");
-        echo "keeper\n";
-        exit(0);
+    [$binary, $log] = fake_turn('claude-headless-stuck', [], <<<'PHP'
+        fwrite(STDERR, "sessioneer: cannot reach host agent\n");
+        exit(1);
         PHP);
 
     $result = (new SessioneerClient($binary))->execute(request(), 'label this');
@@ -345,14 +296,10 @@ test('a cleanup that never succeeds is reported, never swallowed', function (): 
 });
 
 test('a failing turn also reports a failed cleanup', function (): void {
-    [$binary] = fake_binary(<<<'PHP'
-        if (in_array('--kill', $argv, true)) {
-            exit(1);
-        }
-        fwrite(STDERR, "claude-headless-err\n");
-        fwrite(STDERR, "session claude-headless-err errored: boom\n");
-        exit(1);
-        PHP);
+    [$binary] = fake_binary(
+        "if (in_array('--kill', \$argv, true)) {\n    exit(1);\n}\n"
+        . failure_body('claude-headless-err', 'turn_error', 'session claude-headless-err errored: boom')
+    );
 
     $failure = failed_call(new SessioneerClient($binary), request());
 
@@ -407,4 +354,73 @@ test('only the first stderr line can name a session', function (): void {
     same(null, SessioneerClient::parseSessionName("sessioneer: launch refused\n"), 'an error line is not a session');
     same(null, SessioneerClient::parseSessionName("timed out after 1s waiting for x\n"), 'a timeout line is not a session');
     same(null, SessioneerClient::parseSessionName(''), 'empty stderr has no session');
+});
+
+test('an error kind this client does not know is a process failure, never a guess', function (): void {
+    [$binary] = fake_failure('claude-headless-new', 'a_kind_from_the_future', 'something new went wrong');
+
+    $failure = failed_call(new SessioneerClient($binary), request());
+
+    same(FailureReason::ProcessFailure, $failure->reason, 'an unknown kind is a process failure');
+    same('something new went wrong', $failure->getMessage(), 'its message is still reported');
+    same('claude-headless-new', $failure->session, 'the session is still cleaned up');
+});
+
+test('a CLI that prints no envelope is a process failure, never an empty answer', function (): void {
+    // An older CLI, or one whose stdout a wrapper swallowed: the answer is
+    // unknown, so this is a failure even on exit 0.
+    [$binary] = fake_binary(<<<'PHP'
+        if (in_array('--kill', $argv, true)) {
+            exit(0);
+        }
+        fwrite(STDERR, "claude-headless-old\n");
+        echo "keeper\n";
+        exit(0);
+        PHP);
+
+    $failure = failed_call(new SessioneerClient($binary), request());
+
+    same(FailureReason::ProcessFailure, $failure->reason, 'no envelope is a process failure');
+    contains('without a --json envelope', $failure->getMessage(), 'the message names what was missing');
+    same('claude-headless-old', $failure->session, 'the stderr fallback still names the session to stop');
+    check($failure->cleanup !== null && $failure->cleanup->ok(), 'and it is stopped');
+});
+
+test('the envelope names the session to stop, even when stderr disagrees', function (): void {
+    [$binary, $log] = fake_binary(<<<'PHP'
+        if (in_array('--kill', $argv, true)) {
+            exit(0);
+        }
+        fwrite(STDERR, "claude-headless-stale\n");
+        echo json_encode([
+            'ok' => true,
+            'answer' => 'keeper',
+            'session' => 'claude-headless-real',
+            'conversation_id' => null,
+            'agent' => 'claude',
+            'model' => null,
+            'workdir' => null,
+            'exit_code' => 0,
+            'error' => null,
+        ]), "\n";
+        exit(0);
+        PHP);
+
+    $result = (new SessioneerClient($binary))->execute(request(), 'label this');
+
+    same('claude-headless-real', $result->session, 'the envelope is authoritative');
+    contains('--kill claude-headless-real', invocations($log)[1] ?? '', 'the envelope session is the one killed');
+    check(!str_contains(invocations($log)[1] ?? '', 'stale'), 'the stderr name is not touched');
+});
+
+test('a session name that is not one argv-safe word is never killed', function (): void {
+    // The name becomes a --kill argument, so anything that is not a plain
+    // session word is refused rather than passed through.
+    [$binary, $log] = fake_binary(envelope_body('--force', ['session' => '--force']));
+
+    $result = (new SessioneerClient($binary))->execute(request(), 'label this');
+
+    same(null, $result->session, 'an unsafe name is not treated as a session');
+    same(1, count(invocations($log)), 'nothing was killed');
+    check($result->cleanup === null, 'and no cleanup is reported');
 });
