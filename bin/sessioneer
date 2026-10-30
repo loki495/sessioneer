@@ -43,16 +43,20 @@ function usage(): string
     requires one; a resume does not.
 
     Options:
-      --agent NAME      agent to launch (default: claude)
+      --agent NAME      agent to launch (default: claude; claude, codex, ollama or
+                        opencode)
       --resume ID       existing conversation id. A session Sessioneer already
                         tracks on that id receives the prompt; otherwise it is
                         resumed headless.
       --workdir DIR     working directory (default: current directory; for
                         --resume, the directory recorded in the transcript)
-      --model NAME      model for a new session
+      --model NAME      model for a new session. OpenCode takes provider/model
+                        (for example opencode-go/gpt-6.1).
       --effort LEVEL    reasoning level for a new or resumed session (Claude: low,
-                        medium, high, xhigh, max; Codex: the levels its model lists)
-      --mode MODE       permission mode for a new session (e.g. plan)
+                        medium, high, xhigh, max; Codex: the levels its model lists;
+                        not offered for ollama or opencode)
+      --mode MODE       permission mode for a new session (e.g. plan; not offered
+                        for ollama or opencode)
       --profile NAME    account profile (default: the one matching this shell's
                         CLAUDE_CONFIG_DIR, else the default account)
       --task-tools      enable the task tools in a new session
@@ -196,6 +200,22 @@ if ($opt('agent') === 'ollama') {
         'mode' => '--mode has no meaning for --agent ollama: its sessions have no permission modes',
         'no-tools' => '--no-tools has no meaning for --agent ollama: its sessions never have tools',
         'task-tools' => '--task-tools has no meaning for --agent ollama: its sessions never have tools',
+    ] as $option => $message) {
+        if (isset($opts[$option])) {
+            fail($message);
+        }
+    }
+}
+
+// An OpenCode session is a serve-hosted conversation: no account profile,
+// reasoning-level control, permission-mode vocabulary or tool-set flags.
+if ($opt('agent') === 'opencode') {
+    foreach ([
+        'profile' => '--profile has no meaning for --agent opencode: its serve sessions have no account profile',
+        'effort' => '--effort has no meaning for --agent opencode: the serve has no reasoning-level control',
+        'mode' => '--mode has no meaning for --agent opencode: its sessions have no permission modes',
+        'no-tools' => '--no-tools has no meaning for --agent opencode: the serve session\'s tools are not configurable here',
+        'task-tools' => '--task-tools has no meaning for --agent opencode: the serve session\'s tools are not configurable here',
     ] as $option => $message) {
         if (isset($opts[$option])) {
             fail($message);

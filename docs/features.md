@@ -134,10 +134,12 @@ prompt itself.
 
 ### Launch from the command line
 
-`bin/sessioneer` starts a headless Claude (or, with `--agent codex`, Codex) session with a first prompt, resumes
+`bin/sessioneer` starts a headless Claude (or, with `--agent codex`, Codex, or
+`--agent opencode`, a serve-hosted OpenCode) session with a first prompt, resumes
 an archived conversation, or delivers a prompt to the session already tracking a
 conversation id, so scripts and other sessions can spawn a continuation that
-shows up in the dashboard. `--list` shows headless sessions and `--kill` stops
+shows up in the dashboard. `--agent ollama` launches a local chat model.
+`--list` shows headless sessions and `--kill` stops
 one (refusing a working or blocked session without `--force`). `--usage` prints
 the last known usage stats for every agent and Claude account as JSON. `--wait [--timeout N]` blocks until the launched session is idle and
 prints its final assistant message, exiting 1 on an error or timeout. `--effort LEVEL` sets the reasoning level of a new or resumed session (agent + model + effort in one launch). Claude and Codex; see
