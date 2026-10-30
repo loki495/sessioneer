@@ -136,7 +136,10 @@ function browser_wait_until(callable $check, float $timeoutSeconds = 20.0): bool
 function spawn_side_session(string $suffix, string $fixtureHome, string $workdir, array $paneTextLines, array $hookStatus): array
 {
     $sessionName = 'cc-test-sidebar-' . $suffix . '-' . getmypid();
-    $agentSessionId = sprintf('8%07d-8888-4888-8888-%012d', getmypid() % 10000000, getmypid());
+    // Distinct per suffix: two side sessions spawned in one process used to
+    // get the same id (both derived only from the pid), so an id filter
+    // could not tell them apart.
+    $agentSessionId = sprintf('8%07d-8888-4888-8888-%012d', getmypid() % 10000000, crc32($suffix));
 
     $projectDir = $fixtureHome . '/.claude/projects/-sidebar-' . $suffix . '-project';
     @mkdir($projectDir, 0700, true);
@@ -445,6 +448,26 @@ try {
             return cdp_evaluate($page, $js) === true;
         });
         browser_assert($page, $sidebarShowsOthers, 'sidebar: shows rows for BOTH other blocked sessions (B and C), not just the currently-viewed one', 'sidebar-missing-other-rows');
+
+        // Find session filter: matching B's agent session id narrows the
+        // list to B and hides C; the clear button restores both rows.
+        cdp_evaluate($page, 'var __f = document.getElementById("sidebar-session-filter"); __f.value = ' . json_encode($sideB['agent_session_id']) . '; __f.dispatchEvent(new Event("input", {bubbles: true}));');
+        $onlyB = cdp_evaluate(
+            $page,
+            '!document.querySelector(\'#sidebar-list a[data-session="' . $sessionBName . '"]\').classList.contains("hidden")'
+            . ' && document.querySelector(\'#sidebar-list a[data-session="' . $sessionCName . '"]\').classList.contains("hidden")'
+        );
+        browser_assert($page, $onlyB === true, 'sidebar: filtering by B\'s agent session id shows B and hides C', 'sidebar-filter-id-failed');
+
+        cdp_evaluate($page, 'document.getElementById("sidebar-session-filter-clear-btn").click();');
+        $bothBack = browser_wait_until(function () use (&$page, $sessionBName, $sessionCName) {
+            return cdp_evaluate(
+                $page,
+                '!document.querySelector(\'#sidebar-list a[data-session="' . $sessionBName . '"]\').classList.contains("hidden")'
+                . ' && !document.querySelector(\'#sidebar-list a[data-session="' . $sessionCName . '"]\').classList.contains("hidden")'
+            ) === true;
+        });
+        browser_assert($page, $bothBack, 'sidebar: clearing the filter restores both rows', 'sidebar-filter-clear-failed');
 
         // --- 1. Sidebar shows another blocked session's rich prompt ---
         $bHasOptionForm = cdp_evaluate(

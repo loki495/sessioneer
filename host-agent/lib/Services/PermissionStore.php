@@ -7,23 +7,26 @@ namespace HostAgent\Services;
 use HostAgent\Stores\SidecarStore;
 
 /**
- * Bridges Sessioneer to OpenCode's permission.ask plugin hook.
+ * Fallback store for OpenCode pending permissions.
  *
- * OpenCode's TUI surfaces a pending permission only to the session's own
- * process (via the plugin `permission.ask` hook) - there is NO queryable
- * server-side state for it (GET /permission,
- * /api/permission/request and /api/session/:id/permission all return empty;
- * the DB has no permission records; only the pane shows a dialog, and a pane
- * footer can be STALE - the feasibility session showed a resolved dialog while
- * actively working). So detection MUST come from the hook, not the pane.
+ * The primary source is the serve's own list, GET /api/permission/request,
+ * which v2 scopes by `location.directory` (an unscoped read reports only the
+ * server's cwd) - OpenCodeServeClient::pending_permissions() queries it once
+ * per live session directory. This store covers a permission that list does
+ * not expose, and it is the only path that can answer in-process.
+ *
+ * A pane footer can be STALE (a resolved dialog still rendered while the
+ * session works), so the pane never decides whether a permission is pending.
  *
  * Design (mirrors Sessioneer's Claude-Code hook -> SessionStatusStore pattern):
- *   - The Sessioneer plugin (~/.config/opencode/plugins/sessioneer-permissions.js) receives
- *     permission.ask / permission.updated and writes a JSON record per ses_*
- *     id into Config::opencode_permission_dir().
+ *   - The Sessioneer plugin (~/.config/opencode/plugins/sessioneer-permissions.js)
+ *     registers `ctx.permission.hook("evaluate")` and
+ *     `ctx.event.subscribe(...)`, and writes a JSON record per ses_* id into
+ *     Config::opencode_permission_dir() on permission.asked/updated, clearing
+ *     it on permission.replied.
  *   - The host-agent reads those records here; to answer, it writes an intent
- *     file the plugin reads on its next permission.ask fire (so the answer is
- *     applied in-process, in the same process that owns the permission).
+ *     the plugin applies on its next `evaluate` fire with effect "ask" (so the
+ *     answer takes effect in the process that owns the permission).
  *
  * Store shape (one file per ses_* id, e.g. <dir>/ses_abc.json):
  *   { "permission": {pending Permission},  "intent": "allow"|"deny"|null }

@@ -11,7 +11,7 @@ declare(strict_types=1);
  *      sidecars (not a live serve call), and prunes/fails-soft correctly.
  *   3. Headless sidecar writes set runtime=headless; tmux rows keep null/tmux.
  *
- * serve URL pinned to a dead port so the real `opencode serve` at :4096 is
+ * serve URL pinned to a dead port so the real `opencode serve` on OPENCODE_SERVE_URL is
  * never contacted; the sync bails on its (failing) list call, leaving
  * whatever sidecars the test wrote in place.
  */

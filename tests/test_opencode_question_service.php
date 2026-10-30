@@ -3,9 +3,10 @@ declare(strict_types=1);
 
 /**
  * Exercises HostAgent\Services\OpenCodeQuestionService - the serve-API
- * question client (GET /question for detection, POST /question/{id}/reply for
- * answering) - against a throwaway `php -S` stub, so the real `opencode serve`
- * process is never contacted and no live tmux pane is needed.
+ * question client (GET /api/session/{id}/form for detection, POST
+ * /api/session/{id}/form/{fid}/reply for answering) - against a throwaway
+ * `php -S` stub, so the real `opencode serve` process is never contacted and
+ * no live tmux pane is needed.
  */
 
 require __DIR__ . '/lib/assert.php';
@@ -52,7 +53,7 @@ try {
     $up = false;
     for ($i = 0; $i < 20 && !$up; $i++) {
         usleep(100000);
-        $r = @file_get_contents("http://127.0.0.1:{$port}/question");
+        $r = @file_get_contents("http://127.0.0.1:{$port}/api/session/ses_stub123/form");
         $up = is_string($r);
     }
     assert_true($up, 'stub server: reached on the reserved port');
@@ -60,7 +61,7 @@ try {
     // --- pending_question: finds a live question for the matching session ---
     $pending = OpenCodeQuestionService::pending_question('ses_stub123');
     assert_true($pending !== null, 'pending_question: returns a live question for the matching session');
-    assert_equal('que_stubrequest', $pending['requestID'] ?? null, 'pending_question: captures the requestID');
+    assert_equal('frm_stubrequest', $pending['requestID'] ?? null, 'pending_question: captures the requestID');
     assert_equal('Which approach?', ($pending['questions'][0]['question'] ?? null), 'pending_question: carries the question text');
 
     // A different session has no pending question.
@@ -81,8 +82,8 @@ try {
 
     $state = json_decode((string)file_get_contents($stateFile), true);
     $v2Reply = end($state['v2']) ?: [];
-    assert_equal('que_stubrequest', $v2Reply['requestID'] ?? null, 'answer: v2 POSTed to the correct requestID');
-    assert_equal([['Alpha']], $v2Reply['answers'] ?? null, 'answer: sent the chosen label as answers[[label]]');
+    assert_equal('frm_stubrequest', $v2Reply['requestID'] ?? null, 'answer: v2 POSTed to the correct form');
+    assert_equal(['q0' => 'alpha'], $v2Reply['answer'] ?? null, 'answer: sent the chosen label as its option value');
 
     // Invalid labels and answer shape are rejected before an HTTP reply.
     assert_equal(null, OpenCodeQuestionService::validated_answers($pending['questions'], [['Alpha', 'Beta']]), 'validation: single select refuses multiple labels');
@@ -95,12 +96,13 @@ try {
     assert_equal([['One', 'Two'], ['A custom answer']], OpenCodeQuestionService::validated_answers($multiAndCustom, [['One', 'Two'], ['A custom answer']]), 'validation: preserves multi-select labels and the default custom text');
     assert_equal(null, OpenCodeQuestionService::validated_answers($multiAndCustom, [['One'], ['Known', 'extra']]), 'validation: custom single-select rejects multiple values');
 
-    // An SSE prompt remains answerable even when GET /question does not see
-    // its instance. The v2 404 uses only the exact-directory v1 fallback.
+    // An SSE prompt remains answerable even when GET /api/session/{id}/form
+    // does not list it: a v2 404 means the form is gone, so only that matching
+    // stale prompt is cleared.
     SessionStatusStore::update_status('ses_sse', ['status' => 'blocked', 'blocked' => [
         'source' => 'opencode_sse',
         'directory' => '/tmp/exact directory',
-        'request_id' => 'que_stubrequest',
+        'request_id' => 'frm_stubrequest',
         'tool_name' => 'question',
         'question' => 'Which approach?',
         'options' => [['number' => 1, 'label' => 'Alpha']],
@@ -108,10 +110,7 @@ try {
     ]]);
     file_put_contents($stateFile, json_encode(['replies' => [], 'v2' => [], 'mode' => 'v2_not_found']));
     $runtimeAnswer = (new HeadlessRuntime())->answer_prompt('ses_sse', ['option' => 1]);
-    assert_equal(true, $runtimeAnswer['ok'] ?? null, 'runtime: stored SSE prompt passes the pending guard and v1 fallback succeeds');
-    $state = json_decode((string)file_get_contents($stateFile), true);
-    $legacyReply = end($state['replies']) ?: [];
-    assert_equal(rawurlencode('/tmp/exact directory'), $legacyReply['directory'] ?? null, 'v1 fallback: sends the exact stored directory header');
+    assert_equal(false, $runtimeAnswer['ok'] ?? null, 'runtime: a gone form is reported as already resolved');
     assert_equal(null, SessionStatusStore::read_status('ses_sse')['blocked'] ?? null, 'success: atomically clears only the answered SSE prompt');
 
     // The shared browser form submits indexes and {text}, while OpenCode
@@ -121,7 +120,7 @@ try {
         ['options' => [['label' => 'Known']], 'multiple' => false],
     ];
     SessionStatusStore::update_status('ses_ui', ['status' => 'blocked', 'blocked' => [
-        'source' => 'opencode_sse', 'directory' => '/tmp/exact directory', 'request_id' => 'que_stubrequest',
+        'source' => 'opencode_sse', 'directory' => '/tmp/exact directory', 'request_id' => 'frm_stubrequest',
         'tool_name' => 'question', 'question' => 'First', 'options' => [], 'tool_input' => ['questions' => $uiQuestions],
     ]]);
     file_put_contents($stateFile, json_encode(['replies' => [], 'v2' => [], 'mode' => 'v2_success']));
@@ -129,11 +128,11 @@ try {
     assert_equal(true, $uiAnswer['ok'] ?? null, 'runtime: converts browser indexes and custom text to OpenCode labels');
     $state = json_decode((string)file_get_contents($stateFile), true);
     $uiReply = end($state['v2']) ?: [];
-    assert_equal([['One', 'Two'], ['A custom answer']], $uiReply['answers'] ?? null, 'runtime: sends normalized label arrays');
+    assert_equal(['q0' => ['One', 'Two'], 'q1' => 'A custom answer'], $uiReply['answer'] ?? null, 'runtime: sends normalized label arrays keyed by form field');
 
-    // A 500 is not proof that v2 is unsupported, so it must never replay on v1.
+    // A 500 is not proof the form is gone, so the prompt must stay pending.
     SessionStatusStore::update_status('ses_sse', ['status' => 'blocked', 'blocked' => [
-        'source' => 'opencode_sse', 'directory' => '/tmp/exact directory', 'request_id' => 'que_stubrequest',
+        'source' => 'opencode_sse', 'directory' => '/tmp/exact directory', 'request_id' => 'frm_stubrequest',
         'tool_name' => 'question', 'question' => 'Which approach?', 'options' => [['number' => 1, 'label' => 'Alpha']],
         'tool_input' => ['questions' => $pending['questions']],
     ]]);
@@ -141,7 +140,7 @@ try {
     $failed = (new HeadlessRuntime())->answer_prompt('ses_sse', ['option' => 1]);
     assert_equal(false, $failed['ok'] ?? null, 'v2 failure: rejects an ambiguous server error');
     $state = json_decode((string)file_get_contents($stateFile), true);
-    assert_equal([], $state['replies'] ?? null, 'v2 failure: does not replay an answer through v1');
+    assert_equal(1, count($state['v2'] ?? []), 'v2 failure: the answer is sent once, never retried elsewhere');
     assert_true(is_array(SessionStatusStore::read_status('ses_sse')['blocked'] ?? null), 'v2 failure: preserves the pending SSE prompt');
 
     // A 200 HTML/error body is not the documented v2 NoContent success.
@@ -150,15 +149,8 @@ try {
     assert_equal(false, $htmlFailure['ok'] ?? null, 'v2 response: rejects an unexpected 200 response body');
     assert_true(is_array(SessionStatusStore::read_status('ses_sse')['blocked'] ?? null), 'v2 response: does not clear a prompt on malformed success');
 
-    // A scoped, structured legacy QuestionNotFound response means an SSE
-    // event was missed; clear only that matching stale prompt.
-    file_put_contents($stateFile, json_encode(['replies' => [], 'v2' => [], 'mode' => 'v1_not_found']));
-    $staleServer = (new HeadlessRuntime())->answer_prompt('ses_sse', ['option' => 1]);
-    assert_equal(false, $staleServer['ok'] ?? null, 'v1 not found: reports the already-resolved prompt');
-    assert_equal(null, SessionStatusStore::read_status('ses_sse')['blocked'] ?? null, 'v1 not found: atomically clears only the matching stale SSE prompt');
-
     SessionStatusStore::update_status('ses_sse', ['status' => 'blocked', 'blocked' => [
-        'source' => 'opencode_sse', 'directory' => '/tmp/exact directory', 'request_id' => 'que_stubrequest',
+        'source' => 'opencode_sse', 'directory' => '/tmp/exact directory', 'request_id' => 'frm_stubrequest',
         'tool_name' => 'question', 'question' => 'Which approach?', 'options' => [['number' => 1, 'label' => 'Alpha']],
         'tool_input' => ['questions' => $pending['questions']],
     ]]);

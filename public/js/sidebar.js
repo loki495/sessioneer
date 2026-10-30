@@ -15,6 +15,9 @@ var sidebarCloseBtn = document.getElementById('sidebar-close-btn');
 var sidebarOverlay = document.getElementById('sidebar-overlay');
 var sidebar = document.getElementById('sidebar');
 var sidebarList = document.getElementById('sidebar-list');
+var sidebarSessionFilter = document.getElementById('sidebar-session-filter');
+var sidebarSessionFilterClearBtn = document.getElementById('sidebar-session-filter-clear-btn');
+var sidebarSessionFilterStatus = document.getElementById('sidebar-session-filter-status');
 var sidebarNotifyDot = document.getElementById('sidebar-notify-dot');
 
 // Only in-flight fetches actually created by session.js's OWN poll cycle
@@ -416,6 +419,8 @@ function renderSidebarSessions(data, markSeen) {
     }
   }
 
+  applySidebarSessionFilter();
+
   return 'ok';
 }
 
@@ -424,8 +429,77 @@ function renderSidebarSessions(data, markSeen) {
 // other lastRendered* dedup guard in this codebase.
 var lastRenderedSidebarHtml = null;
 
+// Sidebar "Find session" filter: narrows the other-sessions list by visible
+// name/title, workdir or the agent's own session id (an OpenCode/Codex
+// ses_* id, a Claude UUID), so an id copied from a header or transcript can
+// locate the right row without opening every card. Purely client-side: the
+// server-rendered rows (including their blocked-prompt forms) stay intact,
+// only hidden.
+function sidebarSessionFilterQuery() {
+  return sidebarSessionFilter ? sidebarSessionFilter.value.trim().toLowerCase() : '';
+}
+
+function applySidebarSessionFilter() {
+  if (!sidebarList) {
+    return;
+  }
+
+  var query = sidebarSessionFilterQuery();
+  var rowCount = 0;
+  var visible = 0;
+
+  for (var i = 0; i < sidebarList.children.length; i++) {
+    var row = sidebarList.children[i];
+
+    if (!row.hasAttribute || !row.hasAttribute('data-session')) {
+      continue;
+    }
+
+    rowCount++;
+    var haystack = [
+      row.getAttribute('data-session') || '',
+      row.getAttribute('data-session-id') || '',
+      row.getAttribute('data-session-title') || '',
+      row.getAttribute('data-session-workdir') || ''
+    ].join(' ').toLowerCase();
+    var match = query === '' || haystack.indexOf(query) !== -1;
+    row.classList.toggle('hidden', !match);
+
+    if (match) {
+      visible++;
+    }
+  }
+
+  if (sidebarSessionFilterStatus) {
+    var noMatch = query !== '' && rowCount > 0 && visible === 0;
+    sidebarSessionFilterStatus.textContent = noMatch ? 'No sessions match.' : '';
+    sidebarSessionFilterStatus.classList.toggle('hidden', !noMatch);
+  }
+
+  if (sidebarSessionFilterClearBtn) {
+    sidebarSessionFilterClearBtn.classList.toggle('hidden', query === '');
+  }
+}
+
+if (sidebarSessionFilter) {
+  sidebarSessionFilter.addEventListener('input', applySidebarSessionFilter);
+}
+
+if (sidebarSessionFilterClearBtn) {
+  sidebarSessionFilterClearBtn.addEventListener('click', function () {
+    if (!sidebarSessionFilter) {
+      return;
+    }
+
+    sidebarSessionFilter.value = '';
+    applySidebarSessionFilter();
+    sidebarSessionFilter.focus();
+  });
+}
+
 function loadSidebarList() {
   sidebarList.innerHTML = '<div class="px-1 text-slate-500">Loading&hellip;</div>';
+  applySidebarSessionFilter();
   lastRenderedSidebarHtml = null;
   fetch('/sidebar_sessions.php?session=' + encodeURIComponent(sessionName))
     .then(function (r) { return r.json(); })

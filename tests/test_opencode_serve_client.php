@@ -32,7 +32,7 @@ putenv("OPENCODE_SERVE_URL=http://127.0.0.1:{$port}");
 try {
     for ($i = 0; $i < 20; $i++) {
         usleep(100000);
-        if (@file_get_contents("http://127.0.0.1:{$port}/session/missing") !== false) {
+        if (@file_get_contents("http://127.0.0.1:{$port}/api/session/missing") !== false) {
             break;
         }
     }
@@ -48,10 +48,39 @@ try {
     assert_equal(2, count($sessions['sessions'] ?? []), 'list_sessions: returns all session records');
 
     $detail = $client->get_session('ses_stub_create');
-    assert_equal('model', $detail['session']['model']['id'] ?? null, 'get_session: returns decoded detail');
+    assert_equal('model', $detail['session']['model']['id'] ?? null, 'get_session: unwraps the v2 data envelope');
 
-    $sent = $client->send_message('ses_stub_create', 'hello', [], ['providerID' => 'stub', 'modelID' => 'model']);
-    assert_true($sent['ok'] ?? false, 'send_message: accepts a successful 204 response');
+    $sent = $client->send_message('ses_stub_create', 'hello');
+    assert_true($sent['ok'] ?? false, 'send_message: accepts the v2 prompt response');
+
+    $statuses = $client->status_map();
+    assert_equal(['ses_stub_create' => 'working'], $statuses['statuses'] ?? null, 'status_map: only running sessions are reported, as working');
+
+    $permissions = $client->pending_permissions(['/tmp/project']);
+    assert_equal('per_stub', $permissions[0]['id'] ?? null, 'pending_permissions: reads the request list for a session directory');
+    assert_equal(0, count($client->pending_permissions(['/elsewhere'])), 'pending_permissions: a directory with no requests returns none');
+    assert_equal(0, count($client->pending_permissions(['/broken'])), 'pending_permissions: a failing directory read is skipped without throwing');
+    assert_equal(0, count($client->pending_permissions()), 'pending_permissions: the unscoped read does not report another directory');
+    assert_equal(1, count($client->pending_permissions(['/tmp/project', '/tmp/project'])), 'pending_permissions: duplicate directories are queried once');
+
+    $questions = $client->pending_questions(['ses_stub_create', 'ses_stub_other']);
+    assert_equal(1, count($questions), 'pending_questions: one pending question across the given sessions');
+    assert_equal('frm_stub', $questions[0]['id'] ?? null, 'pending_questions: carries the form id as the request identity');
+    assert_equal('Which approach?', $questions[0]['questions'][0]['question'] ?? null, 'pending_questions: normalizes the form field to a question');
+
+    $answered = $client->answer_permission('ses_stub_create', 'per_stub', 'once');
+    assert_true($answered['ok'] ?? false, 'answer_permission: v2 decision reply succeeds');
+
+    $models = $client->available_models();
+    assert_equal(2, count($models), 'available_models: dedupes the same model across providers');
+    $byId = array_column($models, 'providerID', 'id');
+    assert_equal('opencode-go', $byId['stub-a'] ?? null, 'available_models: keeps the higher-priority provider copy');
+
+    $default = $client->default_model();
+    assert_equal(['providerID' => 'opencode-go', 'modelID' => 'stub-a'], $default, 'default_model: reads /api/model/default');
+
+    $todo = $client->get_todo('ses_stub_create');
+    assert_equal(false, $todo['ok'] ?? null, 'get_todo: reports v2 has no todo surface');
 
     $missing = $client->get_session('missing');
     assert_equal(false, $missing['ok'] ?? null, 'get_session: HTTP failure is returned as a handled error');

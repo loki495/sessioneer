@@ -43,16 +43,20 @@ function usage(): string
     requires one; a resume does not.
 
     Options:
-      --agent NAME      agent to launch (default: claude)
+      --agent NAME      agent to launch (default: claude; claude, codex, ollama or
+                        opencode)
       --resume ID       existing conversation id. A session Sessioneer already
                         tracks on that id receives the prompt; otherwise it is
                         resumed headless.
       --workdir DIR     working directory (default: current directory; for
                         --resume, the directory recorded in the transcript)
-      --model NAME      model for a new session
+      --model NAME      model for a new session. OpenCode takes provider/model
+                        (for example opencode-go/gpt-6.1).
       --effort LEVEL    reasoning level for a new or resumed session (Claude: low,
-                        medium, high, xhigh, max; Codex: the levels its model lists)
-      --mode MODE       permission mode for a new session (e.g. plan)
+                        medium, high, xhigh, max; Codex: the levels its model lists;
+                        not offered for ollama or opencode)
+      --mode MODE       permission mode for a new session (e.g. plan; not offered
+                        for ollama or opencode)
       --profile NAME    account profile (default: the one matching this shell's
                         CLAUDE_CONFIG_DIR, else the default account)
       --task-tools      enable the task tools in a new session
@@ -74,14 +78,17 @@ function usage(): string
                         entry per agent, with Claude's account profiles nested
                         under it, each with its fetched_at time. Read-only; never
                         refreshes anything.
-      --wait            after launching or messaging, block until the session is
-                        idle and print its final assistant message to stdout (the
-                        session name goes to stderr). Exits 1 if the launch fails,
-                        the turn errors or --timeout runs out. A session waiting on
-                        a prompt is not idle: it is waited on, so answer it in the
-                        dashboard or set --timeout.
+      --wait            after launching, block until the session is idle and print
+                        its final assistant message to stdout (the session name
+                        goes to stderr). Exits 1 if the launch fails, the turn
+                        errors or --timeout runs out. A session waiting on a prompt
+                        is not idle: it is waited on, so answer it in the dashboard
+                        or set --timeout.
       --timeout N       with --wait, give up after N seconds (default: no limit)
-      --json            print the full reply as JSON instead of the plain output
+      --json            with --wait, print one JSON object on stdout (answer,
+                        session, conversation id, agent, model, workdir, exit code
+                        and error) instead of the plain text; otherwise print the
+                        full reply as JSON. Everything human stays on stderr.
       -h, --help        this text
 
     Prints the session name on success (the dashboard opens it at
@@ -94,6 +101,34 @@ function fail(string $message): never
 {
     fwrite(STDERR, "sessioneer: {$message}\n");
     exit(1);
+}
+
+/**
+ * One machine-readable object for `--wait`, so a program never has to read
+ * prose: the answer, the session the call created, and what went wrong.
+ *
+ * @param  array{kind: string, message: string}|null  $error
+ * @return array<string, mixed>
+ */
+function wait_envelope(bool $ok, ?string $answer, ?string $session, ?string $conversationId, string $agent, ?string $model, ?string $workdir, ?array $error): array
+{
+    return [
+        'ok' => $ok,
+        'answer' => $answer,
+        'session' => $session,
+        'conversation_id' => $conversationId,
+        'agent' => $agent,
+        'model' => $model,
+        'workdir' => $workdir,
+        'exit_code' => $ok ? 0 : 1,
+        'error' => $error,
+    ];
+}
+
+/** @param  array<string, mixed>  $envelope */
+function emit_envelope(array $envelope): void
+{
+    echo json_encode($envelope, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
 }
 
 $opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:'], $restIndex);
@@ -187,6 +222,52 @@ if ($opt('effort') !== null && ($kill !== null || $list || $send !== null || $pe
     fail('--effort only applies to launching or resuming a session');
 }
 
+// An Ollama session is a local model reached over Sessioneer's own HTTP
+// client: no account, no reasoning levels, no permission modes, no tools.
+if ($opt('agent') === 'ollama') {
+    foreach ([
+        'profile' => '--profile has no meaning for --agent ollama: a local model runs under no account',
+        'effort' => '--effort has no meaning for --agent ollama: a local model has no reasoning levels',
+        'mode' => '--mode has no meaning for --agent ollama: its sessions have no permission modes',
+        'no-tools' => '--no-tools has no meaning for --agent ollama: its sessions never have tools',
+        'task-tools' => '--task-tools has no meaning for --agent ollama: its sessions never have tools',
+    ] as $option => $message) {
+        if (isset($opts[$option])) {
+            fail($message);
+        }
+    }
+}
+
+// An OpenCode session is a serve-hosted conversation: no account profile,
+// reasoning-level control, permission-mode vocabulary or tool-set flags.
+if ($opt('agent') === 'opencode') {
+    foreach ([
+        'profile' => '--profile has no meaning for --agent opencode: its serve sessions have no account profile',
+        'effort' => '--effort has no meaning for --agent opencode: the serve has no reasoning-level control',
+        'mode' => '--mode has no meaning for --agent opencode: its sessions have no permission modes',
+        'no-tools' => '--no-tools has no meaning for --agent opencode: the serve session\'s tools are not configurable here',
+        'task-tools' => '--task-tools has no meaning for --agent opencode: the serve session\'s tools are not configurable here',
+    ] as $option => $message) {
+        if (isset($opts[$option])) {
+            fail($message);
+        }
+    }
+}
+
+// Validated before the request: a bad --timeout used to be caught after the
+// launch, which left the session it had just created running.
+if (isset($opts['wait'])) {
+    if ($kill !== null || $list || $send !== null || $peers) {
+        fail('--wait only applies to launching or resuming a session');
+    }
+
+    $timeout = $opt('timeout');
+
+    if ($timeout !== null && (!ctype_digit($timeout) || (int)$timeout < 1)) {
+        fail('--timeout must be a positive number of seconds');
+    }
+}
+
 $action = $kill !== null ? 'launch_kill' : ($list ? 'launch_list' : ($send !== null ? 'launch_send' : ($peers ? 'launch_peers' : 'launch')));
 
 $reply = AgentClient::agent_call(array_filter([
@@ -211,18 +292,32 @@ $reply = AgentClient::agent_call(array_filter([
 $ok = ($reply['ok'] ?? false) === true;
 
 if (isset($opts['wait'])) {
-    if ($kill !== null || $list || $send !== null || $peers) {
-        fail('--wait only applies to launching or resuming a session');
-    }
+    $json = isset($opts['json']);
+    $agentName = $opt('agent') ?? 'claude';
+    $modelName = $opt('model');
+
+    // Fails a --wait run without breaking the JSON contract: the envelope goes
+    // to stdout when it was asked for, the human message to stderr, exit 1
+    // either way.
+    $waitFail = static function (string $kind, string $message, ?string $session, ?array $detail = null) use ($json, $agentName, $modelName, $workdir): never {
+        if ($json) {
+            emit_envelope(wait_envelope(
+                false,
+                null,
+                $session,
+                is_string($detail['agent_session_id'] ?? null) ? $detail['agent_session_id'] : null,
+                is_string($detail['agent'] ?? null) ? $detail['agent'] : $agentName,
+                $modelName,
+                is_string($detail['workdir'] ?? null) ? $detail['workdir'] : $workdir,
+                ['kind' => $kind, 'message' => $message],
+            ));
+        }
+
+        fail($message);
+    };
 
     if (!$ok) {
-        fail((string)($reply['message'] ?? 'launch failed'));
-    }
-
-    $timeout = $opt('timeout');
-
-    if ($timeout !== null && (!ctype_digit($timeout) || (int)$timeout < 1)) {
-        fail('--timeout must be a positive number of seconds');
+        $waitFail('launch_refused', (string)($reply['message'] ?? 'launch failed'), is_string($reply['name'] ?? null) ? $reply['name'] : null);
     }
 
     $name = (string)($reply['name'] ?? '');
@@ -231,15 +326,19 @@ if (isset($opts['wait'])) {
 
     // The launch reply is only sent once the prompt was accepted, so the turn
     // has started; idle after that means it finished.
+    $detail = null;
+
     while (true) {
         $d = AgentClient::agent_call(['action' => 'session_detail', 'session' => $name]);
 
         if (($d['ok'] ?? false) !== true) {
-            fail('session ' . $name . ': ' . (string)($d['message'] ?? 'detail unavailable'));
+            $waitFail('session_error', 'session ' . $name . ': ' . (string)($d['message'] ?? 'detail unavailable'), $name, $detail);
         }
 
+        $detail = $d;
+
         if (is_string($d['last_turn_error'] ?? null) && $d['last_turn_error'] !== '') {
-            fail('session ' . $name . ' errored: ' . $d['last_turn_error']);
+            $waitFail('turn_error', 'session ' . $name . ' errored: ' . $d['last_turn_error'], $name, $detail);
         }
 
         // A new Codex thread reports idle for a few seconds after its prompt is accepted, before the
@@ -247,20 +346,44 @@ if (isset($opts['wait'])) {
         $replied = $opt('agent') !== 'codex' || ($d['last_message']['role'] ?? null) === 'assistant';
 
         if ($replied && (($d['status'] ?? null) === 'idle' || (!isset($d['status']) && empty($d['working'])))) {
-            $text = [];
+            // An Ollama entry's last_message is the reply text itself (Sessioneer
+            // keeps that transcript), not a block entry like the CLI agents'.
+            $answer = '';
 
-            foreach ($d['last_message']['blocks'] ?? [] as $b) {
-                if (($b['kind'] ?? null) === 'text') {
-                    $text[] = (string)$b['text'];
+            if ($opt('agent') === 'ollama') {
+                $answer = is_string($d['last_message'] ?? null) ? $d['last_message'] : '';
+            } else {
+                $text = [];
+
+                foreach ($d['last_message']['blocks'] ?? [] as $b) {
+                    if (($b['kind'] ?? null) === 'text') {
+                        $text[] = (string)$b['text'];
+                    }
                 }
+
+                $answer = implode("\n\n", $text);
             }
 
-            echo implode("\n\n", $text), "\n";
+            if ($json) {
+                emit_envelope(wait_envelope(
+                    true,
+                    $answer,
+                    $name,
+                    is_string($d['agent_session_id'] ?? null) ? $d['agent_session_id'] : null,
+                    is_string($d['agent'] ?? null) ? $d['agent'] : $agentName,
+                    $modelName,
+                    is_string($d['workdir'] ?? null) ? $d['workdir'] : $workdir,
+                    null,
+                ));
+            } else {
+                echo $answer, "\n";
+            }
+
             exit(0);
         }
 
         if ($deadline !== null && time() >= $deadline) {
-            fail('timed out after ' . $timeout . 's waiting for ' . $name);
+            $waitFail('timeout', 'timed out after ' . $timeout . 's waiting for ' . $name, $name, $detail);
         }
 
         sleep(2);

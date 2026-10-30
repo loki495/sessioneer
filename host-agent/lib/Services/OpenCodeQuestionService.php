@@ -12,14 +12,14 @@ class OpenCodeQuestionService
     /** @return array{requestID:string, questions:array<int, array<string,mixed>>}|null */
     public static function pending_question(string $sessionId): ?array
     {
-        [$status, $data] = self::request('GET', '/question');
+        [$status, $data] = self::request('GET', '/api/session/' . rawurlencode($sessionId) . '/form');
         if ($status < 200 || $status >= 300 || !is_array($data)) return null;
 
-        foreach ($data as $request) {
-            if (!is_array($request) || ($request['sessionID'] ?? null) !== $sessionId) continue;
-            $requestID = is_string($request['id'] ?? null) ? $request['id'] : null;
-            $questions = is_array($request['questions'] ?? null) ? $request['questions'] : [];
-            if ($requestID !== null && $questions !== []) return ['requestID' => $requestID, 'questions' => $questions];
+        foreach (is_array($data['data'] ?? null) ? $data['data'] : [] as $form) {
+            if (!is_array($form) || ($form['sessionID'] ?? null) !== $sessionId) continue;
+            $requestID = is_string($form['id'] ?? null) ? $form['id'] : null;
+            $questions = OpenCodeForm::questions($form);
+            if ($requestID !== null && $questions !== null) return ['requestID' => $requestID, 'questions' => $questions];
         }
         return null;
     }
@@ -74,37 +74,21 @@ class OpenCodeQuestionService
         $directory = $pending['directory'] ?? ($stored['directory'] ?? null);
         [$status, $data, $error] = self::request(
             'POST',
-            '/api/session/' . rawurlencode($sessionId) . '/question/' . rawurlencode($requestId) . '/reply',
-            ['answers' => $answers],
+            '/api/session/' . rawurlencode($sessionId) . '/form/' . rawurlencode($requestId) . '/reply',
+            ['answer' => OpenCodeForm::answer($pending['questions'], $answers)],
             $directory,
         );
 
-        // v2 declares NoContent. Only definitive unsupported/not-found routes
-        // may fall through to v1; unknown transport state must not be replayed.
+        // v2 declares NoContent; 400 is an invalid answer, 404 a gone form.
         if ($status === 204 && trim($error) === '') {
             SessionStatusStore::resolve_opencode_question($sessionId, $requestId);
             return ['ok' => true, 'message' => 'Question answered'];
         }
-        if (!in_array($status, [404, 405, 501], true)) return ['ok' => false, 'message' => self::reply_error('v2', $status, $error)];
-        if ($directory === null) return ['ok' => false, 'message' => 'Question reply failed: v2 is unavailable and the question directory is unknown'];
-
-        [$legacyStatus, $legacyData, $legacyError] = self::request(
-            'POST',
-            '/question/' . rawurlencode($requestId) . '/reply',
-            ['answers' => $answers],
-            $directory,
-        );
-        // v1 explicitly returns JSON boolean true. A 2xx no-content v1 reply
-        // is ambiguous and is intentionally not treated as a successful answer.
-        if ($legacyStatus >= 200 && $legacyStatus < 300 && $legacyData === true) {
-            SessionStatusStore::resolve_opencode_question($sessionId, $requestId);
-            return ['ok' => true, 'message' => 'Question answered'];
-        }
-        if (self::is_question_not_found($legacyStatus, $legacyData)) {
+        if ($status === 404) {
             SessionStatusStore::resolve_opencode_question($sessionId, $requestId);
             return ['ok' => false, 'message' => 'Rejected: this question was already resolved'];
         }
-        return ['ok' => false, 'message' => self::reply_error('v1', $legacyStatus, $legacyError)];
+        return ['ok' => false, 'message' => self::reply_error($status, $error)];
     }
 
     /**
@@ -164,17 +148,10 @@ class OpenCodeQuestionService
         ];
     }
 
-    private static function reply_error(string $protocol, int $status, string $error): string
+    private static function reply_error(int $status, string $error): string
     {
         $detail = trim($error);
-        return "Question reply failed via {$protocol} (HTTP {$status})" . ($detail === '' ? '' : ": {$detail}");
-    }
-
-    private static function is_question_not_found(int $status, mixed $data): bool
-    {
-        if ($status !== 404 || !is_array($data)) return false;
-        if (($data['name'] ?? null) === 'QuestionNotFoundError') return true;
-        return ($data['error']['name'] ?? null) === 'QuestionNotFoundError';
+        return "Question reply failed (HTTP {$status})" . ($detail === '' ? '' : ": {$detail}");
     }
 
     /**
@@ -184,6 +161,7 @@ class OpenCodeQuestionService
     private static function request(string $method, string $path, ?array $body = null, ?string $directory = null): array
     {
         $cmd = ['curl', '--silent', '--show-error', '--max-time', '5', '--request', $method, '--write-out', "\n%{http_code}"];
+        foreach (Config::opencode_curl_auth_args() as $arg) $cmd[] = $arg;
         $bodyFile = null;
         if ($body !== null) {
             $payload = json_encode($body);

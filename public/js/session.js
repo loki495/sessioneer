@@ -2781,11 +2781,15 @@
     fetch('/session_list_models.php', { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (data) {
+        var placeholder = opencodeModelSelect.options[0];
+
         if (!data || !data.ok || !data.models) {
+          if (placeholder) {
+            placeholder.textContent = 'Models unavailable';
+          }
           return;
         }
 
-        var placeholder = opencodeModelSelect.options[0];
         while (opencodeModelSelect.options.length > 1) {
           opencodeModelSelect.remove(1);
         }
@@ -2798,17 +2802,42 @@
           opencodeModelSelect.appendChild(opt);
         });
 
+        if (data.models.length === 0) {
+          if (placeholder) {
+            placeholder.textContent = 'No models available';
+          }
+          return;
+        }
+
         // preselect the session's current model (if it appears in the list)
+        var matchedCurrent = false;
         for (var i = 1; i < opencodeModelSelect.options.length; i++) {
           var o = opencodeModelSelect.options[i];
           if (o.value === ocCurrentModel && o.getAttribute('data-provider') === ocCurrentProvider) {
             opencodeModelSelect.selectedIndex = i;
+            matchedCurrent = true;
             break;
           }
         }
+
+        // A serve session can carry no model on its row (opencode stores it
+        // per message), so no option matches. Say so honestly instead of
+        // leaving the loading placeholder forever; the placeholder itself is
+        // not selectable, so this never posts an empty model.
+        if (placeholder) {
+          placeholder.disabled = true;
+          placeholder.textContent = matchedCurrent
+            ? 'Select model'
+            : (ocCurrentModel === '' ? 'Default model' : 'Select model');
+        }
         opencodeModelSelect.disabled = false;
       })
-      .catch(function () {});
+      .catch(function () {
+        var placeholder = opencodeModelSelect.options[0];
+        if (placeholder) {
+          placeholder.textContent = 'Models unavailable';
+        }
+      });
 
     opencodeModelSelect.addEventListener('change', function () {
       var opt = opencodeModelSelect.options[opencodeModelSelect.selectedIndex];

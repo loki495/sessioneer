@@ -11,7 +11,7 @@
       // it (and anything inside it, like the blocked-prompt card below) sized
       // to its widest UNWRAPPED content instead of shrinking to the sidebar's
       // actual width, pushing the whole card off the visible panel. ?>
-<a href="/session.php?session=<?= urlencode($name) ?>" class="block min-w-0 rounded-xl border px-4 py-3 active:bg-slate-800" style="<?= $agentCardStyle ?>" data-session="<?= $this->e($name) ?>">
+<a href="/session.php?session=<?= urlencode($name) ?>" class="block min-w-0 rounded-xl border px-4 py-3 active:bg-slate-800" style="<?= $agentCardStyle ?>" data-session="<?= $this->e($name) ?>" data-session-id="<?= $this->e((string)($agentSessionId ?? '')) ?>" data-session-workdir="<?= $this->e((string)($workdir ?? '')) ?>" data-session-title="<?= $this->e($title) ?>">
   <div class="flex items-center gap-2">
     <div class="text-slate-200 truncate min-w-0 flex-1" data-session-title><?= $this->e($title) ?></div>
     <?php // A span, not a <button>: this whole card is one <a>, and a button inside a link is invalid HTML. common.js handles the click and cancels the navigation. ?>

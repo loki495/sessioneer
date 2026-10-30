@@ -6,7 +6,8 @@ A self-hosted, LAN-only web UI for managing coding-agent sessions - Claude
 Code (headless with no terminal by default, or `cc-*` in tmux), Antigravity
 (`ag-*`, tmux-driven), OpenCode (native `ses_*`
 IDs through its headless server by default, `oc-*` tmux as a fallback), and
-Codex (native thread UUIDs, headless only, no tmux at all) - on your own dev
+Codex (native thread UUIDs, headless only, no tmux at all), plus local Ollama
+models (`ollama-headless-*`, headless, chat only) - on your own dev
 box. See blocked prompts, answer
 them, send messages, view transcripts, and kill sessions, all from a phone
 or any browser on your network. No accounts, no login - see "Network
@@ -63,7 +64,8 @@ an installable PWA, meant to be added to an iOS/Android home screen):
   follow-up questions during a run (`"which one: A or B?"`); Sessioneer
   shows them and collects answers.
 - **Launch from the command line**: `bin/sessioneer` starts, resumes,
-  reuses, lists or stops headless Claude and Codex sessions (and prints the last known
+  reuses, lists or stops headless Claude, Codex and OpenCode sessions and
+  local Ollama chats (and prints the last known
   usage stats as JSON with `--usage`, or blocks until a session is idle and
   prints its final message with `--wait`), so scripts and other
   sessions can spawn a continuation you then follow in the dashboard (see
@@ -206,6 +208,9 @@ answered in Sessioneer.
 | OpenCode | `opencode serve` by default; tmux fallback | Serve API + SQLite + global permissions plugin; tmux permissions also consult the live pane | Re-run `host-agent/install.sh` after setting `OPENCODE_BIN` |
 | Codex | headless only | Bridge attached to the managed app-server daemon shared with Codex Remote (private app-server fallback); persistent queue + Codex hooks | Click **Install hooks**, trust them in Codex, and bootstrap Remote control when sharing with Codex Remote |
 
+`bin/sessioneer --agent opencode` launches a serve-hosted session, reuses a
+tracked one or resumes a `ses_*` id; see [`docs/cli.md`](docs/cli.md).
+
 For detailed agent version compatibility and known quirks, see [`docs/agent-compatibility.md`](docs/agent-compatibility.md).
 
 ### Claude Code
@@ -299,10 +304,11 @@ systemctl --user restart opencode-serve.service
 Headless sessions are the preferred path: Sessioneer talks directly to the
 serve API for lifecycle, messages, questions, and permissions. The tmux TUI is
 retained as a fallback. OpenCode creates its `ses_*` ID only after the first
-prompt; Sessioneer binds it reactively from `opencode.db`. The permissions
-plugin records `permission.asked` events because the tested OpenCode version
-does not expose reliable persistent permission state through its HTTP API.
-The dashboard health section checks both the service and plugin file.
+prompt; Sessioneer binds it reactively from `opencode.db`. Pending permissions
+come from the directory-scoped `GET /api/permission/request`, which Sessioneer
+queries once per live session directory; the permissions plugin mirrors the
+same request into a local store as a fallback. The dashboard health section
+checks both the service and plugin file.
 
 The events service listens to each tracked headless session's exact OpenCode
 directory and records question prompts for Sessioneer's existing answer forms.
@@ -378,6 +384,34 @@ prompt from a Remote-owned thread is then observability-only (blocked, no answer
 buttons, "Approval required in Codex Remote").
 The persistent queue solves cross-owner **messages**, not cross-owner **prompt
 responses**.
+
+### Ollama (local models)
+
+A local model run by [Ollama](https://ollama.com) can be a session too: pick
+`Ollama (local)` in New Session, choose one of the models that server has
+pulled, and the conversation appears in the dashboard like any other, with its
+transcript, status and last message. It is chat only - no file access, no
+tools, no permission prompts - so it is useful for summaries, explanations and
+cheap drafts rather than for changing code.
+
+```bash
+ollama pull llama3.1:8b            # any chat model, on the server you point at
+# host-agent/.env
+OLLAMA_URL=http://127.0.0.1:11434  # the default; never the Quick Prompt router's 11435
+```
+
+- The model list is read from the server, so nothing needs configuring per
+  model; a server that is down is reported as unavailable rather than guessed
+  at.
+- One turn at a time per session, and a turn can take minutes on a small box:
+  the session shows working until the answer lands, and Interrupt stops it.
+- Turns run in a detached worker process, which needs PHP's `pcntl` extension
+  (standard in a CLI build; the health box says so when it is missing).
+- Keep the endpoint on loopback. Ollama has no authentication, so anything else
+  is an open model server on your network.
+- Conversations live under `$SIDECAR_DIR/ollama/`, which is tmpfs: they do not
+  survive a reboot, and killing a session leaves the file with no dashboard
+  entry to reopen it.
 
 ## Home screen bookmark
 
