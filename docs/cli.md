@@ -178,7 +178,7 @@ The binary is host-side: it needs the host agent's socket, which a container doe
 ## Design
 
 
-There is no separate "archive": stopping a session archives its conversation, exactly like the dashboard's Kill. `--kill` only manages headless Claude, Codex, Ollama and OpenCode sessions; a terminal (tmux) session or a bare process is refused, and is stopped from the dashboard.
+There is no separate "archive": stopping a session archives its conversation, exactly like the dashboard's Kill. Every launcher supports `--kill` (Claude, Codex, Ollama and OpenCode, routed by `--agent`); a terminal (tmux) session or a bare process is refused, and is stopped from the dashboard.
 
 `--usage` is the one option that is not a launcher action: it sends the dashboard's own `quota` request and prints its `agents` map with `claude_profiles` nested under the Claude entry. The other options combine only with their own modifiers (`--kill`, `--list`, `--send`, `--peers` and `--usage` are mutually exclusive).
 

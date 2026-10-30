@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 const CANNED_SESSION_NAME = 'cc-20260101-1200';
 const CANNED_BLOCKED_SESSION_NAME = 'cc-20260101-1300';
+const CANNED_BLOCKED_AGENT_SESSION_ID = 'aaaaaaaa-1111-4111-8111-111111111111';
 const CANNED_BARE_PID = 54321;
 // Its own separate pid/row - the resolved_title case is deliberately kept
 // OUT of CANNED_BARE_PID's own row, which every other bare_* action
@@ -156,6 +157,7 @@ $response = match ($action) {
             'last_message' => CANNED_LAST_MESSAGE,
         ], [
             'name' => CANNED_BLOCKED_SESSION_NAME,
+            'agent_session_id' => CANNED_BLOCKED_AGENT_SESSION_ID,
             'activity' => time() - 60,
             'attached' => false,
             'pid' => 12346,
