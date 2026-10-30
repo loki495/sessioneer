@@ -38,9 +38,9 @@ echo "Summarise the open TODOs" | sessioneer --json -
 | `--whoami` | Print this session's own name (`SESSIONEER_SELF`, or `CODEX_THREAD_ID` inside Codex); exits 1 outside a session. |
 | `--peers` | List the other live sessions in this session's git repository (worktrees included) as tab-separated name, status, branch and directory. |
 | `--usage` | Print the last known usage (quota) stats as JSON and exit 0: `agents`, one entry per agent (`claude`, `antigravity`, `opencode`, `codex`), with Claude's configured accounts nested under `agents.claude.profiles` (the default account keyed `personal`). Each entry has `label`, `ok`, `quota`, `fetched_at` (unix time, or null) and `message` (why there is no data yet). Read-only: it returns what the dashboard footer shows and never refreshes anything. Exits 1 if the host agent is unreachable. |
-| `--wait` | With a launch or resume: block until the session is idle, then print the text of its final assistant message on stdout (the session name goes to stderr). Exits 1 if the launch is refused, the turn reports an error, or `--timeout` runs out. With `--agent codex` it also waits until the last message is the assistant's reply, because a new Codex thread reads idle for a few seconds before its turn starts (an interrupted turn therefore waits until `--timeout`). For `--agent opencode` the idle check uses the serve's live `/api/session/active` map, so a turn that just started is not mistaken for a stale idle. A session waiting on a permission prompt is not idle, so it keeps being waited on: answer it in the dashboard or set `--timeout`. Not combinable with `--kill`, `--list`, `--send` or `--peers`. A final message with no text (only tool calls) prints an empty line. |
+| `--wait` | With a launch or resume: block until the session is idle, then print the text of its final assistant message on stdout (the session name goes to stderr). Exits 1 if the launch is refused, the turn reports an error, or `--timeout` runs out. With `--agent codex` it also waits until the last message is the assistant's reply, because a new Codex thread reads idle for a few seconds before its turn starts (an interrupted turn therefore waits until `--timeout`). For `--agent opencode` the idle check uses the serve's live `/api/session/active` map, so a turn that just started is not mistaken for a stale idle. A session waiting on a permission prompt is not idle, so it keeps being waited on: answer it in the dashboard or set `--timeout`. Not combinable with `--kill`, `--list`, `--send` or `--peers`; both that and a bad `--timeout` are refused before anything is launched. A final message with no text (only tool calls) prints an empty line. |
 | `--timeout N` | With `--wait`, give up after N seconds (a positive integer). Default: no limit. The session keeps running after a timeout. |
-| `--json` | Print the full reply as JSON instead of the plain output. |
+| `--json` | With `--wait`: print one JSON object on stdout instead of the plain text, on success and on failure alike — see [For programs](#for-programs). Otherwise: print the launch/list/peers reply as JSON instead of the plain output. Everything human stays on stderr. |
 
 On success it prints the session name (the dashboard opens it at `session.php?session=NAME`) and exits 0; any refusal prints `sessioneer: <message>` on stderr and exits 1.
 
@@ -118,13 +118,59 @@ sessioneer --agent opencode --workdir ~/www/some/project --model opencode-go/gpt
 - `--send` and `--peers` work like the other agents, but only for a session
   Sessioneer tracks (a serve session adopted into a sidecar).
 
+## For programs
+
+`--wait --json` is the one-shot contract a program should use: stdout is exactly
+one JSON object, so nothing has to be read out of prose.
+
+```bash
+echo "Classify this file: ..." | sessioneer --wait --json --timeout 60 --no-tools --workdir ~/www/some/project --agent claude -
+```
+
+```json
+{
+    "ok": true,
+    "answer": "document",
+    "session": "claude-headless-20261030-101500",
+    "conversation_id": "0f0e1d2c-aaaa-bbbb-cccc-1234567890ab",
+    "agent": "claude",
+    "model": "sonnet",
+    "workdir": "/home/andres/www/some/project",
+    "exit_code": 0,
+    "error": null
+}
+```
+
+| Key | Meaning |
+|---|---|
+| `ok` | `true` when the turn finished and `answer` holds its text. |
+| `answer` | The final assistant text, verbatim (no added newline); `null` on failure. |
+| `session` | The session this call created, or `null` when the launch never got that far. |
+| `conversation_id` | That session's agent-side conversation id, when the CLI could read it. |
+| `agent` | The agent the session runs on. |
+| `model` | The `--model` the call named, or `null` when it named none. |
+| `workdir` | The session's directory. |
+| `exit_code` | `0` or `1`, matching the process status. |
+| `error` | `null` on success, otherwise `{"kind": ..., "message": ...}`. |
+
+`error.kind` is one of `launch_refused` (nothing started), `turn_error` (the turn
+started and failed), `timeout` (`--timeout` ran out; the session keeps running),
+or `session_error` (the session could not be read while waiting). An option
+error — a bad `--timeout`, or `--wait` with `--kill` — is refused before anything
+is launched and stays a plain `sessioneer: ...` message on stderr with empty
+stdout.
+
+The session name is still the first line of stderr, and a timeout still leaves
+the session running: whoever started the turn must `--kill` it, naming its agent.
+See [From a PHP app](#from-a-php-app).
+
 ## From a PHP app
 
-`packages/sessioneer-client` is a standalone Composer package (no dependencies) that runs one `--wait` turn from PHP: it builds the argv, writes the prompt to stdin, keeps stdout and stderr apart, enforces a hard deadline, and stops the session it created. Its README has the install (a path repository while the API settles), the usage example and the host-bridge recipe for a containerised app.
+`packages/sessioneer-client` is a standalone Composer package (no dependencies) that runs one `--wait --json` turn from PHP: it builds the argv, writes the prompt to stdin, keeps stdout and stderr apart, enforces a hard deadline, and stops the session it created. Its README has the install (a path repository while the API settles), the usage example and the host-bridge recipe for a containerised app.
 
 Two parts of the contract matter to any client, in any language:
 
-- **stdout is the answer, stderr is diagnostics.** The session name is the first line of stderr, written before the turn is waited on. A client must read it there, not from stdout, and must not treat an error line as a session name.
+- **stdout is the envelope, stderr is diagnostics.** The answer is `answer` in the envelope and nowhere else. The session name is the first line of stderr, written before the turn is waited on; it is the fallback when a client's own deadline kills the CLI before it can write the envelope, and an error line is never a session name.
 - **A timeout leaves the session running.** `--timeout` only stops the waiting; the session keeps its slot against the live-session cap. Whoever started the turn must `--kill` that exact session, naming its agent with `--agent` when it is not Claude (the CLI routes a kill by agent and defaults to Claude), with `--force` when it is still working, and report it if the kill is refused. Killing a session the call did not create is never acceptable.
 
 The binary is host-side: it needs the host agent's socket, which a container does not have. Run the client on the host (a host-side queue worker, for example), or use the bridge recipe in the package README.
@@ -132,12 +178,12 @@ The binary is host-side: it needs the host agent's socket, which a container doe
 ## Design
 
 
-There is no separate "archive": stopping a session archives its conversation, exactly like the dashboard's Kill. `--kill` only manages headless Claude, Codex and OpenCode sessions; a terminal (tmux) session or a bare process is refused, and is stopped from the dashboard.
+There is no separate "archive": stopping a session archives its conversation, exactly like the dashboard's Kill. `--kill` only manages headless Claude, Codex, Ollama and OpenCode sessions; a terminal (tmux) session or a bare process is refused, and is stopped from the dashboard.
 
 `--usage` is the one option that is not a launcher action: it sends the dashboard's own `quota` request and prints its `agents` map with `claude_profiles` nested under the Claude entry. The other options combine only with their own modifiers (`--kill`, `--list`, `--send`, `--peers` and `--usage` are mutually exclusive).
 
 The CLI sends one `launch`, `launch_kill`, `launch_list`, `launch_send` or `launch_peers` request to the host agent. `HostAgent\Launch\LaunchService` picks a `SessionLauncher` by agent id; the interface documents the request and reply keys for all five. Supporting another agent means one new class implementing `SessionLauncher` and one line in `LaunchService::LAUNCHERS`; the CLI and the action do not change. The optional `effort` request key is validated by each launcher; `list` rows carry the stored `effort`. Launchable agents: `claude`, `codex`, `ollama` and `opencode`.
 
-`--wait` is client-side only: after the `launch` reply (sent once the prompt is accepted, so the turn has started) the CLI polls the dashboard's own `session_detail` request every 2 seconds and stops at status `idle` or a `last_turn_error`. No new host-agent action.
+`--wait` is client-side only: after the `launch` reply (sent once the prompt is accepted, so the turn has started) the CLI polls the dashboard's own `session_detail` request every 2 seconds and stops at status `idle` or a `last_turn_error`. No new host-agent action. `--json` only changes what that loop prints: the same values it already has, in one object, on success and on failure alike.
 
 Tests: `tests/test_launch.php`, `tests/test_launch_codex.php`, `tests/test_launch_ollama.php`, `tests/test_launch_opencode.php`, `tests/test_cli_usage.php`, `tests/test_cli_wait.php`.
