@@ -27,6 +27,7 @@ tmux, agent daemons, process tables, or user configuration directly.
 |---|---:|---:|---:|---:|
 | List / open / kill | ✓ | ✓ | ✓ | ✓ (kill archives the thread) |
 | Create in selected workdir | ✓ | ✓ | ✓ | ✓ |
+| Launch, resume, wait and kill from the `sessioneer` CLI | ✓ | ✗ | ✓ serve-hosted, no effort, mode or tool flags | ✓ `--mode plan\|full`, `--effort`; needs `network_access` in a `workspace-write` sandbox |
 | Resume archived session | ✓ | ✓ | ✓ | ✓ |
 | tmux attach command | ◐ tmux runtime only | ✓ | ◐ TUI runtime only | — |
 | Runs without a terminal (headless) | ✓ default, chosen per session | ✗ | ✓ default | ✓ always |
