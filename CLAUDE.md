@@ -244,7 +244,7 @@ Docker-spawned, makes that impossible by construction — not by convention.
    `*_v2_1_302.ndjson` (basic, tool_permission, tool_denied; captured with
    `--setting-sources project` so no user plugins/hooks/paths leak, home
    rewritten to `/home/user`; 2.1.302 only adds `safety_stops` to `result`
-   and four keys to `init`)
+   and four keys to `init`) and `*_v2_1_316.ndjson` (basic only; 2.1.316 adds `ultrathink_available` to `init` and `model_usage_since_last_result` to `result`)
    are the captured stream-json events and `tests/fixtures/fake_claude_stream`
    is the scripted stand-in the tests drive. `ClaudeHeadlessRuntime` is the
    `RuntimeProvider` face of it: a `create` request with `runtime=headless`
