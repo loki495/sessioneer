@@ -44,6 +44,12 @@ class CodexSessionLauncher implements SessionLauncher
             return ['ok' => false, 'message' => '--no-tools is not supported for Codex'];
         }
 
+        foreach (['allowed_tools' => '--allowed-tools', 'disallowed_tools' => '--disallowed-tools'] as $key => $flag) {
+            if (isset($request[$key])) {
+                return ['ok' => false, 'message' => "{$flag} is not supported for Codex"];
+            }
+        }
+
         if (is_string($request['profile'] ?? null) && $request['profile'] !== '') {
             return ['ok' => false, 'message' => '--profile is not supported for Codex'];
         }

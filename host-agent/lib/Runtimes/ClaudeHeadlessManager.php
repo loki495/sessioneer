@@ -834,6 +834,9 @@ final class ClaudeHeadlessManager
             'enable_task_tools' => !empty($options['enable_task_tools']),
             // Sticky: the sidecar remembers it so a dormant respawn never regains tools.
             'no_tools' => !empty($options['no_tools']) || !empty($sidecar['no_tools']),
+            // Sticky like no_tools: the sidecar keeps the rules for a dormant respawn.
+            'allowed_tools' => $sidecar['allowed_tools'] ?? null,
+            'disallowed_tools' => $sidecar['disallowed_tools'] ?? null,
         ];
 
         if ($existingId !== null && !$fresh) {

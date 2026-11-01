@@ -30,6 +30,7 @@ class PermissionMode
      * by testing against a real capture rather than a hand-written one, which
      * a plausible-looking regex-guess would have silently missed.
      */
+    // dontAsk is deliberately absent: its status-line phrase has not been captured from a real session.
     public const CLAUDE_CODE_MODE_STATUS_PHRASES = [
         'manual' => 'manual mode on',
         'accept edits' => 'accept edits on',
@@ -52,6 +53,9 @@ class PermissionMode
         'acceptEdits' => 'accept edits',
         'plan' => 'plan',
         'auto' => 'auto',
+        // Only reachable at launch (--mode dontAsk): not in Shift+Tab's cycle, so it has
+        // no status-line phrase in CLAUDE_CODE_MODE_STATUS_PHRASES and tmux set_mode() refuses it.
+        'dontAsk' => 'dontAsk',
     ];
 
     /**

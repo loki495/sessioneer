@@ -130,6 +130,13 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
             SidecarStore::set_no_tools($name);
         }
 
+        $allowedTools = is_string($options['allowed_tools'] ?? null) && $options['allowed_tools'] !== '' ? $options['allowed_tools'] : null;
+        $disallowedTools = is_string($options['disallowed_tools'] ?? null) && $options['disallowed_tools'] !== '' ? $options['disallowed_tools'] : null;
+
+        if ($allowedTools !== null || $disallowedTools !== null) {
+            SidecarStore::set_tool_rules($name, $allowedTools, $disallowedTools);
+        }
+
         if (is_string($options['effort'] ?? null) && $options['effort'] !== '') {
             SidecarStore::set_effort($name, $options['effort']);
         }

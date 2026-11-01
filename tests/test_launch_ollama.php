@@ -155,6 +155,8 @@ foreach ([
     ['--mode', ['workdir' => $workdir, 'model' => 'chat-one:1b', 'prompt' => 'hi', 'starting_mode' => 'plan'], '--mode is not supported for Ollama'],
     ['--profile', ['workdir' => $workdir, 'model' => 'chat-one:1b', 'prompt' => 'hi', 'profile' => 'work'], '--profile is not supported for Ollama'],
     ['--no-tools', ['workdir' => $workdir, 'model' => 'chat-one:1b', 'prompt' => 'hi', 'no_tools' => true], '--no-tools is not supported for Ollama'],
+    ['--allowed-tools', ['workdir' => $workdir, 'model' => 'chat-one:1b', 'prompt' => 'hi', 'allowed_tools' => 'WebFetch'], '--allowed-tools is not supported for Ollama'],
+    ['--disallowed-tools', ['workdir' => $workdir, 'model' => 'chat-one:1b', 'prompt' => 'hi', 'disallowed_tools' => 'Bash'], '--disallowed-tools is not supported for Ollama'],
     ['--task-tools', ['workdir' => $workdir, 'model' => 'chat-one:1b', 'prompt' => 'hi', 'enable_task_tools' => true], '--task-tools is not supported for Ollama'],
 ] as [$label, $request, $needle]) {
     $reply = launch_ollama($request);

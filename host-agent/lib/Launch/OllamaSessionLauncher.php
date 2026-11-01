@@ -186,6 +186,8 @@ class OllamaSessionLauncher implements SessionLauncher
             $effort !== '' => '--effort is not supported for Ollama: a local model has no reasoning levels',
             $mode !== '' => '--mode is not supported for Ollama: its sessions have no permission modes',
             !empty($request['no_tools']) => '--no-tools is not supported for Ollama: its sessions never have tools',
+            isset($request['allowed_tools']) => '--allowed-tools is not supported for Ollama: its sessions never have tools',
+            isset($request['disallowed_tools']) => '--disallowed-tools is not supported for Ollama: its sessions never have tools',
             !empty($request['enable_task_tools']) => '--task-tools is not supported for Ollama: its sessions never have tools',
             default => null,
         };

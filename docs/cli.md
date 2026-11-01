@@ -27,10 +27,12 @@ echo "Summarise the open TODOs" | sessioneer --json -
 | `--workdir DIR` | Working directory. Default for a new session: the current directory. With `--resume`: the directory recorded in the transcript (for OpenCode, the directory the serve records when the id is already there). |
 | `--model NAME` | Model for a new session. Required for `--agent ollama`, which has no default: it must be one the configured Ollama server has pulled. For `--agent opencode` it is `provider/model` (for example `opencode-go/gpt-6.1`); without it the serve's default model is kept. |
 | `--effort LEVEL` | Reasoning level for a new or resumed session, so a launch names agent, model and effort together. Claude: `low`, `medium`, `high`, `xhigh` or `max` (`claude --effort`, fixed when the process starts and re-applied whenever the session respawns after going dormant; the CLI itself rejects a level the model does not support). Codex: a level the chosen model lists (the default model when `--model` is absent), set on the thread with `thread/settings/update` before the prompt, so it also retunes a Codex thread you reuse or resume. An unknown level, a model without it, or a Claude session that is already tracked (its effort cannot change) is refused. Not offered for `--agent ollama` or `--agent opencode`, and refused with `--kill`, `--list` and `--peers`. |
-| `--mode MODE` | Permission mode for a new session (for example `plan`). Not validated by the CLI: for Claude, a value that isn't a known permission mode is ignored and the session starts in the default mode; for Codex, only `plan` and `full` are accepted (see "Codex" below). Not offered for `--agent ollama` or `--agent opencode`. |
+| `--mode MODE` | Permission mode for a new session (for example `plan`). Not validated by the CLI: for Claude, a value that isn't a known permission mode (`manual`, `accept edits`, `plan`, `auto` or `dontAsk`) is ignored and the session starts in the default mode; for Codex, only `plan` and `full` are accepted (see "Codex" below). `dontAsk` (Claude `--permission-mode dontAsk`) denies every tool call that `--allowed-tools` or the user's settings have not pre-approved, so an unattended session never blocks on a prompt. It can only be chosen at launch: it is not in the dashboard's mode switcher. Not offered for `--agent ollama` or `--agent opencode`. |
 | `--profile NAME` | Claude account profile (see `host-agent/config/agents.php`). Without it, the session runs under the profile whose `config_dir` matches the caller's `CLAUDE_CONFIG_DIR`, so a session started from a work-account shell stays on that account; no `CLAUDE_CONFIG_DIR` means the default account (the launched session runs with the variable unset, whatever the manager inherited), and a dir that matches no profile is refused. |
 | `--task-tools` | Enable the task tools in a new session. Claude only; not offered for `--agent ollama` or `--agent opencode`. |
 | `--no-tools` | Start a new session with no tools at all: no built-in tools (`--tools ""`) and no MCP servers (`--strict-mcp-config`), so it can only answer in text. The setting is remembered, so the session stays tool-less when it is resumed after going dormant. Only for a new session: refused with `--resume`, `--kill`, `--send`, `--list` or `--peers`, and not combinable with `--task-tools`. Claude only; not offered for `--agent ollama` or `--agent opencode`. |
+| `--allowed-tools LIST` | Claude only, new session only. Comma separated tool rules to pre-approve, passed as one argument to `claude --allowedTools` (additive to the user's settings; `--task-tools` joins the same list), for example `"WebFetch,Bash(bun run .agents/skills/*),Write(job_scraper/**)"`. The list is validated on the host agent: letters, digits, spaces and `, ( ) * . _ / : @ ~ = + # % ! ? [ ] -` only, no leading `-`, at most 2000 characters; quotes, backticks, `$`, `;`, `|`, `&`, backslash and newlines are refused. Remembered, so a dormant respawn re-applies it. Refused with `--resume`, `--kill`, `--send`, `--list`, `--peers` and `--no-tools`, and for `--agent codex`, `ollama` and `opencode`. |
+| `--disallowed-tools LIST` | Same as `--allowed-tools` but passed to `claude --disallowedTools`: the rules are always denied. Same validation and restrictions. |
 | `--kill TARGET` | Stop a headless session, by session name or conversation id. Its conversation stays resumable (it moves to the archived list). A working or blocked session is refused. For `--agent opencode` the target is a `ses_*` id: the serve session is interrupted, then deleted, and the conversation stays in `opencode.db` so the id can be resumed again. |
 | `--force` | With `--kill`, stop a working or blocked session anyway (its in-flight work is lost). |
 | `--list` | List headless sessions as tab-separated name, status, conversation id and directory. |
@@ -61,7 +63,7 @@ Every session Sessioneer spawns (headless or tmux) gets `SESSIONEER_SELF=<its na
 `--agent codex` launches through the Codex bridge (`CodexSessionLauncher`); `--wait`, `--resume`, `--list`, `--kill`, `--send` and `--peers` work the same way, always with `--agent codex` (the default agent is Claude). A Codex session's name is its thread id, so a conversation id and a session name are the same thing.
 
 - `--mode`: omitted means a `workspace-write` sandbox with on-request approvals (what the dashboard's New Session uses); `plan` means a `read-only` sandbox; `full` means no sandbox and no approvals (`danger-full-access`, approvals `never`), for trusted unattended work such as git in a worktree, docker or network access. Any other value is refused. `full` is a human-trust decision: any process that can reach the host-agent socket can request it, the same trust the socket already carries.
-- `--profile` and `--no-tools` are refused: they have no Codex meaning.
+- `--profile`, `--no-tools`, `--allowed-tools` and `--disallowed-tools` are refused: they have no Codex meaning.
 - Inside Codex the caller is identified by `CODEX_THREAD_ID` (used when `SESSIONEER_SELF` is unset), so `--whoami`, `--send` and `--peers` work from a Codex session; the thread must be one Sessioneer tracks.
 - Questions and approvals a Codex session raises appear in the dashboard like any other blocked prompt. The session loads `~/.codex/config.toml`, so it has whatever MCP servers (for example Dibs) are configured there.
 
@@ -79,7 +81,7 @@ sessioneer --agent ollama --model llama3:8b-instruct-q4_K_M --wait "Summarise th
 - `--model` is required and must already be pulled on that server. The refusal
   names the models it does have, and an embedding-only model is never offered.
 - Chat only: no tools, no attachments, no permission prompts, so `--profile`,
-  `--effort`, `--mode`, `--no-tools` and `--task-tools` are each refused with
+  `--effort`, `--mode`, `--no-tools`, `--task-tools`, `--allowed-tools` and `--disallowed-tools` are each refused with
   the reason rather than silently ignored.
 - A turn can take minutes on a small box. `--wait` blocks until the answer
   lands and prints it (an Ollama `last_message` is the reply text itself, not a
@@ -112,7 +114,8 @@ sessioneer --agent opencode --workdir ~/www/some/project --model opencode-go/gpt
 - `--kill` interrupts, then deletes the serve session. The conversation stays
   in `opencode.db` and can be resumed by id; a working or blocked session needs
   `--force`.
-- `--profile`, `--effort`, `--mode`, `--no-tools` and `--task-tools` are
+- `--profile`, `--effort`, `--mode`, `--no-tools`, `--task-tools`,
+  `--allowed-tools` and `--disallowed-tools` are
   refused: a serve session has no account profile, reasoning-level control,
   permission-mode vocabulary or tool-set flags.
 - `--send` and `--peers` work like the other agents, but only for a session
