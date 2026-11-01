@@ -1263,7 +1263,9 @@ function initHorizontalSwipe(handlers) {
 (function () {
   var KEY = 'sessioneer-hide-idle-unstarred';
   var style = document.createElement('style');
-  style.textContent = 'html.hide-idle li[data-starred="0"][data-status="idle"], html.hide-idle a[data-starred="0"][data-status="idle"] { display: none; }';
+  // The agent tint is an inline background-color, so the star highlight is a background-image layered over it. data-status keeps the star button itself out.
+  style.textContent = 'html.hide-idle li[data-starred="0"][data-status="idle"], html.hide-idle a[data-starred="0"][data-status="idle"] { display: none; }'
+    + 'li[data-starred="1"][data-status], a[data-starred="1"][data-status] { background-image: linear-gradient(rgba(251, 191, 36, 0.08), rgba(251, 191, 36, 0.08)); }';
   document.head.appendChild(style);
 
   function stored() {
