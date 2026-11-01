@@ -373,7 +373,9 @@ class TranscriptView extends View
 
         return self::render('transcript/mode-toggle', [
             'mode' => $mode,
-            'options' => self::MODE_OPTIONS,
+            // A launch-only mode (dontAsk) is not in MODE_OPTIONS; show it as the selection
+            // instead of a blank select.
+            'options' => $mode !== null && !isset(self::MODE_OPTIONS[$mode]) ? self::MODE_OPTIONS + [$mode => $mode] : self::MODE_OPTIONS,
         ]);
     }
 

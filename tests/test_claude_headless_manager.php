@@ -118,6 +118,27 @@ assert_equal(['--tools', '', '--strict-mcp-config'], array_slice($noTools, array
 assert_true(!in_array('--allowedTools', $noTools, true), 'no_tools wins over the task-tools opt-in');
 assert_true(!in_array('--tools', $argv, true) && !in_array('--strict-mcp-config', $argv, true), 'tools are untouched by default');
 
+// --allowed-tools / --disallowed-tools / dontAsk: one argv element each, never a shell string.
+$rules = $adapter->build_headless_argv(['allowed_tools' => 'WebFetch,Bash(bun run .agents/skills/*),Write(job_scraper/**)', 'disallowed_tools' => 'Bash(rm *)', 'starting_mode' => 'dontAsk'])['argv'];
+assert_equal(['--allowedTools', 'WebFetch,Bash(bun run .agents/skills/*),Write(job_scraper/**)'], array_slice($rules, (int)array_search('--allowedTools', $rules, true), 2), 'allowed tools are one --allowedTools element');
+assert_equal(['--disallowedTools', 'Bash(rm *)'], array_slice($rules, (int)array_search('--disallowedTools', $rules, true), 2), 'disallowed tools are one --disallowedTools element');
+assert_equal(['--permission-mode', 'dontAsk'], array_slice($rules, (int)array_search('--permission-mode', $rules, true), 2), 'dontAsk is passed as the Claude permission mode');
+$tmuxRules = $adapter->build_spawn_argv(['allowed_tools' => 'WebFetch', 'disallowed_tools' => 'Bash', 'starting_mode' => 'dontAsk'])['argv'];
+assert_equal(['--allowedTools', 'WebFetch', '--disallowedTools', 'Bash', '--permission-mode', 'dontAsk'], array_slice($tmuxRules, -6), 'the tmux shape carries the same flags');
+$merged = $adapter->build_headless_argv(['allowed_tools' => 'WebFetch', 'enable_task_tools' => true])['argv'];
+assert_equal('TaskCreate,TaskGet,TaskList,TaskUpdate,WebFetch', $merged[(int)array_search('--allowedTools', $merged, true) + 1], 'task tools and allowed tools share a single --allowedTools value');
+assert_equal(1, count(array_keys($merged, '--allowedTools', true)), 'and only one flag');
+$withNoTools = $adapter->build_headless_argv(['no_tools' => true, 'allowed_tools' => 'WebFetch', 'disallowed_tools' => 'Bash'])['argv'];
+assert_true(!in_array('--allowedTools', $withNoTools, true) && !in_array('--disallowedTools', $withNoTools, true), 'no_tools wins over the tool rules');
+$badRules = $adapter->build_headless_argv(['allowed_tools' => 'Bash; rm -rf /', 'disallowed_tools' => "a\nb"])['argv'];
+assert_true(!in_array('--allowedTools', $badRules, true) && !in_array('--disallowedTools', $badRules, true), 'an unsafe list never reaches the CLI');
+foreach (['a;b', 'a|b', 'a&b', 'a`b`', 'a$b', "a\nb", 'a"b', "a'b", 'a\\b', '-x', '', '  ', str_repeat('a', 2001)] as $unsafe) {
+    assert_true(ClaudeCodeAdapter::tool_rules_error($unsafe) !== null, 'tool_rules_error refuses ' . json_encode(substr($unsafe, 0, 20)));
+}
+foreach (['WebFetch', 'Bash(bun run .agents/skills/*)', 'Write(job_scraper/**)', 'Bash(git commit:*), mcp__x__y', str_repeat('a', 2000)] as $safe) {
+    assert_equal(null, ClaudeCodeAdapter::tool_rules_error($safe), 'tool_rules_error accepts ' . substr($safe, 0, 30));
+}
+
 $resume = $adapter->build_headless_argv(['resume' => 'abc-123']);
 assert_equal(['--resume', 'abc-123'], array_slice($resume['argv'], array_search('--resume', $resume['argv'], true), 2), 'resume continues the given id');
 assert_equal('abc-123', $resume['assigned_id'], 'resume reports the same id');

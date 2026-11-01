@@ -25,6 +25,12 @@ namespace HostAgent\Launch;
  *                              pick the profile when `profile` is absent
  *   enable_task_tools bool     optional
  *   no_tools          bool     optional; a new session gets no tools at all
+ *   allowed_tools     string   optional; Claude only, new session: comma separated tool rules to
+ *                              pre-approve (--allowedTools); validated by
+ *                              ClaudeCodeAdapter::tool_rules_error(); not with no_tools
+ *   disallowed_tools  string   optional; Claude only, new session: tool rules always denied
+ *                              (--disallowedTools); same validation. starting_mode may also be
+ *                              `dontAsk` for Claude (deny whatever is not pre-approved)
  *
  * Reply: ['ok' => bool, 'message' => string] plus, once a session exists,
  * 'name' (the session ref the dashboard uses), 'action' (created|resumed|

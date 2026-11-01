@@ -55,12 +55,19 @@ function usage(): string
       --effort LEVEL    reasoning level for a new or resumed session (Claude: low,
                         medium, high, xhigh, max; Codex: the levels its model lists;
                         not offered for ollama or opencode)
-      --mode MODE       permission mode for a new session (e.g. plan; not offered
-                        for ollama or opencode)
+      --mode MODE       permission mode for a new session (e.g. plan; Claude also
+                        takes dontAsk, which denies anything not pre-approved by
+                        --allowed-tools; not offered for ollama or opencode)
       --profile NAME    account profile (default: the one matching this shell's
                         CLAUDE_CONFIG_DIR, else the default account)
       --task-tools      enable the task tools in a new session
       --no-tools        start a new session with no tools at all (no built-in or MCP tools)
+      --allowed-tools LIST
+                        Claude only, new session: comma separated tool rules to
+                        pre-approve, e.g. "WebFetch,Write(job_scraper/**)"
+      --disallowed-tools LIST
+                        Claude only, new session: comma separated tool rules that
+                        are always denied
       --kill TARGET     stop a headless session by name or conversation id; its
                         conversation stays resumable (archived). Refuses a
                         working or blocked session unless --force.
@@ -131,7 +138,7 @@ function emit_envelope(array $envelope): void
     echo json_encode($envelope, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
 }
 
-$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:'], $restIndex);
+$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:'], $restIndex);
 
 if ($opts === false) {
     fail("bad options\n\n" . usage());
@@ -218,6 +225,22 @@ if (isset($opts['no-tools'])) {
     }
 }
 
+foreach (['allowed-tools', 'disallowed-tools'] as $toolOption) {
+    if (isset($opts[$toolOption])) {
+        if (is_string($opts[$toolOption]) && trim($opts[$toolOption]) === '') {
+            fail("--{$toolOption} needs a non-empty list");
+        }
+
+        if ($resume !== null || $kill !== null || $list || $send !== null || $peers) {
+            fail("--{$toolOption} only applies to starting a new session");
+        }
+
+        if (isset($opts['no-tools'])) {
+            fail("--{$toolOption} and --no-tools cannot be combined: --no-tools already removes every tool");
+        }
+    }
+}
+
 if ($opt('effort') !== null && ($kill !== null || $list || $send !== null || $peers)) {
     fail('--effort only applies to launching or resuming a session');
 }
@@ -231,6 +254,8 @@ if ($opt('agent') === 'ollama') {
         'mode' => '--mode has no meaning for --agent ollama: its sessions have no permission modes',
         'no-tools' => '--no-tools has no meaning for --agent ollama: its sessions never have tools',
         'task-tools' => '--task-tools has no meaning for --agent ollama: its sessions never have tools',
+        'allowed-tools' => '--allowed-tools has no meaning for --agent ollama: its sessions never have tools',
+        'disallowed-tools' => '--disallowed-tools has no meaning for --agent ollama: its sessions never have tools',
     ] as $option => $message) {
         if (isset($opts[$option])) {
             fail($message);
@@ -247,6 +272,8 @@ if ($opt('agent') === 'opencode') {
         'mode' => '--mode has no meaning for --agent opencode: its sessions have no permission modes',
         'no-tools' => '--no-tools has no meaning for --agent opencode: the serve session\'s tools are not configurable here',
         'task-tools' => '--task-tools has no meaning for --agent opencode: the serve session\'s tools are not configurable here',
+        'allowed-tools' => '--allowed-tools has no meaning for --agent opencode: the serve session\'s tools are not configurable here',
+        'disallowed-tools' => '--disallowed-tools has no meaning for --agent opencode: the serve session\'s tools are not configurable here',
     ] as $option => $message) {
         if (isset($opts[$option])) {
             fail($message);
@@ -283,6 +310,8 @@ $reply = AgentClient::agent_call(array_filter([
     'caller_config_dir' => $opt('profile') === null ? (getenv('CLAUDE_CONFIG_DIR') ?: null) : null,
     'enable_task_tools' => isset($opts['task-tools']) ? true : null,
     'no_tools' => isset($opts['no-tools']) ? true : null,
+    'allowed_tools' => $opt('allowed-tools'),
+    'disallowed_tools' => $opt('disallowed-tools'),
     'target' => $kill ?? $send,
     'message' => $send !== null ? $prompt : null,
     'from' => $send !== null || $peers ? $self : null,

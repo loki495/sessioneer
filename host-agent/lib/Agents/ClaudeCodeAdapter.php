@@ -152,6 +152,35 @@ class ClaudeCodeAdapter implements AgentAdapter
         return $result;
     }
 
+    public const TOOL_RULES_MAX_LENGTH = 2000;
+
+    /**
+     * Why a --allowed-tools/--disallowed-tools list is refused, or null when it is
+     * safe: a conservative character set (no quotes, backslash, backtick, $, ;, |, &,
+     * newline or angle brackets), no leading dash, a length cap.
+     */
+    public static function tool_rules_error(string $rules): ?string
+    {
+        if (trim($rules) === '') {
+            return 'the tool list is empty';
+        }
+
+        if (strlen($rules) > self::TOOL_RULES_MAX_LENGTH) {
+            return 'the tool list is longer than ' . self::TOOL_RULES_MAX_LENGTH . ' characters';
+        }
+
+        if (preg_match('/^[A-Za-z0-9 ,()*._\/:@~=+#%!?\[\]][A-Za-z0-9 ,()*._\/:@~=+#%!?\[\]-]*$/D', $rules) !== 1) {
+            return 'the tool list may only contain letters, digits, spaces and , ( ) * . _ / : @ ~ = + # % ! ? [ ] -';
+        }
+
+        return null;
+    }
+
+    private static function valid_tool_rules(mixed $rules): ?string
+    {
+        return is_string($rules) && self::tool_rules_error($rules) === null ? $rules : null;
+    }
+
     /**
      * Flags shared by the tmux and headless spawn shapes, in the order the
      * tmux builder has always emitted them.
@@ -167,8 +196,23 @@ class ClaudeCodeAdapter implements AgentAdapter
         // drops the MCP ones the user's settings would otherwise add back.
         if (!empty($options['no_tools'])) {
             array_push($flags, '--tools', '', '--strict-mcp-config');
-        } elseif (!empty($options['enable_task_tools'])) {
-            array_push($flags, '--allowedTools', 'TaskCreate,TaskGet,TaskList,TaskUpdate');
+        } else {
+            // One argv element per flag (the CLI flag is variadic, so a single comma-joined
+            // value keeps it from swallowing what follows); task tools join the same list.
+            $allowed = array_filter([
+                !empty($options['enable_task_tools']) ? 'TaskCreate,TaskGet,TaskList,TaskUpdate' : null,
+                self::valid_tool_rules($options['allowed_tools'] ?? null),
+            ]);
+
+            if ($allowed !== []) {
+                array_push($flags, '--allowedTools', implode(',', $allowed));
+            }
+
+            $disallowed = self::valid_tool_rules($options['disallowed_tools'] ?? null);
+
+            if ($disallowed !== null) {
+                array_push($flags, '--disallowedTools', $disallowed);
+            }
         }
 
         $model = $options['model'] ?? null;

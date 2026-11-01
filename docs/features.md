@@ -42,7 +42,8 @@ tmux, agent daemons, process tables, or user configuration directly.
 | Interrupt active turn | ✓ | ✓ | ✓ | ◐ private-bridge-owned turn only |
 | Select model when creating | ✓ | ✗ UI uses default | ✓ | ✓ |
 | Switch model in a live session | ✓ | ✓ account-wide setting | ✓ | ✓ |
-| Choose starting mode at creation | ✓ | ◐ `accept edits` / `plan` | ✗ | ✗ |
+| Choose starting mode at creation | ✓ (CLI also `dontAsk`) | ◐ `accept edits` / `plan` | ✗ | ✗ |
+| Per-session tool allow/deny lists (`--allowed-tools`, `--disallowed-tools`; CLI, new session) | ✓ | ✗ | ✗ | ✗ |
 | Switch interaction mode in a live session | ✓ | ✗ | ✗ | ✗ |
 | Switch reasoning effort in the UI | ✓ headless | ✗ | ✗ | ✓ |
 | Live transcript and forward polling | ✓ | ✓ | ✓ | ✓ |

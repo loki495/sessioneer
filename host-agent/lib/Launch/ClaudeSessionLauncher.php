@@ -55,6 +55,27 @@ class ClaudeSessionLauncher implements SessionLauncher
             return ['ok' => false, 'message' => "--effort '{$effort}' is not a Claude level (" . implode(', ', ClaudeCodeAdapter::EFFORT_LEVELS) . ')'];
         }
 
+        foreach (['allowed_tools' => '--allowed-tools', 'disallowed_tools' => '--disallowed-tools'] as $key => $flag) {
+            if (!isset($request[$key])) {
+                continue;
+            }
+
+            $rules = $request[$key];
+            $error = is_string($rules) ? ClaudeCodeAdapter::tool_rules_error($rules) : 'the tool list must be a string';
+
+            if ($error === null && $conversationId !== '') {
+                $error = 'it only applies to starting a new session';
+            }
+
+            if ($error === null && !empty($request['no_tools'])) {
+                $error = 'it cannot be combined with --no-tools';
+            }
+
+            if ($error !== null) {
+                return ['ok' => false, 'message' => "{$flag} refused: {$error}"];
+            }
+        }
+
         $runtime = RuntimeRegistry::runtime_for(self::AGENT_ID, RuntimeType::HEADLESS);
 
         if (!$runtime instanceof ClaudeHeadlessRuntime) {
@@ -72,6 +93,8 @@ class ClaudeSessionLauncher implements SessionLauncher
                 'starting_mode' => $request['starting_mode'] ?? null,
                 'enable_task_tools' => !empty($request['enable_task_tools']),
                 'no_tools' => !empty($request['no_tools']),
+                'allowed_tools' => $request['allowed_tools'] ?? null,
+                'disallowed_tools' => $request['disallowed_tools'] ?? null,
                 'profile' => $profile,
                 'effort' => $effort,
             ]);
