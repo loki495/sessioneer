@@ -436,7 +436,7 @@ deliberately narrow.
 - Starring: the star on a session card (dashboard and sidebar) stores a `starred` flag in the
   session's sidecar. The list orders starred sessions first, then blocked, working and idle, each
   newest activity first. "Hide idle unstarred" (dashboard and sidebar, kept in localStorage) hides
-  idle sessions that are not starred.
+  idle sessions that are not starred. Starred cards get a faint amber background.
 - Renaming: the Rename button on a session card (dashboard, sidebar and the session page header; not on
   archived sessions) asks for a name and stores it in the session's sidecar as
   `custom_title`, for every agent. It overrides the agent's title in the list
