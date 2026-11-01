@@ -11,9 +11,10 @@
       // it (and anything inside it, like the blocked-prompt card below) sized
       // to its widest UNWRAPPED content instead of shrinking to the sidebar's
       // actual width, pushing the whole card off the visible panel. ?>
-<a href="/session.php?session=<?= urlencode($name) ?>" class="block min-w-0 rounded-xl border px-4 py-3 active:bg-slate-800" style="<?= $agentCardStyle ?>" data-session="<?= $this->e($name) ?>" data-session-id="<?= $this->e((string)($agentSessionId ?? '')) ?>" data-session-workdir="<?= $this->e((string)($workdir ?? '')) ?>" data-session-title="<?= $this->e($title) ?>">
+<a href="/session.php?session=<?= urlencode($name) ?>" class="block min-w-0 rounded-xl border px-4 py-3 active:bg-slate-800" style="<?= $agentCardStyle ?>" data-session="<?= $this->e($name) ?>" data-session-id="<?= $this->e((string)($agentSessionId ?? '')) ?>" data-session-workdir="<?= $this->e((string)($workdir ?? '')) ?>" data-session-title="<?= $this->e($title) ?>" data-starred="<?= !empty($starred) ? 1 : 0 ?>" data-status="<?= $this->e($status) ?>">
   <div class="flex items-center gap-2">
     <div class="text-slate-200 truncate min-w-0 flex-1" data-session-title><?= $this->e($title) ?></div>
+    <span role="button" tabindex="0" data-star-session="<?= $this->e($name) ?>" data-starred="<?= !empty($starred) ? 1 : 0 ?>" data-csrf="<?= $this->e($csrfToken) ?>" title="Star" aria-label="Star session" class="select-none shrink-0 px-1 <?= !empty($starred) ? 'text-amber-400' : 'text-slate-500' ?>"><?= !empty($starred) ? '&#9733;' : '&#9734;' ?></span>
     <?php // A span, not a <button>: this whole card is one <a>, and a button inside a link is invalid HTML. common.js handles the click and cancels the navigation. ?>
     <span role="button" tabindex="0" data-rename-session="<?= $this->e($name) ?>" data-title="<?= $this->e($title) ?>" data-csrf="<?= $this->e($csrfToken) ?>" title="Rename" aria-label="Rename session" class="select-none shrink-0 px-1 text-slate-500 active:text-slate-200">&#9998;</span>
   </div>

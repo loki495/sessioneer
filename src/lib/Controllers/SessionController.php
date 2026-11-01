@@ -319,6 +319,18 @@ class SessionController extends Controller
         ]));
     }
 
+    /** POST-only JSON endpoint for the star toggle on session cards. */
+    public function star(): void
+    {
+        $this->require_post_json();
+
+        echo json_encode(AgentClient::agent_call([
+            'action' => 'star_session',
+            'session' => trim((string)($_POST['session'] ?? '')),
+            'starred' => ($_POST['starred'] ?? '') === '1',
+        ]));
+    }
+
     /**
      * POST-only JSON endpoint for session.php's mode toggle. Same AJAX
      * pattern as send() above - clicked often enough that a full page

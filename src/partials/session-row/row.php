@@ -7,7 +7,7 @@
       // before the show-worker-sessions preference (default: hidden) has a
       // chance to run. Only JS-removing this class (see
       // show-worker-sessions-toggle in sidebar.js) ever reveals one. ?>
-<li class="relative rounded-xl border px-4 py-3 flex items-start justify-between gap-3 active:bg-slate-800<?= $kind === 'worker' ? ' hidden' : '' ?>" data-kind="<?= $this->e($kind) ?>" style="<?= $agentCardStyle ?>">
+<li class="relative rounded-xl border px-4 py-3 flex items-start justify-between gap-3 active:bg-slate-800<?= $kind === 'worker' ? ' hidden' : '' ?>" data-kind="<?= $this->e($kind) ?>" data-starred="<?= !empty($starred) ? 1 : 0 ?>" data-status="<?= $this->e($status) ?>" style="<?= $agentCardStyle ?>">
   <?php // Stretched-link pattern: a plain <a> absolutely covering the whole
         // card, painted below (position:static, no stacking context of its
         // own) plain text content, so a click there falls through to it -
@@ -23,7 +23,11 @@
         // in one <a> would have. ?>
   <a href="/session.php?session=<?= urlencode($name) ?>" class="absolute inset-0 rounded-xl" aria-label="Open transcript for <?= $this->e($title) ?>"></a>
   <div class="min-w-0 flex-1">
-    <div class="select-none text-sm leading-tight truncate" data-session-title><?= $this->e($title) ?></div>
+    <div class="flex items-center gap-1">
+      <div class="select-none text-sm leading-tight truncate min-w-0" data-session-title><?= $this->e($title) ?></div>
+      <?php // relative: sits above the stretched link, like the other interactive bits. ?>
+      <span role="button" tabindex="0" data-star-session="<?= $this->e($name) ?>" data-starred="<?= !empty($starred) ? 1 : 0 ?>" data-csrf="<?= $this->e($csrfToken) ?>" title="Star" aria-label="Star session" class="relative select-none shrink-0 px-1 <?= !empty($starred) ? 'text-amber-400' : 'text-slate-500' ?>"><?= !empty($starred) ? '&#9733;' : '&#9734;' ?></span>
+    </div>
     <?php if (!empty($agentLabel)): ?>
       <?php
         $agentBadgeClass = App\Views\SessionRowView::agent_badge_class($agentId ?? 'claude');

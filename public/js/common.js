@@ -1205,3 +1205,82 @@ function initHorizontalSwipe(handlers) {
     }
   });
 }());
+
+// Star toggle on session cards (sidebar and dashboard): saves the flag server-side; the next list refresh moves the card.
+(function () {
+  function starSession(button) {
+    var next = button.getAttribute('data-starred') === '1' ? '0' : '1';
+
+    fetch('/session_star.php', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ session: button.getAttribute('data-star-session'), starred: next, csrf_token: button.getAttribute('data-csrf') || '' }).toString()
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data || !data.ok) {
+          window.alert((data && data.message) || 'Could not star the session.');
+          return;
+        }
+
+        button.setAttribute('data-starred', next);
+        button.textContent = next === '1' ? '\u2605' : '\u2606';
+        button.classList.toggle('text-amber-400', next === '1');
+        button.classList.toggle('text-slate-500', next !== '1');
+
+        var card = button.closest('li, a');
+
+        if (card) {
+          card.setAttribute('data-starred', next);
+        }
+      })
+      .catch(function () { window.alert('Network error - the session was not starred.'); });
+  }
+
+  document.addEventListener('click', function (e) {
+    var button = e.target.closest('[data-star-session]');
+
+    if (button) {
+      e.preventDefault();
+      e.stopPropagation();
+      starSession(button);
+    }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    var button = e.target.closest ? e.target.closest('[data-star-session]') : null;
+
+    if (button && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      e.stopPropagation();
+      starSession(button);
+    }
+  });
+}());
+
+// "Only starred and active" filter: a class on <html> plus one CSS rule, so rows re-rendered by every poll stay filtered.
+(function () {
+  var KEY = 'sessioneer-hide-idle-unstarred';
+  var style = document.createElement('style');
+  style.textContent = 'html.hide-idle li[data-starred="0"][data-status="idle"], html.hide-idle a[data-starred="0"][data-status="idle"] { display: none; }';
+  document.head.appendChild(style);
+
+  function stored() {
+    try { return window.localStorage.getItem(KEY) === '1'; } catch (e) { return false; }
+  }
+
+  document.documentElement.classList.toggle('hide-idle', stored());
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var toggles = document.querySelectorAll('.hide-idle-toggle');
+
+    for (var i = 0; i < toggles.length; i++) {
+      toggles[i].checked = stored();
+      toggles[i].addEventListener('change', function (e) {
+        try { window.localStorage.setItem(KEY, e.target.checked ? '1' : '0'); } catch (err) {}
+        document.documentElement.classList.toggle('hide-idle', e.target.checked);
+      });
+    }
+  });
+}());
