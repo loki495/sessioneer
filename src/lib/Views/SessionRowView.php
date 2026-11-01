@@ -135,6 +135,7 @@ class SessionRowView extends View
             'kind' => $s['kind'] ?? 'user',
             'parentSessionId' => $s['parent_session_id'] ?? null,
             'profile' => $s['profile'] ?? null,
+            'starred' => !empty($s['starred']),
         ]);
     }
 
@@ -322,6 +323,7 @@ class SessionRowView extends View
             'contextUsedPercentage' => $s['context_used_percentage'] ?? null,
             'gitWorktree' => $s['git_worktree'] ?? null,
             'profile' => $s['profile'] ?? null,
+            'starred' => !empty($s['starred']),
         ]);
     }
 

@@ -45,6 +45,7 @@ class SidecarStore
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'custom_title', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'no_tools', 'INTEGER');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'effort', 'TEXT');
+        SqliteDb::add_column_if_missing($pdo, 'sidecars', 'starred', 'INTEGER');
 
         return $pdo;
     }
@@ -193,6 +194,27 @@ class SidecarStore
     {
         $stmt = self::db()->prepare('UPDATE sidecars SET custom_title = :title WHERE session_name = :name');
         $stmt->execute([':title' => $title === '' ? null : $title, ':name' => $sessionName]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    /**
+     * Own column like custom_title, so the sync that rewrites a sidecar keeps the star.
+     *
+     * @return array<string, true>
+     */
+    public static function starred_names(): array
+    {
+        $names = self::db()->query('SELECT session_name FROM sidecars WHERE starred = 1')->fetchAll(\PDO::FETCH_COLUMN);
+
+        return array_fill_keys(array_map('strval', $names), true);
+    }
+
+    /** False when no such session is tracked. */
+    public static function set_starred(string $sessionName, bool $starred): bool
+    {
+        $stmt = self::db()->prepare('UPDATE sidecars SET starred = :s WHERE session_name = :name');
+        $stmt->execute([':s' => $starred ? 1 : null, ':name' => $sessionName]);
 
         return $stmt->rowCount() > 0;
     }

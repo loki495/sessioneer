@@ -53,9 +53,48 @@ function dispatch_action(array $request): array
         return sessioneer_rename_session((string)($request['session'] ?? ''), (string)($request['title'] ?? ''));
     }
 
+    if ($action === 'star_session') {
+        $session = (string)($request['session'] ?? '');
+
+        return $session !== '' && SidecarStore::set_starred($session, (bool)($request['starred'] ?? false))
+            ? ['ok' => true, 'starred' => (bool)($request['starred'] ?? false)]
+            : ['ok' => false, 'message' => 'Session not found'];
+    }
+
     $result = sessioneer_dispatch_action($request);
 
+    if ($action === 'list') {
+        $result = sessioneer_with_stars($result);
+    }
+
     return in_array($action, ['list', 'session_detail'], true) ? sessioneer_with_custom_titles($result, (string)($request['session'] ?? '')) : $result;
+}
+
+/**
+ * Marks starred rows and orders the list: starred first, then blocked, working, idle, each newest
+ * activity first. usort is stable, so equal rows keep the incoming order.
+ *
+ * @param array<string, mixed> $result
+ * @return array<string, mixed>
+ */
+function sessioneer_with_stars(array $result): array
+{
+    if (($result['ok'] ?? false) !== true || !is_array($result['sessions'] ?? null)) {
+        return $result;
+    }
+
+    $stars = SidecarStore::starred_names();
+    $rank = ['blocked' => 0, 'working' => 1];
+
+    foreach ($result['sessions'] as &$row) {
+        $row['starred'] = isset($stars[$row['name'] ?? '']);
+    }
+    unset($row);
+
+    usort($result['sessions'], fn(array $a, array $b) => [(int)!$a['starred'], $rank[$a['status'] ?? ''] ?? 2, -(int)($a['activity'] ?? 0)]
+        <=> [(int)!$b['starred'], $rank[$b['status'] ?? ''] ?? 2, -(int)($b['activity'] ?? 0)]);
+
+    return $result;
 }
 
 const SESSIONEER_CUSTOM_TITLE_MAX = 120;

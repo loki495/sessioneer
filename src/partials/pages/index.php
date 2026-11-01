@@ -24,6 +24,10 @@ $this->layout('layout', [
         <input type="checkbox" id="show-worker-sessions-toggle" class="rounded border-slate-600 bg-slate-800">
         Show worker sessions
       </label>
+      <label class="select-none mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+        <input type="checkbox" class="hide-idle-toggle rounded border-slate-600 bg-slate-800">
+        Hide idle unstarred
+      </label>
     </div>
     <select id="poll-interval-select" aria-label="Polling interval"
       class="shrink-0 text-xs font-medium pl-1.5 pr-5 py-1 rounded-full border border-slate-700 bg-slate-800 text-slate-400">
