@@ -27,6 +27,7 @@ test_headless_status_reconciliation.php 46
 test_host_allowlist.php 1
 test_cli_usage.php 2
 test_cli_no_tools.php 1
+test_cli_tool_rules.php 1
 test_launch.php 12
 test_markdown_parity_browser.php 1
 test_markdown.php 1

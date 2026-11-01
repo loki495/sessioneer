@@ -199,6 +199,8 @@ foreach ([
     ['effort', ['workdir' => $workdir, 'prompt' => 'hi', 'effort' => 'high'], '--effort is not supported'],
     ['mode', ['workdir' => $workdir, 'prompt' => 'hi', 'starting_mode' => 'plan'], '--mode is not supported'],
     ['no tools', ['workdir' => $workdir, 'prompt' => 'hi', 'no_tools' => true], '--no-tools is not supported'],
+    ['allowed tools', ['workdir' => $workdir, 'prompt' => 'hi', 'allowed_tools' => 'WebFetch'], '--allowed-tools is not supported'],
+    ['disallowed tools', ['workdir' => $workdir, 'prompt' => 'hi', 'disallowed_tools' => 'Bash'], '--disallowed-tools is not supported'],
     ['task tools', ['workdir' => $workdir, 'prompt' => 'hi', 'enable_task_tools' => true], '--task-tools is not supported'],
     ['model without a provider', ['workdir' => $workdir, 'prompt' => 'hi', 'model' => 'gpt-6.1'], 'must be provider/model'],
     ['model with an empty provider', ['workdir' => $workdir, 'prompt' => 'hi', 'model' => '/gpt-6.1'], 'must be provider/model'],

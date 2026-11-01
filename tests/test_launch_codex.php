@@ -106,6 +106,8 @@ foreach ([
     ['no workdir', ['prompt' => 'hi'], 'existing absolute workdir'],
     ['unsupported mode', ['workdir' => $workdir, 'prompt' => 'hi', 'starting_mode' => 'auto'], "--mode 'auto' is not supported"],
     ['no tools', ['workdir' => $workdir, 'prompt' => 'hi', 'no_tools' => true], '--no-tools is not supported'],
+    ['allowed tools', ['workdir' => $workdir, 'prompt' => 'hi', 'allowed_tools' => 'WebFetch'], '--allowed-tools is not supported'],
+    ['disallowed tools', ['workdir' => $workdir, 'prompt' => 'hi', 'disallowed_tools' => 'Bash'], '--disallowed-tools is not supported'],
     ['profile', ['workdir' => $workdir, 'prompt' => 'hi', 'profile' => 'work'], '--profile is not supported'],
     ['unknown thread', ['agent_session_id' => 'thr-missing', 'prompt' => 'hi'], 'No Codex thread found'],
 ] as [$label, $request, $needle]) {

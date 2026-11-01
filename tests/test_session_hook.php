@@ -247,6 +247,7 @@ try {
     assert_equal('accept edits', PermissionMode::normalize_hook_permission_mode('acceptEdits'), 'normalize_hook_permission_mode: "acceptEdits" maps to "accept edits" (with a space, matching TranscriptView::MODE_OPTIONS)');
     assert_equal('plan', PermissionMode::normalize_hook_permission_mode('plan'), 'normalize_hook_permission_mode: "plan" passes through unchanged');
     assert_equal('auto', PermissionMode::normalize_hook_permission_mode('auto'), 'normalize_hook_permission_mode: "auto" passes through unchanged');
+    assert_equal('dontAsk', PermissionMode::normalize_hook_permission_mode('dontAsk'), 'normalize_hook_permission_mode: dontAsk is a known mode');
     assert_equal(null, PermissionMode::normalize_hook_permission_mode('bypassPermissions'), 'normalize_hook_permission_mode: an unrecognized enum value returns null rather than guessing');
     assert_equal(null, PermissionMode::normalize_hook_permission_mode(null), 'normalize_hook_permission_mode: null input returns null');
 

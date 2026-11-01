@@ -166,6 +166,37 @@ $argv = $spawnArgv();
 assert_equal(['--tools', '', '--strict-mcp-config'], array_slice($argv, (int)array_search('--tools', $argv, true), 3), 'which is still started with no tools');
 assert_true(in_array('--resume', $argv, true) || in_array('--session-id', $argv, true), 'on the same conversation');
 
+echo "Tool rules\n";
+$rulesDir = $root . '/work/rules';
+@mkdir($rulesDir, 0700, true);
+foreach ([
+    ['unsafe allowed list', ['allowed_tools' => 'Bash; rm -rf /'], '--allowed-tools refused'],
+    ['unsafe disallowed list', ['disallowed_tools' => 'a$(b)'], '--disallowed-tools refused'],
+    ['too long', ['allowed_tools' => str_repeat('a', 2001)], 'longer than 2000'],
+    ['with no_tools', ['allowed_tools' => 'WebFetch', 'no_tools' => true], 'cannot be combined with --no-tools'],
+    ['on a resume', ['allowed_tools' => 'WebFetch', 'agent_session_id' => $conversationId], 'only applies to starting a new session'],
+] as [$label, $extra, $needle]) {
+    $refused = launch(['prompt' => 'hi', 'workdir' => $rulesDir] + $extra);
+    assert_equal(false, $refused['ok'] ?? null, "tool rules {$label}: refused");
+    assert_contains($needle, (string)$refused['message'], "tool rules {$label}: says why");
+}
+$ruled = launch(['prompt' => 'ruled words', 'workdir' => $rulesDir, 'allowed_tools' => 'WebFetch,Write(job_scraper/**)', 'disallowed_tools' => 'Bash(rm *)', 'starting_mode' => 'dontAsk']);
+assert_true(($ruled['ok'] ?? false) === true, 'a session launches with tool rules and dontAsk' . (($ruled['ok'] ?? false) === true ? '' : ' - got ' . json_encode($ruled)));
+$ruledName = (string)($ruled['name'] ?? '');
+$made[] = $ruledName;
+assert_equal('WebFetch,Write(job_scraper/**)', SidecarStore::read_sidecar($ruledName)['allowed_tools'] ?? null, 'the sidecar remembers the allowed list');
+assert_true((bool)wait_until(static fn (): bool => status_of($ruledName) === 'idle' && has_result($m, 'echo: ruled words')), 'and the prompt is answered');
+$argv = $spawnArgv();
+assert_equal(['--allowedTools', 'WebFetch,Write(job_scraper/**)'], array_slice($argv, (int)array_search('--allowedTools', $argv, true), 2), 'the process is started with --allowedTools');
+assert_equal(['--disallowedTools', 'Bash(rm *)'], array_slice($argv, (int)array_search('--disallowedTools', $argv, true), 2), 'and --disallowedTools');
+assert_equal(['--permission-mode', 'dontAsk'], array_slice($argv, (int)array_search('--permission-mode', $argv, true), 2), 'and --permission-mode dontAsk');
+$ruledId = (string)(dispatch_action(['action' => 'session_detail', 'session' => $ruledName])['agent_session_id'] ?? '');
+call($m, 'sessioneer/stop', ['session' => $ruledName]);
+launch(['agent_session_id' => $ruledId, 'prompt' => 'ruled again']);
+assert_true((bool)wait_until(static fn (): bool => has_result($m, 'echo: ruled again')), 'a message respawns it');
+$argv = $spawnArgv();
+assert_equal(['--disallowedTools', 'Bash(rm *)'], array_slice($argv, (int)array_search('--disallowedTools', $argv, true), 2), 'with the deny list re-applied');
+
 echo "Effort\n";
 $badEffort = launch(['prompt' => 'hi', 'workdir' => $workdir, 'effort' => 'extreme']);
 assert_equal(false, $badEffort['ok'] ?? null, 'an unknown effort level is refused');
@@ -323,6 +354,6 @@ assert_equal($resumedName, $down['name'] ?? null, 'and still names the session s
 $downNew = launch(['prompt' => 'anyone?', 'workdir' => $workdir]);
 assert_equal(false, $downNew['ok'] ?? null, 'a new launch with the manager down fails');
 assert_contains('Cannot reach Claude headless manager', (string)$downNew['message'], 'with the same error');
-assert_equal(5, count(SidecarStore::list_runtime_sidecars('headless')), 'and leaves no half-created session');
+assert_equal(6, count(SidecarStore::list_runtime_sidecars('headless')), 'and leaves no half-created session');
 
 test_exit();

@@ -221,6 +221,8 @@ class OpenCodeSessionLauncher implements SessionLauncher
             $effort !== '' => '--effort is not supported for OpenCode: the serve has no reasoning-level control',
             $mode !== '' => '--mode is not supported for OpenCode: its sessions have no permission modes',
             !empty($request['no_tools']) => '--no-tools is not supported for OpenCode: the serve session\'s tools are not configurable here',
+            isset($request['allowed_tools']) => '--allowed-tools is not supported for OpenCode: the serve session\'s tools are not configurable here',
+            isset($request['disallowed_tools']) => '--disallowed-tools is not supported for OpenCode: the serve session\'s tools are not configurable here',
             !empty($request['enable_task_tools']) => '--task-tools is not supported for OpenCode: the serve session\'s tools are not configurable here',
             default => null,
         };
