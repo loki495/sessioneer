@@ -561,9 +561,15 @@ class SessionService
         // it already has its own row, and Kill/Take over on it would only
         // strand its conversation.
         $managedRoots = BareProcessService::managed_headless_pids();
+        $claudePids = array_flip(array_column($claudeProcs, 'pid'));
 
         foreach ($claudeProcs as $proc) {
-            if (isset($trackedPids[$proc['pid']]) || ProcessInspector::is_within_any($proc['pid'], $managedRoots, $ppidMap)) {
+            // A claude whose parent is also claude is a worker of that parent
+            // (`claude rc` spawns `claude --print --sdk-url ...` for the one
+            // conversation), not a second conversation: list the parent only.
+            if (isset($trackedPids[$proc['pid']])
+                || isset($claudePids[$ppidMap[$proc['pid']] ?? 0])
+                || ProcessInspector::is_within_any($proc['pid'], $managedRoots, $ppidMap)) {
                 continue;
             }
 

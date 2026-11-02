@@ -158,6 +158,31 @@ $killControl = BareProcessService::kill_bare_process($controlPid);
 assert_equal(true, $killControl['ok'] ?? null, 'Kill still works on a genuinely bare process');
 assert_true((bool)wait_until(static fn (): bool => !pid_alive($controlPid)), 'and it ends');
 
+echo "A claude worker spawned by another claude (claude rc) is not a second process\n";
+$parentScript = $root . '/fakeparent.php';
+file_put_contents($parentScript, '<?php $c = proc_open([$argv[1]], [0 => ["pipe", "r"], 1 => ["file", "/dev/null", "a"], 2 => ["file", "/dev/null", "a"]], $p); sleep(60);');
+$parentWrapper = $root . '/fakeparentclaude';
+file_put_contents($parentWrapper, "#!/bin/bash\nexec -a " . escapeshellarg($wrapper) . ' ' . escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($parentScript) . ' ' . escapeshellarg($wrapper) . "\n");
+chmod($parentWrapper, 0755);
+$parentProc = proc_open([$parentWrapper], [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'a'], 2 => ['file', '/dev/null', 'a']], $pipes2, $root);
+$extraProcs[] = $parentProc;
+$parentPid = (int)proc_get_status($parentProc)['pid'];
+$ppidNow = static fn (): array => ProcessInspector::build_ppid_map();
+$workerPid = 0;
+assert_true((bool)wait_until(static function () use (&$workerPid, $parentPid, $ppidNow): bool {
+    $workerPid = (int)(array_search($parentPid, $ppidNow(), true) ?: 0);
+
+    return $workerPid > 0 && in_array($workerPid, array_column(ProcessInspector::find_claude_processes(), 'pid'), true);
+}), 'the scan sees a parent claude and its claude child');
+// list_all_sessions() is cache-coalesced, so wait for a listing taken after the parent started.
+$barePids = [];
+assert_true((bool)wait_until(static function () use (&$barePids, $parentPid): bool {
+    $barePids = array_column(SessionService::list_all_sessions()['bare'], 'pid');
+
+    return in_array($parentPid, $barePids, true);
+}, 12.0), 'the parent is listed');
+assert_true(!in_array($workerPid, $barePids, true), 'its worker is not listed separately');
+
 echo "Manager unreachable\n";
 proc_terminate($m['proc'], SIGTERM);
 assert_true((bool)wait_until(static fn (): bool => !proc_get_status($m['proc'])['running'], 12.0), 'the manager stops');
