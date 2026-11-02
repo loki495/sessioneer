@@ -110,8 +110,8 @@ interface AgentAdapter
      *
      * Deliberately lives on the adapter (not the runtime) because whether a
      * headless mode is usable is a property of the CLI itself (opencode has
-     * `opencode serve`; claude's Agent SDK is pay-per-API; antigravity has
-     * only one-shot `agy -p`), i.e. exactly the per-agent knowledge
+     * `opencode serve`; claude's Agent SDK is pay-per-API; antigravity's
+     * `agy -p` stream-json mode cannot prompt for tool approval), i.e. exactly the per-agent knowledge
      * AgentAdapter already owns.
      *
      * @return array<int, string> a subset of RuntimeType::all()

@@ -131,8 +131,9 @@ class AntigravityAdapter implements AgentAdapter
     }
 
     /**
-     * Antigravity has no headless session mode - `agy -p` is one-shot
-     * (usage/print), not a drivable session. Stays tmux-only.
+     * `agy -p` has a stream-json headless mode (multi-turn, resumable), but
+     * it cannot prompt for tool approval (an unapproved tool is auto-denied),
+     * so the blocked-prompt flow would not work. Stays tmux-only.
      */
     public function supported_runtimes(): array
     {
