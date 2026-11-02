@@ -97,6 +97,8 @@ a daemon-managed worker kills both halves of the pair (not just the one
 clicked) and resumes into the real project cwd. A headless session's own
 process is not a bare one: it is left out of the discovery list, and Kill and
 Take over refuse it (stop it, or switch it to a terminal, from its own row).
+Likewise a `claude` process whose parent is also `claude` (the worker `claude rc`
+Remote Control spawns for its one conversation) is not listed; only the parent is.
 Take over waits for the stopped process to actually exit (up to
 `TAKE_OVER_EXIT_WAIT_SECONDS`, default 15) before resuming its conversation,
 since a real Claude can take seconds to shut down; if it is still running at
