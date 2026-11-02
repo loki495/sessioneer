@@ -254,7 +254,11 @@ whether the quota footer is current.
 
 ## Antigravity implementation
 
-`AntigravityAdapter` is tmux-only. A new `agy` process cannot be assigned a
+`AntigravityAdapter` is tmux-only. As of `agy` 1.4.12 a headless mode exists
+(`agy --print= --input-format stream-json --output-format stream-json`: one
+NDJSON `{"event":"user","message":{"content":...}}` per turn, a `result` event
+back, `--conversation <id>` to resume), but a tool that needs approval is
+auto-denied there instead of prompting, so Sessioneer does not use it. A new `agy` process cannot be assigned a
 conversation ID up front, so `PreInvocation` learns `conversationId` from the
 first model turn and binds it to the `ag-*` sidecar.
 
