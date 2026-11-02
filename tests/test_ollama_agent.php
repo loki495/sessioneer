@@ -213,7 +213,7 @@ assert_true($mine !== null, 'dashboard merge: an Ollama session appears in the s
 assert_equal('ollama', $mine['agent'] ?? null, 'dashboard merge: the row names its agent');
 assert_equal('ollama-headless-', substr((string)$mine['name'], 0, 16), 'dashboard merge: the row keeps the headless session name');
 assert_equal('chat-one:1b', $mine['current_model'] ?? null, 'dashboard merge: the row carries the model');
-assert_true(is_string($mine['last_message'] ?? null) && $mine['last_message'] !== '', 'dashboard merge: the row carries the last answer');
+assert_true(is_array($mine['last_message'] ?? null) && ($mine['last_message']['blocks'][0]['text'] ?? '') !== '', 'dashboard merge: the row carries the last answer as a transcript entry (the row view needs an array)');
 assert_equal('idle', $mine['status'] ?? null, 'dashboard merge: the row reports the live status');
 assert_equal(false, (bool)($mine['blocked_reason'] ?? false), 'dashboard merge: nothing is ever blocked');
 

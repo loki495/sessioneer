@@ -375,23 +375,15 @@ if (isset($opts['wait'])) {
         $replied = $opt('agent') !== 'codex' || ($d['last_message']['role'] ?? null) === 'assistant';
 
         if ($replied && (($d['status'] ?? null) === 'idle' || (!isset($d['status']) && empty($d['working'])))) {
-            // An Ollama entry's last_message is the reply text itself (Sessioneer
-            // keeps that transcript), not a block entry like the CLI agents'.
-            $answer = '';
+            $text = [];
 
-            if ($opt('agent') === 'ollama') {
-                $answer = is_string($d['last_message'] ?? null) ? $d['last_message'] : '';
-            } else {
-                $text = [];
-
-                foreach ($d['last_message']['blocks'] ?? [] as $b) {
-                    if (($b['kind'] ?? null) === 'text') {
-                        $text[] = (string)$b['text'];
-                    }
+            foreach ($d['last_message']['blocks'] ?? [] as $b) {
+                if (($b['kind'] ?? null) === 'text') {
+                    $text[] = (string)$b['text'];
                 }
-
-                $answer = implode("\n\n", $text);
             }
+
+            $answer = implode("\n\n", $text);
 
             if ($json) {
                 emit_envelope(wait_envelope(

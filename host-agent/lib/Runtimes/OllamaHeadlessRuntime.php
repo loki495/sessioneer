@@ -8,6 +8,7 @@ use HostAgent\Agents\AgentRegistry;
 use HostAgent\Services\Config;
 use HostAgent\Services\OllamaClient;
 use HostAgent\Services\OllamaTranscriptService;
+use HostAgent\Services\TranscriptRouter;
 use HostAgent\Stores\SessionStatusStore;
 use HostAgent\Stores\SidecarStore;
 
@@ -312,7 +313,9 @@ class OllamaHeadlessRuntime implements RuntimeProvider
         $title = is_string($sidecar['title'] ?? null) && $sidecar['title'] !== ''
             ? $sidecar['title']
             : ($workdir !== null ? basename($workdir) : $name);
-        $lastMessage = OllamaTranscriptService::last_assistant_text($name);
+        // Not SessionService::session_last_message(): it probes every agent's backend (Codex's is slow) to find a path this runtime already knows.
+        $transcript = OllamaTranscriptService::find_transcript_path($name);
+        $lastMessage = $transcript !== null ? TranscriptRouter::read_last_entry($transcript) : null;
 
         return [
             'name' => $name,
