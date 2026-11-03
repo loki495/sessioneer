@@ -5,20 +5,22 @@ host-agent data and calls the same actions; nothing in the classic UI changes
 except one "Try the new UI" link on its dashboard. `/v2` has a "Classic" link in
 its app bar and a "Back to classic" button in Settings and Status.
 
-Only the dashboard exists so far (the pilot). A session card opens the classic
-session page; the session, archived-session and file views move over in later
-steps.
+The dashboard and the session page exist so far. A session card opens the v2
+session page (which links back to the classic one); the archived-session and
+file views move over in later steps.
 
 ## What it is made of
 
 | Piece | Where |
 |---|---|
-| Routes `/v2`, `/v2/`, `/v2/fragment`, `/v2/archived`, `/v2/action` | `src/routes.php` |
-| Page, poll fragment, archived list, JSON action endpoint | `src/lib/Controllers/V2Controller.php` |
-| Render helpers (card, counts, archived and bare rows) | `src/lib/Views/V2View.php` |
+| Routes `/v2`, `/v2/`, `/v2/session`, `/v2/history`, `/v2/fragment`, `/v2/archived`, `/v2/action` | `src/routes.php` |
+| Pages, poll fragment, archived list, history, JSON action endpoint | `src/lib/Controllers/V2Controller.php` |
+| Render helpers (card, counts, archived and bare rows, session page) | `src/lib/Views/V2View.php` |
 | Templates | `src/partials/v2/` |
-| Design tokens and all styling | `public/css/v2.css` (hand-written, no build step) |
-| Behaviour (tabs, filters, polling, actions) | `public/js/v2.js` (plain ES5, like the classic JS) |
+| Design tokens and the dashboard's styling | `public/css/v2.css` (hand-written, no build step) |
+| Session page styling | `public/css/v2-session.css` (uses the same tokens) |
+| Dashboard behaviour (tabs, filters, polling, actions) | `public/js/v2.js` (plain ES5, like the classic JS) |
+| Session page behaviour | `public/js/v2-session.js` (transcript, polling, prompts, footer) and `public/js/v2-session-sheets.js` (controls, details, files, search, viewers) |
 
 There is no new framework and no build step. The classic `tailwind.css` is not
 loaded by `/v2`.
@@ -77,9 +79,98 @@ to the session page for those), the folder-trust dialog (same), Web Push
 subscribe/unsubscribe, pull to refresh, the session, archived-session and file
 pages, the sidebar, per-session context and mode controls.
 
+## Session page (`/v2/session?session=<name>`)
+
+One column, three parts: a sticky bar (back with a badge counting other sessions
+that need input, title with status and chips, search, details menu), the
+transcript as the only scroller, and a footer (scroll buttons, controls summary,
+message box). The shell follows the visual viewport, so the footer stays above
+the iOS keyboard and a pinch-zoom does not resize it.
+
+**Rendering.** The server renders only the shell and a bootstrap JSON (the
+session detail, hex-escaped so transcript text cannot close the `<script>`); the
+transcript comes from `/v2/history` (the classic `session_history` action plus
+`include_thinking`) and is drawn by one client renderer for the first page,
+"Load older", and the live tail. Each user and assistant message is a bubble or
+free text with markdown (`markdown.js`, shared with the classic pages); every tool
+call and its result is one collapsed `<details>` whose headline is the call's
+description; pretty-printed JSON results; plan, question, subagent and
+task-notification cards; inline images and attachments as thumbnails. Polling is
+`session_detail` plus `session_history?after=<newest line>` on the same interval
+setting as the dashboard, paused while the tab is hidden, and a rotated transcript
+(`/clear`, `/compact`, `--resume`) restarts from its first page.
+
+**Blocked prompts** (the panel above the footer, answered through the classic
+`answer_prompt.php` / `answer_multi_question.php`):
+
+- No heading repeats the first question. A question form shows its questions
+  only; a permission prompt shows its tool context and one button per option.
+- The agent's own text before the prompt (the latest assistant text of the
+  current turn that is on screen) sits in a panel above the options. If the agent
+  wrote no text before asking, nothing is shown: the transcript has nothing to
+  show. What Sessioneer used to hide were each option's `description` and the
+  question's `header`; both are shown now (multi-question forms and one-question
+  prompts alike).
+- Every question can be answered with typed text, multi-select included
+  ("Type something..." next to the boxes, sent as `[1, {"text": "..."}]`).
+  Multi-select typed answers are enabled for headless Claude only: the terminal
+  (tmux) key driver cannot combine a checkbox and typed text, and OpenCode
+  questions have their own answer shape.
+- Permission prompts, free-text replies, multi-question forms and a pending
+  OpenCode `question` block inside the transcript all use the same builders, an
+  answer shows an optimistic reply and is rolled back with the reason when the
+  agent refuses it, and "Confirm before sending prompt answers" is a view option.
+
+**Footer.** Send (reads Queue while the agent is working), Stop (interrupt),
+attach files (uploaded to the project, removed again when the chip is removed),
+a draft kept per session, Shift+Enter sends. Up and down buttons jump one message
+at a time and skip tool calls; the bottom button shows a dot when new content
+arrived off screen. The controls button opens model, permission mode and effort
+(Claude), the model catalog (Codex with effort, OpenCode, Ollama) or the fixed
+Antigravity list; each change posts to the classic endpoint and the next poll
+shows what the session actually ended up with.
+
+**Images.** A thumbnail opens a full-screen layer above the footer and every
+sheet; tapping toggles fit and natural size (scroll to pan), and pinch zoom is the
+browser's own. "Open original" opens the file.
+
+**Details sheet.** Session id, workdir and resume command (copy), branch,
+worktree, account, runtime, context %, star, rename, move between headless and
+terminal (Claude), open in classic, kill; the task list; todo file (full
+screen), plan and handoff files, uploaded files (open, delete, delete all); view
+options: show reasoning text, show subagent calls, confirm answers, poll
+interval. **Search** looks through this session (jumping to the hit, with a
+"Back to latest" notice) or all sessions (live ones open in v2, archived ones in
+the classic archived view).
+
+Reasoning text: the toggle re-fetches the transcript with `include_thinking`.
+Claude Code writes empty reasoning blocks for models that do not persist it, so
+the toggle shows nothing for them.
+
+### Session page coverage
+
+Covered: transcript rendering (tool calls and results, thinking indicator,
+reasoning text, subagent calls, plan/question/task-notification cards, images,
+attachments, pretty JSON), live updates, load earlier and load back to the last
+message, blocked prompts (permission, free text, multi-question, typed answers
+everywhere, option descriptions, text before the prompt), message footer
+(send, queue, interrupt, attachments), model / mode / effort per agent, status,
+context %, branch, worktree, account and runtime chips, plan and todo files,
+task list, uploads, in-session and all-session search, rename, star, kill, switch
+runtime, resume command, copy buttons, other-sessions-need-input badge, one
+message up and down, zoomable images, light and dark.
+
+Deferred: the quota footer (5h/weekly meters; the Status tab on the dashboard
+has them), Web Push subscribe, the archived-session view (cards for archived
+sessions still open the classic one), pending messages surviving a reload
+(classic keeps them in localStorage), the "New content" divider and per-block
+highlight colours of the classic page (new entries flash instead), the full-screen
+text editor for long drafts, swipe gestures, and the sidebar's session list (the
+back button and the bottom tab bar replace it).
+
 ## Host-agent additions for the session page
 
-Three additive changes, none visible to the classic UI:
+Additive changes, none visible to the classic UI:
 
 - `session_history` takes `include_thinking`. Only then are an assistant's
   reasoning blocks returned, as `{kind: "thinking", text}` blocks; a model that
@@ -88,6 +179,9 @@ Three additive changes, none visible to the classic UI:
   --resume <id>` line, with the account's `CLAUDE_CONFIG_DIR` and binary when the
   session runs under a work profile; Codex and OpenCode have their own forms,
   Ollama and Antigravity none).
+
+- A headless Claude `AskUserQuestion` answer may carry a typed answer inside a
+  multi-select list (`[1, {"text": "..."}]`); a blank one is refused.
 
 The preview server talks to the installed host agent (the live checkout), so
 these show up on it only after they are merged and deployed.

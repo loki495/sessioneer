@@ -21,6 +21,7 @@
 })();
 </script>
 <link rel="stylesheet" href="<?= \App\Assets::versioned_url('/css/v2.css') ?>">
+<?= $this->section('head') ?>
 </head>
 <body>
 <?= $this->section('content') ?>

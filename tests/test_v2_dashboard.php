@@ -92,7 +92,8 @@ try {
     assert_contains('&larr; Back to classic', $body, 'GET /v2: "Back to classic" is also in the settings and status views');
     assert_contains('Fix the login redirect bug', $body, 'GET /v2: canned session title shown');
     assert_contains('/home/user/www/demo-project', $body, 'GET /v2: canned workdir shown');
-    assert_contains('href="/session.php?session=' . V2_CANNED_SESSION . '"', $body, 'GET /v2: card links to the session page');
+    assert_contains('href="/v2/session?session=' . V2_CANNED_SESSION . '"', $body, 'GET /v2: card links to the v2 session page');
+    assert_true(!str_contains($body, 'href="/session.php?session='), 'GET /v2: no card links to the classic session page any more');
     assert_contains('Bare title', $body, 'GET /v2: bare process listed');
     assert_contains('data-act="kill-bare"', $body, 'GET /v2: bare process can be killed');
     assert_equal(1, substr_count($body, 'class="v2-thinking"'), 'GET /v2: thinking indicator on the working session only, not the blocked one');
@@ -146,13 +147,13 @@ try {
     assert_true(($badKill['ok'] ?? null) === false && str_contains((string)$badKill['message'], 'Rejected'), 'POST /v2/action kill of an unknown session: refused with the agent\'s reason');
 
     $new = json_decode($post('action=new&agent=claude&runtime=headless&workdir=' . urlencode('/home/user/www/demo-project'))['body'], true);
-    assert_equal('/session.php?session=cc-fake-headless', $new['redirect'] ?? null, 'POST /v2/action new: redirects to the new session and passes the runtime on');
+    assert_equal('/v2/session?session=cc-fake-headless', $new['redirect'] ?? null, 'POST /v2/action new: redirects to the new session and passes the runtime on');
 
     $resume = json_decode($post('action=resume&runtime=headless&agent_session_id=99999999-8888-4777-a666-555555555555&workdir=' . urlencode('/home/user/www/old-project') . '&profile=work')['body'], true);
-    assert_equal('/session.php?session=claude-headless-20260101-1700', $resume['redirect'] ?? null, 'POST /v2/action resume (headless): redirects to the resumed session');
+    assert_equal('/v2/session?session=claude-headless-20260101-1700', $resume['redirect'] ?? null, 'POST /v2/action resume (headless): redirects to the resumed session');
 
     $switch = json_decode($post('action=switch_runtime&runtime=headless&session=' . V2_CANNED_SESSION)['body'], true);
-    assert_equal('/session.php?session=claude-headless-20260101-1700', $switch['redirect'] ?? null, 'POST /v2/action switch_runtime: redirects to the session carrying the conversation');
+    assert_equal('/v2/session?session=claude-headless-20260101-1700', $switch['redirect'] ?? null, 'POST /v2/action switch_runtime: redirects to the session carrying the conversation');
 
     $killBare = json_decode($post('action=kill_bare&pid=54321')['body'], true);
     assert_true(($killBare['ok'] ?? false) === true, 'POST /v2/action kill_bare: ok');
