@@ -67,6 +67,10 @@ function dispatch_action(array $request): array
         $result = sessioneer_with_stars($result);
     }
 
+    if ($action === 'session_detail') {
+        $result = sessioneer_with_detail_extras($result, (string)($request['session'] ?? ''));
+    }
+
     return in_array($action, ['list', 'session_detail'], true) ? sessioneer_with_custom_titles($result, (string)($request['session'] ?? '')) : $result;
 }
 
@@ -95,6 +99,61 @@ function sessioneer_with_stars(array $result): array
         <=> [(int)!$b['starred'], $rank[$b['status'] ?? ''] ?? 2, -(int)($b['activity'] ?? 0)]);
 
     return $result;
+}
+
+/**
+ * What only the session page needs from a detail: whether the session is
+ * starred, and the command that continues the conversation in a terminal.
+ *
+ * @param array<string, mixed> $detail
+ * @return array<string, mixed>
+ */
+function sessioneer_with_detail_extras(array $detail, string $session): array
+{
+    if (($detail['ok'] ?? false) !== true) {
+        return $detail;
+    }
+
+    $detail['starred'] = isset(SidecarStore::starred_names()[$session]);
+    $detail['resume_command'] = sessioneer_resume_command($detail);
+
+    return $detail;
+}
+
+/**
+ * The shell command that opens this conversation in the agent's own terminal UI, or null when the
+ * agent has none (Ollama, Antigravity) or the conversation has no id yet. A Claude account kept in
+ * its own config dir needs CLAUDE_CONFIG_DIR, or the terminal looks in the default account's store.
+ *
+ * @param array<string, mixed> $detail
+ */
+function sessioneer_resume_command(array $detail): ?string
+{
+    $id = $detail['agent_session_id'] ?? null;
+    $workdir = $detail['workdir'] ?? null;
+
+    if (!is_string($id) || $id === '' || !is_string($workdir) || $workdir === '') {
+        return null;
+    }
+
+    $agent = (string)($detail['agent'] ?? 'claude');
+    $cd = 'cd ' . escapeshellarg($workdir) . ' && ';
+
+    if ($agent === 'claude') {
+        $profile = is_string($detail['profile'] ?? null) && $detail['profile'] !== '' ? $detail['profile'] : null;
+        $account = Config::claude_profile_config($profile);
+        $configDir = $account['config_dir'] ?? null;
+        $bin = is_string($account['bin'] ?? null) ? escapeshellarg($account['bin']) : 'claude';
+        $env = is_string($configDir) && $configDir !== '' ? 'CLAUDE_CONFIG_DIR=' . escapeshellarg($configDir) . ' ' : '';
+
+        return $cd . $env . $bin . ' --resume ' . escapeshellarg($id);
+    }
+
+    return match ($agent) {
+        'codex' => $cd . 'codex resume ' . escapeshellarg($id),
+        'opencode' => $cd . 'opencode --session ' . escapeshellarg($id),
+        default => null,
+    };
 }
 
 const SESSIONEER_CUSTOM_TITLE_MAX = 120;
@@ -224,7 +283,8 @@ function sessioneer_dispatch_action(array $request): array
                 isset($request['before']) ? (int)$request['before'] : null,
                 isset($request['limit']) ? (int)$request['limit'] : 30,
                 isset($request['after']) ? (int)$request['after'] : null,
-                ($request['until_user'] ?? false) === true
+                ($request['until_user'] ?? false) === true,
+                ($request['include_thinking'] ?? false) === true
             );
 
         case 'archived_session_history':

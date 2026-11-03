@@ -1607,11 +1607,14 @@ class TranscriptService
      * gets recognized as approved/rejected rather than rendering as a
      * generic tool_result - optional (defaults to none found), so existing
      * callers/tests that don't care about plans keep working unchanged.
+     * $includeThinking surfaces an assistant's reasoning text as a `thinking`
+     * block; only the v2 page asks for it, since no classic renderer knows the
+     * kind. Empty reasoning (a model that does not persist it) is still dropped.
      *
      * @param array<string, true> $exitPlanModeToolUseIds
      * @return array{type:string, role:?string, timestamp:?string, blocks:array<int, array{kind:string, text:string, attachments?:array<int, array{file_uuid:string, filename:string, size:int, isImage:bool, media_type:string}>}>}|null
      */
-    public static function parse_transcript_line(string $line, array $exitPlanModeToolUseIds = []): ?array
+    public static function parse_transcript_line(string $line, array $exitPlanModeToolUseIds = [], bool $includeThinking = false): ?array
     {
         $decoded = json_decode($line, true);
 
@@ -1653,7 +1656,9 @@ class TranscriptService
                 : ['kind' => 'text', 'text' => $content];
         } elseif (is_array($content)) {
             foreach ($content as $block) {
-                if (is_array($block) && ($block['type'] ?? null) !== 'thinking') {
+                if ($includeThinking && is_array($block) && ($block['type'] ?? null) === 'thinking' && is_string($block['thinking'] ?? null) && trim($block['thinking']) !== '') {
+                    $blocks[] = ['kind' => 'thinking', 'text' => $block['thinking']];
+                } elseif (is_array($block) && ($block['type'] ?? null) !== 'thinking') {
                     $summarized = self::summarize_content_block($block);
                     $blocks[] = $summarized;
 
@@ -1759,7 +1764,7 @@ class TranscriptService
      *
      * @return array{ok:bool, entries:array<int, array>, next_before:?int, has_more:bool, message?:string}
      */
-    public static function read_transcript_page(string $path, ?int $before, int $limit, bool $untilRealUserMessage = false): array
+    public static function read_transcript_page(string $path, ?int $before, int $limit, bool $untilRealUserMessage = false, bool $includeThinking = false): array
     {
         $lines = @file($path, FILE_IGNORE_NEW_LINES);
 
@@ -1778,7 +1783,7 @@ class TranscriptService
 
         while ($index > 0 && count($entries) < $effectiveLimit && !$foundRealUserMessage) {
             $index--;
-            $parsed = self::parse_transcript_line($lines[$index], $exitPlanModeToolUseIds);
+            $parsed = self::parse_transcript_line($lines[$index], $exitPlanModeToolUseIds, $includeThinking);
 
             if ($parsed !== null) {
                 $entries[] = $parsed + ['line' => $index + 1];
@@ -1837,7 +1842,7 @@ class TranscriptService
      *
      * @return array{ok:bool, entries:array<int, array>, message?:string}
      */
-    public static function read_transcript_page_since(string $path, int $afterLine, int $limit): array
+    public static function read_transcript_page_since(string $path, int $afterLine, int $limit, bool $includeThinking = false): array
     {
         $lines = @file($path, FILE_IGNORE_NEW_LINES);
 
@@ -1851,7 +1856,7 @@ class TranscriptService
         $index = max(0, $afterLine); // $afterLine is 1-indexed, so this 0-indexed start is already the next unseen line
 
         while ($index < $totalLines && count($entries) < $limit) {
-            $parsed = self::parse_transcript_line($lines[$index], $exitPlanModeToolUseIds);
+            $parsed = self::parse_transcript_line($lines[$index], $exitPlanModeToolUseIds, $includeThinking);
 
             if ($parsed !== null) {
                 $entries[] = $parsed + ['line' => $index + 1];

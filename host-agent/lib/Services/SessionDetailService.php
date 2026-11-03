@@ -78,7 +78,7 @@ class SessionDetailService
      *
      * @return array{ok:bool, entries?:array<int, array>, next_before?:?int, has_more?:bool, message?:string}
      */
-    public static function session_history(string $name, ?int $before, int $limit, ?int $after = null, bool $untilRealUserMessage = false): array
+    public static function session_history(string $name, ?int $before, int $limit, ?int $after = null, bool $untilRealUserMessage = false, bool $includeThinking = false): array
     {
         $sidecar = SidecarStore::read_sidecar($name);
         $agentSessionId = $sidecar['agent_session_id'] ?? null;
@@ -103,7 +103,7 @@ class SessionDetailService
             return ['ok' => false, 'message' => 'No transcript recorded for this session'];
         }
 
-        return self::transcript_page_for_claude_session($agentSessionId, $before, $limit, $after, $untilRealUserMessage, is_string($sidecar['profile'] ?? null) ? $sidecar['profile'] : null);
+        return self::transcript_page_for_claude_session($agentSessionId, $before, $limit, $after, $untilRealUserMessage, is_string($sidecar['profile'] ?? null) ? $sidecar['profile'] : null, $includeThinking);
     }
 
     /**
@@ -155,7 +155,7 @@ class SessionDetailService
      *
      * @return array{ok:bool, entries?:array<int, array>, next_before?:?int, has_more?:bool, message?:string}
      */
-    private static function transcript_page_for_claude_session(string $agentSessionId, ?int $before, int $limit, ?int $after, bool $untilRealUserMessage = false, ?string $profile = null): array
+    private static function transcript_page_for_claude_session(string $agentSessionId, ?int $before, int $limit, ?int $after, bool $untilRealUserMessage = false, ?string $profile = null, bool $includeThinking = false): array
     {
         $path = TranscriptRouter::find_transcript_path($agentSessionId, $profile);
 
@@ -164,10 +164,10 @@ class SessionDetailService
         }
 
         if ($after !== null) {
-            return TranscriptRouter::read_transcript_page_since($path, $after, max(1, min($limit, 200)));
+            return TranscriptRouter::read_transcript_page_since($path, $after, max(1, min($limit, 200)), $includeThinking);
         }
 
-        return TranscriptRouter::read_transcript_page($path, $before, max(1, min($limit, 200)), $untilRealUserMessage);
+        return TranscriptRouter::read_transcript_page($path, $before, max(1, min($limit, 200)), $untilRealUserMessage, $includeThinking);
     }
 
     /**
