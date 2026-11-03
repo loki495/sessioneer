@@ -160,6 +160,10 @@ assert_equal($one['tool_input']['questions'], ClaudeHeadlessPromptProtocol::resp
 $multi = ClaudeHeadlessPromptProtocol::response($ask, ['answers' => [1, [1, 2]]]);
 assert_equal(['Which color?' => 'Red', 'Toppings?' => ['cheese', 'ham']], $multi['updatedInput']['answers'], 'several questions: positions become labels, multi-select becomes a list');
 assert_equal(['Which color?' => 'XXL', 'Toppings?' => ['ham']], ClaudeHeadlessPromptProtocol::response($ask, ['answers' => [['text' => 'XXL'], ['ham']]])['updatedInput']['answers'], 'free text and literal labels are accepted');
+assert_equal(['Which color?' => 'Red', 'Toppings?' => ['cheese', 'pineapple']], ClaudeHeadlessPromptProtocol::response($ask, ['answers' => [1, [1, ['text' => ' pineapple ']]]])['updatedInput']['answers'], 'a multi-select question takes a typed answer next to its checked options');
+assert_equal(['Which color?' => 'Red', 'Toppings?' => ['pineapple']], ClaudeHeadlessPromptProtocol::response($ask, ['answers' => [1, [['text' => 'pineapple']]]])['updatedInput']['answers'], 'and a typed answer alone');
+assert_equal(null, ClaudeHeadlessPromptProtocol::response($ask, ['answers' => [1, [1, ['text' => '  ']]]]), 'a blank typed answer in a multi-select question is rejected');
+assert_equal(null, ClaudeHeadlessPromptProtocol::response($ask, ['answers' => [[1, ['text' => 'XXL']], [1]]]), 'a single-select question still takes one pick or one typed answer, not both');
 assert_equal(null, ClaudeHeadlessPromptProtocol::response($ask, ['answers' => [1]]), 'too few answers are rejected');
 assert_equal(null, ClaudeHeadlessPromptProtocol::response($ask, ['answers' => [1, 2, 1]]), 'too many answers are rejected');
 assert_equal(null, ClaudeHeadlessPromptProtocol::response($ask, ['answers' => [9, [1]]]), 'an option that does not exist is rejected');

@@ -166,7 +166,7 @@ final class ClaudeHeadlessPromptProtocol
      * Answers keyed by QUESTION TEXT with the chosen label(s), or free text.
      * Accepts the shapes the dashboard's shared question card submits: option
      * positions (1-based), labels, {text: ...}, or a list of either for a
-     * multi-select question.
+     * multi-select question (which may also carry a {text: ...} entry for a typed answer).
      *
      * @param array<string, mixed> $input
      * @param array<string, mixed> $answers
@@ -230,6 +230,18 @@ final class ClaudeHeadlessPromptProtocol
         $labels = [];
 
         foreach ($picked as $one) {
+            // A multi-select question takes a typed answer next to its checked options: [1, {text: "..."}].
+            if ($multi && is_array($one) && array_key_exists('text', $one)) {
+                $free = is_string($one['text']) ? trim($one['text']) : '';
+
+                if ($free === '') {
+                    return null;
+                }
+
+                $labels[] = $free;
+                continue;
+            }
+
             if (is_string($one) && !ctype_digit($one)) {
                 $labels[] = $one;
                 continue;
