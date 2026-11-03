@@ -134,6 +134,31 @@ function create_and_track(string $workdir, array &$createdSessions, bool $enable
     return ['ok' => (bool)($result['ok'] ?? false), 'name' => $name, 'message' => (string)($result['message'] ?? '')];
 }
 
+/** Polls $condition every 20ms until it is true or $seconds pass; the assertion that follows still decides pass/fail. */
+function wait_until_true(callable $condition, float $seconds = 5.0): bool
+{
+    $deadline = microtime(true) + $seconds;
+
+    while (!$condition()) {
+        if (microtime(true) >= $deadline) {
+            return false;
+        }
+        usleep(20000);
+    }
+
+    return true;
+}
+
+/** Returns once the wall-clock second has rolled over: session names and tmux activity stamps have 1-second resolution. */
+function wait_new_second(): void
+{
+    $second = time();
+
+    while (time() === $second) {
+        usleep(20000);
+    }
+}
+
 function find_session(string $name): ?array
 {
     foreach (SessionService::list_all_sessions()['sessions'] as $session) {
@@ -689,7 +714,7 @@ try {
     // name and tmux's own new-session rejects it outright as a duplicate -
     // deterministic spacing avoids depending on how fast the intervening
     // assertions happen to run. ---
-    sleep(1);
+    wait_new_second();
     $withTaskTools = create_and_track(Config::www_root() . '/project-a', $createdSessions, true);
     assert_true($withTaskTools['ok'], 'create (enableTaskTools=true): ok=true');
     $taskToolsPaneCommand = $withTaskTools['name'] !== null
@@ -705,7 +730,7 @@ try {
         $createdSessions = array_values(array_diff($createdSessions, [$withTaskTools['name']]));
     }
 
-    sleep(1);
+    wait_new_second();
     $withoutTaskTools = create_and_track(Config::www_root() . '/project-a', $createdSessions);
     $noTaskToolsPaneCommand = $withoutTaskTools['name'] !== null
         ? trim(TmuxService::tmux_run(['list-panes', '-t', $withoutTaskTools['name'], '-F', '#{pane_start_command}'])['stdout'])
@@ -735,7 +760,7 @@ try {
     // value ("acceptEdits") via array_flip(PermissionMode::
     // HOOK_PERMISSION_MODE_MAP) - same #{pane_start_command} verification
     // technique as the task-tools block above. ---
-    sleep(1);
+    wait_new_second();
     $withStartingMode = create_and_track(Config::www_root() . '/project-a', $createdSessions, false, 'accept edits');
     assert_true($withStartingMode['ok'], 'create (startingMode="accept edits"): ok=true');
     $startingModePaneCommand = $withStartingMode['name'] !== null
@@ -755,7 +780,7 @@ try {
     // unexpected input - the host-agent's own whitelist re-check, same
     // discipline as every other state-changing action here) is silently
     // ignored rather than passed through raw to the real CLI.
-    sleep(1);
+    wait_new_second();
     $withBogusMode = create_and_track(Config::www_root() . '/project-a', $createdSessions, false, 'not-a-real-mode');
     assert_true($withBogusMode['ok'], 'create (startingMode="not-a-real-mode"): still ok=true, not rejected outright');
     $bogusModePaneCommand = $withBogusMode['name'] !== null
@@ -783,7 +808,7 @@ try {
     // from the create block above, real fake_claude (behaves like `cat`)
     // pane, real send-keys. ---
     $activityBeforeSend = $session['activity'] ?? null;
-    sleep(2); // ensure the next timestamp is actually distinguishable
+    wait_new_second(); // the activity stamp has 1-second resolution
     if ($name !== null) {
         TmuxService::tmux_run(['send-keys', '-t', $name, 'activity freshness probe', 'Enter']);
     }
@@ -1206,38 +1231,39 @@ try {
     TmuxService::tmux_run(['set-environment', '-g', 'CLAUDE_CONFIG_DIR', '/inherited/wrong']);
     $envSessions = [];
 
+    wait_new_second();
     $envDefault = SessionLifecycleService::create_agent_session(Config::www_root() . '/project-a');
     preg_match('/Created session (cc-\S+) in/', (string)($envDefault['message'] ?? ''), $m1);
     $envSessions[] = $m1[1] ?? null;
-    usleep(300000);
+    wait_until_true(static fn (): bool => isset($m1[1]) && $noConfigDir($paneEnv($m1[1])));
     assert_true(isset($m1[1]) && $noConfigDir($paneEnv($m1[1])), 'create (default account): the tmux server\'s CLAUDE_CONFIG_DIR does not reach the pane');
 
-    sleep(1);
+    wait_new_second();
     $envWork = SessionLifecycleService::create_agent_session(Config::www_root() . '/project-a', false, null, null, null, 'work');
     preg_match('/Created session (cc-\S+) in/', (string)($envWork['message'] ?? ''), $m2);
     $envSessions[] = $m2[1] ?? null;
-    usleep(300000);
+    wait_until_true(static fn (): bool => isset($m2[1]) && $hasConfigDir($paneEnv($m2[1]), Config::claude_config_dir('work')));
     assert_true(isset($m2[1]) && $hasConfigDir($paneEnv($m2[1]), Config::claude_config_dir('work')), 'create (work profile): its own config_dir is set explicitly');
 
-    sleep(1);
+    wait_new_second();
     $envUnknown = SessionLifecycleService::create_agent_session(Config::www_root() . '/project-a', false, null, null, null, 'no-such-profile');
     preg_match('/Created session (cc-\S+) in/', (string)($envUnknown['message'] ?? ''), $m3);
     $envSessions[] = $m3[1] ?? null;
-    usleep(300000);
+    wait_until_true(static fn (): bool => isset($m3[1]) && $noConfigDir($paneEnv($m3[1])));
     assert_true(isset($m3[1]) && $noConfigDir($paneEnv($m3[1])), 'create (unknown profile): falls back to the default account, CLAUDE_CONFIG_DIR removed');
 
     $envResumeId = '77777777-7777-4777-8777-777777777771';
-    sleep(1);
+    wait_new_second();
     $envResumeDefault = SessionLifecycleService::resume_agent_session(Config::www_root() . '/project-a', $envResumeId, 'personal');
     $envSessions[] = $envResumeDefault['name'] ?? null;
-    usleep(300000);
+    wait_until_true(static fn (): bool => is_string($envResumeDefault['name'] ?? null) && $noConfigDir($paneEnv($envResumeDefault['name'])));
     assert_true(is_string($envResumeDefault['name'] ?? null) && $noConfigDir($paneEnv($envResumeDefault['name'])), 'resume (personal): the inherited CLAUDE_CONFIG_DIR is removed, not replaced by an explicit default dir');
 
     $envResumeId2 = '77777777-7777-4777-8777-777777777772';
-    sleep(1);
+    wait_new_second();
     $envResumeWork = SessionLifecycleService::resume_agent_session(Config::www_root() . '/project-a', $envResumeId2, 'work');
     $envSessions[] = $envResumeWork['name'] ?? null;
-    usleep(300000);
+    wait_until_true(static fn (): bool => is_string($envResumeWork['name'] ?? null) && $hasConfigDir($paneEnv($envResumeWork['name']), Config::claude_config_dir('work')));
     assert_true(is_string($envResumeWork['name'] ?? null) && $hasConfigDir($paneEnv($envResumeWork['name']), Config::claude_config_dir('work')), 'resume (work profile): keeps its own config_dir');
 
     foreach (array_filter($envSessions) as $envSession) {

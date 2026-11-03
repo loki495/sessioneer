@@ -41,7 +41,13 @@ class UnixSocketJsonClient
         // web request indefinitely. A caller that only wants to know whether
         // the service is there (a listing, a health probe) turns retrying off
         // so an absent service costs one instant refusal, not seconds.
-        foreach ($this->retryConnect ? self::CONNECT_RETRY_DELAYS_USEC : [0] as $delayUsec) {
+        //
+        // SOCKET_CLIENT_FAIL_FAST_IF_ABSENT=1 (set by the test suite, whose
+        // bridge/manager sockets deliberately do not exist) skips the retry
+        // when the socket file is not there at all; production leaves it unset.
+        $failFast = getenv('SOCKET_CLIENT_FAIL_FAST_IF_ABSENT') === '1' && !file_exists($this->socketPath);
+
+        foreach ($this->retryConnect && !$failFast ? self::CONNECT_RETRY_DELAYS_USEC : [0] as $delayUsec) {
             if ($delayUsec > 0) {
                 usleep($delayUsec);
             }
