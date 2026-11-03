@@ -77,6 +77,21 @@ to the session page for those), the folder-trust dialog (same), Web Push
 subscribe/unsubscribe, pull to refresh, the session, archived-session and file
 pages, the sidebar, per-session context and mode controls.
 
+## Host-agent additions for the session page
+
+Three additive changes, none visible to the classic UI:
+
+- `session_history` takes `include_thinking`. Only then are an assistant's
+  reasoning blocks returned, as `{kind: "thinking", text}` blocks; a model that
+  does not persist its reasoning writes empty ones, which stay dropped.
+- `session_detail` carries `starred` and `resume_command` (the `cd ... && claude
+  --resume <id>` line, with the account's `CLAUDE_CONFIG_DIR` and binary when the
+  session runs under a work profile; Codex and OpenCode have their own forms,
+  Ollama and Antigravity none).
+
+The preview server talks to the installed host agent (the live checkout), so
+these show up on it only after they are merged and deployed.
+
 ## Running a second instance
 
 The classic container serves `public/` with `php -S` behind a bind-mount. To

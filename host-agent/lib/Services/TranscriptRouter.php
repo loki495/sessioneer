@@ -119,7 +119,7 @@ class TranscriptRouter
     /**
      * @return array{ok:bool, entries:array<int, array>, next_before:?int, has_more:bool, message?:string}
      */
-    public static function read_transcript_page(string $path, ?int $before, int $limit, bool $untilRealUserMessage = false): array
+    public static function read_transcript_page(string $path, ?int $before, int $limit, bool $untilRealUserMessage = false, bool $includeThinking = false): array
     {
         if (self::is_opencode_path($path)) {
             return OpenCodeTranscriptService::read_transcript_page($path, $before, $limit, $untilRealUserMessage);
@@ -131,13 +131,13 @@ class TranscriptRouter
 
         return self::is_antigravity_path($path)
             ? AntigravityTranscriptService::read_transcript_page($path, $before, $limit, $untilRealUserMessage)
-            : TranscriptService::read_transcript_page($path, $before, $limit, $untilRealUserMessage);
+            : TranscriptService::read_transcript_page($path, $before, $limit, $untilRealUserMessage, $includeThinking);
     }
 
     /**
      * @return array{ok:bool, entries:array<int, array>, message?:string}
      */
-    public static function read_transcript_page_since(string $path, int $afterLine, int $limit): array
+    public static function read_transcript_page_since(string $path, int $afterLine, int $limit, bool $includeThinking = false): array
     {
         if (self::is_opencode_path($path)) {
             return OpenCodeTranscriptService::read_transcript_page_since($path, $afterLine, $limit);
@@ -149,7 +149,7 @@ class TranscriptRouter
 
         return self::is_antigravity_path($path)
             ? AntigravityTranscriptService::read_transcript_page_since($path, $afterLine, $limit)
-            : TranscriptService::read_transcript_page_since($path, $afterLine, $limit);
+            : TranscriptService::read_transcript_page_since($path, $afterLine, $limit, $includeThinking);
     }
 
     /**
