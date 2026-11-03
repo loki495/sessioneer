@@ -8,6 +8,7 @@ use App\Controllers\PushController;
 use App\Controllers\QuotaController;
 use App\Controllers\SessionController;
 use App\Controllers\UploadController;
+use App\Controllers\V2Controller;
 use App\Http\Router;
 
 $router = new Router();
@@ -23,6 +24,14 @@ $router->get('/api/quick-prompt', [\App\Controllers\QuickPromptController::class
 
 $router->get('/', [DashboardController::class, 'index']);
 $router->post('/', [DashboardController::class, 'handleAction']);
+
+// The redesigned UI, served beside the classic one.
+$router->get('/v2', [V2Controller::class, 'index']);
+$router->get('/v2/', [V2Controller::class, 'index']);
+$router->get('/v2/fragment', [V2Controller::class, 'fragment']);
+$router->get('/v2/archived', [V2Controller::class, 'archived']);
+$router->get('/v2/action', [V2Controller::class, 'action']);
+$router->post('/v2/action', [V2Controller::class, 'action']);
 
 $router->get('/sessions_fragment.php', [DashboardController::class, 'fragment']);
 $router->get('/sessions_list.php', [DashboardController::class, 'list']);
