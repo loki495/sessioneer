@@ -47,7 +47,7 @@ $this->layout('layout', [
               // this, unarchiving a work-profile session silently resumed
               // under the default account instead. ?>
         <?php if (!empty($detail['profile'])): ?><input type="hidden" name="profile" value="<?= $this->e((string)$detail['profile']) ?>"><?php endif ?>
-        <button type="submit" class="select-none min-h-[2.75rem] rounded-lg border border-slate-700 bg-slate-800 active:bg-slate-700 text-slate-200 font-medium text-sm px-4 py-2" title="Unarchive into a terminal (tmux) session">Terminal</button>
+        <button type="submit" name="runtime" value="tmux" class="select-none min-h-[2.75rem] rounded-lg border border-slate-700 bg-slate-800 active:bg-slate-700 text-slate-200 font-medium text-sm px-4 py-2" title="Unarchive into a terminal (tmux) session">Terminal</button>
         <?php // Claude conversations only: unarchive with no terminal (a
               // headless session) - matches the archived-row list's own
               // Terminal/Headless pair (archived-row.php) exactly, including

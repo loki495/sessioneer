@@ -166,7 +166,7 @@ class ClaudeSessionLauncher implements SessionLauncher
         $entry = $tracked !== null ? $runtime->session_entry($tracked) : null;
 
         if ($tracked === null || $entry === null) {
-            return ['ok' => false, 'message' => "No headless Claude session found for '{$target}' (terminal sessions are stopped from the dashboard)"];
+            return ['ok' => false, 'message' => "No headless Claude session found for '{$target}'"];
         }
 
         $status = (string)$entry['status'];

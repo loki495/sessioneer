@@ -44,10 +44,10 @@
           // other explicit choice, so a bare "Resume" no longer says which
           // one this is - matches the live-session runtime-switch button's
           // wording for the same tmux/TUI concept (session-row/row.php). ?>
-    <button type="submit" class="select-none min-h-[2.75rem] shrink-0 rounded-lg border border-slate-700 bg-slate-800 active:bg-slate-700 text-slate-200 font-medium text-sm px-4 py-2">Terminal</button>
+    <button type="submit" name="runtime" value="tmux" class="select-none min-h-[2.75rem] shrink-0 rounded-lg border border-slate-700 bg-slate-800 active:bg-slate-700 text-slate-200 font-medium text-sm px-4 py-2">Terminal</button>
     <?php // Claude conversations only: resume with no terminal (a headless
-          // session). The button's own name/value is what selects it - the
-          // Terminal button above submits no runtime and stays tmux. ?>
+          // session), which is also what a resume naming no runtime does. The
+          // button's own name/value is what selects it; Terminal opts into tmux. ?>
     <?php if (($agentId ?? 'claude') === 'claude'): ?>
       <button type="submit" name="runtime" value="headless" title="Resume without a terminal (headless)" class="select-none min-h-[2.75rem] shrink-0 rounded-lg border border-slate-700 bg-slate-800 active:bg-slate-700 text-slate-300 text-xs px-3 py-2">Headless</button>
     <?php endif ?>

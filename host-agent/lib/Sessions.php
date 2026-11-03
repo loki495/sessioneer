@@ -502,40 +502,30 @@ function sessioneer_dispatch_action(array $request): array
                 return sessioneer_codex_resume($resumeWorkdir, $resumeId);
             }
 
-            // A Claude conversation can also be resumed headless (no pane).
-            if (($request['runtime'] ?? null) === RuntimeType::HEADLESS) {
-                $claudeHeadless = RuntimeRegistry::runtime_for('claude', RuntimeType::HEADLESS);
-
-                return $claudeHeadless instanceof ClaudeHeadlessRuntime
-                    ? $claudeHeadless->resume($resumeWorkdir, $resumeId, $resumeProfile)
-                    : ['ok' => false, 'message' => 'Headless runtime unavailable for claude'];
+            // A Claude conversation resumes headless (no pane) through the same
+            // path as `sessioneer --resume`; a pane is opt-in (runtime=tmux), and
+            // Antigravity has no headless mode.
+            if (($request['runtime'] ?? null) === RuntimeType::TMUX || ($transcriptPath !== null && TranscriptRouter::is_antigravity_path($transcriptPath))) {
+                return SessionLifecycleService::resume_agent_session($resumeWorkdir, $resumeId, $resumeProfile);
             }
 
-            return SessionLifecycleService::resume_agent_session($resumeWorkdir, $resumeId, $resumeProfile);
+            if ($resumeId === '') {
+                return ['ok' => false, 'message' => 'Missing agent_session_id'];
+            }
+
+            return LaunchService::launch(array_filter([
+                'agent' => 'claude',
+                'agent_session_id' => $resumeId,
+                'workdir' => $resumeWorkdir,
+                'profile' => $resumeProfile,
+            ], static fn ($v): bool => $v !== null && $v !== ''));
 
         case 'switch_runtime':
             return SessionRuntimeSwitchService::switch_runtime((string)($request['session'] ?? ''), (string)($request['runtime'] ?? ''));
 
+        // The dashboard's Kill button: the CLI's `--kill --force`, same code.
         case 'kill':
-            $killSession = (string)($request['session'] ?? '');
-            if (sessioneer_is_headless_session($killSession)) {
-                $agent = sessioneer_headless_agent($killSession);
-                $headless = $agent !== null ? RuntimeRegistry::runtime_for($agent, RuntimeType::HEADLESS) : null;
-                $result = $headless?->kill($killSession) ?? ['ok' => false, 'message' => 'Headless runtime unavailable'];
-
-                // Delete the sidecar/status rows immediately on a successful
-                // kill, so the session leaves the active list at once rather
-                // than lingering until the throttled sync (HEADLESS_SYNC_SECONDS)
-                // prunes it - the tmux kill path already does this (see
-                // SessionLifecycleService::kill_agent_session()).
-                if ($result['ok'] === true) {
-                    SidecarStore::delete_sidecar($killSession);
-                    SessionStatusStore::delete_status($killSession);
-                }
-
-                return $result;
-            }
-            return SessionLifecycleService::kill_agent_session($killSession);
+            return LaunchService::kill(['target' => (string)($request['session'] ?? ''), 'force' => true]);
 
         case 'kill_bare':
             return BareProcessService::kill_bare_process((int)($request['pid'] ?? 0));

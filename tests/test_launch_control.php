@@ -130,6 +130,10 @@ assert_contains('No tracked session found', (string)act(['action' => 'launch_sho
 assert_contains('Needs a session name', (string)act(['action' => 'launch_show', 'target' => ' '])['message'], 'so is a blank target');
 
 echo "Answer: refusals\n";
+$inSession = act(['action' => 'launch_answer', 'target' => $name, 'option' => 1, 'from' => $name]);
+assert_equal(false, $inSession['ok'] ?? null, 'a session cannot answer a prompt, its own included');
+assert_contains('outside any session', (string)$inSession['message'], 'and is told why');
+assert_true(status_is($name, 'blocked'), 'the prompt is still pending');
 foreach ([
     'neither an option nor answers' => [[], 'exactly one of an option number'],
     'both' => [['option' => 1, 'answers' => [1]], 'exactly one of an option number'],
@@ -203,7 +207,7 @@ wait_until(static fn (): bool => status_is($busyName, 'working'));
 $refusedKill = act(['action' => 'launch_kill', 'target' => $busyName]);
 assert_equal(false, $refusedKill['ok'] ?? null, 'a working session is not killed without --force');
 assert_contains('use --force', (string)$refusedKill['message'], 'and the message says how');
-assert_equal(true, act(['action' => 'launch_kill', 'target' => $busyName, 'force' => true])['ok'] ?? null, '--force stops it');
+assert_equal(true, act(['action' => 'kill', 'session' => $busyName])['ok'] ?? null, 'the dashboard\'s Kill is the forced CLI kill');
 assert_equal(null, SidecarStore::read_sidecar($busyName), 'and removes the session at once');
 assert_contains('No headless Claude session found', (string)act(['action' => 'launch_kill', 'target' => 'nope'])['message'], 'an unknown target is a handled error');
 
@@ -274,5 +278,15 @@ assert_equal(true, $confirmed['ok'] ?? null, 'naming the conversation completes 
 $made[] = (string)($confirmed['name'] ?? '');
 assert_equal($candidateId, SidecarStore::read_sidecar((string)$confirmed['name'])['agent_session_id'] ?? null, 'on the chosen conversation');
 assert_true((bool)wait_until(static fn (): bool => !pid_alive($ambiguous['pid'])), 'and the terminal process is gone');
+
+echo "Resume\n";
+$resumeId = 'ffffffff-1111-4111-8111-ffffffffffff';
+copy(__DIR__ . '/fixtures/transcript_sample.jsonl', "{$transcriptDir}/{$resumeId}.jsonl");
+$resumed = act(['action' => 'resume', 'workdir' => $workdir, 'agent_session_id' => $resumeId]);
+assert_equal(true, $resumed['ok'] ?? null, 'a plain dashboard resume succeeds' . (($resumed['ok'] ?? false) === true ? '' : ' - got ' . json_encode($resumed)));
+$made[] = (string)($resumed['name'] ?? '');
+assert_equal('headless', SidecarStore::read_sidecar((string)$resumed['name'])['runtime'] ?? null, 'and is headless without asking');
+assert_equal('Missing agent_session_id', act(['action' => 'resume', 'workdir' => $workdir, 'agent_session_id' => ''])['message'] ?? null, 'a resume with no conversation id is refused');
+assert_true(!array_key_exists('name', act(['action' => 'take_over_bare', 'pid' => 1])), 'the dashboard\'s old take-over actions are gone: the CLI action is the only one');
 
 test_exit();
