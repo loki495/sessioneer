@@ -4,6 +4,13 @@ declare(strict_types=1);
 
 namespace HostAgent\Launch;
 
+use HostAgent\Runtimes\RuntimeType;
+use HostAgent\Services\OpenCodeTranscriptService;
+use HostAgent\Services\SessionLifecycleService;
+use HostAgent\Services\TmuxService;
+use HostAgent\Services\TranscriptRouter;
+use HostAgent\Stores\SidecarStore;
+
 /**
  * Resolves the SessionLauncher for a request's agent. The one place that
  * knows which agents can be launched from outside the web UI.
@@ -35,6 +42,19 @@ class LaunchService
      */
     public static function kill(array $request): array
     {
+        $target = is_string($request['target'] ?? null) ? trim($request['target']) : '';
+        $name = SessionControl::resolve($target);
+        $sidecar = $name !== null ? SidecarStore::read_sidecar($name) : null;
+
+        // A terminal (tmux) session of any agent has no launcher: it is a pane.
+        $terminal = $sidecar !== null
+            ? ($sidecar['runtime'] ?? RuntimeType::TMUX) !== RuntimeType::HEADLESS
+            : in_array($target, array_column(TmuxService::list_tracked_tmux_sessions(), 'name'), true);
+
+        if ($terminal) {
+            return self::kill_terminal($name ?? $target, !empty($request['force']));
+        }
+
         $launcher = self::launcher_for($request);
 
         return $launcher instanceof SessionLauncher ? $launcher->kill($request) : $launcher;
@@ -57,6 +77,10 @@ class LaunchService
      */
     public static function send(array $request): array
     {
+        if (!empty($request['as_user'])) {
+            return SessionControl::send_as_user($request);
+        }
+
         $launcher = self::launcher_for($request);
 
         return $launcher instanceof SessionLauncher ? $launcher->send($request) : $launcher;
@@ -74,12 +98,62 @@ class LaunchService
     }
 
     /**
+     * Stops a tmux session the way the dashboard always has, with the same
+     * refusal for work in progress that a headless kill gives.
+     *
+     * @return array<string, mixed>
+     */
+    private static function kill_terminal(string $name, bool $force): array
+    {
+        $detail = \sessioneer_dispatch_action(['action' => 'session_detail', 'session' => $name]);
+        $status = ($detail['status'] ?? null) ?? (!empty($detail['blocked_reason']) ? 'blocked' : (!empty($detail['working']) ? 'working' : 'idle'));
+
+        if ($status !== 'idle' && !$force) {
+            return ['ok' => false, 'name' => $name, 'message' => "Session {$name} is {$status}; stopping it would drop that work (use --force)"];
+        }
+
+        $killed = SessionLifecycleService::kill_agent_session($name);
+
+        return ['ok' => $killed['ok'], 'name' => $name, 'message' => $killed['ok'] ? "Session {$name} stopped; its conversation can be resumed" : (string)$killed['message']];
+    }
+
+    /**
+     * The agent a request is for: the one it names, else the one that owns the
+     * session or conversation it targets (so the dashboard, which only has a
+     * session name or a conversation id, needs no agent), else Claude.
+     *
+     * @param array<string, mixed> $request
+     */
+    private static function agent_for(array $request): string
+    {
+        if (is_string($request['agent'] ?? null) && $request['agent'] !== '') {
+            return $request['agent'];
+        }
+
+        $ref = trim((string)($request['target'] ?? $request['agent_session_id'] ?? ''));
+        $name = SessionControl::resolve($ref);
+        $tracked = $name !== null ? (SidecarStore::read_sidecar($name)['agent'] ?? null) : null;
+
+        if (is_string($tracked) && $tracked !== '') {
+            return $tracked;
+        }
+
+        if ($ref !== '' && OpenCodeTranscriptService::is_opencode_id($ref)) {
+            return 'opencode';
+        }
+
+        $path = $ref !== '' ? TranscriptRouter::find_transcript_path($ref) : null;
+
+        return $path !== null && TranscriptRouter::is_codex_path($path) ? 'codex' : 'claude';
+    }
+
+    /**
      * @param array<string, mixed> $request
      * @return SessionLauncher|array{ok: false, message: string} the launcher, or the handled failure to return
      */
     private static function launcher_for(array $request): SessionLauncher|array
     {
-        $agent = is_string($request['agent'] ?? null) && $request['agent'] !== '' ? $request['agent'] : 'claude';
+        $agent = self::agent_for($request);
 
         if (!isset(self::LAUNCHERS[$agent])) {
             return ['ok' => false, 'message' => "Launching is not supported for agent '{$agent}' (supported: " . implode(', ', array_keys(self::LAUNCHERS)) . ')'];

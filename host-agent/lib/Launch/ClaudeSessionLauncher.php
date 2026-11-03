@@ -115,13 +115,21 @@ class ClaudeSessionLauncher implements SessionLauncher
         }
 
         if (in_array($conversationId, BareProcessService::live_bare_agent_session_ids(), true)) {
-            return ['ok' => false, 'message' => 'That conversation is running in a terminal Sessioneer did not start; use Take over in the dashboard'];
+            return ['ok' => false, 'message' => 'That conversation is running in a terminal Sessioneer did not start; take it over with --take-over (see --bare) or Take over in the dashboard'];
         }
 
         $workdir = is_string($request['workdir'] ?? null) && $request['workdir'] !== '' ? $request['workdir'] : null;
 
         if ($workdir === null) {
             $transcript = TranscriptRouter::find_transcript_path($conversationId, $profile);
+
+            // No account named: the conversation may live under any configured one.
+            if ($transcript === null && empty($request['profile'])) {
+                $found = TranscriptRouter::find_claude_profile_for_session_id($conversationId);
+                $transcript = $found['path'];
+                $profile = $found['profile'] ?? $profile;
+            }
+
             $workdir = $transcript !== null ? TranscriptService::find_first_cwd($transcript) : null;
         }
 

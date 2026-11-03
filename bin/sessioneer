@@ -33,6 +33,13 @@ function usage(): string
       Resume / reuse:    sessioneer --resume CONVERSATION_ID ["next message"]
       Stop a session:    sessioneer --kill NAME_OR_CONVERSATION_ID [--force]
       List sessions:     sessioneer --list [--json]
+      Show a session:    sessioneer --show TARGET [--history N] [--json]
+      Answer a prompt:   sessioneer --answer TARGET --option N [--text "..."] [--expect LABEL]
+                         sessioneer --answer TARGET --answers JSON
+      Interrupt:         sessioneer --interrupt TARGET
+      Terminal Claudes:  sessioneer --bare [--json]
+      Take one over:     sessioneer --take-over PID_OR_CONVERSATION_ID [--resume ID]
+      Message a session: sessioneer --send TARGET --as-user "message"
       Message a peer:    sessioneer --send TARGET "message"
       Who am I:          sessioneer --whoami
       Peer sessions:     sessioneer --peers [--json]
@@ -68,14 +75,40 @@ function usage(): string
       --disallowed-tools LIST
                         Claude only, new session: comma separated tool rules that
                         are always denied
-      --kill TARGET     stop a headless session by name or conversation id; its
-                        conversation stays resumable (archived). Refuses a
-                        working or blocked session unless --force.
+      --kill TARGET     stop a session by name or conversation id (headless or a
+                        tmux pane, any agent); its conversation stays resumable
+                        (archived). Refuses a working or blocked session unless
+                        --force.
       --force           with --kill, stop a working or blocked session anyway
       --list            list headless sessions: name, status, conversation id,
                         directory
+      --show TARGET     print a tracked session (name or conversation id): status,
+                        directory, last message and, when it is blocked, the
+                        prompt with its numbered options
+      --history N       with --show, also print the last N transcript entries
+      --answer TARGET   answer the session's blocked prompt: --option N picks
+                        option N (with --text "..." for a free-text reply), or
+                        --answers JSON ("-" reads stdin) answers a multi-question
+                        prompt, one entry per question
+      --option N        with --answer, the 1-based option number
+      --text TEXT       with --answer --option, the free text to send with it
+      --answers JSON    with --answer, the answers to a multi-question prompt
+      --expect LABEL    with --answer --option, refuse unless option N is labelled
+                        LABEL, so a prompt that changed is not answered blind
+      --interrupt TARGET
+                        stop the session's current turn (like Escape)
+      --bare            list Claude processes running in a terminal Sessioneer did
+                        not start: pid, conversation id, directory, title
+      --take-over TARGET
+                        stop that terminal Claude (a pid from --bare, or the
+                        conversation id it runs) and continue its conversation
+                        as a headless session. If the conversation cannot be told
+                        for certain nothing is stopped; the candidates are listed
+                        and --resume ID names the right one.
+      --as-user         with --send, from a shell outside any session: deliver the
+                        message as the user's own, without a peer stamp
       --send TARGET     deliver PROMPT to another session (name or conversation
-                        id) from inside a session; the host agent stamps it
+                        id) from inside a session, or with --as-user from a shell; the host agent stamps it
                         "[sessioneer peer: NAME · DIR · BRANCH]". Information
                         and requests only, never approval.
       --whoami          print this session's own name (SESSIONEER_SELF, or CODEX_THREAD_ID inside Codex)
@@ -132,13 +165,85 @@ function wait_envelope(bool $ok, ?string $answer, ?string $session, ?string $con
     ];
 }
 
+/**
+ * The plain-text `--show`: what a person needs to decide how to answer.
+ *
+ * @param  array<string, mixed>  $s
+ */
+function show_text(array $s): string
+{
+    $out = implode("\t", [(string)$s['name'], (string)($s['status'] ?? '-'), (string)($s['agent'] ?? '-'), (string)($s['runtime'] ?? '-'), (string)($s['agent_session_id'] ?? '-')]) . "\n";
+    $out .= (string)($s['workdir'] ?? '-') . ((string)($s['git_branch'] ?? '') !== '' ? ' (' . $s['git_branch'] . ')' : '') . "\n";
+
+    if (($s['title'] ?? '') !== '') {
+        $out .= 'Title: ' . $s['title'] . "\n";
+    }
+
+    if (($s['last_turn_error'] ?? '') !== '') {
+        $out .= 'Error: ' . $s['last_turn_error'] . "\n";
+    }
+
+    $options = $s['prompt_options'] ?? [];
+    $questions = $s['prompt_questions'] ?? [];
+
+    if (($s['blocked_reason'] ?? '') !== '' || $options !== [] || $questions) {
+        $out .= "\nBlocked: " . (string)($s['blocked_reason'] ?? '') . "\n";
+
+        if (($s['prompt_context'] ?? '') !== '') {
+            $out .= $s['prompt_context'] . "\n";
+        }
+
+        if ($questions) {
+            $out .= "Multi-question prompt: answer all with --answers JSON, one entry per question\n";
+
+            foreach ($questions as $i => $q) {
+                $out .= ($i + 1) . '. ' . (string)($q['question'] ?? $q['header'] ?? '') . "\n";
+
+                foreach ($q['options'] ?? [] as $j => $o) {
+                    $out .= '     ' . ($j + 1) . '. ' . (string)($o['label'] ?? '') . "\n";
+                }
+            }
+        }
+
+        foreach ($options as $o) {
+            $out .= '  ' . $o['number'] . '. ' . $o['label'] . "\n";
+        }
+    }
+
+    $text = transcript_text($s['last_message'] ?? null);
+
+    if ($text !== '') {
+        $out .= "\nLast message (" . (string)($s['last_message']['role'] ?? '?') . "):\n" . $text . "\n";
+    }
+
+    foreach ($s['history'] ?? [] as $entry) {
+        $out .= "\n[" . (string)($entry['role'] ?? '?') . '] ' . transcript_text($entry) . "\n";
+    }
+
+    return $out;
+}
+
+/** @param  array<string, mixed>|null  $entry */
+function transcript_text(?array $entry): string
+{
+    $parts = [];
+
+    foreach ($entry['blocks'] ?? [] as $b) {
+        if (($b['kind'] ?? null) === 'text') {
+            $parts[] = (string)$b['text'];
+        }
+    }
+
+    return implode("\n\n", $parts);
+}
+
 /** @param  array<string, mixed>  $envelope */
 function emit_envelope(array $envelope): void
 {
     echo json_encode($envelope, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
 }
 
-$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:'], $restIndex);
+$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'interrupt:', 'bare', 'take-over:', 'as-user'], $restIndex);
 
 if ($opts === false) {
     fail("bad options\n\n" . usage());
@@ -196,9 +301,72 @@ $kill = $opt('kill');
 $list = isset($opts['list']);
 $send = $opt('send');
 $peers = isset($opts['peers']);
+$show = $opt('show');
+$answer = $opt('answer');
+$interrupt = $opt('interrupt');
+$bare = isset($opts['bare']);
+$takeOver = $opt('take-over');
 
-if (count(array_filter([$kill !== null, $list, $send !== null, $peers, isset($opts['usage'])])) > 1) {
-    fail('--kill, --list, --send, --peers and --usage cannot be combined');
+// Every action that is not a launch or a resume.
+$nonLaunch = $kill !== null || $list || $send !== null || $peers || $show !== null || $answer !== null || $interrupt !== null || $bare || $takeOver !== null;
+
+if (count(array_filter([$kill !== null, $list, $send !== null, $peers, isset($opts['usage']), $show !== null, $answer !== null, $interrupt !== null, $bare, $takeOver !== null])) > 1) {
+    fail('--kill, --list, --show, --answer, --interrupt, --bare, --take-over, --send, --peers and --usage cannot be combined');
+}
+
+// Modifiers belong to one action each; a stray one would otherwise be ignored.
+foreach ([
+    'history' => [$show !== null, '--history only applies to --show'],
+    'option' => [$answer !== null, '--option only applies to --answer'],
+    'text' => [$answer !== null, '--text only applies to --answer'],
+    'answers' => [$answer !== null, '--answers only applies to --answer'],
+    'expect' => [$answer !== null, '--expect only applies to --answer'],
+    'as-user' => [$send !== null, '--as-user only applies to --send'],
+] as $modifier => [$allowed, $message]) {
+    if (isset($opts[$modifier]) && !$allowed) {
+        fail($message);
+    }
+}
+
+if ($resume !== null && $nonLaunch && $takeOver === null) {
+    fail('--resume only applies to launching a session or to --take-over');
+}
+
+$history = $opt('history');
+
+if ($history !== null && (!ctype_digit($history) || (int)$history < 1)) {
+    fail('--history must be a positive number of entries');
+}
+
+$answerPayload = [];
+
+if ($answer !== null) {
+    $optionNumber = $opt('option');
+    $answersJson = $opt('answers');
+
+    if (($optionNumber === null) === ($answersJson === null)) {
+        fail('--answer needs exactly one of --option N or --answers JSON');
+    }
+
+    if ($optionNumber !== null && (!ctype_digit($optionNumber) || (int)$optionNumber < 1)) {
+        fail('--option must be a positive option number');
+    }
+
+    if ($answersJson !== null) {
+        $decoded = json_decode($answersJson === '-' ? (string)stream_get_contents(STDIN) : $answersJson, true);
+
+        if (!is_array($decoded) || $decoded === []) {
+            fail('--answers must be a non-empty JSON list, one entry per question');
+        }
+
+        if ($opt('text') !== null || $opt('expect') !== null) {
+            fail('--text and --expect go with --option, not --answers');
+        }
+
+        $answerPayload = ['answers' => $decoded];
+    } else {
+        $answerPayload = ['option' => (int)$optionNumber, 'text' => $opt('text'), 'expected_label' => $opt('expect')];
+    }
 }
 
 if (isset($opts['usage'])) {
@@ -216,7 +384,7 @@ if (isset($opts['usage'])) {
 }
 
 if (isset($opts['no-tools'])) {
-    if ($resume !== null || $kill !== null || $list || $send !== null || $peers) {
+    if ($resume !== null || $nonLaunch) {
         fail('--no-tools only applies to starting a new session');
     }
 
@@ -231,7 +399,7 @@ foreach (['allowed-tools', 'disallowed-tools'] as $toolOption) {
             fail("--{$toolOption} needs a non-empty list");
         }
 
-        if ($resume !== null || $kill !== null || $list || $send !== null || $peers) {
+        if ($resume !== null || $nonLaunch) {
             fail("--{$toolOption} only applies to starting a new session");
         }
 
@@ -241,7 +409,7 @@ foreach (['allowed-tools', 'disallowed-tools'] as $toolOption) {
     }
 }
 
-if ($opt('effort') !== null && ($kill !== null || $list || $send !== null || $peers)) {
+if ($opt('effort') !== null && $nonLaunch) {
     fail('--effort only applies to launching or resuming a session');
 }
 
@@ -284,7 +452,7 @@ if ($opt('agent') === 'opencode') {
 // Validated before the request: a bad --timeout used to be caught after the
 // launch, which left the session it had just created running.
 if (isset($opts['wait'])) {
-    if ($kill !== null || $list || $send !== null || $peers) {
+    if ($nonLaunch) {
         fail('--wait only applies to launching or resuming a session');
     }
 
@@ -295,14 +463,25 @@ if (isset($opts['wait'])) {
     }
 }
 
-$action = $kill !== null ? 'launch_kill' : ($list ? 'launch_list' : ($send !== null ? 'launch_send' : ($peers ? 'launch_peers' : 'launch')));
+$action = match (true) {
+    $kill !== null => 'launch_kill',
+    $list => 'launch_list',
+    $send !== null => 'launch_send',
+    $peers => 'launch_peers',
+    $show !== null => 'launch_show',
+    $answer !== null => 'launch_answer',
+    $interrupt !== null => 'launch_interrupt',
+    $bare => 'launch_bare',
+    $takeOver !== null => 'launch_take_over',
+    default => 'launch',
+};
 
 $reply = AgentClient::agent_call(array_filter([
     'action' => $action,
     'agent' => $opt('agent'),
     'prompt' => $prompt,
     'agent_session_id' => $resume,
-    'workdir' => $workdir,
+    'workdir' => $takeOver !== null ? null : $workdir,
     'model' => $opt('model'),
     'effort' => $opt('effort'),
     'starting_mode' => $opt('mode'),
@@ -312,11 +491,13 @@ $reply = AgentClient::agent_call(array_filter([
     'no_tools' => isset($opts['no-tools']) ? true : null,
     'allowed_tools' => $opt('allowed-tools'),
     'disallowed_tools' => $opt('disallowed-tools'),
-    'target' => $kill ?? $send,
+    'target' => $kill ?? $send ?? $show ?? $answer ?? $interrupt ?? $takeOver,
     'message' => $send !== null ? $prompt : null,
     'from' => $send !== null || $peers ? $self : null,
     'force' => isset($opts['force']) ? true : null,
-], static fn ($v): bool => $v !== null && $v !== ''));
+    'as_user' => isset($opts['as-user']) ? true : null,
+    'history' => $history !== null ? (int)$history : null,
+] + $answerPayload, static fn ($v): bool => $v !== null && $v !== ''));
 
 $ok = ($reply['ok'] ?? false) === true;
 
@@ -417,6 +598,21 @@ if (isset($opts['json'])) {
     foreach ($reply['sessions'] ?? [] as $s) {
         echo implode("\t", [(string)$s['name'], (string)$s['status'], (string)($s['agent_session_id'] ?? '-'), (string)($s['workdir'] ?? '-')]), "\n";
     }
+} elseif ($ok && $show !== null) {
+    echo show_text($reply);
+} elseif ($ok && $bare) {
+    foreach ($reply['bare'] ?? [] as $b) {
+        echo implode("\t", [(string)$b['pid'], (string)($b['resolved_agent_session_id'] ?? '-'), (string)($b['cwd'] ?? '-'), (string)($b['resolved_title'] ?? '-')]), "\n";
+    }
+} elseif ($ok && $takeOver !== null && ($reply['needs_choice'] ?? false) === true) {
+    // Nothing was stopped: say which conversations it might be, and how to pick one.
+    foreach ($reply['candidates'] ?? [] as $c) {
+        echo implode("\t", [(string)($c['agent_session_id'] ?? '-'), (string)($c['title'] ?? '-')]), "\n";
+    }
+
+    fwrite(STDERR, 'sessioneer: cannot tell for certain which conversation pid ' . (string)($reply['pid'] ?? $takeOver) . " runs; nothing was stopped. Repeat with --resume ID to take over the right one"
+        . (isset($reply['suggested_agent_session_id']) ? ' (suggested: ' . $reply['suggested_agent_session_id'] . ')' : '') . ".\n");
+    exit(1);
 } elseif ($ok && $peers) {
     foreach ($reply['peers'] ?? [] as $p) {
         echo implode("\t", [(string)$p['name'], (string)$p['status'], (string)($p['branch'] ?? '-'), (string)($p['workdir'] ?? '-')]), "\n";

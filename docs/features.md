@@ -144,7 +144,10 @@ an archived conversation, or delivers a prompt to the session already tracking a
 conversation id, so scripts and other sessions can spawn a continuation that
 shows up in the dashboard. `--agent ollama` launches a local chat model.
 `--list` shows headless sessions and `--kill` stops
-one (refusing a working or blocked session without `--force`). `--usage` prints
+one (refusing a working or blocked session without `--force`). `--show` prints a
+session with the prompt it is blocked on and `--answer` answers it, `--interrupt`
+stops its turn, `--bare` lists Claude processes running in a terminal Sessioneer
+did not start and `--take-over` continues one as a headless session. `--usage` prints
 the last known usage stats for every agent and Claude account as JSON. `--wait [--timeout N]` blocks until the launched session is idle and
 prints its final assistant message, exiting 1 on an error or timeout. `--effort LEVEL` sets the reasoning level of a new or resumed session (agent + model + effort in one launch). Claude and Codex; see
 [cli.md](cli.md).
