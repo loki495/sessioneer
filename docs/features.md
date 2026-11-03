@@ -195,7 +195,8 @@ terminal. Existing conversations move with the **Headless** button on an
 archived Claude row or the per-row switch between runtimes (the old process is
 stopped completely first, and a busy session or one with no transcript yet is
 refused); plain Resume and Take over still open a terminal session. Permission approvals, `AskUserQuestion`
-(single and multi-question), plan approval, interrupt, queued messages, image
+(single and multi-question; any question, multi-select included, also takes a typed answer, sent as a
+`{"text": ...}` entry next to the checked option positions), plan approval, interrupt, queued messages, image
 attachments and model, permission-mode and reasoning-effort changes all work through the process's
 own structured events, and the transcript view still reads the same transcript
 file. Concurrent permission prompts (parallel subagents) queue by request id: the
