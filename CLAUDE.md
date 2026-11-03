@@ -496,6 +496,12 @@ that only `create_agent_session()`-spawned sessions have).
     that still needs Bash/Read/Write/Edit, `--allowedTools`/
     `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` are the safe options, not `--tools`.
 
+- **`/v2` is a second UI beside the classic one** (`V2Controller`, `V2View`,
+  `src/partials/v2/`, `public/css/v2.css`, `public/js/v2.js`; see docs/v2-ui.md). It reads
+  the same host-agent data, reuses the classic JSON endpoints where they fit, and has its own
+  JSON `POST /v2/action` in place of the classic redirect-and-flash handler. Its CSS is
+  hand-written around custom properties (no Tailwind build) and its JS is plain ES5. Keep
+  classic files untouched when working on it, and keep `tests/test_v2_dashboard.php` passing.
 - **`public/js/*.js` is plain ES5** (`var`, `function`, no `const`/`let`,
   arrow functions, `Set`, or template literals) — no transpiler in this
   project, and mobile Safari compatibility has repeatedly been the reason

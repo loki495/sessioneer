@@ -29,6 +29,7 @@ $this->layout('layout', [
         Hide idle unstarred
       </label>
     </div>
+    <a href="/v2" class="shrink-0 text-xs font-medium px-2.5 py-1 rounded-full border border-indigo-500/60 text-indigo-300 active:bg-slate-800">Try the new UI</a>
     <select id="poll-interval-select" aria-label="Polling interval"
       class="shrink-0 text-xs font-medium pl-1.5 pr-5 py-1 rounded-full border border-slate-700 bg-slate-800 text-slate-400">
       <option value="1000">1s</option>
