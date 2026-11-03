@@ -316,9 +316,10 @@ assert_true((bool)wait_until(static fn (): bool => has_result($m, "echo: back ag
 wait_until(static fn (): bool => status_of($resumedName) === 'idle');
 
 $again = act(['action' => 'resume', 'runtime' => 'headless', 'workdir' => $workdir, 'agent_session_id' => $agentSessionId]);
-assert_true(($again['ok'] ?? true) === false, 'a conversation that is already live cannot be resumed a second time');
-assert_contains('already has a live process', (string)$again['message'], 'with a clear message');
-$asPane = act(['action' => 'resume', 'workdir' => $workdir, 'agent_session_id' => $agentSessionId]);
+assert_true(($again['ok'] ?? false) === true && ($again['name'] ?? null) === $resumedName, 'a conversation that is already live is not resumed a second time: the live session is returned');
+$byDefault = act(['action' => 'resume', 'workdir' => $workdir, 'agent_session_id' => $agentSessionId]);
+assert_equal($resumedName, $byDefault['name'] ?? null, 'and a plain resume (no runtime named) is headless too, never a pane');
+$asPane = act(['action' => 'resume', 'runtime' => 'tmux', 'workdir' => $workdir, 'agent_session_id' => $agentSessionId]);
 assert_true(($asPane['ok'] ?? true) === false, 'nor can it be resumed in a tmux pane (two writers on one transcript)');
 assert_contains('already has a live pane', (string)$asPane['message'], 'the existing guard now sees headless sessions too');
 

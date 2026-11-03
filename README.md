@@ -237,8 +237,8 @@ hook payload does not contain enough UI state. Bare-process discovery and
 New Claude sessions run **headless**, with no terminal, unless you pick
 Terminal (tmux) in the New Session form's "Runs in" list; the **Headless**
 button on an archived Claude session, or the switch on a running session's
-row, moves an existing conversation (plain Resume and Take over open a terminal
-session). For a headless session Sessioneer runs the installed `claude` binary (`claude -p`, stream-json)
+row, moves an existing conversation; Resume and Take over are headless too
+unless you pick the **Terminal** button on an archived row. For a headless session Sessioneer runs the installed `claude` binary (`claude -p`, stream-json)
 on your own logged-in claude.ai account, through the
 `sessioneer-claude-headless-manager.service` that `host-agent/install.sh`
 installs. This is not the Claude Agent SDK library, which uses an API key or

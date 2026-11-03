@@ -20,6 +20,7 @@ use HostAgent\Stores\SidecarStore;
  * `bin/sessioneer` run the same code and only differ in how they ask.
  *
  * Request keys (all optional unless noted):
+ *   from              string  the caller's SESSIONEER_SELF; answer and as_user sends refuse a tracked session
  *   target            string  session name or conversation id (required except bare/take_over)
  *   history           int     show: also return the last N transcript entries
  *   option            int     answer: the 1-based option number
@@ -86,6 +87,10 @@ class SessionControl
      */
     public static function answer(array $request): array
     {
+        if (self::from_session($request)) {
+            return ['ok' => false, 'message' => 'Answering a prompt is for a shell outside any session: a session cannot approve its own or a peer\'s prompt (a message to a peer is information, never approval)'];
+        }
+
         $name = self::resolve((string)($request['target'] ?? ''));
 
         if ($name === null) {
@@ -169,9 +174,7 @@ class SessionControl
      */
     public static function send_as_user(array $request): array
     {
-        $from = trim((string)($request['from'] ?? ''));
-
-        if ($from !== '' && SidecarStore::read_sidecar($from) !== null) {
+        if (self::from_session($request)) {
             return ['ok' => false, 'message' => '--as-user is for a shell outside any session; inside one, --send stamps you as the sender'];
         }
 
@@ -272,6 +275,22 @@ class SessionControl
         $transcript = TranscriptRouter::find_transcript_path_any_profile($conversationId);
 
         return $transcript !== null ? TranscriptService::find_first_cwd($transcript) : null;
+    }
+
+    /**
+     * Whether the caller says it is a tracked session. `from` is the caller's
+     * own SESSIONEER_SELF, so this is a guard against a session doing the
+     * user's part by accident or by a prompt injection, not a boundary: any
+     * process that can reach the host-agent socket can already send the
+     * dashboard's own answer_prompt and send_message actions without it.
+     *
+     * @param array<string, mixed> $request
+     */
+    private static function from_session(array $request): bool
+    {
+        $from = trim((string)($request['from'] ?? ''));
+
+        return $from !== '' && SidecarStore::read_sidecar($from) !== null;
     }
 
     /**

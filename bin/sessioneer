@@ -493,7 +493,7 @@ $reply = AgentClient::agent_call(array_filter([
     'disallowed_tools' => $opt('disallowed-tools'),
     'target' => $kill ?? $send ?? $show ?? $answer ?? $interrupt ?? $takeOver,
     'message' => $send !== null ? $prompt : null,
-    'from' => $send !== null || $peers ? $self : null,
+    'from' => $send !== null || $peers || $answer !== null ? $self : null,
     'force' => isset($opts['force']) ? true : null,
     'as_user' => isset($opts['as-user']) ? true : null,
     'history' => $history !== null ? (int)$history : null,

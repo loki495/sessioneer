@@ -16,7 +16,7 @@ const CANNED_BLOCKED_AGENT_SESSION_ID = 'aaaaaaaa-1111-4111-8111-111111111111';
 const CANNED_BARE_PID = 54321;
 // Its own separate pid/row - the resolved_title case is deliberately kept
 // OUT of CANNED_BARE_PID's own row, which every other bare_* action
-// fixture (kill_bare/take_over_bare/bare_process_detail) already keys off
+// fixture (kill_bare/launch_take_over/bare_process_detail) already keys off
 // and other tests already assert its raw pane `title` ("Bare title")
 // renders - bare-process-row.php prefers resolved_title over that raw
 // title when both are present, so overloading the same row would have
@@ -341,8 +341,8 @@ $response = match ($action) {
     'switch_runtime' => ($request['session'] ?? null) === CANNED_SESSION_NAME && ($request['runtime'] ?? null) === 'headless'
         ? ['ok' => true, 'message' => 'Now running headless (no terminal)', 'name' => CANNED_HEADLESS_RESUMED_SESSION_NAME]
         : ['ok' => false, 'message' => 'Rejected: the session is busy or already running that way'],
-    'kill' => ($request['session'] ?? null) === CANNED_SESSION_NAME
-        ? ['ok' => true, 'message' => 'Killed ' . CANNED_SESSION_NAME]
+    'launch_kill' => ($request['target'] ?? null) === CANNED_SESSION_NAME && ($request['force'] ?? null) === true
+        ? ['ok' => true, 'name' => CANNED_SESSION_NAME, 'message' => 'Killed ' . CANNED_SESSION_NAME]
         : ['ok' => false, 'message' => 'Rejected: not a currently active managed session'],
     'kill_bare' => ($request['pid'] ?? null) === CANNED_BARE_PID
         ? ['ok' => true, 'message' => 'Killed tmux session sessioneer-test-adhoc (pid ' . CANNED_BARE_PID . ')']
@@ -351,26 +351,25 @@ $response = match ($action) {
     // that path is exercised thoroughly server-side in
     // test_sessions_lifecycle.php; this fixture only needs to prove the
     // HTTP layer passes the picker payload through intact.
-    'take_over_bare' => ($request['pid'] ?? null) === CANNED_BARE_PID
-        ? [
-            'ok' => true,
-            'needs_choice' => true,
-            'pid' => CANNED_BARE_PID,
-            'workdir' => '/home/user/www/some-other-project',
-            'candidates' => [[
-                'agent_session_id' => CANNED_ARCHIVED_CLAUDE_SESSION_ID,
-                'cwd' => '/home/user/www/some-other-project',
-                'title' => 'Refactor the old widget',
-                'last_activity' => time() - 3 * 86400,
-            ]],
-            'suggested_agent_session_id' => CANNED_ARCHIVED_CLAUDE_SESSION_ID,
-        ]
+    'launch_take_over' => ($request['target'] ?? null) === (string)CANNED_BARE_PID
+        ? (($request['agent_session_id'] ?? '') === ''
+            ? [
+                'ok' => true,
+                'needs_choice' => true,
+                'pid' => CANNED_BARE_PID,
+                'workdir' => '/home/user/www/some-other-project',
+                'candidates' => [[
+                    'agent_session_id' => CANNED_ARCHIVED_CLAUDE_SESSION_ID,
+                    'cwd' => '/home/user/www/some-other-project',
+                    'title' => 'Refactor the old widget',
+                    'last_activity' => time() - 3 * 86400,
+                ]],
+                'suggested_agent_session_id' => CANNED_ARCHIVED_CLAUDE_SESSION_ID,
+            ]
+            : ((string)$request['agent_session_id'] === CANNED_ARCHIVED_CLAUDE_SESSION_ID
+                ? ['ok' => true, 'message' => 'Resumed session ' . CANNED_TAKEN_OVER_SESSION_NAME . ' in /home/user/www/some-other-project', 'name' => CANNED_TAKEN_OVER_SESSION_NAME]
+                : ['ok' => false, 'message' => 'Rejected: could not take over this process']))
         : ['ok' => false, 'message' => 'Rejected: not a currently running claude process'],
-    'take_over_bare_with_id' => ($request['pid'] ?? null) === CANNED_BARE_PID
-        && (string)($request['agent_session_id'] ?? '') === CANNED_ARCHIVED_CLAUDE_SESSION_ID
-        && (string)($request['workdir'] ?? '') === '/home/user/www/some-other-project'
-        ? ['ok' => true, 'message' => 'Resumed session ' . CANNED_TAKEN_OVER_SESSION_NAME . ' in /home/user/www/some-other-project', 'name' => CANNED_TAKEN_OVER_SESSION_NAME]
-        : ['ok' => false, 'message' => 'Rejected: could not take over this process'],
     // Both real resolutions (marker-matched 'confirmed' vs the heuristic
     // 'guess') are exercised server-side in test_sessions_lifecycle.php;
     // this fixture only needs to prove the HTTP layer passes a resolved

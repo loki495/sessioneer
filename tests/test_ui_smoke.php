@@ -1497,6 +1497,21 @@ try {
     $runtimeFollow = curl_request('GET', "{$baseUrl}/classic", [], $cookieJar);
     $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
 
+    $tmuxResume = curl_request('POST', "{$baseUrl}/", [
+        '-d', 'action=resume&csrf_token=' . urlencode((string)$runtimeCsrf)
+            . '&agent_session_id=' . urlencode(CANNED_ARCHIVED_CLAUDE_SESSION_ID)
+            . '&workdir=' . urlencode('/home/user/www/old-project')
+            . '&profile=' . urlencode(CANNED_ARCHIVED_CLAUDE_PROFILE)
+            . '&runtime=tmux',
+    ], $cookieJar);
+    assert_equal('/session.php?session=' . CANNED_RESUMED_SESSION_NAME, $tmuxResume['headers']['location'] ?? '', 'POST resume (runtime=tmux): the terminal opt-in reaches the agent');
+    assert_true(
+        preg_match('#<button type="submit" name="runtime" value="tmux"[^>]*>\s*Terminal#', $archivedFragmentBody['archived_html'] ?? '') === 1,
+        'the archived row\'s Terminal button submits runtime=tmux (a resume naming no runtime is headless)'
+    );
+    $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
+
     $runtimeSwitch = curl_request('POST', "{$baseUrl}/", ['-d', 'action=switch_runtime&csrf_token=' . urlencode((string)$runtimeCsrf) . '&session=cc-20260101-1200&runtime=headless'], $cookieJar);
     assert_equal(303, $runtimeSwitch['status'], 'POST switch_runtime: 303 redirect');
     assert_equal('/session.php?session=' . CANNED_HEADLESS_RESUMED_SESSION_NAME, $runtimeSwitch['headers']['location'] ?? '', 'POST switch_runtime: redirects to the session that now carries the conversation');

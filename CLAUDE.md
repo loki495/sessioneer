@@ -260,7 +260,8 @@ Docker-spawned, makes that impossible by construction — not by convention.
    and `set_mode()`, so `Sessions.php` routes those through the interface
    instead of per-agent branches. The UI reaches it three ways: the New
    Session form's "Runs in" picker (Claude only), a "Headless" button on
-   archived Claude rows (`resume` with `runtime=headless`), and a per-row
+   archived Claude rows (`resume` with `runtime=headless`; a resume naming no
+   runtime is headless too, the **Terminal** button sends `runtime=tmux`), and a per-row
    switch button backed by the `switch_runtime` action
    (`SessionRuntimeSwitchService`: the old process is stopped completely
    before the new one starts, it refuses a busy session or one with no
@@ -323,7 +324,10 @@ Docker-spawned, makes that impossible by construction — not by convention.
    launcher creates a headless session, resumes one, or - when a sidecar
    already tracks the conversation id - sends the prompt to that session
    instead of opening a second process; a conversation held by a bare
-   terminal process is refused (Take over is the dashboard's job).
+   terminal process is refused (`--take-over`, or the dashboard's Take over,
+   which posts the same `launch_take_over`). The dashboard's `kill` and plain
+   `resume` actions are thin entries into `LaunchService::kill()` (forced) and
+   `LaunchService::launch()`, so there is one implementation of each.
    `OpenCodeSessionLauncher` creates/resumes through `OpenCodeServeClient`
    (a session's name is its `ses_*` id), applies `--model` as
    `provider/model` with the session-scoped model endpoint, and kills by

@@ -113,6 +113,9 @@ try {
     $cli(['--answer', 'questions', '--answers', '-'], '[1]');
     assert_equal([1], requests($logPath)[2]['answers'] ?? null, '--answers -: reads the JSON from stdin');
 
+    $cli(['--answer', 'blocked', '--option', '1'], '', ['SESSIONEER_SELF' => 'claude-headless-9']);
+    assert_equal('claude-headless-9', requests($logPath)[3]['from'] ?? null, '--answer inside a session names it, so the host agent can refuse');
+
     [$code, , $err] = $cli(['--answer', 'idle', '--option', '1']);
     assert_equal(1, $code, '--answer: a refusal exits 1');
     assert_contains('has no prompt waiting', $err, '--answer: with the reason');

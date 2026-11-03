@@ -197,7 +197,7 @@ as the alternative; a new session started while the manager is down fails with a
 terminal. Existing conversations move with the **Headless** button on an
 archived Claude row or the per-row switch between runtimes (the old process is
 stopped completely first, and a busy session or one with no transcript yet is
-refused); plain Resume and Take over still open a terminal session. Permission approvals, `AskUserQuestion`
+refused); Resume and Take over are headless as well, and the archived row's **Terminal** button is the opt-in to a pane. Permission approvals, `AskUserQuestion`
 (single and multi-question; any question, multi-select included, also takes a typed answer, sent as a
 `{"text": ...}` entry next to the checked option positions), plan approval, interrupt, queued messages, image
 attachments and model, permission-mode and reasoning-effort changes all work through the process's
@@ -554,9 +554,11 @@ deliberately narrow.
    switch is on the dashboard row and archived row only. The New Session form
    still offers Headless when the manager is down and fails with a message
    rather than disabling the choice.
-9. Plain Resume and Take over always open a terminal session, whatever the
-   default runtime is, and Sessioneer cannot pass `--add-dir` to a headless
-   process at start, so `/add-dir` has no way to grant another directory.
+9. Resume and Take over are headless by default (the same path as
+   `sessioneer --resume` and `--take-over`); a terminal session is an explicit
+   opt-in on an archived row and is frozen: bug fixes only. Sessioneer cannot
+   pass `--add-dir` to a headless process at start, so `/add-dir` has no way to
+   grant another directory.
 10. A Claude headless session queues concurrent permission prompts by request
     id and answers each by its own id; Claude withdrawing a request
     (`control_cancel_request`) drops only that entry, and a normally ended turn

@@ -144,8 +144,9 @@ class DashboardController extends Controller
                 if ($profile !== '') {
                     $resumeParams['profile'] = $profile;
                 }
-                if (($_POST['runtime'] ?? '') === 'headless') {
-                    $resumeParams['runtime'] = 'headless';
+                // Headless unless the Terminal button opts into a tmux pane.
+                if (in_array($_POST['runtime'] ?? '', ['headless', 'tmux'], true)) {
+                    $resumeParams['runtime'] = (string)$_POST['runtime'];
                 }
                 $result = AgentClient::agent_call($resumeParams);
                 $ok = (bool)($result['ok'] ?? false);
@@ -181,7 +182,8 @@ class DashboardController extends Controller
 
             case 'kill':
                 $requested = (string)($_POST['session'] ?? '');
-                $result = AgentClient::agent_call(['action' => 'kill', 'session' => $requested]);
+                // The CLI's `--kill --force`: the dashboard asks for its own confirmation first.
+                $result = AgentClient::agent_call(['action' => 'launch_kill', 'target' => $requested, 'force' => true]);
                 $ok = (bool)($result['ok'] ?? false);
                 $message = (string)($result['message'] ?? 'Unknown error');
                 break;
@@ -388,7 +390,7 @@ class DashboardController extends Controller
 
         $pid = (int)($_POST['pid'] ?? 0);
 
-        echo json_encode(AgentClient::agent_call(['action' => 'take_over_bare', 'pid' => $pid]));
+        echo json_encode(AgentClient::agent_call(['action' => 'launch_take_over', 'target' => (string)$pid]));
     }
 
     /**
@@ -421,13 +423,13 @@ class DashboardController extends Controller
         $this->require_post_json();
 
         $pid = (int)($_POST['pid'] ?? 0);
-        $workdir = trim((string)($_POST['workdir'] ?? ''));
         $agentSessionId = trim((string)($_POST['agent_session_id'] ?? ''));
 
+        // The working directory is the process's own, re-read on the host
+        // rather than taken from the client.
         echo json_encode(AgentClient::agent_call([
-            'action' => 'take_over_bare_with_id',
-            'pid' => $pid,
-            'workdir' => $workdir,
+            'action' => 'launch_take_over',
+            'target' => (string)$pid,
             'agent_session_id' => $agentSessionId,
         ]));
     }
