@@ -1,6 +1,6 @@
 # `sessioneer` command line
 
-`bin/sessioneer` starts, resumes or reuses a Sessioneer session from a shell, so a script, a subagent or a running session can spawn a continuation that you then watch and answer in the dashboard like any other session. It is host-side only: it talks to the host agent's socket (`$XDG_RUNTIME_DIR/sessioneer-agent.sock`, or `SESSIONEER_AGENT_SOCKET`), so access is whatever that socket's permissions allow: any process running as the same user (or in the socket's group) can launch sessions. No login, no token.
+`bin/sessioneer` starts, resumes, takes over, shows, answers and stops Sessioneer sessions from a shell, so a script, a subagent or a running session can spawn a continuation and drive it to the end, and you can still watch and answer it in the dashboard like any other session. It is host-side only: it talks to the host agent's socket (`$XDG_RUNTIME_DIR/sessioneer-agent.sock`, or `SESSIONEER_AGENT_SOCKET`), so access is whatever that socket's permissions allow: any process running as the same user (or in the socket's group) can launch sessions. No login, no token.
 
 ```bash
 # a new headless Claude session with a first prompt
@@ -17,6 +17,14 @@ sessioneer --usage
 
 # prompt from stdin, full reply as JSON
 echo "Summarise the open TODOs" | sessioneer --json -
+
+# a session is blocked on a prompt: read it, answer it
+sessioneer --show claude-headless-20261103-101500
+sessioneer --answer claude-headless-20261103-101500 --option 1 --expect Yes
+
+# a Claude running in a terminal Sessioneer did not start: list it, take it over
+sessioneer --bare
+sessioneer --take-over 12345
 ```
 
 | Option | Meaning |
@@ -33,14 +41,22 @@ echo "Summarise the open TODOs" | sessioneer --json -
 | `--no-tools` | Start a new session with no tools at all: no built-in tools (`--tools ""`) and no MCP servers (`--strict-mcp-config`), so it can only answer in text. The setting is remembered, so the session stays tool-less when it is resumed after going dormant. Only for a new session: refused with `--resume`, `--kill`, `--send`, `--list` or `--peers`, and not combinable with `--task-tools`. Claude only; not offered for `--agent ollama` or `--agent opencode`. |
 | `--allowed-tools LIST` | Claude only, new session only. Comma separated tool rules to pre-approve, passed as one argument to `claude --allowedTools` (additive to the user's settings; `--task-tools` joins the same list), for example `"WebFetch,Bash(bun run .agents/skills/*),Write(job_scraper/**)"`. The list is validated on the host agent: letters, digits, spaces and `, ( ) * . _ / : @ ~ = + # % ! ? [ ] -` only, no leading `-`, at most 2000 characters; quotes, backticks, `$`, `;`, `|`, `&`, backslash and newlines are refused. Remembered, so a dormant respawn re-applies it. Refused with `--resume`, `--kill`, `--send`, `--list`, `--peers` and `--no-tools`, and for `--agent codex`, `ollama` and `opencode`. |
 | `--disallowed-tools LIST` | Same as `--allowed-tools` but passed to `claude --disallowedTools`: the rules are always denied. Same validation and restrictions. |
-| `--kill TARGET` | Stop a headless session, by session name or conversation id. Its conversation stays resumable (it moves to the archived list). A working or blocked session is refused. For `--agent opencode` the target is a `ses_*` id: the serve session is interrupted, then deleted, and the conversation stays in `opencode.db` so the id can be resumed again. |
+| `--kill TARGET` | Stop a session, by session name or conversation id. Its conversation stays resumable (it moves to the archived list). A working or blocked session is refused. The agent is taken from the session itself, so `--agent` is only needed for an untracked OpenCode `ses_*` id. A tmux (`cc-*`, `ag-*`, ...) session is stopped too. For OpenCode the serve session is interrupted, then deleted, and the conversation stays in `opencode.db` so the id can be resumed again. A terminal process Sessioneer did not start is not killed here: `--take-over` it. |
 | `--force` | With `--kill`, stop a working or blocked session anyway (its in-flight work is lost). |
 | `--list` | List headless sessions as tab-separated name, status, conversation id and directory. |
+| `--show TARGET` | Print a tracked session (name or conversation id, any agent): name, status, agent, runtime and conversation id on the first line, then directory and branch, title, the last turn error, and the last message's text. A blocked session also prints what it is blocked on: the question, the tool's context and the numbered options (or, for a multi-question prompt, each question with its options). `--json` prints the whole reply. |
+| `--history N` | With `--show`, also print the last N transcript entries (`[role] text`; at most 200). |
+| `--answer TARGET` | Answer the session's blocked prompt, with `--option N` (the 1-based number `--show` printed; `--text "..."` sends free text with it, for example the feedback on a "No") or with `--answers JSON` (a multi-question prompt: one entry per question, each an option number, a label, `{"text": "..."}`, or a list of those for a multi-select question; `-` reads the JSON from stdin). Refused when the session has no prompt waiting, for an option the prompt does not offer, or an answer list of the wrong length. |
+| `--expect LABEL` | With `--answer --option`, refuse unless option N has this label (case aside), so a prompt that changed since `--show` is not answered blind. |
+| `--interrupt TARGET` | Stop the session's current turn, like Escape in the dashboard. |
+| `--bare` | List Claude processes running in a terminal Sessioneer did not start, as tab-separated pid, conversation id, directory and title (`-` where unknown). |
+| `--take-over TARGET` | Stop a terminal Claude (a pid from `--bare`, or the conversation id it runs) and continue its conversation as a headless session; prints the new session name. When the process cannot be matched to a conversation for certain, nothing is stopped: the candidate conversations are printed (id and title) with a suggestion, it exits 1, and `--resume ID` names the right one. |
 | `--send TARGET` | Deliver the prompt to another session (name or conversation id) from inside a session. The host agent prepends `[sessioneer peer: <name> · <workdir> · <branch>]` from its own records of the sender, so the message body cannot set it. A blocked peer accepts it and sees it when it resumes. Refused outside a session, for an unknown target, a blank message, or a message to yourself. |
+| `--as-user` | With `--send`, from a shell outside any session: deliver the message as the user's own, with no peer stamp, to any tracked session (any agent). Refused inside a session, so a peer cannot pass as the user. |
 | `--whoami` | Print this session's own name (`SESSIONEER_SELF`, or `CODEX_THREAD_ID` inside Codex); exits 1 outside a session. |
 | `--peers` | List the other live sessions in this session's git repository (worktrees included) as tab-separated name, status, branch and directory. |
 | `--usage` | Print the last known usage (quota) stats as JSON and exit 0: `agents`, one entry per agent (`claude`, `antigravity`, `opencode`, `codex`), with Claude's configured accounts nested under `agents.claude.profiles` (the default account keyed `personal`). Each entry has `label`, `ok`, `quota`, `fetched_at` (unix time, or null) and `message` (why there is no data yet). Read-only: it returns what the dashboard footer shows and never refreshes anything. Exits 1 if the host agent is unreachable. |
-| `--wait` | With a launch or resume: block until the session is idle, then print the text of its final assistant message on stdout (the session name goes to stderr). Exits 1 if the launch is refused, the turn reports an error, or `--timeout` runs out. With `--agent codex` it also waits until the last message is the assistant's reply, because a new Codex thread reads idle for a few seconds before its turn starts (an interrupted turn therefore waits until `--timeout`). For `--agent opencode` the idle check uses the serve's live `/api/session/active` map, so a turn that just started is not mistaken for a stale idle. A session waiting on a permission prompt is not idle, so it keeps being waited on: answer it in the dashboard or set `--timeout`. Not combinable with `--kill`, `--list`, `--send` or `--peers`; both that and a bad `--timeout` are refused before anything is launched. A final message with no text (only tool calls) prints an empty line. |
+| `--wait` | With a launch or resume: block until the session is idle, then print the text of its final assistant message on stdout (the session name goes to stderr). Exits 1 if the launch is refused, the turn reports an error, or `--timeout` runs out. With `--agent codex` it also waits until the last message is the assistant's reply, because a new Codex thread reads idle for a few seconds before its turn starts (an interrupted turn therefore waits until `--timeout`). For `--agent opencode` the idle check uses the serve's live `/api/session/active` map, so a turn that just started is not mistaken for a stale idle. A session waiting on a permission prompt is not idle, so it keeps being waited on: read it with `--show` and answer it with `--answer` (see [Answering a blocked session](#answering-a-blocked-session)), or set `--timeout`. Not combinable with `--kill`, `--list`, `--send`, `--peers`, `--show`, `--answer`, `--interrupt`, `--bare` or `--take-over`; both that and a bad `--timeout` are refused before anything is launched. A final message with no text (only tool calls) prints an empty line. |
 | `--timeout N` | With `--wait`, give up after N seconds (a positive integer). Default: no limit. The session keeps running after a timeout. |
 | `--json` | With `--wait`: print one JSON object on stdout instead of the plain text, on success and on failure alike — see [For programs](#for-programs). Otherwise: print the launch/list/peers reply as JSON instead of the plain output. Everything human stays on stderr. |
 
@@ -50,7 +66,26 @@ On success it prints the session name (the dashboard opens it at `session.php?se
 
 1. A session Sessioneer already tracks on that conversation (headless, dormant or tmux) **receives the prompt**; no second process is opened on the transcript. Without a prompt, nothing is sent.
 2. Otherwise the conversation is resumed as a headless session and the prompt is delivered.
-3. If the conversation is running in a terminal Sessioneer did not start, it is refused: use **Take over** in the dashboard, which stops that process.
+3. If the conversation is running in a terminal Sessioneer did not start, it is refused: use `--take-over` (or **Take over** in the dashboard), which stops that process.
+
+Resume and take over are headless by default; a tmux pane is an opt-in of the dashboard's own actions and the CLI never opens one.
+
+## Answering a blocked session
+
+An unattended session can stop on a permission or a question. `--wait` keeps waiting on it, so read it and answer from another shell:
+
+```bash
+sessioneer --show NAME                       # what it asks, with numbered options
+sessioneer --answer NAME --option 1          # allow
+sessioneer --answer NAME --option 3 --text "use the other file"    # "No" with feedback
+sessioneer --answer NAME --answers '[2]'     # a question: the second option
+```
+
+`--answer` re-reads the prompt first and refuses when none is waiting, so a late answer is not delivered to the next prompt; add `--expect LABEL` to also pin what option N means. The answer goes through the same host-agent actions as the dashboard's buttons.
+
+## Taking over a terminal Claude
+
+`--bare` lists the Claude processes Sessioneer did not start. `--take-over` stops one and continues the conversation under Sessioneer as a headless session, with the same one-writer guard as the dashboard: the process is stopped and has to be gone before the new one starts. The conversation is the one named in the process's arguments or its daemon record; when neither tells, the cwd's recent conversations are listed (the process keeps running) and you repeat with `--resume ID`.
 
 A session that is created but cannot take its prompt (for example the headless manager stopped) is reported as a failure that still names the session.
 
@@ -181,12 +216,12 @@ The binary is host-side: it needs the host agent's socket, which a container doe
 ## Design
 
 
-There is no separate "archive": stopping a session archives its conversation, exactly like the dashboard's Kill. Every launcher supports `--kill` (Claude, Codex, Ollama and OpenCode, routed by `--agent`); a terminal (tmux) session or a bare process is refused, and is stopped from the dashboard.
+There is no separate "archive": stopping a session archives its conversation, exactly like the dashboard's Kill. `--kill` works for every agent (Claude, Codex, Ollama and OpenCode, routed by the session's own agent, or `--agent`) and for a tmux session; a bare terminal process is not killed but taken over.
 
-`--usage` is the one option that is not a launcher action: it sends the dashboard's own `quota` request and prints its `agents` map with `claude_profiles` nested under the Claude entry. The other options combine only with their own modifiers (`--kill`, `--list`, `--send`, `--peers` and `--usage` are mutually exclusive).
+`--usage` is the one option that is not a launcher action: it sends the dashboard's own `quota` request and prints its `agents` map with `claude_profiles` nested under the Claude entry. The other options combine only with their own modifiers (`--kill`, `--list`, `--show`, `--answer`, `--interrupt`, `--bare`, `--take-over`, `--send`, `--peers` and `--usage` are mutually exclusive).
 
-The CLI sends one `launch`, `launch_kill`, `launch_list`, `launch_send` or `launch_peers` request to the host agent. `HostAgent\Launch\LaunchService` picks a `SessionLauncher` by agent id; the interface documents the request and reply keys for all five. Supporting another agent means one new class implementing `SessionLauncher` and one line in `LaunchService::LAUNCHERS`; the CLI and the action do not change. The optional `effort` request key is validated by each launcher; `list` rows carry the stored `effort`. Launchable agents: `claude`, `codex`, `ollama` and `opencode`.
+The CLI sends one `launch`, `launch_kill`, `launch_list`, `launch_send`, `launch_peers`, `launch_show`, `launch_answer`, `launch_interrupt`, `launch_bare` or `launch_take_over` request to the host agent. The last five are agent-independent and live in `HostAgent\Launch\SessionControl`: it resolves the target (name or conversation id) and then calls the dashboard's own `session_detail`, `answer_prompt*`, `send_escape` and `BareProcessService` code, so nothing is implemented twice. `HostAgent\Launch\LaunchService` picks a `SessionLauncher` by agent id; the interface documents the request and reply keys for all five. Supporting another agent means one new class implementing `SessionLauncher` and one line in `LaunchService::LAUNCHERS`; the CLI and the action do not change. The optional `effort` request key is validated by each launcher; `list` rows carry the stored `effort`. Launchable agents: `claude`, `codex`, `ollama` and `opencode`.
 
 `--wait` is client-side only: after the `launch` reply (sent once the prompt is accepted, so the turn has started) the CLI polls the dashboard's own `session_detail` request every 2 seconds and stops at status `idle` or a `last_turn_error`. No new host-agent action. `--json` only changes what that loop prints: the same values it already has, in one object, on success and on failure alike.
 
-Tests: `tests/test_launch.php`, `tests/test_launch_codex.php`, `tests/test_launch_ollama.php`, `tests/test_launch_opencode.php`, `tests/test_cli_usage.php`, `tests/test_cli_wait.php`.
+Tests: `tests/test_launch.php`, `tests/test_launch_codex.php`, `tests/test_launch_ollama.php`, `tests/test_launch_opencode.php`, `tests/test_launch_control.php` (show, answer, interrupt, send as user, kill, bare, take over), `tests/test_cli_control.php` (option rules, requests built, output), `tests/test_cli_usage.php`, `tests/test_cli_wait.php`.

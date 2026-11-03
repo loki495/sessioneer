@@ -313,7 +313,7 @@ Docker-spawned, makes that impossible by construction — not by convention.
    freshness).
 
    `bin/sessioneer` (docs/cli.md) is a second socket client besides the web
-   container: it sends the `launch`, `launch_kill`, `launch_list`, `launch_send` and `launch_peers` actions (peer messaging: the host agent stamps the sender from `SESSIONEER_SELF`, which every spawned session carries, or from `CODEX_THREAD_ID` in a Codex session), which `HostAgent\Launch\
+   container: it sends the `launch`, `launch_kill`, `launch_list`, `launch_send`, `launch_peers`, `launch_show`, `launch_answer`, `launch_interrupt`, `launch_bare` and `launch_take_over` actions (the last five are `HostAgent\Launch\SessionControl`, agent-independent: they resolve a session name or conversation id and run the dashboard's own detail, answer, escape and `BareProcessService` code; peer messaging: the host agent stamps the sender from `SESSIONEER_SELF`, which every spawned session carries, or from `CODEX_THREAD_ID` in a Codex session), which `HostAgent\Launch\
    LaunchService` routes to a per-agent `SessionLauncher` (the interface
    documents the request/reply keys; `ClaudeSessionLauncher`,
    `CodexSessionLauncher`, `OllamaSessionLauncher` and

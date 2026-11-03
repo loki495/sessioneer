@@ -41,6 +41,7 @@ use HostAgent\Runtimes\OllamaHeadlessRuntime;
 use HostAgent\Runtimes\OpenCodeServeClient;
 use HostAgent\Agents\AgentRegistry;
 use HostAgent\Launch\LaunchService;
+use HostAgent\Launch\SessionControl;
 
 /**
  * @return array
@@ -463,6 +464,21 @@ function sessioneer_dispatch_action(array $request): array
 
         case 'launch_peers':
             return LaunchService::peers($request);
+
+        case 'launch_show':
+            return SessionControl::show($request);
+
+        case 'launch_answer':
+            return SessionControl::answer($request);
+
+        case 'launch_interrupt':
+            return SessionControl::interrupt($request);
+
+        case 'launch_bare':
+            return SessionControl::bare();
+
+        case 'launch_take_over':
+            return SessionControl::take_over($request);
 
         case 'resume':
             $resumeWorkdir = (string)($request['workdir'] ?? '');
