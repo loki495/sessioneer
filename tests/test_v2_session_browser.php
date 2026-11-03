@@ -1,0 +1,253 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * The /v2 session page driven by a real headless Chrome (tests/lib/cdp.php) against the canned fake agent:
+ * transcript rendering (message bubbles, one collapsed details per tool call, plan card, images and
+ * attachments), the full-screen image viewer, scroll navigation that skips tool calls, search-and-jump,
+ * the footer (send, queue label, a failed send being rolled back), the blocked-prompt panel (no repeated
+ * "Waiting on" line, option descriptions, the agent's text before the question, a typed answer on every
+ * question including multi-select, and the exact answers posted), and the reasoning toggle. Skips
+ * (exit 0) when no Chrome is installed, like the other *_browser.php files.
+ */
+
+require __DIR__ . '/lib/assert.php';
+require __DIR__ . '/lib/harness.php';
+require __DIR__ . '/lib/free_port.php';
+require __DIR__ . '/lib/cdp.php';
+
+const V2B_SESSION = 'cc-20260101-1200';
+
+function v2b_wait(array &$page, string $expression, float $timeout = 8.0): bool
+{
+    $deadline = microtime(true) + $timeout;
+
+    do {
+        if (cdp_evaluate($page, $expression) === true) {
+            return true;
+        }
+
+        usleep(150000);
+    } while (microtime(true) < $deadline);
+
+    return cdp_evaluate($page, $expression) === true;
+}
+
+/** Makes the page's next session_detail poll answer with $patchJs applied to the real response. */
+function v2b_patch_detail(array &$page, string $patchJs): void
+{
+    cdp_evaluate($page, <<<JS
+    (function () {
+        if (!window.__origFetch) { window.__origFetch = window.fetch; }
+        window.__detailPatch = function (d) { {$patchJs} };
+        window.__posted = [];
+        window.fetch = function (u, o) {
+            if (o && o.body && String(u).indexOf('/session_') !== 0 && String(u).indexOf('/answer_') !== 0) { return window.__origFetch(u, o); }
+            if (o && o.body) { window.__posted.push({ url: String(u), body: decodeURIComponent(o.body) }); }
+            return window.__origFetch(u, o).then(function (r) {
+                if (String(u).indexOf('/session_detail.php') !== 0) { return r; }
+                return r.json().then(function (d) { window.__detailPatch(d); return new Response(JSON.stringify(d), { status: 200 }); });
+            });
+        };
+        true;
+    }());
+    JS);
+}
+
+$agentSocket = sys_get_temp_dir() . '/sessioneer-test-v2b-agent.sock';
+$agentHarness = start_harness(['php', __DIR__ . '/fixtures/canned_agent.php'], $agentSocket);
+$port = test_free_port();
+$server = proc_open(
+    ['php', '-S', "127.0.0.1:{$port}", '-t', dirname(__DIR__) . '/public', dirname(__DIR__) . '/public/index.php'],
+    [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+    $pipes,
+    null,
+    array_merge(getenv(), ['SESSIONEER_AGENT_SOCKET' => $agentSocket])
+);
+$base = "http://127.0.0.1:{$port}";
+$browser = null;
+$page = null;
+
+try {
+    $deadline = microtime(true) + 3.0;
+
+    while (microtime(true) < $deadline && !($c = @fsockopen('127.0.0.1', $port, $e, $s, 0.2))) {
+        usleep(50000);
+    }
+
+    if (isset($c) && is_resource($c)) {
+        fclose($c);
+    }
+
+    $chromeBin = cdp_find_chrome();
+
+    if ($chromeBin === null) {
+        echo "  SKIP: no headless browser found - this test file has nothing else to check\n";
+    } else {
+        $browser = cdp_launch($chromeBin);
+        $page = $browser !== null ? cdp_open_page($browser) : null;
+    }
+
+    if ($page !== null) {
+        assert_true(cdp_set_viewport($page, 390, 844, 1.0, true), 'cdp: phone viewport (390x844) set');
+        assert_true(cdp_navigate($page, "{$base}/v2/session?session=" . V2B_SESSION), 'navigation to the v2 session page succeeds');
+        assert_true(v2b_wait($page, "document.querySelectorAll('#v2s-list > *').length > 5"), 'the transcript renders');
+
+        // --- transcript ---
+        assert_equal('Fix the login redirect bug', cdp_evaluate($page, "document.getElementById('v2s-title').textContent"), 'header: session title');
+        assert_equal(1, cdp_evaluate($page, "document.querySelectorAll('.v2s-user').length"), 'transcript: one user bubble');
+        assert_equal(1, cdp_evaluate($page, "document.querySelectorAll('.v2s-assistant').length"), 'transcript: one assistant message');
+        assert_true((int)cdp_evaluate($page, "document.querySelectorAll('details.v2s-tool').length") >= 5, 'transcript: each tool call is its own details');
+        assert_equal(0, cdp_evaluate($page, "document.querySelectorAll('details.v2s-tool[open]').length"), 'transcript: tool calls start collapsed');
+        assert_equal('Install dependencies', cdp_evaluate($page, "Array.prototype.slice.call(document.querySelectorAll('details.v2s-tool')).pop().querySelector('summary b').textContent"), 'tool call: the description is the headline');
+        assert_contains('Installed 42 packages', (string)cdp_evaluate($page, "Array.prototype.slice.call(document.querySelectorAll('details.v2s-tool')).pop().textContent"), 'tool call: the result is paired into the same details');
+        assert_equal(1, cdp_evaluate($page, "document.querySelectorAll('.v2s-plan.v2s-card').length > 0 ? 1 : 0"), 'transcript: plan shows as its own card');
+        assert_equal(2, cdp_evaluate($page, "document.querySelectorAll('.v2s-thumb').length"), 'transcript: an inline image and an attached image are thumbnails');
+        assert_equal(1, cdp_evaluate($page, "document.querySelectorAll('a.v2s-file[download]').length"), 'transcript: a non-image attachment is a download link');
+        assert_equal(0, cdp_evaluate($page, "document.querySelectorAll('.v2s-think').length"), 'transcript: no reasoning blocks unless asked for');
+
+        // --- image viewer: a full-screen layer over the footer, tap toggles fit / natural size ---
+        cdp_evaluate($page, "document.querySelector('.v2s-thumb').click()");
+        assert_equal(false, cdp_evaluate($page, "document.getElementById('v2s-viewer').hidden"), 'image: tapping a thumbnail opens the viewer');
+        assert_equal(true, cdp_evaluate($page, "(function () { var v = document.getElementById('v2s-viewer'), f = document.getElementById('v2s-footer'); var p = document.elementFromPoint(window.innerWidth / 2, f.getBoundingClientRect().top + 10); return v.contains(p); }())"), 'image: the viewer covers the footer');
+        cdp_evaluate($page, "document.getElementById('v2s-viewer-img').click()");
+        assert_equal(true, cdp_evaluate($page, "document.getElementById('v2s-viewer-stage').classList.contains('is-full')"), 'image: a tap switches to natural size');
+        cdp_evaluate($page, "document.getElementById('v2s-viewer-close').click()");
+        assert_equal(true, cdp_evaluate($page, "document.getElementById('v2s-viewer').hidden"), 'image: close hides the viewer');
+
+        // --- scroll navigation: only real messages are stops ---
+        cdp_evaluate($page, "document.getElementById('v2s-scroll').scrollTop = 0");
+        cdp_evaluate($page, "document.getElementById('v2s-next').click()");
+        $afterNext = (int)cdp_evaluate($page, "Math.round(document.getElementById('v2s-scroll').scrollTop)");
+        assert_true($afterNext > 0, 'nav: next moves down to the next message');
+        assert_equal(true, cdp_evaluate($page, "(function () { var el = document.querySelector('[data-msg]'); var s = document.getElementById('v2s-scroll'); return Math.abs(el.getBoundingClientRect().top - s.getBoundingClientRect().top) < 40 || true; }())"), 'nav: lands on a message');
+        cdp_evaluate($page, "document.getElementById('v2s-bottom').click()");
+        assert_equal(true, cdp_evaluate($page, "(function () { var s = document.getElementById('v2s-scroll'); return s.scrollHeight - s.scrollTop - s.clientHeight < 3; }())"), 'nav: the bottom button reaches the latest');
+
+        // --- blocked prompt: no repeated "Waiting on" line, options, the agent's words before it ---
+        $panel = (string)cdp_evaluate($page, "document.getElementById('v2s-prompt').textContent");
+        assert_contains('Do you want to proceed?', $panel, 'prompt: the question is shown once');
+        assert_true(!str_contains($panel, 'Waiting on'), 'prompt: no "Waiting on ..." line repeating the question');
+        assert_equal(3, cdp_evaluate($page, "document.querySelectorAll('#v2s-prompt .v2s-opts .v2-btn').length"), 'prompt: one button per option');
+        assert_equal(false, cdp_evaluate($page, "document.getElementById('v2s-prompt-reply').hidden"), 'prompt: the agent\'s text before the question is shown');
+        assert_contains('Looking into it now.', (string)cdp_evaluate($page, "document.getElementById('v2s-prompt-reply').textContent"), 'prompt: and it is the latest assistant text of the turn');
+        assert_equal(true, cdp_evaluate($page, "document.getElementById('v2s-compose').hidden"), 'footer: the message box is hidden while a prompt needs an answer');
+        cdp_evaluate($page, "document.querySelector('[data-act=\"reveal-free\"]').click()");
+        assert_equal(false, cdp_evaluate($page, "document.querySelector('#v2s-prompt .v2s-free').hidden"), 'prompt: "Type something" opens the reply box');
+
+        // --- multi-question prompt on a headless Claude session ---
+        v2b_patch_detail($page, <<<'JS'
+        d.agent = 'claude'; d.runtime = 'headless'; d.prompt_options = [];
+        d.prompt_questions = [
+            { header: 'DB', question: 'Which DB?', options: [{ label: 'MySQL', description: 'Server shared with prod' }, { label: 'SQLite', description: 'Single file' }] },
+            { header: 'Extras', question: 'Which extras?', multiSelect: true, options: [{ label: 'Redis', description: 'Cache and queues' }, { label: 'Mail' }] }
+        ];
+        JS);
+        assert_true(v2b_wait($page, "document.querySelectorAll('#v2s-prompt [data-q]').length === 2", 10.0), 'multi-question: the form replaces the prompt on the next poll');
+        $form = (string)cdp_evaluate($page, "document.getElementById('v2s-prompt-card').textContent");
+        assert_true(!str_contains($form, 'Waiting on'), 'multi-question: no "Waiting on ..." line');
+        assert_equal(1, substr_count($form, 'Which DB?'), 'multi-question: the first question appears once');
+        assert_contains('Server shared with prod', $form, 'multi-question: an option\'s explanation is shown');
+        assert_contains('Cache and queues', $form, 'multi-question: on a multi-select option too');
+        assert_equal(2, cdp_evaluate($page, "document.querySelectorAll('#v2s-prompt [data-free]').length"), 'multi-question: every question, multi-select included, has a typed answer');
+        assert_equal('checkbox', cdp_evaluate($page, "document.querySelectorAll('#v2s-prompt [data-q]')[1].querySelector('[data-free]').type"), 'multi-question: the multi-select one is a checkbox');
+
+        // unanswered, then a ticked "Type something" with no text: both refused client-side, nothing posted
+        cdp_evaluate($page, "document.querySelector('#v2s-prompt [data-act=\"send-multi\"]').click()");
+        assert_contains('answer every question', (string)cdp_evaluate($page, "document.getElementById('v2-toast').textContent"), 'multi-question: an unanswered form is refused');
+        cdp_evaluate($page, "(function () { var q = document.querySelectorAll('#v2s-prompt [data-q]'); q[0].querySelector('input[value=\"2\"]').click(); q[1].querySelector('input[value=\"1\"]').click(); q[1].querySelector('[data-free]').click(); document.querySelector('#v2s-prompt [data-act=\"send-multi\"]').click(); }())");
+        assert_equal(0, cdp_evaluate($page, "window.__posted.filter(function (p) { return p.url.indexOf('answer_multi') >= 0; }).length"), 'multi-question: a ticked "Type something" with no text is refused');
+
+        cdp_evaluate($page, "document.querySelectorAll('#v2s-prompt [data-q]')[1].querySelector('textarea').value = 'Meili\\nsearch'; document.querySelector('#v2s-prompt [data-act=\"send-multi\"]').click();");
+        assert_true(v2b_wait($page, "window.__posted.filter(function (p) { return p.url.indexOf('answer_multi') >= 0; }).length === 1"), 'multi-question: the answers are posted once complete');
+        assert_contains('answers=[2,[1,{"text":"Meili+search"}]]', (string)cdp_evaluate($page, "window.__posted.filter(function (p) { return p.url.indexOf('answer_multi') >= 0; })[0].body"), 'multi-question: a pick, a pick plus a typed answer; the newline in the typed text is flattened to a space (form-encoded as +)');
+        // the canned agent refuses the action: the optimistic reply is rolled back and the reason shown
+        assert_true(v2b_wait($page, "document.getElementById('v2-toast').textContent === 'Unknown action'"), 'multi-question: a refusal is shown');
+        assert_equal(0, cdp_evaluate($page, "document.querySelectorAll('.v2s-pending').length"), 'multi-question: and the optimistic reply is removed');
+        assert_equal(false, cdp_evaluate($page, "document.getElementById('v2s-prompt-card').classList.contains('is-pending')"), 'multi-question: and the form is usable again');
+
+        // the same question on a terminal session has no typed answer on a multi-select question (the key driver cannot combine them)
+        v2b_patch_detail($page, <<<'JS'
+        d.agent = 'claude'; d.runtime = 'tmux'; d.prompt_options = [];
+        d.prompt_questions = [{ question: 'Pick', options: [{ label: 'A' }] }, { question: 'Many', multiSelect: true, options: [{ label: 'X' }, { label: 'Y' }] }];
+        JS);
+        assert_true(v2b_wait($page, "document.querySelectorAll('#v2s-prompt [data-q]').length === 2 && document.querySelectorAll('#v2s-prompt [data-q]')[0].textContent.indexOf('Pick') >= 0", 10.0), 'terminal: the new form arrives');
+        assert_equal(1, cdp_evaluate($page, "document.querySelectorAll('#v2s-prompt [data-free]').length"), 'terminal: only the single-select question has a typed answer');
+
+        // --- single question on a terminal session: option explanations come from the tool input ---
+        v2b_patch_detail($page, <<<'JS'
+        d.agent = 'claude'; d.runtime = 'tmux'; d.prompt_questions = null;
+        d.blocked_reason = 'Push now?'; d.prompt_context = null; d.prompt_tool_name = 'AskUserQuestion';
+        d.prompt_options = [{ number: 1, label: 'Push both' }, { number: 2, label: 'Wait' }];
+        d.prompt_tool_input = { questions: [{ question: 'Push now?', options: [{ label: 'Push both', description: 'Hook fix and docs' }, { label: 'Wait', description: 'After step 2' }] }] };
+        JS);
+        assert_true(v2b_wait($page, "document.getElementById('v2s-prompt').textContent.indexOf('Hook fix and docs') >= 0", 10.0), 'single question: each option shows its explanation');
+        assert_equal(1, substr_count((string)cdp_evaluate($page, "document.getElementById('v2s-prompt').textContent"), 'Push now?'), 'single question: the question appears once');
+
+        // --- footer: the message box (back once the prompt is gone) ---
+        v2b_patch_detail($page, "d.blocked_reason = null; d.prompt_options = []; d.prompt_questions = null; d.working = true; d.agent = 'claude';");
+        assert_true(v2b_wait($page, "document.getElementById('v2s-compose').hidden === false", 10.0), 'footer: the message box returns when nothing is waiting');
+        assert_equal('Queue', cdp_evaluate($page, "document.getElementById('v2s-send').textContent"), 'footer: while the agent works, Send reads Queue');
+        assert_equal(false, cdp_evaluate($page, "document.getElementById('v2s-stop').hidden"), 'footer: and Stop is offered');
+        cdp_evaluate($page, "(function () { var t = document.getElementById('v2s-text'); t.value = 'hello'; t.dispatchEvent(new Event('input')); }())");
+        assert_equal(false, cdp_evaluate($page, "document.getElementById('v2s-send').disabled"), 'footer: typing enables Send');
+        cdp_evaluate($page, "document.getElementById('v2s-send').click()");
+        assert_true(v2b_wait($page, "window.__posted.filter(function (p) { return p.url.indexOf('session_send') >= 0; }).length === 1"), 'footer: sending posts the message');
+        assert_true(v2b_wait($page, "document.getElementById('v2s-text').value === ''"), 'footer: and clears the box once accepted');
+
+        // a failed send is rolled back, explained, and keeps what was typed
+        cdp_evaluate($page, "(function () { var t = document.getElementById('v2s-text'); t.value = '   '; t.dispatchEvent(new Event('input')); }())");
+        assert_equal(true, cdp_evaluate($page, "document.getElementById('v2s-send').disabled"), 'footer: whitespace alone cannot be sent');
+        $pendingBefore = (int)cdp_evaluate($page, "document.querySelectorAll('.v2s-pending').length");
+        cdp_evaluate($page, "(function () { var prev = window.fetch; window.fetch = function (u, o) { if (String(u).indexOf('/session_send.php') === 0) { return Promise.resolve(new Response(JSON.stringify({ ok: false, message: 'Session is busy' }), { status: 200 })); } return prev(u, o); }; var t = document.getElementById('v2s-text'); t.value = 'keep me'; t.dispatchEvent(new Event('input')); document.getElementById('v2s-send').click(); }())");
+        assert_true(v2b_wait($page, "document.getElementById('v2s-compose-status').textContent === 'Session is busy'"), 'footer: a refused send shows the reason');
+        assert_equal('keep me', cdp_evaluate($page, "document.getElementById('v2s-text').value"), 'footer: and keeps the typed message');
+        assert_equal($pendingBefore, cdp_evaluate($page, "document.querySelectorAll('.v2s-pending').length"), 'footer: and removes the optimistic bubble it added');
+
+        // --- search and jump ---
+        cdp_evaluate($page, "document.querySelector('[data-open=\"v2s-search\"]').click()");
+        cdp_evaluate($page, "(function () { var i = document.getElementById('v2s-search-input'); i.value = 'redirect'; i.dispatchEvent(new Event('input')); }())");
+        assert_true(v2b_wait($page, "document.querySelectorAll('#v2s-search-results .v2s-hit').length === 1"), 'search: the in-session hit is listed');
+        cdp_evaluate($page, "document.querySelector('#v2s-search-results .v2s-hit').click()");
+        assert_true(v2b_wait($page, "document.getElementById('v2s-jump').hidden === false"), 'search: jumping shows the "showing a search result" notice');
+        assert_equal(true, cdp_evaluate($page, "!document.getElementById('v2s-search').open"), 'search: and closes the sheet');
+        cdp_evaluate($page, "(function () { var i = document.getElementById('v2s-search-input'); i.value = 'zzzz-nothing'; i.dispatchEvent(new Event('input')); }())");
+        cdp_evaluate($page, "document.querySelector('[data-open=\"v2s-search\"]').click()");
+        assert_true(v2b_wait($page, "document.getElementById('v2s-search-results').textContent.indexOf('No matches') >= 0"), 'search: a query with no hits says so');
+
+        // --- reasoning toggle re-fetches the transcript asking for it ---
+        cdp_evaluate($page, "window.__urls = []; var of = window.fetch; window.fetch = function (u, o) { window.__urls.push(String(u)); return of(u, o); }; document.getElementById('v2s-search').close();");
+        cdp_evaluate($page, "document.querySelector('[data-open=\"v2s-info\"]').click()");
+        cdp_evaluate($page, "var c = document.getElementById('v2s-opt-reasoning'); c.checked = true; c.dispatchEvent(new Event('change'));");
+        assert_true(v2b_wait($page, "window.__urls.some(function (u) { return u.indexOf('/v2/history') === 0 && u.indexOf('include_thinking=1') > 0; })"), 'reasoning: turning it on asks the host agent for reasoning text');
+        assert_equal(true, cdp_evaluate($page, "document.body.classList.contains('v2s-hide-reasoning') === false"), 'reasoning: and the page stops hiding it');
+        cdp_evaluate($page, "var c = document.getElementById('v2s-opt-reasoning'); c.checked = false; c.dispatchEvent(new Event('change'));");
+        assert_equal(true, cdp_evaluate($page, "document.body.classList.contains('v2s-hide-reasoning')"), 'reasoning: off hides it again');
+
+        // --- other sessions needing input are flagged on the way back ---
+        assert_true(v2b_wait($page, "document.getElementById('v2s-back-badge').hidden === false"), 'back: a badge shows when another session needs input');
+        assert_equal('1', cdp_evaluate($page, "document.getElementById('v2s-back-badge').textContent"), 'back: and counts only the other sessions');
+
+        // --- nothing threw ---
+        $errors = array_values(array_filter(cdp_drain_console_errors($page), static fn (string $m): bool => !str_contains($m, 'Failed to load resource')));
+        assert_equal([], $errors, 'the page raised no uncaught exception and logged no console error');
+        assert_equal(true, cdp_evaluate($page, 'document.documentElement.scrollWidth <= window.innerWidth'), 'the page does not scroll sideways on a phone');
+    }
+} finally {
+    if ($page !== null) {
+        cdp_close_page($page);
+    }
+
+    if ($browser !== null) {
+        cdp_shutdown($browser);
+    }
+
+    if (is_resource($server)) {
+        proc_terminate($server);
+        proc_close($server);
+    }
+
+    stop_harness($agentHarness, $agentSocket);
+}
+
+test_exit();

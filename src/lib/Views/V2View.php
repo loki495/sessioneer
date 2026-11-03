@@ -19,6 +19,12 @@ class V2View extends View
         return self::render('v2/dashboard', $data);
     }
 
+    /** @param array<string, mixed> $data */
+    public static function session_page(array $data): string
+    {
+        return self::render('v2/session', $data);
+    }
+
     /**
      * @param array<int, array<string, mixed>> $sessions
      * @return array{total:int, blocked:int, working:int, idle:int}

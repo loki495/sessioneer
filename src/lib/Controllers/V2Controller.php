@@ -47,6 +47,58 @@ class V2Controller extends Controller
         ]);
     }
 
+    /**
+     * The session page. Only the detail is rendered into the page (header,
+     * controls, prompt); the transcript is fetched by v2-session.js from the
+     * classic session_history.php, so there is one renderer for the first
+     * page, load-earlier and live polling alike.
+     */
+    public function session(): void
+    {
+        AuthService::start_app_session();
+
+        $sessionName = trim((string)($_GET['session'] ?? ''));
+
+        if ($sessionName === '') {
+            header('Location: /v2', true, 303);
+
+            return;
+        }
+
+        $csrfToken = AuthService::csrf_token();
+        AuthService::close_app_session();
+
+        $detail = AgentClient::agent_call(['action' => 'session_detail', 'session' => $sessionName]);
+        $jumpLine = isset($_GET['jump_line']) ? (int)$_GET['jump_line'] : 0;
+
+        echo V2View::session_page([
+            'sessionName' => $sessionName,
+            'csrfToken' => $csrfToken,
+            'found' => (bool)($detail['ok'] ?? false),
+            'detail' => $detail,
+            'jumpLine' => $jumpLine > 0 ? $jumpLine : null,
+        ]);
+    }
+
+    /**
+     * The classic session_history.php plus `include_thinking`, which only the
+     * v2 page asks for (the classic renderers have no block kind for it).
+     */
+    public function history(): void
+    {
+        $this->start_readonly_json();
+
+        echo json_encode(AgentClient::agent_call([
+            'action' => 'session_history',
+            'session' => (string)($_GET['session'] ?? ''),
+            'before' => isset($_GET['before']) ? (int)$_GET['before'] : null,
+            'limit' => isset($_GET['limit']) ? (int)$_GET['limit'] : 30,
+            'after' => isset($_GET['after']) ? (int)$_GET['after'] : null,
+            'until_user' => ($_GET['until_user'] ?? '') === '1',
+            'include_thinking' => ($_GET['include_thinking'] ?? '') === '1',
+        ]));
+    }
+
     /** Polled by v2.js: the same `list` call as the classic fragment, rendered as v2 cards. */
     public function fragment(): void
     {
@@ -201,8 +253,8 @@ class V2Controller extends Controller
     }
 
     /**
-     * A call that lands on a live session: the page opens it (the classic
-     * session page for now) instead of just showing a message.
+     * A call that lands on a live session: the page opens it (in the v2
+     * session page) instead of just showing a message.
      *
      * @param array<string, mixed> $params
      * @return array<string, mixed>
@@ -214,7 +266,7 @@ class V2Controller extends Controller
         $out = ['ok' => $ok, 'message' => $ok && $okMessage !== null ? $okMessage : (string)($result['message'] ?? 'Unknown error')];
 
         if ($ok && is_string($result['name'] ?? null) && $result['name'] !== '') {
-            $out['redirect'] = '/session.php?session=' . urlencode($result['name']);
+            $out['redirect'] = '/v2/session?session=' . urlencode($result['name']);
         }
 
         return $out;

@@ -81,3 +81,6 @@ test_launch_opencode.php 5
 test_same_origin.php 1
 test_session_rename.php 1
 test_sessioneer_client.php 1
+test_v2_session.php 3
+test_v2_session_agent.php 1
+test_v2_session_browser.php 12

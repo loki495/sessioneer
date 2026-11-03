@@ -28,6 +28,8 @@ $router->post('/', [DashboardController::class, 'handleAction']);
 // The redesigned UI, served beside the classic one.
 $router->get('/v2', [V2Controller::class, 'index']);
 $router->get('/v2/', [V2Controller::class, 'index']);
+$router->get('/v2/session', [V2Controller::class, 'session']);
+$router->get('/v2/history', [V2Controller::class, 'history']);
 $router->get('/v2/fragment', [V2Controller::class, 'fragment']);
 $router->get('/v2/archived', [V2Controller::class, 'archived']);
 $router->get('/v2/action', [V2Controller::class, 'action']);

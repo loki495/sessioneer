@@ -442,8 +442,9 @@ deliberately narrow.
 ## Shared UI and platform features
 
 - UI v2: a mobile-first redesign at `/v2` beside the classic UI, sharing its data and actions
-  (the dashboard exists so far; details and coverage in `docs/v2-ui.md`). The classic dashboard
-  links to it and `/v2` links back.
+  (the dashboard and the session page exist so far; details, coverage and what is deferred in
+  `docs/v2-ui.md`). The classic dashboard links to it and `/v2` links back; a v2 session page links
+  to its classic twin.
 - Starring: the star on a session card (dashboard and sidebar) stores a `starred` flag in the
   session's sidecar. The list orders starred sessions first, then blocked, working and idle, each
   newest activity first. "Hide idle unstarred" (dashboard and sidebar, kept in localStorage) hides
