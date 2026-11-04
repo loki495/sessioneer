@@ -99,6 +99,52 @@ class V2Controller extends Controller
         ]));
     }
 
+    /**
+     * A dormant conversation: the same page shell as the live session page,
+     * booted read only. Its transcript comes from archivedHistory().
+     */
+    public function archivedSession(): void
+    {
+        AuthService::start_app_session();
+
+        $agentSessionId = trim((string)($_GET['agent_session_id'] ?? ''));
+
+        if ($agentSessionId === '') {
+            header('Location: /v2', true, 303);
+
+            return;
+        }
+
+        $csrfToken = AuthService::csrf_token();
+        AuthService::close_app_session();
+
+        $detail = AgentClient::agent_call(['action' => 'archived_session_detail', 'agent_session_id' => $agentSessionId]);
+        $jumpLine = isset($_GET['jump_line']) ? (int)$_GET['jump_line'] : 0;
+
+        echo V2View::session_page([
+            'sessionName' => $agentSessionId,
+            'archived' => true,
+            'csrfToken' => $csrfToken,
+            'found' => (bool)($detail['ok'] ?? false),
+            'detail' => $detail,
+            'jumpLine' => $jumpLine > 0 ? $jumpLine : null,
+        ]);
+    }
+
+    /** The classic archived_session_history call as JSON entries, the shape /v2/history returns. */
+    public function archivedHistory(): void
+    {
+        $this->start_readonly_json();
+
+        echo json_encode(AgentClient::agent_call([
+            'action' => 'archived_session_history',
+            'agent_session_id' => (string)($_GET['agent_session_id'] ?? ''),
+            'before' => isset($_GET['before']) ? (int)$_GET['before'] : null,
+            'limit' => isset($_GET['limit']) ? (int)$_GET['limit'] : 30,
+            'after' => isset($_GET['after']) ? (int)$_GET['after'] : null,
+        ]));
+    }
+
     /** Polled by v2.js: the same `list` call as the classic fragment, rendered as v2 cards. */
     public function fragment(): void
     {

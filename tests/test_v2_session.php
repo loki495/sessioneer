@@ -15,6 +15,7 @@ require_once __DIR__ . '/lib/free_port.php';
 
 const V2S_SESSION = 'cc-20260101-1200';
 const V2S_NEW_SESSION = 'cc-20260101-1600';
+const V2S_ARCHIVED = '99999999-8888-4777-a666-555555555555';
 
 /** @return array{process: resource, port: int}|null */
 function v2s_start_server(string $agentSocket): ?array
@@ -144,6 +145,35 @@ try {
     $plan = json_decode(curl_request('GET', "{$base}/session_plan_files.php?session=" . V2S_SESSION, [], $jar)['body'], true);
     assert_equal(['PLAN.md', 'handoff-2026-08-08.md'], array_column($plan['files'] ?? [], 'name'), 'files: plan/handoff list');
 
+    // --- archived-session page ---
+    $arch = curl_request('GET', "{$base}/v2/archived-session?agent_session_id=" . V2S_ARCHIVED . '&jump_line=5', [], $jar);
+    assert_equal(200, $arch['status'], 'GET /v2/archived-session: 200');
+    assert_contains('<title>Refactor the old widget</title>', $arch['body'], 'archived page: titled with the conversation title');
+    $archBoot = v2s_bootstrap($arch['body']);
+    assert_equal(true, $archBoot['archived'] ?? null, 'archived page: bootstrap says archived');
+    assert_equal(V2S_ARCHIVED, $archBoot['session'] ?? null, 'archived page: the conversation id is the session key');
+    assert_equal(5, $archBoot['jumpLine'] ?? null, 'archived page: jump_line is handed to the script');
+    assert_true(preg_match('#src="/js/v2-archived\.js\?v=\d+"#', $arch['body']) === 1, 'archived page: loads v2-archived.js');
+    assert_true(!str_contains($arch['body'], 'v2-session-sheets.js') && !str_contains($arch['body'], 'v2s-controls'), 'archived page: none of the live-only sheets');
+    assert_contains('/v2/archived-session?agent_session_id=' . V2S_ARCHIVED, $arch['body'], 'archived page: "Back to latest" stays on the archived view');
+    assert_true(!str_contains($arch['body'], 'tailwind.css') && !str_contains($arch['body'], 'data-classic-link'), 'archived page: no classic stylesheet or link');
+    $archHistory = json_decode(curl_request('GET', "{$base}/v2/archived-history?agent_session_id=" . V2S_ARCHIVED . '&limit=30', [], $jar)['body'], true);
+    assert_true(($archHistory['ok'] ?? false) === true && count($archHistory['entries'] ?? []) > 5, 'GET /v2/archived-history: entries returned');
+    assert_equal(true, $archHistory['has_more'] ?? null, 'GET /v2/archived-history: paging flags passed through');
+    assert_equal(false, json_decode(curl_request('GET', "{$base}/v2/archived-history?agent_session_id=nope", [], $jar)['body'], true)['ok'] ?? null, 'archived history for an unknown conversation: ok=false');
+    $archMissing = curl_request('GET', "{$base}/v2/archived-session?agent_session_id=nope", [], $jar);
+    assert_contains('Session not found.', $archMissing['body'], 'archived page for an unknown conversation: says so');
+    assert_true(!str_contains($archMissing['body'], 'window.V2S'), 'archived page for an unknown conversation: no script boots');
+    $archNone = curl_request('GET', "{$base}/v2/archived-session", [], $jar);
+    assert_equal(303, $archNone['status'], 'archived page with no id: redirects');
+    assert_equal('/v2', $archNone['headers']['location'] ?? null, 'archived page with no id: to the v2 dashboard');
+    assert_contains('Session not found.', curl_request('GET', "{$downBase}/v2/archived-session?agent_session_id=" . V2S_ARCHIVED)['body'], 'archived page with the agent down: still renders a message');
+    $dashArchived = json_decode(curl_request('GET', "{$base}/v2/archived", [], $jar)['body'], true);
+    assert_contains('href="/v2/archived-session?agent_session_id=' . V2S_ARCHIVED . '"', $dashArchived['archived_html'] ?? '', 'archived list rows open the v2 archived page');
+    assert_true(!str_contains($dashArchived['archived_html'] ?? '', '/archived_session.php'), 'archived list rows no longer link to the classic page');
+    $v2js = (string)file_get_contents(dirname(__DIR__) . '/public/js/v2-session-sheets.js') . (string)file_get_contents(dirname(__DIR__) . '/public/js/v2.js');
+    assert_true(!str_contains($v2js, '/archived_session.php'), 'search results: archived hits link to the v2 page');
+
     // --- sad paths ---
     $noCsrf = curl_request('POST', "{$base}/session_send.php", ['-d', 'session=' . V2S_SESSION . '&message=hi'], $jar);
     assert_equal(403, $noCsrf['status'], 'footer send without a CSRF token: 403');
@@ -175,7 +205,7 @@ try {
     assert_true(!str_contains($classic['body'], 'v2-session'), 'classic session page: loads none of the v2 files');
 
     // --- scripts: plain ES5 (no transpiler, mobile Safari), and they parse ---
-    foreach (['v2-session.js', 'v2-session-sheets.js'] as $file) {
+    foreach (['v2-session.js', 'v2-session-sheets.js', 'v2-archived.js'] as $file) {
         $path = dirname(__DIR__) . '/public/js/' . $file;
         $code = (string)file_get_contents($path);
         $stripped = preg_replace(['#/\*.*?\*/#s', '#(?<![:\'"\\\\])//[^\n]*#'], '', $code) ?? $code;

@@ -1,4 +1,5 @@
 <?php
+$archived = !empty($archived);
 $title = $found ? (string)($detail['title'] ?? $detail['name'] ?? $sessionName) : 'Sessioneer';
 $this->layout('v2/layout', ['title' => $title]);
 ?>
@@ -20,6 +21,7 @@ $this->layout('v2/layout', ['title' => $title]);
 // JSON_HEX_*: transcript text can contain </script>, which must not end this tag.
 $bootstrap = json_encode([
     'session' => $sessionName,
+    'archived' => $archived,
     'csrfToken' => $csrfToken,
     'detail' => $detail,
     'jumpLine' => $jumpLine,
@@ -32,9 +34,11 @@ $bootstrap = json_encode([
       <span class="v2s-title" id="v2s-title"><?= $this->e($title) ?></span>
       <span class="v2s-sub" id="v2s-sub"></span>
     </button>
+    <?php if (!$archived): ?>
     <button type="button" class="v2s-mini" id="v2s-mini" data-open="v2s-quota" aria-label="Usage and context" hidden></button>
     <button type="button" class="v2-icon-btn" data-open="v2s-sessions" aria-label="Sessions">&#9776;</button>
     <button type="button" class="v2-icon-btn" data-open="v2s-quota" aria-label="Usage and context">&#9201;</button>
+    <?php endif ?>
     <button type="button" class="v2-icon-btn" data-open="v2s-search" aria-label="Search this session">&#9906;</button>
     <button type="button" class="v2-icon-btn" data-open="v2s-info" aria-label="Session menu">&#8943;</button>
   </header>
@@ -43,7 +47,7 @@ $bootstrap = json_encode([
     <div class="v2s-col">
       <div id="v2s-jump" class="v2s-notice" hidden>
         <span>Showing a search result</span>
-        <a href="/v2/session?session=<?= urlencode($sessionName) ?>" class="v2-inline-link">Back to latest &rarr;</a>
+        <a href="<?= $archived ? '/v2/archived-session?agent_session_id=' : '/v2/session?session=' ?><?= urlencode($sessionName) ?>" class="v2-inline-link">Back to latest &rarr;</a>
       </div>
       <div id="v2s-older" class="v2s-older" hidden>
         <button type="button" class="v2-btn" id="v2s-load-older">Load older</button>
@@ -63,7 +67,9 @@ $bootstrap = json_encode([
         <button type="button" class="v2s-navbtn" id="v2s-prev" aria-label="Previous message">&#9650;</button>
         <button type="button" class="v2s-navbtn" id="v2s-next" aria-label="Next message">&#9660;</button>
         <button type="button" class="v2s-navbtn" id="v2s-bottom" aria-label="Jump to latest">&#10515;<i class="v2s-newdot" id="v2s-newdot" hidden></i></button>
+        <?php if (!$archived): ?>
         <button type="button" class="v2s-ctrlbtn" id="v2s-ctrl-open" data-open="v2s-controls"><span id="v2s-ctrl-summary">Controls</span> &#9662;</button>
+        <?php endif ?>
       </div>
       <div id="v2s-compose" class="v2s-compose">
         <div id="v2s-attached" class="v2s-attached" hidden></div>
@@ -82,6 +88,24 @@ $bootstrap = json_encode([
 </div>
 
 <?php /* ---- sheets ---- */ ?>
+<?php if ($archived): ?>
+<?php /* the dialogs v2-archived.js drives */ ?>
+<dialog class="v2-sheet" id="v2s-search"><div class="v2-sheet-body">
+  <div class="v2-sheet-head"><h2>Search</h2><button type="button" class="v2-icon-btn" data-close aria-label="Close">&times;</button></div>
+  <input type="search" id="v2s-search-input" placeholder="Search messages" autocomplete="off" enterkeyhint="search">
+  <div class="v2-row">
+    <label class="v2-check"><input type="radio" name="v2s-scope" value="session" checked> This conversation</label>
+    <label class="v2-check"><input type="radio" name="v2s-scope" value="global"> All sessions</label>
+  </div>
+  <div id="v2s-search-results" class="v2-col"></div>
+</div></dialog>
+
+<dialog class="v2-sheet" id="v2s-info"><div class="v2-sheet-body">
+  <div class="v2-sheet-head"><h2>Archived session</h2><button type="button" class="v2-icon-btn" data-close aria-label="Close">&times;</button></div>
+  <section class="v2s-sec"><h3 class="v2-subtitle">Details</h3><div id="v2s-info-body" class="v2-col"></div></section>
+  <section class="v2s-sec"><h3 class="v2-subtitle">Actions</h3><div id="v2s-info-actions" class="v2s-row-actions"></div></section>
+</div></dialog>
+<?php else: ?>
 <dialog class="v2-sheet" id="v2s-controls"><div class="v2-sheet-body">
   <div class="v2-sheet-head"><h2>Session controls</h2><button type="button" class="v2-icon-btn" data-close aria-label="Close">&times;</button></div>
   <div id="v2s-controls-body" class="v2-col"></div>
@@ -134,6 +158,8 @@ $bootstrap = json_encode([
   </section>
 </div></dialog>
 
+<?php endif ?>
+
 <div class="v2s-viewer" id="v2s-viewer" hidden>
   <div class="v2s-viewer-bar">
     <button type="button" class="v2-btn" id="v2s-viewer-close">Close</button>
@@ -156,6 +182,11 @@ $bootstrap = json_encode([
 <script>window.V2S = <?= $bootstrap ?>;</script>
 <script src="<?= \App\Assets::versioned_url('/js/markdown.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/v2-sheets.js') ?>"></script>
+<?php if ($archived): ?>
+<script src="<?= \App\Assets::versioned_url('/js/v2-session.js') ?>"></script>
+<script src="<?= \App\Assets::versioned_url('/js/v2-archived.js') ?>"></script>
+<?php else: ?>
 <script src="<?= \App\Assets::versioned_url('/js/v2-quota.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/v2-session.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/v2-session-sheets.js') ?>"></script>
+<?php endif ?>
