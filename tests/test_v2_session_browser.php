@@ -159,7 +159,8 @@ try {
         cdp_evaluate($page, "(function () { var q = document.querySelectorAll('#v2s-prompt [data-q]'); q[0].querySelector('input[value=\"2\"]').click(); q[1].querySelector('input[value=\"1\"]').click(); q[1].querySelector('[data-free]').click(); document.querySelector('#v2s-prompt [data-act=\"send-multi\"]').click(); }())");
         assert_equal(0, cdp_evaluate($page, "window.__posted.filter(function (p) { return p.url.indexOf('answer_multi') >= 0; }).length"), 'multi-question: a ticked "Type something" with no text is refused');
 
-        cdp_evaluate($page, "document.querySelectorAll('#v2s-prompt [data-q]')[1].querySelector('textarea').value = 'Meili\\nsearch'; document.querySelector('#v2s-prompt [data-act=\"send-multi\"]').click();");
+        cdp_evaluate($page, "document.querySelectorAll('#v2s-prompt [data-q]')[1].querySelector('textarea').value = 'Meili\\nsearch'; document.querySelector('#v2s-prompt [data-act=\"send-multi\"]').click(); window.__optRows = document.querySelectorAll('.v2s-pending .v2s-qa-row').length;");
+        assert_equal(2, cdp_evaluate($page, 'window.__optRows'), 'multi-question: the optimistic reply shows one Question / Answer row per question');
         assert_true(v2b_wait($page, "window.__posted.filter(function (p) { return p.url.indexOf('answer_multi') >= 0; }).length === 1"), 'multi-question: the answers are posted once complete');
         assert_contains('answers=[2,[1,{"text":"Meili+search"}]]', (string)cdp_evaluate($page, "window.__posted.filter(function (p) { return p.url.indexOf('answer_multi') >= 0; })[0].body"), 'multi-question: a pick, a pick plus a typed answer; the newline in the typed text is flattened to a space (form-encoded as +)');
         // the canned agent refuses the action: the optimistic reply is rolled back and the reason shown
@@ -174,6 +175,18 @@ try {
         JS);
         assert_true(v2b_wait($page, "document.querySelectorAll('#v2s-prompt [data-q]').length === 2 && document.querySelectorAll('#v2s-prompt [data-q]')[0].textContent.indexOf('Pick') >= 0", 10.0), 'terminal: the new form arrives');
         assert_equal(1, cdp_evaluate($page, "document.querySelectorAll('#v2s-prompt [data-free]').length"), 'terminal: only the single-select question has a typed answer');
+
+
+        // --- answered questions become Question / Answer rows ---
+        $answered = 'User has answered your questions: "Which DB?"="SQLite", "Extras (Redis, Mail)"="Redis, Meili search". You can now continue with the user\'s answers in mind.';
+        $rows = cdp_evaluate($page, 'JSON.stringify(V2S.api.parseAnswered(' . json_encode($answered) . '))');
+        assert_equal('[{"q":"Which DB?","a":"SQLite"},{"q":"Extras (Redis, Mail)","a":"Redis, Meili search"}]', $rows, 'answers: the Claude Code result text is split into question / answer pairs');
+        assert_equal('null', cdp_evaluate($page, "JSON.stringify(V2S.api.parseAnswered('Installed 42 packages'))"), 'answers: any other tool result is left alone');
+        assert_equal('null', cdp_evaluate($page, "JSON.stringify(V2S.api.parseAnswered('User has answered your questions: nothing parseable'))"), 'answers: an unparseable answer falls back to the raw text');
+        $tricky = 'User has answered your questions: "Pick one"="He said "no", then left". You can now continue.';
+        cdp_evaluate($page, 'V2S.api.rememberAnswers([{q: "Pick one", a: "He said \"no\", then left"}])');
+        assert_equal('[{"q":"Pick one","a":"He said \"no\", then left"}]', cdp_evaluate($page, 'JSON.stringify(V2S.api.parseAnswered(' . json_encode($tricky) . '))'), 'answers: the pairs this browser sent are preferred over the regex');
+        assert_contains('v2s-qa-row', (string)cdp_evaluate($page, "V2S.api.answerRows([{q: 'A', a: 'B'}])"), 'answers: rendered as rows');
 
         // --- single question on a terminal session: option explanations come from the tool input ---
         v2b_patch_detail($page, <<<'JS'

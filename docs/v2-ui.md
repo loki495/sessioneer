@@ -66,7 +66,7 @@ Covered: live session list with status/agent/account/runtime/worker/starred
 state and ordering, needs-input / working / idle filters, one-tap answers to
 single-question prompts, star, rename, kill, move between headless and
 terminal, new session (agent, account, runtime, model, starting mode, task
-tools, folder browser with new folder), "Hide idle unstarred", "Show worker
+tools, an optional first message for headless and API agents, folder browser with new folder), "Hide idle unstarred", "Show worker
 sessions", poll interval, kill inactive > 12h, bare-process list with kill,
 lazy archived list with filter, Resume (terminal) and Resume headless, content
 search across live and archived sessions with Archive/Unarchive, usage meters
@@ -129,6 +129,15 @@ arrived off screen. The controls button opens model, permission mode and effort
 (Claude), the model catalog (Codex with effort, OpenCode, Ollama) or the fixed
 Antigravity list; each change posts to the classic endpoint and the next poll
 shows what the session actually ended up with.
+
+**Answered questions.** An answered question form (Claude Code's and OpenCode's
+`User has answered your questions: "Q"="A", ...` result) is drawn as Question /
+Answer rows instead of one paragraph, and so is the optimistic reply sent from the
+page. The text is parsed with a regex, with the exact pairs this browser sent
+(kept in `localStorage`, the last 12 per session) preferred, because a quote inside
+an answer is ambiguous; text that does not match stays raw. OpenCode's in-transcript
+question block carries the whole result text (`answer_output`). Codex writes no
+recognizable answer text in its transcript, so its answers stay as they are.
 
 **Sessions and usage popups.** The bar's list button (or a swipe from the right
 screen edge) opens a popup of every session: needs-input first, then working, then

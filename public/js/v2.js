@@ -68,7 +68,9 @@
   // One path for every dashboard action: show the outcome, follow a redirect, refresh the list.
   function runAction(params, doneMessage) {
     return postJson('/v2/action', params).then(function (res) {
-      if (res.ok && res.redirect) { window.location.href = res.redirect; return res; }
+      if (res.ok && res.redirect) {
+        if (res.notice) { try { sessionStorage.setItem('v2-notice', res.notice); } catch (e) {} }
+        window.location.href = res.redirect; return res; }
       toast(res.ok ? (res.message || doneMessage || 'Done') : (res.message || 'Failed'), !res.ok);
       if (res.ok) { poll(); }
       return res;
@@ -406,11 +408,20 @@
     if (HEADLESS_ONLY[agent] && modelSel.options.length > 1) { modelSel.selectedIndex = 1; }
   }
 
+  // A first message goes to headless and API sessions only; a terminal session is still starting up.
+  function updatePromptField() {
+    var tmux = agentSel.value === 'antigravity' || (agentSel.value === 'claude' && runtimeSel.value === 'tmux');
+    document.getElementById('v2-new-prompt-wrap').hidden = tmux;
+    document.getElementById('v2-new-prompt').disabled = tmux;
+  }
+  runtimeSel.addEventListener('change', updatePromptField);
+
   function onAgentChange() {
     var agent = agentSel.value;
     var headlessOnly = HEADLESS_ONLY[agent] === true;
     runtimeWrap.hidden = agent !== 'claude';
     runtimeSel.disabled = agent !== 'claude';
+    updatePromptField();
     $all('[data-agent-field]', newForm).forEach(function (f) {
       f.hidden = headlessOnly;
       $all('select, input', f).forEach(function (c) { c.disabled = headlessOnly; });
@@ -519,6 +530,8 @@
     if (!profileSel.disabled && profileSel.value) { p.profile = profileSel.value; }
     var mode = document.getElementById('v2-new-mode');
     if (!mode.disabled && mode.value) { p.starting_mode = mode.value; }
+    var promptEl = document.getElementById('v2-new-prompt');
+    if (!promptEl.disabled && promptEl.value.trim()) { p.prompt = promptEl.value.trim(); }
     var tools = document.getElementById('v2-new-tasktools');
     if (!tools.disabled && tools.checked) { p.enable_task_tools = '1'; }
     submitBtn.disabled = true;

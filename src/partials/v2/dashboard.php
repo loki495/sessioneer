@@ -149,6 +149,10 @@
     </label>
     <label class="v2-check" data-agent-field><input type="checkbox" id="v2-new-tasktools"> Enable task tracking tools</label>
 
+    <label class="v2-field" id="v2-new-prompt-wrap">First message (optional)
+      <textarea id="v2-new-prompt" name="prompt" rows="3" placeholder="Sent as soon as the session starts"></textarea>
+    </label>
+
     <div class="v2-field">Working directory
       <div class="v2-browser">
         <div class="v2-browser-bar"><code id="v2-browser-path">Loading&hellip;</code><button type="button" class="v2-link-btn" id="v2-new-folder">+ Folder</button></div>
