@@ -18,6 +18,7 @@ require __DIR__ . '/lib/cdp.php';
 
 const V2B_SESSION = 'cc-20260101-1200';
 const V2B_BLOCKED = 'cc-20260101-1300';
+const V2B_ARCHIVED = '99999999-8888-4777-a666-555555555555';
 
 function v2b_wait(array &$page, string $expression, float $timeout = 8.0): bool
 {
@@ -328,6 +329,28 @@ try {
         cdp_evaluate($page, "Object.defineProperty(history, 'length', { value: 1, configurable: true });");
         cdp_evaluate($page, $swipe(100, 260));
         assert_true(v2b_wait($page, "location.pathname === '/v2'"), 'swipe: with nothing to go back to, a right swipe opens the dashboard');
+
+        // --- archived conversation: read-only transcript, Resume, search and jump ---
+        assert_true(cdp_navigate($page, "{$base}/v2/archived-session?agent_session_id=" . V2B_ARCHIVED), 'navigation to the v2 archived page succeeds');
+        assert_true(v2b_wait($page, "document.querySelectorAll('#v2s-list > *').length > 5"), 'archived: the transcript renders');
+        assert_equal('Refactor the old widget', cdp_evaluate($page, "document.getElementById('v2s-title').textContent"), 'archived: header title');
+        assert_contains('Archived', (string)cdp_evaluate($page, "document.getElementById('v2s-sub').textContent"), 'archived: header says archived');
+        assert_equal(true, cdp_evaluate($page, "document.getElementById('v2s-compose').hidden"), 'archived: no message box');
+        assert_equal(false, cdp_evaluate($page, "document.getElementById('v2s-older').hidden"), 'archived: older messages can be loaded');
+        assert_equal(true, cdp_evaluate($page, "document.getElementById('v2s-load-until-user').hidden"), 'archived: no "back to last message" stop');
+        assert_equal(0, cdp_evaluate($page, "document.querySelectorAll('#v2s-prompt > *').length"), 'archived: no prompt panel');
+
+        cdp_evaluate($page, "document.querySelector('[data-open=\"v2s-search\"]').click()");
+        assert_equal(true, cdp_evaluate($page, "document.getElementById('v2s-search').open"), 'archived: search opens');
+        cdp_evaluate($page, "(function () { var i = document.getElementById('v2s-search-input'); i.value = 'widget'; i.dispatchEvent(new Event('input')); }())");
+        assert_true(v2b_wait($page, "document.querySelectorAll('#v2s-search-results button.v2s-hit').length === 1"), 'archived: in-conversation search finds the hit');
+        cdp_evaluate($page, "document.querySelector('#v2s-search-results button.v2s-hit').click()");
+        assert_equal(false, cdp_evaluate($page, "document.getElementById('v2s-search').open"), 'archived: choosing a hit closes the search');
+        assert_true(v2b_wait($page, "document.getElementById('v2s-jump').hidden === false"), 'archived: jumping shows the "Showing a search result" notice');
+
+        cdp_evaluate($page, "window.__posted = []; var of = window.fetch; window.fetch = function (u, o) { if (o && o.body) { window.__posted.push({ url: String(u), body: decodeURIComponent(o.body) }); } return of(u, o); }; true");
+        cdp_evaluate($page, "document.getElementById('v2s-resume').click()");
+        assert_true(v2b_wait($page, "location.pathname === '/v2/session'"), 'archived: Resume (headless) lands on the new live session');
     }
 } finally {
     if ($page !== null) {

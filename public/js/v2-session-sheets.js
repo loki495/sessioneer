@@ -377,7 +377,7 @@
       var first = r.matches[0].line;
       var url = r.session_name
         ? '/v2/session?session=' + encodeURIComponent(r.session_name) + '&jump_line=' + encodeURIComponent(first)
-        : '/archived_session.php?agent_session_id=' + encodeURIComponent(r.agent_session_id) + '&jump_line=' + encodeURIComponent(first);
+        : '/v2/archived-session?agent_session_id=' + encodeURIComponent(r.agent_session_id) + '&jump_line=' + encodeURIComponent(first);
       return '<a class="v2s-hit" href="' + url + '"><b>' + esc(r.title) + (r.session_name ? ' · live' : '') + '</b>'
         + r.matches.map(function (m) { return '<span class="v2-result-snippet">' + highlight(String(m.snippet || ''), query) + '</span>'; }).join('') + '</a>';
     }).join('') : '<p class="v2-muted v2-center">No matches</p>';

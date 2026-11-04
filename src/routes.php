@@ -30,6 +30,8 @@ $router->get('/v2', [V2Controller::class, 'index']);
 $router->get('/v2/', [V2Controller::class, 'index']);
 $router->get('/v2/session', [V2Controller::class, 'session']);
 $router->get('/v2/history', [V2Controller::class, 'history']);
+$router->get('/v2/archived-session', [V2Controller::class, 'archivedSession']);
+$router->get('/v2/archived-history', [V2Controller::class, 'archivedHistory']);
 $router->get('/v2/fragment', [V2Controller::class, 'fragment']);
 $router->get('/v2/archived', [V2Controller::class, 'archived']);
 $router->get('/v2/action', [V2Controller::class, 'action']);

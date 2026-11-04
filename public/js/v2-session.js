@@ -18,6 +18,8 @@
   var session = boot.session;
   var csrf = boot.csrfToken;
   var detail = boot.detail || {};
+  // A dormant conversation: same transcript renderer, no polling, no composer.
+  var ARCH = !!boot.archived;
 
   // ---- storage (a private-mode Safari throws on access) ----
   function load(key, fallback) {
@@ -161,7 +163,8 @@
       out += '<img class="v2s-thumb" data-act="image" src="' + src + '" data-full="' + src + '" loading="lazy" alt="Image">';
     }
     (block.attachments || []).forEach(function (a) {
-      var url = '/session_attachment.php?' + qs({ session: session, line: line, file_uuid: a.file_uuid });
+      var url = ARCH ? '/archived_session_attachment.php?' + qs({ agent_session_id: session, line: line, file_uuid: a.file_uuid })
+        : '/session_attachment.php?' + qs({ session: session, line: line, file_uuid: a.file_uuid });
       if (a.isImage) {
         out += '<span><img class="v2s-thumb" data-act="image" src="' + esc(url) + '" data-full="' + esc(url) + '" loading="lazy" alt="' + esc(a.filename) + '"></span>';
       } else {
@@ -415,6 +418,14 @@
     var p = { session: session, limit: 30 };
     if (prefs.reasoning) { p.include_thinking = 1; }
     Object.keys(extra).forEach(function (k) { p[k] = extra[k]; });
+
+    if (ARCH) {
+      delete p.session;
+      p.agent_session_id = session;
+      delete p.include_thinking;
+
+      return '/v2/archived-history?' + qs(p);
+    }
 
     return '/v2/history?' + qs(p);
   }
@@ -842,6 +853,17 @@
     $('v2s-sub').innerHTML = bits.join('');
   }
 
+  function renderArchivedHeader(d) {
+    var title = d.title || session;
+    $('v2s-title').textContent = title;
+    document.title = title;
+    var bits = ['<span class="v2-chip">Archived</span>'];
+    if (d.agent && d.agent !== 'claude') { bits.push('<span class="v2-chip v2-agent-' + esc(d.agent) + '">' + esc(d.agent_label || d.agent) + '</span>'); }
+    if (d.agent === 'claude' && d.profile) { bits.push('<span class="v2-chip v2-chip-accent">' + esc(d.profile) + '</span>'); }
+    if (d.last_activity) { bits.push('<span>' + esc(relTime(new Date(d.last_activity * 1000).toISOString())) + '</span>'); }
+    $('v2s-sub').innerHTML = bits.join('');
+  }
+
   var lastThinking = null;
   function renderThinking(d, optimistic) {
     var show = (!!d.working || !!optimistic) && !d.blocked_reason;
@@ -1044,6 +1066,7 @@
   }
 
   function pollNow() {
+    if (ARCH) { return Promise.resolve(); }
     if (running) { queuedAgain = true; return Promise.resolve(); }
     running = true;
     var near = nearBottom();
@@ -1221,9 +1244,16 @@
   textEl.value = load(DRAFT_KEY, '');
   document.body.classList.toggle('v2s-hide-reasoning', !prefs.reasoning);
   document.body.classList.toggle('v2s-hide-subagent', !prefs.subagent);
-  render(detail);
-  grow(); updateSend(); sizeFooter();
-  loadFirstPage(T.jump).then(function () { pollNow(); schedule(); });
+  if (ARCH) {
+    renderArchivedHeader(detail);
+    $('v2s-compose').hidden = true;
+    sizeFooter();
+    loadFirstPage(T.jump);
+  } else {
+    render(detail);
+    grow(); updateSend(); sizeFooter();
+    loadFirstPage(T.jump).then(function () { pollNow(); schedule(); });
+  }
   pollOthers();
   setInterval(pollOthers, OTHERS_EVERY_MS);
 }());

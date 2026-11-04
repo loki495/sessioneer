@@ -5,15 +5,15 @@ host-agent data and calls the same actions; nothing in the classic UI changes
 except one "Try the new UI" link on its dashboard. `/v2` has a "Classic" link in
 its app bar and a "Back to classic" button in Settings and Status.
 
-The dashboard and the session page exist so far. A session card opens the v2
-session page (which links back to the classic one); the archived-session and
-file views move over in later steps.
+The dashboard, the session page and the archived-session page exist so far. A
+session card opens the v2 session page (which links back to the classic one),
+an archived row the v2 archived page; the file views move over in later steps.
 
 ## What it is made of
 
 | Piece | Where |
 |---|---|
-| Routes `/v2`, `/v2/`, `/v2/session`, `/v2/history`, `/v2/fragment`, `/v2/archived`, `/v2/action` | `src/routes.php` |
+| Routes `/v2`, `/v2/`, `/v2/session`, `/v2/history`, `/v2/archived-session`, `/v2/archived-history`, `/v2/fragment`, `/v2/archived`, `/v2/action` | `src/routes.php` |
 | Pages, poll fragment, archived list, history, JSON action endpoint | `src/lib/Controllers/V2Controller.php` |
 | Render helpers (card, counts, archived and bare rows, session page) | `src/lib/Views/V2View.php` |
 | Templates | `src/partials/v2/` |
@@ -191,8 +191,8 @@ rename, take over a terminal session (headless), open in classic, kill. Then the
 screen), plan and handoff files, uploaded files (open, delete, delete all); view
 options: show reasoning text, show subagent calls, confirm answers, poll
 interval. **Search** looks through this session (jumping to the hit, with a
-"Back to latest" notice) or all sessions (live ones open in v2, archived ones in
-the classic archived view).
+"Back to latest" notice) or all sessions (live ones open in the session page,
+archived ones in the archived page).
 
 Reasoning text: the toggle re-fetches the transcript with `include_thinking`.
 Claude Code writes empty reasoning blocks for models that do not persist it, so
@@ -211,11 +211,28 @@ task list, uploads, in-session and all-session search, rename, star, kill, switc
 runtime, resume command, copy buttons, other-sessions-need-input badge, one
 message up and down, zoomable images, light and dark.
 
-Deferred: Web Push subscribe, the archived-session view (cards for archived
-sessions still open the classic one), pending messages surviving a reload
+Deferred: Web Push subscribe, pending messages surviving a reload
 (classic keeps them in localStorage), the "New content" divider and per-block
 highlight colours of the classic page (new entries flash instead), and the full-screen
 text editor for long drafts.
+
+## Archived-session page (`/v2/archived-session?agent_session_id=<id>`)
+
+A dormant conversation opens in the same page shell as the session page,
+booted read only (`archived: true` in the bootstrap, `jump_line` supported).
+The transcript comes from `/v2/archived-history` (the classic
+`archived_session_history` call as JSON entries, rendered by the same
+`v2-session.js` code, so bubbles, tool calls, images and attachments match the
+live page); there is no polling and no composer. `v2-archived.js` adds the
+details sheet, search and **Resume**: a footer button and a details-sheet action
+posting `resume` (headless, with the account) to `/v2/action` and following the
+redirect into the new live session. That is also how an archived conversation is
+unarchived. Search covers this conversation (jumping to the hit) and all
+sessions (live hits open the session page, archived ones this page). Archived
+rows on the dashboard and archived search hits link here. The classic JSON
+endpoints it uses (`archived_session_search.php`, `archived_session_attachment.php`,
+`search_sessions.php`) are the v2 API and stay. Antigravity conversations (no
+headless form) show no Resume.
 
 ## Host-agent additions for the session page
 
