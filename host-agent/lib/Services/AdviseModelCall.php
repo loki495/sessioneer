@@ -77,7 +77,9 @@ final class AdviseModelCall
     }
 
     /**
-     * The default runner: one non-interactive, tool-less turn on the user's own login.
+     * The default runner: one non-interactive turn on the user's own login. Claude runs with no tools and no MCP.
+     * Codex has no tool-off switch: it runs read-only, with no network, in an empty scratch directory, so
+     * the only way out for anything it reads is its answer, which is cut to one capped line.
      *
      * @param array{agent:string,profile:?string,model:string} $candidate
      */
@@ -142,11 +144,19 @@ final class AdviseModelCall
         return self::redact(substr($text, -self::TAIL_CHARS));
     }
 
-    /** Secret-shaped text must not leave the box inside a model prompt (same patterns as QuickPromptService::scrub). */
-    private static function redact(string $text): string
+    /** Secret-shaped text must not leave the box inside a model prompt. Broader than QuickPromptService::scrub (which is private and truncates). */
+    public static function redact(string $text): string
     {
-        $text = preg_replace('/\b(?:token|secret|password|passwd|api[_-]?key|authorization|bearer)\b\s*[=:]?\s*\S+/i', '[redacted]', $text) ?? '';
-        return preg_replace('/\b[A-Za-z0-9_\-]{24,}\b/', '[redacted]', $text) ?? '';
+        $rules = [
+            '/-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/s' => '[redacted key]',
+            '#://[^\s/@]+@#' => '://[redacted]@',
+            '/(?<![A-Za-z0-9])(?:token|secret|password|passwd|api[_-]?key|authorization|bearer)(?![A-Za-z0-9])["\']?\s*[=:]?\s*["\']?(?:bearer\s+)?[^\s"\']+/i' => '[redacted]',
+            '/(?<![A-Za-z0-9])[A-Za-z0-9_\-+\/.=]{24,}(?![A-Za-z0-9])/' => '[redacted]',
+        ];
+        foreach ($rules as $pattern => $replacement) {
+            $text = preg_replace($pattern, $replacement, $text) ?? '';
+        }
+        return $text;
     }
 
     /** @param array<string,mixed>|null $quota */
