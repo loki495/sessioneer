@@ -331,14 +331,7 @@
   archivedMore.addEventListener('click', function () { archivedLimit += ARCHIVED_PAGE; renderArchivedPage(); });
 
   // ---- usage (status tab) ----
-  var QUOTA_LABELS = { session: '5-hour', week_all: 'Week', week_fable: 'Week (Fable)' };
   var quotaAt = 0;
-
-  function meter(label, pct) {
-    var cls = pct >= 100 ? ' is-full' : (pct >= 80 ? ' is-high' : '');
-    return '<div class="v2-meter"><div class="v2-meter-top"><span>' + esc(label) + '</span><b>' + Math.round(pct) + '%</b></div>'
-      + '<div class="v2-meter-bar"><span class="' + cls.trim() + '" style="width:' + Math.min(100, Math.max(0, pct)) + '%"></span></div></div>';
-  }
 
   function loadQuota() {
     if (Date.now() - quotaAt < 30000) { return; }
@@ -346,19 +339,7 @@
     var box = document.getElementById('v2-quota');
     fetch('/quota.php', { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
-      .then(function (data) {
-        var html = '';
-        var agents = (data && data.agents) || {};
-        Object.keys(agents).forEach(function (id) {
-          var a = agents[id];
-          if (!a || !a.ok || !a.quota) { return; }
-          var rows = Object.keys(a.quota).filter(function (k) { return a.quota[k] && typeof a.quota[k].pct === 'number'; });
-          if (rows.length === 0) { return; }
-          html += '<h3 class="v2-subtitle">' + esc(a.label || id) + '</h3>';
-          rows.forEach(function (k) { html += meter(QUOTA_LABELS[k] || (a.quota[k].group_name ? a.quota[k].group_name + ' ' + k : k), a.quota[k].pct); });
-        });
-        box.innerHTML = html || '<span class="v2-muted v2-small">No usage data available.</span>';
-      })
+      .then(function (data) { box.innerHTML = V2Quota.render(data); })
       .catch(function () { quotaAt = 0; box.innerHTML = '<span class="v2-muted v2-small">Could not load usage.</span>'; });
   }
 

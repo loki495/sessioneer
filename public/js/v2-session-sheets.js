@@ -179,6 +179,8 @@
   function buildInfo(d) {
     var body = $('v2s-info-body');
     var html = '';
+    html += kv('Session name', d.title || d.name, true);
+    html += kv('Session', session, true);
     html += kv('Session ID', d.agent_session_id, true);
     html += kv('Working directory', d.workdir, true);
     html += kv('Resume in a terminal', resumeCommand(d), true);
@@ -444,6 +446,64 @@
   });
 
   // ======================================================================
+  // sessions popup (replaces the classic sidebar list) and usage popup
+  // ======================================================================
+
+  var sessionRows = [];
+  function statusOfRow(x) { return x.blocked_reason ? 'blocked' : (x.working ? 'working' : 'idle'); }
+  function renderSessionRows() {
+    var q = $('v2s-sessions-filter').value.trim().toLowerCase();
+    var order = { blocked: 0, working: 1, idle: 2 };
+    var rows = sessionRows.filter(function (x) {
+      return !q || (String(x.title || '') + ' ' + x.name + ' ' + String(x.workdir || '')).toLowerCase().indexOf(q) !== -1;
+    }).sort(function (a, b) {
+      return (order[statusOfRow(a)] - order[statusOfRow(b)]) || ((b.starred ? 1 : 0) - (a.starred ? 1 : 0)) || ((b.activity || 0) - (a.activity || 0));
+    });
+    $('v2s-sessions-list').innerHTML = rows.length ? rows.map(function (x) {
+      var st = statusOfRow(x);
+      var folder = String(x.workdir || '').replace(/\/+$/, '').split('/').pop();
+      return '<div class="v2s-srow' + (x.name === session ? ' is-current' : '') + '">'
+        + '<a class="v2s-srow-main" href="/v2/session?session=' + encodeURIComponent(x.name) + '"><i class="v2-dot v2-dot-' + st + '" role="img" aria-label="' + (st === 'blocked' ? 'needs input' : st) + '"></i>'
+        + '<span class="v2s-srow-text"><b>' + esc(x.title || x.name) + '</b><small>' + esc(folder) + '</small></span></a>'
+        + '<button type="button" class="v2-icon-btn" data-star="' + esc(x.name) + '" aria-pressed="' + (x.starred ? 'true' : 'false') + '" aria-label="' + (x.starred ? 'Unstar' : 'Star') + '">' + (x.starred ? '&#9733;' : '&#9734;') + '</button></div>';
+    }).join('') : '<p class="v2-muted v2-center">No sessions</p>';
+  }
+  function loadSessions() {
+    $('v2s-sessions-list').innerHTML = '<p class="v2-muted v2-center">Loading…</p>';
+    api.getJson('/sessions_list.php').then(function (data) {
+      if (!data || !data.ok) { $('v2s-sessions-list').innerHTML = '<p class="v2-muted v2-center">' + esc((data && data.message) || 'Could not load sessions') + '</p>'; return; }
+      sessionRows = data.sessions || [];
+      renderSessionRows();
+    }).catch(function () { $('v2s-sessions-list').innerHTML = '<p class="v2-muted v2-center">Network error</p>'; });
+  }
+  $('v2s-sessions-filter').addEventListener('input', renderSessionRows);
+  $('v2s-sessions-list').addEventListener('click', function (e) {
+    var b = closest(e.target, '[data-star]');
+    if (!b) { return; }
+    var name = b.getAttribute('data-star');
+    var row = sessionRows.filter(function (x) { return x.name === name; })[0];
+    if (!row) { return; }
+    var on = !row.starred;
+    api.post('/session_star.php', { session: name, starred: on ? '1' : '0' }).then(function (res) {
+      if (!res || !res.ok) { api.toast((res && res.message) || 'Could not star', true); return; }
+      row.starred = on;
+      if (name === session) { api.detail().starred = on; }
+      renderSessionRows();
+    }).catch(function () { api.toast('Network error', true); });
+  });
+
+  function loadQuota() {
+    var box = $('v2s-quota-body');
+    box.innerHTML = '<p class="v2-muted v2-center">Loading…</p>';
+    api.getJson('/quota.php?' + api.qs({ session: session })).then(function (data) {
+      var d = api.detail();
+      var pct = data && data.context && typeof data.context.pct === 'number' ? data.context.pct : d.context_used_percentage;
+      var ctx = typeof pct === 'number' && isFinite(pct) ? '<p class="v2s-ctx">This session has used <b>' + Math.round(pct) + '%</b> of its context.</p>' : '';
+      box.innerHTML = ctx + window.V2Quota.render(data, { first: d.agent || 'claude' });
+    }).catch(function () { box.innerHTML = '<p class="v2-muted v2-center">Could not load usage.</p>'; });
+  }
+
+  // ======================================================================
   // opening sheets
   // ======================================================================
 
@@ -451,6 +511,8 @@
     var dlg = $(id);
     if (id === 'v2s-controls') { buildControls(api.detail()); }
     if (id === 'v2s-info') { buildInfo(api.detail()); syncOptions(); loadPlanFiles(); loadUploads(); }
+    if (id === 'v2s-sessions') { $('v2s-sessions-filter').value = ''; loadSessions(); }
+    if (id === 'v2s-quota') { loadQuota(); }
     if (id === 'v2s-search') { setTimeout(function () { searchInput.focus(); }, 50); }
     if (!dlg.open) { dlg.showModal(); }
   }

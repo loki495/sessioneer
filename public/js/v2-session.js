@@ -1093,11 +1093,39 @@
       // A pinch-zoom also shrinks the visual viewport; the shell must not chase that.
       var h = Math.abs(vv.scale - 1) < 0.02 ? vv.height : window.innerHeight;
       shell.style.setProperty('--vvh', Math.round(h) + 'px');
+      // iOS scrolls the layout viewport under the keyboard; a fixed shell must follow that offset or it slides off screen.
+      shell.style.setProperty('--vvtop', (Math.abs(vv.scale - 1) < 0.02 ? Math.round(vv.offsetTop) : 0) + 'px');
       if (nearBottom()) { toBottom(); }
     };
     window.visualViewport.addEventListener('resize', fit);
+    window.visualViewport.addEventListener('scroll', fit);
+    window.addEventListener('scroll', function () { if (window.scrollY) { window.scrollTo(0, 0); } });
   }
   window.addEventListener('resize', sizeFooter);
+
+  // Edge swipes only (so wide code blocks still scroll sideways): from the left edge back to the dashboard,
+  // from the right edge the sessions popup.
+  var EDGE_PX = 20, SWIPE_PX = 70, swipe = null;
+  function overlayOpen() {
+    return !!document.querySelector('dialog[open], .v2s-viewer:not([hidden]), .v2s-fullscreen:not([hidden])');
+  }
+  document.addEventListener('touchstart', function (e) {
+    var t = e.touches[0];
+    swipe = null;
+    if (e.touches.length !== 1 || overlayOpen()) { return; }
+    if (t.clientX <= EDGE_PX) { swipe = { side: 'left', x: t.clientX, y: t.clientY }; }
+    else if (t.clientX >= window.innerWidth - EDGE_PX) { swipe = { side: 'right', x: t.clientX, y: t.clientY }; }
+  }, { passive: true });
+  document.addEventListener('touchend', function (e) {
+    var s = swipe;
+    swipe = null;
+    if (!s || !e.changedTouches.length) { return; }
+    var dx = e.changedTouches[0].clientX - s.x;
+    var dy = e.changedTouches[0].clientY - s.y;
+    if (Math.abs(dy) > Math.abs(dx) / 1.5) { return; }
+    if (s.side === 'left' && dx >= SWIPE_PX) { window.location.href = '/v2'; }
+    else if (s.side === 'right' && dx <= -SWIPE_PX) { V2S.api.openSheet('v2s-sessions'); }
+  }, { passive: true });
 
   // ======================================================================
   // public API for v2-session-sheets.js

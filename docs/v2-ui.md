@@ -130,6 +130,20 @@ arrived off screen. The controls button opens model, permission mode and effort
 Antigravity list; each change posts to the classic endpoint and the next poll
 shows what the session actually ended up with.
 
+**Sessions and usage popups.** The bar's list button (or a swipe from the right
+screen edge) opens a popup of every session: needs-input first, then working, then
+idle, starred first within each, a filter box, a star toggle per row, tap to switch.
+A swipe from the left screen edge returns to the dashboard; both swipes start within
+20px of the edge so wide code blocks scroll normally, and are ignored while a popup
+is open. The gauge button opens this session's context share and the usage meters
+(this session's agent first, every Claude account when several are configured),
+rendered by `public/js/v2-quota.js`, shared with the dashboard's Status tab: a thin
+divider between agents and a reset time in Pacific time plus a relative one. The
+Status tab's Health section is collapsed when every check passes. While a popup,
+viewer or full-screen text is open the page behind it does not scroll. The keyboard
+fix (the shell follows the visual viewport's offset as well as its height) cannot be
+exercised off a real iPhone.
+
 **Images.** A thumbnail opens a full-screen layer above the footer and every
 sheet; tapping toggles fit and natural size (scroll to pan), and pinch zoom is the
 browser's own. "Open original" opens the file.
@@ -160,13 +174,11 @@ task list, uploads, in-session and all-session search, rename, star, kill, switc
 runtime, resume command, copy buttons, other-sessions-need-input badge, one
 message up and down, zoomable images, light and dark.
 
-Deferred: the quota footer (5h/weekly meters; the Status tab on the dashboard
-has them), Web Push subscribe, the archived-session view (cards for archived
+Deferred: Web Push subscribe, the archived-session view (cards for archived
 sessions still open the classic one), pending messages surviving a reload
 (classic keeps them in localStorage), the "New content" divider and per-block
-highlight colours of the classic page (new entries flash instead), the full-screen
-text editor for long drafts, swipe gestures, and the sidebar's session list (the
-back button and the bottom tab bar replace it).
+highlight colours of the classic page (new entries flash instead), and the full-screen
+text editor for long drafts.
 
 ## Host-agent additions for the session page
 
