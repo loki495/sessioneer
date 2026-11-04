@@ -1154,9 +1154,11 @@
     grow(); updateSend();
     if (textEl.value) { save(DRAFT_KEY, textEl.value); } else { drop(DRAFT_KEY); }
   });
-  // Plain Enter is a newline (pasted logs are common); Shift+Enter sends, like the classic page.
+  // Plain Enter is a newline (pasted logs are common); Shift+Enter sends, like the classic page. Not on a
+  // touch screen: a soft keyboard reports shiftKey whenever it is in its capitalised state (the start of
+  // a sentence), so Enter would send at random there; the Send button does.
   textEl.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); sendMessage(); }
+    if (e.key === 'Enter' && e.shiftKey && !(window.matchMedia && window.matchMedia('(pointer: coarse)').matches)) { e.preventDefault(); sendMessage(); }
   });
   $('v2s-attach-btn').addEventListener('click', function () { $('v2s-file').click(); });
   $('v2s-file').addEventListener('change', function (e) {
