@@ -525,7 +525,7 @@ function sessioneer_dispatch_action(array $request): array
             return BareProcessService::kill_bare_process((int)($request['pid'] ?? 0));
 
         case 'take_over_bare':
-            return BareProcessService::take_over_bare_process((int)($request['pid'] ?? 0));
+            return BareProcessService::take_over_bare_process((int)($request['pid'] ?? 0), ($request['runtime'] ?? null) === RuntimeType::HEADLESS);
 
         case 'bare_process_detail':
             return BareProcessService::resolve_bare_process_detail((int)($request['pid'] ?? 0));
@@ -534,7 +534,8 @@ function sessioneer_dispatch_action(array $request): array
             return BareProcessService::take_over_bare_process_with_id(
                 (int)($request['pid'] ?? 0),
                 (string)($request['workdir'] ?? ''),
-                (string)($request['agent_session_id'] ?? '')
+                (string)($request['agent_session_id'] ?? ''),
+                ($request['runtime'] ?? null) === RuntimeType::HEADLESS
             );
 
         case 'answer_prompt':

@@ -32,6 +32,7 @@ $bootstrap = json_encode([
       <span class="v2s-title" id="v2s-title"><?= $this->e($title) ?></span>
       <span class="v2s-sub" id="v2s-sub"></span>
     </button>
+    <button type="button" class="v2s-mini" id="v2s-mini" data-open="v2s-quota" aria-label="Usage and context" hidden></button>
     <button type="button" class="v2-icon-btn" data-open="v2s-sessions" aria-label="Sessions">&#9776;</button>
     <button type="button" class="v2-icon-btn" data-open="v2s-quota" aria-label="Usage and context">&#9201;</button>
     <button type="button" class="v2-icon-btn" data-open="v2s-search" aria-label="Search this session">&#9906;</button>

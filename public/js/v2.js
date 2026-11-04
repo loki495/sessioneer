@@ -194,10 +194,20 @@
         });
         break;
       case 'switch':
-        var target = el.getAttribute('data-runtime');
-        if (window.confirm('Move ' + name + ' to ' + (target === 'headless' ? 'a headless session (no terminal)' : 'a terminal (tmux) session') + '? The conversation continues; the current process is stopped.')) {
-          runAction({ action: 'switch_runtime', session: name, runtime: target });
+        if (window.confirm('Take over ' + name + ' as a headless session? The conversation continues; the terminal process is stopped.')) {
+          runAction({ action: 'switch_runtime', session: name, runtime: 'headless' });
         }
+        break;
+      case 'take-over':
+        if (!window.confirm('Take over process ' + el.getAttribute('data-pid') + ' as a headless session? The terminal process is stopped.')) { break; }
+        el.disabled = true;
+        postJson('/v2/action', { action: 'take_over', pid: el.getAttribute('data-pid') }).then(function (res) {
+          el.disabled = false;
+          if (res.ok && res.needs_choice) { openTakeOverPicker(res); return; }
+          if (res.ok && res.redirect) { window.location.href = res.redirect; return; }
+          toast(res.ok ? (res.message || 'Done') : (res.message || 'Failed'), !res.ok);
+          if (res.ok) { poll(); }
+        }).catch(function () { el.disabled = false; toast('Network error', true); });
         break;
       case 'kill':
         if (window.confirm('Kill session ' + name + '?')) { runAction({ action: 'kill', session: name }, 'Session killed'); }
@@ -225,11 +235,33 @@
       case 'resume':
         var p = { action: 'resume', agent_session_id: el.getAttribute('data-id'), workdir: el.getAttribute('data-workdir') };
         if (el.getAttribute('data-profile')) { p.profile = el.getAttribute('data-profile'); }
-        if (el.getAttribute('data-runtime')) { p.runtime = el.getAttribute('data-runtime'); }
         el.disabled = true;
         runAction(p).then(function () { el.disabled = false; });
         break;
     }
+  });
+
+  // ---- take-over picker: nothing was stopped yet; a human picks which conversation the process was running ----
+  var takeDialog = document.getElementById('v2-takeover-dialog');
+  var takeSel = document.getElementById('v2-takeover-select');
+  var takeCtx = null;
+  function openTakeOverPicker(res) {
+    takeCtx = res;
+    while (takeSel.options.length) { takeSel.remove(0); }
+    (res.candidates || []).forEach(function (c) {
+      var o = document.createElement('option');
+      o.value = c.agent_session_id;
+      o.textContent = (c.title || c.agent_session_id) + (c.last_activity ? ' - ' + new Date(c.last_activity * 1000).toLocaleString() : '');
+      if (c.agent_session_id === res.suggested_agent_session_id) { o.selected = true; }
+      takeSel.appendChild(o);
+    });
+    document.getElementById('v2-takeover-none').hidden = takeSel.options.length > 0;
+    document.getElementById('v2-takeover-go').disabled = takeSel.options.length === 0;
+    takeDialog.showModal();
+  }
+  document.getElementById('v2-takeover-go').addEventListener('click', function () {
+    takeDialog.close();
+    runAction({ action: 'take_over_confirm', pid: takeCtx.pid, workdir: takeCtx.workdir, agent_session_id: takeSel.value });
   });
 
   // ---- search ----
@@ -379,8 +411,6 @@
   var agentSel = document.getElementById('v2-new-agent');
   var profileSel = document.getElementById('v2-new-profile');
   var profileWrap = document.getElementById('v2-new-profile-wrap');
-  var runtimeSel = document.getElementById('v2-new-runtime');
-  var runtimeWrap = document.getElementById('v2-new-runtime-wrap');
   var modelSel = document.getElementById('v2-new-model');
   var submitBtn = document.getElementById('v2-new-submit');
   var pathEl = document.getElementById('v2-browser-path');
@@ -408,20 +438,9 @@
     if (HEADLESS_ONLY[agent] && modelSel.options.length > 1) { modelSel.selectedIndex = 1; }
   }
 
-  // A first message goes to headless and API sessions only; a terminal session is still starting up.
-  function updatePromptField() {
-    var tmux = agentSel.value === 'antigravity' || (agentSel.value === 'claude' && runtimeSel.value === 'tmux');
-    document.getElementById('v2-new-prompt-wrap').hidden = tmux;
-    document.getElementById('v2-new-prompt').disabled = tmux;
-  }
-  runtimeSel.addEventListener('change', updatePromptField);
-
   function onAgentChange() {
     var agent = agentSel.value;
     var headlessOnly = HEADLESS_ONLY[agent] === true;
-    runtimeWrap.hidden = agent !== 'claude';
-    runtimeSel.disabled = agent !== 'claude';
-    updatePromptField();
     $all('[data-agent-field]', newForm).forEach(function (f) {
       f.hidden = headlessOnly;
       $all('select, input', f).forEach(function (c) { c.disabled = headlessOnly; });
@@ -522,7 +541,6 @@
     e.preventDefault();
     if (!workdir) { return; }
     var p = { action: 'new', workdir: workdir, agent: agentSel.value };
-    if (!runtimeSel.disabled) { p.runtime = runtimeSel.value; }
     if (modelSel.value) {
       p.model = modelSel.value;
       p.model_provider = modelSel.options[modelSel.selectedIndex].getAttribute('data-provider') || '';

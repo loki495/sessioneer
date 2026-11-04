@@ -175,6 +175,9 @@ try {
         JS);
         assert_true(v2b_wait($page, "document.querySelectorAll('#v2s-prompt [data-q]').length === 2 && document.querySelectorAll('#v2s-prompt [data-q]')[0].textContent.indexOf('Pick') >= 0", 10.0), 'terminal: the new form arrives');
         assert_equal(1, cdp_evaluate($page, "document.querySelectorAll('#v2s-prompt [data-free]').length"), 'terminal: only the single-select question has a typed answer');
+        assert_equal(0, cdp_evaluate($page, "document.querySelectorAll('#v2s-prompt button:not([disabled]), #v2s-prompt input:not([disabled]), #v2s-prompt textarea:not([disabled])').length"), 'terminal: the prompt is shown but nothing in it can be answered');
+        assert_equal(true, cdp_evaluate($page, "document.getElementById('v2s-compose').hidden"), 'terminal: no composer');
+        assert_contains('Take the session over', (string)cdp_evaluate($page, "document.getElementById('v2s-compose-note').textContent"), 'terminal: the note says to take it over');
 
 
         // --- answered questions become Question / Answer rows ---
@@ -235,6 +238,13 @@ try {
         assert_equal(1, cdp_evaluate($page, "document.querySelectorAll('#v2s-sessions-list .is-starred').length"), 'sessions popup: a starred row is highlighted');
         assert_equal('sticky', cdp_evaluate($page, "getComputedStyle(document.querySelector('#v2s-sessions .v2-sheet-head')).position"), 'popups: the header stays fixed while the body scrolls');
         cdp_evaluate($page, "document.getElementById('v2s-sessions').close()");
+
+        // --- header readout: this agent's 5-hour and weekly use plus context, stacked, opening the same popup ---
+        assert_true(v2b_wait($page, "document.getElementById('v2s-mini').textContent.indexOf('5h 73%') >= 0"), 'header: 5-hour use shown');
+        $mini = (string)cdp_evaluate($page, "document.getElementById('v2s-mini').textContent");
+        assert_true(str_contains($mini, 'wk 29%') && str_contains($mini, 'ctx 12%'), 'header: weekly use and context shown');
+        assert_equal(3, cdp_evaluate($page, "document.querySelectorAll('#v2s-mini span').length"), 'header: one line each');
+        assert_equal(true, cdp_evaluate($page, "(function () { var t = document.getElementById('v2s-title').getBoundingClientRect(); return t.width > 90 && document.querySelector('.v2s-bar').scrollWidth <= window.innerWidth; }())"), 'header: the title still has room and nothing overflows');
 
         // --- usage popup: this agent first, Pacific reset time plus relative, a divider between agents ---
         cdp_evaluate($page, "document.querySelector('[data-open=\"v2s-quota\"]').click()");

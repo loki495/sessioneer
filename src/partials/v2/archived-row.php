@@ -8,12 +8,9 @@
     <?php if (!empty($cwd)): ?><div class="v2-path"><?= $this->e((string)$cwd) ?></div><?php endif ?>
     <div class="v2-meta"><span><?= $this->e($relativeTime) ?></span></div>
   </div>
-  <?php if (!empty($cwd)): ?>
+  <?php if (!empty($cwd) && $agentId !== 'antigravity'): ?>
     <div class="v2-card-actions">
       <button type="button" class="v2-btn" data-act="resume" data-id="<?= $this->e($agentSessionId) ?>" data-workdir="<?= $this->e((string)$cwd) ?>" data-profile="<?= $this->e((string)($profile ?? '')) ?>">Resume</button>
-      <?php if ($agentId === 'claude'): ?>
-        <button type="button" class="v2-btn v2-btn-quiet" data-act="resume" data-runtime="headless" data-id="<?= $this->e($agentSessionId) ?>" data-workdir="<?= $this->e((string)$cwd) ?>" data-profile="<?= $this->e((string)($profile ?? '')) ?>">Headless</button>
-      <?php endif ?>
     </div>
   <?php endif ?>
 </article>

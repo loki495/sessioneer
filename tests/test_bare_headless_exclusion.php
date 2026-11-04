@@ -158,6 +158,24 @@ $killControl = BareProcessService::kill_bare_process($controlPid);
 assert_equal(true, $killControl['ok'] ?? null, 'Kill still works on a genuinely bare process');
 assert_true((bool)wait_until(static fn (): bool => !pid_alive($controlPid)), 'and it ends');
 
+echo "Take over as headless: the resume goes through the headless runtime, not a tmux pane\n";
+putenv('HOME_ROOT=' . $root . '/home');
+$takeId = '5a5a5a5a-1111-4111-8111-5a5a5a5a5a5a';
+@mkdir($root . '/home/.claude/projects/-take', 0700, true);
+file_put_contents($root . '/home/.claude/projects/-take/' . $takeId . '.jsonl', json_encode(['type' => 'user', 'message' => ['role' => 'user', 'content' => 'hi']]) . "\n");
+$takeProc = proc_open([$wrapper, '--resume', $takeId], [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'a'], 2 => ['file', '/dev/null', 'a']], $pipes3, $root);
+$extraProcs[] = $takeProc;
+$takePid = (int)proc_get_status($takeProc)['pid'];
+assert_true((bool)wait_until(static fn (): bool => in_array($takePid, $scanned(), true)), 'a bare process on a known conversation is scanned');
+$tookHeadless = BareProcessService::take_over_bare_process($takePid, true);
+assert_equal(true, $tookHeadless['ok'] ?? null, 'Take over with headless succeeds (' . json_encode($tookHeadless) . ')');
+$headlessName = (string)($tookHeadless['name'] ?? '');
+$madeSessions[] = $headlessName;
+assert_true(str_starts_with($headlessName, 'claude-headless-'), 'the new session is a headless one');
+assert_equal('headless', SidecarStore::read_sidecar($headlessName)['runtime'] ?? null, 'recorded as headless');
+assert_equal($takeId, SidecarStore::read_sidecar($headlessName)['agent_session_id'] ?? null, 'carrying the same conversation');
+assert_true((bool)wait_until(static fn (): bool => !pid_alive($takePid)), 'and the terminal process was stopped');
+
 echo "A claude worker spawned by another claude (claude rc) is not a second process\n";
 $parentScript = $root . '/fakeparent.php';
 file_put_contents($parentScript, '<?php $c = proc_open([$argv[1]], [0 => ["pipe", "r"], 1 => ["file", "/dev/null", "a"], 2 => ["file", "/dev/null", "a"]], $p); sleep(60);');

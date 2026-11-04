@@ -226,6 +226,7 @@ $response = match ($action) {
         ? [
             'ok' => true,
             'name' => CANNED_SESSION_NAME,
+            'runtime' => 'headless',
             'activity' => time() - 120,
             'attached' => false,
             'pid' => 12345,

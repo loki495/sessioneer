@@ -193,11 +193,10 @@
 
     body.innerHTML = html;
 
-    // Moving to a terminal is deprecated, so only the way out of one is offered.
     var actions = '<button type="button" class="v2-btn" data-info="star">' + (d.starred ? '&#9733; Unstar' : '&#9734; Star') + '</button>'
       + '<button type="button" class="v2-btn" data-info="rename">Rename</button>';
     if ((d.agent || 'claude') === 'claude' && d.runtime !== 'headless') {
-      actions += '<button type="button" class="v2-btn" data-info="switch" data-runtime="headless">Move to headless</button>';
+      actions += '<button type="button" class="v2-btn" data-info="switch" data-runtime="headless">Take over (headless)</button>';
     }
     actions += '<button type="button" class="v2-btn v2-btn-danger" data-info="kill">Kill session</button>';
     $('v2s-info-actions').innerHTML = actions;
@@ -233,9 +232,8 @@
         if (res.ok) { api.pollNow(); }
       });
     } else if (what === 'switch') {
-      var target = b.getAttribute('data-runtime');
-      if (!window.confirm('Move this session to ' + (target === 'headless' ? 'a headless session (no terminal)' : 'a terminal (tmux) session') + '? The conversation continues; the current process is stopped.')) { return; }
-      action({ action: 'switch_runtime', session: session, runtime: target });
+      if (!window.confirm('Take this session over as a headless one? The conversation continues; the terminal process is stopped.')) { return; }
+      action({ action: 'switch_runtime', session: session, runtime: 'headless' });
     } else if (what === 'kill') {
       if (window.confirm('Kill session ' + session + '?')) { action({ action: 'kill', session: session }, '/v2'); }
     }
@@ -456,7 +454,7 @@
     var bits = [];
     if (x.agent_label || x.agent) { bits.push('<span class="v2-chip v2-agent-' + esc(x.agent || 'claude') + '">' + esc(x.agent_label || x.agent) + '</span>'); }
     if ((x.agent || 'claude') === 'claude' && x.profile) { bits.push('<span class="v2-chip v2-chip-accent">' + esc(x.profile) + '</span>'); }
-    if (x.runtime === 'headless') { bits.push('<span class="v2-chip">Headless</span>'); }
+    if (x.runtime !== 'headless') { bits.push('<span class="v2-chip v2-chip-warn">Terminal, read only</span>'); }
     if (typeof x.context_used_percentage === 'number') { bits.push('<span class="v2-chip">ctx ' + Math.round(x.context_used_percentage) + '%</span>'); }
     return bits.join('');
   }
@@ -541,7 +539,25 @@
   api.openSheet = openSheet;
   api.fullscreen = fullscreen;
   api.viewImage = viewImage;
-  api.onDetail = function () {};
+  // Header readout: usage windows change slowly, so they are fetched rarely; context rides on every detail poll.
+  var miniEl = $('v2s-mini');
+  var miniQuota = null;
+  function renderMini(d) {
+    var pct = d.context_used_percentage;
+    if (miniQuota && miniQuota.context && typeof miniQuota.context.pct === 'number' && typeof pct !== 'number') { pct = miniQuota.context.pct; }
+    var html = miniQuota ? window.V2Quota.mini(miniQuota, d.agent || 'claude', d.profile, pct) : '';
+    if (miniEl.innerHTML !== html) { miniEl.innerHTML = html; }
+    miniEl.hidden = html === '';
+  }
+  function loadMini() {
+    api.getJson('/quota.php?' + api.qs({ session: session })).then(function (data) {
+      miniQuota = data;
+      renderMini(api.detail());
+    }).catch(function () {});
+  }
+  api.onDetail = renderMini;
+  loadMini();
+  setInterval(function () { if (!document.hidden) { loadMini(); } }, 300000);
 
   controlsSummary(api.detail());
 }());
