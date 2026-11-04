@@ -157,6 +157,9 @@ $response = match ($action) {
             'last_message' => CANNED_LAST_MESSAGE,
         ], [
             'name' => CANNED_BLOCKED_SESSION_NAME,
+            'agent' => 'claude',
+            'agent_label' => 'Claude Code',
+            'runtime' => 'headless',
             'agent_session_id' => CANNED_BLOCKED_AGENT_SESSION_ID,
             'activity' => time() - 60,
             'attached' => false,

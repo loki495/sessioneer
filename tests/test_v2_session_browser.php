@@ -224,6 +224,8 @@ try {
         assert_true(v2b_wait($page, "document.querySelectorAll('#v2s-sessions-list .v2s-srow').length === 2"), 'sessions popup: lists every session');
         assert_equal(V2B_BLOCKED, cdp_evaluate($page, "decodeURIComponent(document.querySelector('#v2s-sessions-list .v2s-srow-main').getAttribute('href').split('session=')[1])"), 'sessions popup: the session needing input is first');
         assert_equal(1, cdp_evaluate($page, "document.querySelectorAll('#v2s-sessions-list .is-current').length"), 'sessions popup: the open session is marked');
+        assert_contains('Needs input: Do you want to proceed?', (string)cdp_evaluate($page, "document.getElementById('v2s-sessions-list').textContent"), 'sessions popup: a blocked session shows what it waits on');
+        assert_true((int)cdp_evaluate($page, "document.querySelectorAll('#v2s-sessions-list .v2-chip').length") >= 2, 'sessions popup: rows carry agent and runtime chips');
         cdp_evaluate($page, "(function () { var i = document.getElementById('v2s-sessions-filter'); i.value = 'zzz-nothing'; i.dispatchEvent(new Event('input')); }())");
         assert_contains('No sessions', (string)cdp_evaluate($page, "document.getElementById('v2s-sessions-list').textContent"), 'sessions popup: a filter with no match says so');
         cdp_evaluate($page, "(function () { var i = document.getElementById('v2s-sessions-filter'); i.value = ''; i.dispatchEvent(new Event('input')); }())");
@@ -243,24 +245,41 @@ try {
         assert_contains('12%', $q, 'usage popup: the session\'s context share');
         cdp_evaluate($page, "document.getElementById('v2s-quota').close()");
 
-        // --- edge swipes: right edge opens the sessions popup, a mid-screen swipe does nothing ---
-        $swipe = static fn (int $x0, int $x1): string => "(function () { function t(type, x) { var tt = new Touch({ identifier: 1, target: document.body, clientX: x, clientY: 300 }); document.dispatchEvent(new TouchEvent(type, { touches: type === 'touchend' ? [] : [tt], changedTouches: [tt], bubbles: true })); } t('touchstart', {$x0}); t('touchend', {$x1}); }())";
-        cdp_evaluate($page, $swipe(200, 100));
-        assert_equal(false, cdp_evaluate($page, "document.getElementById('v2s-sessions').open"), 'swipe: from mid-screen does nothing');
-        cdp_evaluate($page, $swipe(385, 250));
-        assert_equal(true, cdp_evaluate($page, "document.getElementById('v2s-sessions').open"), 'swipe: from the right edge opens the sessions popup');
-        cdp_evaluate($page, $swipe(5, 200));
-        assert_equal(true, cdp_evaluate($page, "location.pathname === '/v2/session'"), 'swipe: nothing leaves the page while a popup is open');
-        cdp_evaluate($page, "document.getElementById('v2s-sessions').close()");
+        // --- swipes: anywhere but where a finger may be scrolling; left opens the sessions popup, right goes back ---
+        $swipe = static fn (int $x0, int $x1, string $target = 'document.body', int $y1 = 300): string => "(function () { var el = {$target}; function t(type, x, y) { var tt = new Touch({ identifier: 1, target: el, clientX: x, clientY: y }); el.dispatchEvent(new TouchEvent(type, { touches: type === 'touchend' ? [] : [tt], changedTouches: [tt], bubbles: true })); } t('touchstart', {$x0}, 300); t('touchend', {$x1}, {$y1}); }())";
+        cdp_evaluate($page, $swipe(200, 150));
+        assert_equal(false, cdp_evaluate($page, "document.getElementById('v2s-sessions').open"), 'swipe: a short swipe does nothing');
+        cdp_evaluate($page, $swipe(200, 100, 'document.body', 520));
+        assert_equal(false, cdp_evaluate($page, "document.getElementById('v2s-sessions').open"), 'swipe: a mostly vertical drag does nothing');
+        cdp_evaluate($page, $swipe(300, 120, 'document.querySelector(".v2s-code pre") || document.body'));
+        assert_equal(false, cdp_evaluate($page, "document.getElementById('v2s-sessions').open"), 'swipe: one starting in a code block is left to the block');
+        cdp_evaluate($page, $swipe(385, 200));
+        assert_equal(false, cdp_evaluate($page, "document.getElementById('v2s-sessions').open"), 'swipe: one starting at the screen edge is left to the browser');
+        cdp_evaluate($page, $swipe(300, 120));
+        assert_equal(true, cdp_evaluate($page, "document.getElementById('v2s-sessions').open"), 'swipe: left anywhere opens the sessions popup');
         cdp_evaluate($page, "window.__back = 0; history.back = function () { window.__back++; }; Object.defineProperty(history, 'length', { value: 3, configurable: true });");
-        cdp_evaluate($page, $swipe(5, 200));
-        assert_equal(1, cdp_evaluate($page, 'window.__back'), 'swipe: from the left edge goes back in history, not to a fixed page');
+        cdp_evaluate($page, $swipe(100, 260));
+        assert_equal(0, cdp_evaluate($page, 'window.__back'), 'swipe: nothing happens while a popup is open');
+
+        // popups close on a tap outside and on a swipe down from the header
+        cdp_evaluate($page, "document.getElementById('v2s-sessions').click()");
+        assert_equal(false, cdp_evaluate($page, "document.getElementById('v2s-sessions').open"), 'popup: a tap on the backdrop closes it');
+        cdp_evaluate($page, "document.querySelector('[data-open=\"v2s-quota\"]').click()");
+        cdp_evaluate($page, "document.getElementById('v2s-quota-body').click()");
+        assert_equal(true, cdp_evaluate($page, "document.getElementById('v2s-quota').open"), 'popup: a tap inside it keeps it open');
+        cdp_evaluate($page, "(function () { var el = document.querySelector('#v2s-quota .v2-sheet-head h2'); function t(type, y) { var tt = new Touch({ identifier: 2, target: el, clientX: 100, clientY: y }); el.dispatchEvent(new TouchEvent(type, { touches: type === 'touchend' ? [] : [tt], changedTouches: [tt], bubbles: true })); } t('touchstart', 100); t('touchend', 190); }())");
+        assert_equal(false, cdp_evaluate($page, "document.getElementById('v2s-quota').open"), 'popup: a swipe down from the header closes it');
+
+        cdp_evaluate($page, $swipe(100, 260));
+        assert_equal(1, cdp_evaluate($page, 'window.__back'), 'swipe: right anywhere goes back in history, not to a fixed page');
         cdp_evaluate($page, "delete history.length;");
 
         // --- scroll lock: the transcript behind a popup does not scroll ---
         cdp_evaluate($page, "document.querySelector('[data-open=\"v2s-info\"]').click()");
         assert_equal('hidden', cdp_evaluate($page, "getComputedStyle(document.getElementById('v2s-scroll')).overflowY"), 'scroll lock: the transcript is locked behind a popup');
         assert_true(str_contains((string)cdp_evaluate($page, "document.getElementById('v2s-info-body').textContent"), 'Fix the login redirect bug'), 'details: the full session name is shown');
+        assert_true((int)cdp_evaluate($page, "document.querySelectorAll('#v2s-info .v2s-sec').length") >= 4, 'details: one panel per topic');
+        assert_true(!str_contains((string)cdp_evaluate($page, "document.getElementById('v2s-info').textContent"), 'Move to terminal'), 'details: moving to a terminal is no longer offered');
         cdp_evaluate($page, "document.getElementById('v2s-info').close()");
         assert_equal('auto', cdp_evaluate($page, "getComputedStyle(document.getElementById('v2s-scroll')).overflowY"), 'scroll lock: released when the popup closes');
 
@@ -297,8 +316,8 @@ try {
         cdp_evaluate($page, "Array.prototype.forEach.call(document.querySelectorAll('dialog[open]'), function (d) { d.close(); })");
         cdp_evaluate($page, "delete history.back;");
         cdp_evaluate($page, "Object.defineProperty(history, 'length', { value: 1, configurable: true });");
-        cdp_evaluate($page, $swipe(5, 200));
-        assert_true(v2b_wait($page, "location.pathname === '/v2'"), 'swipe: with nothing to go back to, the left edge opens the dashboard');
+        cdp_evaluate($page, $swipe(100, 260));
+        assert_true(v2b_wait($page, "location.pathname === '/v2'"), 'swipe: with nothing to go back to, a right swipe opens the dashboard');
     }
 } finally {
     if ($page !== null) {

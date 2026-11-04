@@ -191,15 +191,16 @@
     var pct = d.context_used_percentage;
     html += kv('Context used', typeof pct === 'number' && isFinite(pct) ? Math.round(pct) + '%' : '', false);
 
-    html += '<div class="v2s-row-actions">'
-      + '<button type="button" class="v2-btn" data-info="star">' + (d.starred ? '&#9733; Unstar' : '&#9734; Star') + '</button>'
-      + '<button type="button" class="v2-btn" data-info="rename">Rename</button>';
-    if ((d.agent || 'claude') === 'claude') {
-      var target = d.runtime === 'headless' ? 'tmux' : 'headless';
-      html += '<button type="button" class="v2-btn" data-info="switch" data-runtime="' + target + '">Move to ' + (target === 'headless' ? 'headless' : 'terminal') + '</button>';
-    }
-    html += '<button type="button" class="v2-btn v2-btn-danger" data-info="kill">Kill session</button></div>';
     body.innerHTML = html;
+
+    // Moving to a terminal is deprecated, so only the way out of one is offered.
+    var actions = '<button type="button" class="v2-btn" data-info="star">' + (d.starred ? '&#9733; Unstar' : '&#9734; Star') + '</button>'
+      + '<button type="button" class="v2-btn" data-info="rename">Rename</button>';
+    if ((d.agent || 'claude') === 'claude' && d.runtime !== 'headless') {
+      actions += '<button type="button" class="v2-btn" data-info="switch" data-runtime="headless">Move to headless</button>';
+    }
+    actions += '<button type="button" class="v2-btn v2-btn-danger" data-info="kill">Kill session</button>';
+    $('v2s-info-actions').innerHTML = actions;
 
     var todos = d.todos || [];
     $('v2s-tasks-sec').hidden = todos.length === 0;
@@ -211,7 +212,7 @@
     }).join('');
   }
 
-  $('v2s-info-body').addEventListener('click', function (e) {
+  $('v2s-info').addEventListener('click', function (e) {
     var b = closest(e.target, '[data-info]');
     if (!b) { return; }
     var d = api.detail();
@@ -451,6 +452,22 @@
 
   var sessionRows = [];
   function statusOfRow(x) { return x.blocked_reason ? 'blocked' : (x.working ? 'working' : 'idle'); }
+  function rowChips(x) {
+    var bits = [];
+    if (x.agent_label || x.agent) { bits.push('<span class="v2-chip v2-agent-' + esc(x.agent || 'claude') + '">' + esc(x.agent_label || x.agent) + '</span>'); }
+    if ((x.agent || 'claude') === 'claude' && x.profile) { bits.push('<span class="v2-chip v2-chip-accent">' + esc(x.profile) + '</span>'); }
+    if (x.runtime === 'headless') { bits.push('<span class="v2-chip">Headless</span>'); }
+    if (typeof x.context_used_percentage === 'number') { bits.push('<span class="v2-chip">ctx ' + Math.round(x.context_used_percentage) + '%</span>'); }
+    return bits.join('');
+  }
+  // What the session is waiting on, else the last message.
+  function rowPreview(x) {
+    if (x.blocked_reason) { return 'Needs input: ' + x.blocked_reason; }
+    var m = x.last_message;
+    var text = '';
+    if (m && Array.isArray(m.blocks)) { m.blocks.forEach(function (b) { if (!text && b.text) { text = String(b.text); } }); }
+    return text.replace(/\s+/g, ' ').slice(0, 140);
+  }
   function renderSessionRows() {
     var q = $('v2s-sessions-filter').value.trim().toLowerCase();
     var order = { blocked: 0, working: 1, idle: 2 };
@@ -464,7 +481,10 @@
       var folder = String(x.workdir || '').replace(/\/+$/, '').split('/').pop();
       return '<div class="v2s-srow' + (x.name === session ? ' is-current' : '') + (x.starred ? ' is-starred' : '') + '">'
         + '<a class="v2s-srow-main" href="/v2/session?session=' + encodeURIComponent(x.name) + '"><i class="v2-dot v2-dot-' + st + '" role="img" aria-label="' + (st === 'blocked' ? 'needs input' : st) + '"></i>'
-        + '<span class="v2s-srow-text"><b>' + esc(x.title || x.name) + '</b><small>' + esc(folder) + '</small></span></a>'
+        + '<span class="v2s-srow-text"><b>' + esc(x.title || x.name) + '</b>'
+        + '<span class="v2s-srow-chips">' + rowChips(x) + '</span>'
+        + '<small>' + esc(folder) + ' · ' + esc(api.relTime(x.activity ? new Date(x.activity * 1000).toISOString() : '')) + '</small>'
+        + (rowPreview(x) ? '<small class="v2s-srow-preview">' + esc(rowPreview(x)) + '</small>' : '') + '</span></a>'
         + '<button type="button" class="v2-icon-btn" data-star="' + esc(x.name) + '" aria-pressed="' + (x.starred ? 'true' : 'false') + '" aria-label="' + (x.starred ? 'Unstar' : 'Star') + '">' + (x.starred ? '&#9733;' : '&#9734;') + '</button></div>';
     }).join('') : '<p class="v2-muted v2-center">No sessions</p>';
   }
