@@ -78,6 +78,19 @@ AdviseModelCall::resolve($judgment, $dir . '/t.jsonl', $candidates, static funct
     return null;
 });
 assert_equal(true, str_contains($prompted, 'ok') && !str_contains($prompted, 'sk-live-abc') && !str_contains($prompted, 'abcdefghijklmnopqrstuvwxyz0123'), 'secret-shaped text is redacted from the prompt');
+foreach ([
+    'sk_' . 'live_abcdefghijklmnopqrstuvwxyz1234',
+    'API_KEY="hunter2hunter2"',
+    'Authorization: Bearer abc.def-ghi',
+    'https://user:pa55word@example.com/x',
+    "-----BEGIN RSA PRIVATE KEY-----\nMIIEabc\n-----END RSA PRIVATE KEY-----",
+    'aGVsbG8gd29ybGQgdGhpcyBpcyBiYXNlNjQrLz0=',
+] as $secret) {
+    $clean = AdviseModelCall::redact('before ' . $secret . ' after');
+    assert_equal(true, str_contains($clean, 'before') && str_contains($clean, 'after'), 'redaction keeps the surrounding text: ' . $secret);
+    assert_equal(false, (bool) preg_match('/hunter2|pa55word|abc\.def|MIIE|aGVsbG8|sk_live_abc/', $clean), 'redaction removes: ' . $secret);
+}
+assert_equal('plain words stay', AdviseModelCall::redact('plain words stay'), 'ordinary text is untouched');
 assert_equal(true, str_contains($prompted, 'untrusted'), 'the prompt marks the transcript as untrusted');
 assert_equal(null, AdviseModelCall::parse(null), 'a null answer does not parse');
 
