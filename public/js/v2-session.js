@@ -1154,18 +1154,30 @@
   }
   window.addEventListener('resize', sizeFooter);
 
-  // Edge swipes only (so wide code blocks still scroll sideways): from the left edge back to the dashboard,
-  // from the right edge the sessions popup.
-  var EDGE_PX = 20, SWIPE_PX = 70, swipe = null;
+  // Horizontal swipes anywhere except where the finger can be scrolling something: a swipe right goes back in
+  // history (the dashboard when there is none), a swipe left opens the sessions popup. Touches starting in the
+  // outer strip are left to the browser's own edge gestures (back / forward).
+  var BROWSER_EDGE_PX = 24, SWIPE_PX = 80, swipe = null;
   function overlayOpen() {
     return !!document.querySelector('dialog[open], .v2s-viewer:not([hidden]), .v2s-fullscreen:not([hidden])');
+  }
+  // True when `el` or an ancestor can scroll sideways (a wide code block), or is a field the finger may select in.
+  function scrollsSideways(el) {
+    for (; el && el.nodeType === 1 && el !== document.body; el = el.parentNode) {
+      if (el.matches('input, textarea, select, pre, code')) { return true; }
+      if (el.scrollWidth > el.clientWidth + 1) {
+        var ox = window.getComputedStyle(el).overflowX;
+        if (ox === 'auto' || ox === 'scroll') { return true; }
+      }
+    }
+    return false;
   }
   document.addEventListener('touchstart', function (e) {
     var t = e.touches[0];
     swipe = null;
     if (e.touches.length !== 1 || overlayOpen()) { return; }
-    if (t.clientX <= EDGE_PX) { swipe = { side: 'left', x: t.clientX, y: t.clientY }; }
-    else if (t.clientX >= window.innerWidth - EDGE_PX) { swipe = { side: 'right', x: t.clientX, y: t.clientY }; }
+    if (t.clientX <= BROWSER_EDGE_PX || t.clientX >= window.innerWidth - BROWSER_EDGE_PX || scrollsSideways(e.target)) { return; }
+    swipe = { x: t.clientX, y: t.clientY };
   }, { passive: true });
   document.addEventListener('touchend', function (e) {
     var s = swipe;
@@ -1173,9 +1185,9 @@
     if (!s || !e.changedTouches.length) { return; }
     var dx = e.changedTouches[0].clientX - s.x;
     var dy = e.changedTouches[0].clientY - s.y;
-    if (Math.abs(dy) > Math.abs(dx) / 1.5) { return; }
-    if (s.side === 'left' && dx >= SWIPE_PX) { if (window.history.length > 1) { window.history.back(); } else { window.location.href = '/v2'; } }
-    else if (s.side === 'right' && dx <= -SWIPE_PX) { V2S.api.openSheet('v2s-sessions'); }
+    if (Math.abs(dx) < SWIPE_PX || Math.abs(dy) > Math.abs(dx) / 2) { return; }
+    if (dx > 0) { if (window.history.length > 1) { window.history.back(); } else { window.location.href = '/v2'; } }
+    else { V2S.api.openSheet('v2s-sessions'); }
   }, { passive: true });
 
   // ======================================================================

@@ -110,17 +110,20 @@ $bootstrap = json_encode([
 
 <dialog class="v2-sheet" id="v2s-info"><div class="v2-sheet-body">
   <div class="v2-sheet-head"><h2>Session</h2><button type="button" class="v2-icon-btn" data-close aria-label="Close">&times;</button></div>
-  <div id="v2s-info-body" class="v2-col"></div>
-  <a class="v2-btn" id="v2s-classic" href="/session.php?session=<?= urlencode($sessionName) ?>" data-classic-link>Open in classic</a>
-  <section class="v2-section" id="v2s-tasks-sec" hidden><h3 class="v2-subtitle">Tasks</h3><ul id="v2s-tasks" class="v2-checks"></ul></section>
-  <section class="v2-section"><h3 class="v2-subtitle">Files</h3>
+  <section class="v2s-sec"><h3 class="v2-subtitle">Details</h3><div id="v2s-info-body" class="v2-col"></div></section>
+  <section class="v2s-sec"><h3 class="v2-subtitle">Actions</h3>
+    <div id="v2s-info-actions" class="v2s-row-actions"></div>
+    <a class="v2-btn" id="v2s-classic" href="/session.php?session=<?= urlencode($sessionName) ?>" data-classic-link>Open in classic</a>
+  </section>
+  <section class="v2s-sec" id="v2s-tasks-sec" hidden><h3 class="v2-subtitle">Tasks</h3><ul id="v2s-tasks" class="v2-checks"></ul></section>
+  <section class="v2s-sec"><h3 class="v2-subtitle">Files</h3>
     <button type="button" class="v2-btn" id="v2s-todo-file">Open todo file</button>
     <div id="v2s-plan-files" class="v2-col"></div>
     <div class="v2-row"><h3 class="v2-subtitle" style="flex:1">Uploaded files</h3><span id="v2s-upload-total" class="v2-muted v2-small"></span></div>
     <div id="v2s-uploads" class="v2-col"></div>
     <button type="button" class="v2-btn v2-btn-danger" id="v2s-uploads-clear" hidden>Delete all uploads</button>
   </section>
-  <section class="v2-section"><h3 class="v2-subtitle">View</h3>
+  <section class="v2s-sec"><h3 class="v2-subtitle">View</h3>
     <label class="v2-check"><input type="checkbox" id="v2s-opt-reasoning"> Show reasoning text</label>
     <label class="v2-check"><input type="checkbox" id="v2s-opt-subagent" checked> Show subagent calls and outputs</label>
     <label class="v2-check"><input type="checkbox" id="v2s-opt-confirm"> Confirm before sending prompt answers</label>
@@ -151,6 +154,7 @@ $bootstrap = json_encode([
 
 <script>window.V2S = <?= $bootstrap ?>;</script>
 <script src="<?= \App\Assets::versioned_url('/js/markdown.js') ?>"></script>
+<script src="<?= \App\Assets::versioned_url('/js/v2-sheets.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/v2-quota.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/v2-session.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/v2-session-sheets.js') ?>"></script>

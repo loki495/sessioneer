@@ -189,5 +189,6 @@
 <div id="v2-toast" class="v2-toast" role="status" aria-live="polite" hidden></div>
 </div>
 
+<script src="<?= \App\Assets::versioned_url('/js/v2-sheets.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/v2-quota.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/v2.js') ?>"></script>

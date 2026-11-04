@@ -69,8 +69,7 @@ the same same-origin and CSRF checks as every other mutating endpoint.
 
 Covered: live session list with status/agent/account/runtime/worker/starred
 state and ordering, needs-input / working / idle filters, one-tap answers to
-single-question prompts, star, rename, kill, move between headless and
-terminal, new session (agent, account, runtime, model, starting mode, task
+single-question prompts, star, rename, kill, move a terminal session to headless, new session (agent, account, runtime, model, starting mode, task
 tools, an optional first message for headless and API agents, folder browser with new folder), "Hide idle unstarred", "Show worker
 sessions", poll interval, kill inactive > 12h, bare-process list with kill,
 lazy archived list with filter, Resume (terminal) and Resume headless, content
@@ -144,16 +143,22 @@ an answer is ambiguous; text that does not match stays raw. OpenCode's in-transc
 question block carries the whole result text (`answer_output`). Codex writes no
 recognizable answer text in its transcript, so its answers stay as they are.
 
-**Sessions and usage popups.** The bar's list button (or a swipe from the right
-screen edge) opens a popup of every session: needs-input first, then working, then
-idle, starred first within each, a filter box, a star toggle per row, tap to switch.
-A swipe from the left screen edge goes back in history (the dashboard when there is none); both swipes start within
-20px of the edge so wide code blocks scroll normally, and are ignored while a popup
-is open. The gauge button opens this session's context share and the usage meters
-(this session's agent first, every Claude account when several are configured),
-rendered by `public/js/v2-quota.js`, shared with the dashboard's Status tab: a thin
-divider between agents and a reset time in Pacific time plus a relative one. The
-Status tab's Health section is collapsed when every check passes. While a popup,
+**Sessions and usage popups.** The bar's list button (or a swipe left) opens a
+popup of every session: needs-input first, then working, then idle, starred first
+within each (starred rows are faintly amber), a filter box, a star toggle per row,
+tap to switch. Each row shows agent, account, runtime and context chips, folder and
+age, and what the session waits on or its last message. A swipe right goes back in
+history (the dashboard when there is none). Swipes work anywhere except where a
+finger may be scrolling (a code block, a field), need 80px of mostly horizontal
+travel, ignore the outer 24px (left to the browser's own back/forward gestures) and
+are ignored while a popup is open. Every sheet (`public/js/v2-sheets.js`, both pages)
+closes on a tap outside it or a swipe down from its fixed header.
+The gauge button opens this session's context share and the usage meters (this
+session's agent first, every Claude account when several are configured), rendered
+by `public/js/v2-quota.js`, shared with the dashboard's Status tab: each agent a
+tinted group, reset times in Pacific time plus a relative one. On the Status tab
+Usage and Health fold; Health starts collapsed when every check passes and each
+health group is collapsed on its own unless one of its checks fails. While a popup,
 viewer or full-screen text is open the page behind it does not scroll. The keyboard
 fix (the shell follows the visual viewport's offset as well as its height) cannot be
 exercised off a real iPhone.
@@ -162,9 +167,10 @@ exercised off a real iPhone.
 sheet; tapping toggles fit and natural size (scroll to pan), and pinch zoom is the
 browser's own. "Open original" opens the file.
 
-**Details sheet.** Session id, workdir and resume command (copy), branch,
-worktree, account, runtime, context %, star, rename, move between headless and
-terminal (Claude), open in classic, kill; the task list; todo file (full
+**Details sheet.** One panel per topic. Details: session name and id, workdir and
+resume command (copy), branch, worktree, account, runtime, context %. Actions: star,
+rename, move a terminal session to headless (moving to a terminal is deprecated and
+not offered), open in classic, kill. Then the task list; todo file (full
 screen), plan and handoff files, uploaded files (open, delete, delete all); view
 options: show reasoning text, show subagent calls, confirm answers, poll
 interval. **Search** looks through this session (jumping to the hit, with a

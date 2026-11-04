@@ -93,6 +93,7 @@ try {
     assert_contains('<details class="v2-fold-inner">', $body, 'GET /v2: a health group whose checks all pass is collapsed');
     assert_contains('<details class="v2-fold-inner" open>', $body, 'GET /v2: a group with a failing check is open');
     assert_contains('<details class="v2-card v2-card-flat v2-col v2-fold" open>', $body, 'GET /v2: the usage section collapses too, open by default');
+    assert_contains('/js/v2-sheets.js', $body, 'GET /v2: sheets close on a tap outside or a swipe down');
     assert_contains('/js/v2-quota.js', $body, 'GET /v2: loads the shared usage renderer');
     assert_contains('&larr; Back to classic', $body, 'GET /v2: "Back to classic" is also in the settings and status views');
     assert_contains('Fix the login redirect bug', $body, 'GET /v2: canned session title shown');
