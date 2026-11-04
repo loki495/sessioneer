@@ -229,3 +229,9 @@ body:has(dialog[open], .sess-viewer:not([hidden]), .sess-fullscreen:not([hidden]
 .sess-head-actions { display: flex; align-items: center; gap: 6px; }
 .sess-head-actions .ui-btn { min-height: 0; padding: 4px 10px; font-size: 0.85rem; }
 .sess-current-pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 600; background: var(--accent); color: var(--bg, #fff); }
+
+@media (min-width: 1024px) {
+  .sess-col { max-width: 50rem; }
+  /* the usage and context readout at the top right is the smallest text on the page */
+  .sess-mini { font-size: 0.85rem; }
+}

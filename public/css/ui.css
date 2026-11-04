@@ -383,3 +383,12 @@ input[type="search"], select, textarea, input[type="text"] { border-color: var(-
 .ui-advise-btns { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .ui-advise-btn { flex-direction: column; align-items: flex-start; height: auto; padding-top: 10px; padding-bottom: 10px; text-align: left; gap: 2px; }
 .ui-advise-btn .ui-small { opacity: 0.85; overflow-wrap: anywhere; }
+
+/* Desktop: a larger root so every rem-based size scales together. Widths are in the larger rem
+   (50rem = 900px column, 39rem = 702px popup) so they grow by pixels, not by the font factor. */
+@media (min-width: 1024px) {
+  html { font-size: 18px; }
+  body { font-size: 1rem; }
+  .ui-main { max-width: 50rem; }
+  .ui-sheet { max-width: 39rem; }
+}

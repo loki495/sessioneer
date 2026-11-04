@@ -36,6 +36,9 @@ the service worker needs to answer prompts from a notification).
   under `<html data-theme="dark">`. An inline script in the layout sets it
   before first paint from the stored choice (Settings: match device / light /
   dark, kept in `localStorage`) or `prefers-color-scheme`.
+- **Desktop size.** From 1024px up the root font is 18px (every rem size scales with it), the centered
+  column is 900px and sheets are about 700px wide, and the session bar's usage and
+  context readout is larger. Below 1024px nothing changes.
 - **Navigation.** A bottom tab bar (Sessions, Search, Archived, Status) with a
   badge for sessions needing input, a floating "+ New" button, and a Settings
   sheet. Sheets are `<dialog>` elements.
