@@ -861,7 +861,7 @@ class BareProcessService
      *
      * @return array{ok:bool, message?:string, name?:string, needs_choice?:bool, pid?:int, workdir?:string, candidates?:array, suggested_agent_session_id?:?string}
      */
-    public static function take_over_bare_process(int $pid): array
+    public static function take_over_bare_process(int $pid, bool $headless = false): array
     {
         $managed = self::refuse_managed_headless($pid);
 
@@ -937,7 +937,7 @@ class BareProcessService
             // can be read.
             $matchedProfile = TranscriptRouter::find_claude_profile_for_session_id($matchedId)['profile'];
 
-            return SessionLifecycleService::resume_agent_session($workdir, $matchedId, $matchedProfile);
+            return self::resume_taken_over($workdir, $matchedId, $matchedProfile, $headless);
         }
 
         $resolved = self::bare_process_take_over_candidates($workdir, $startedAt ?? time(), $pid);
@@ -965,7 +965,7 @@ class BareProcessService
      *
      * @return array{ok:bool, message:string, name?:string}
      */
-    public static function take_over_bare_process_with_id(int $pid, string $workdir, string $agentSessionId): array
+    public static function take_over_bare_process_with_id(int $pid, string $workdir, string $agentSessionId, bool $headless = false): array
     {
         $managed = self::refuse_managed_headless($pid);
 
@@ -1003,6 +1003,25 @@ class BareProcessService
         // this method's own signature/protocol for it.
         $profile = TranscriptRouter::find_claude_profile_for_session_id($agentSessionId)['profile'];
 
-        return SessionLifecycleService::resume_agent_session($workdir, $agentSessionId, $profile);
+        return self::resume_taken_over($workdir, $agentSessionId, $profile, $headless);
+    }
+
+    /**
+     * The final resume of a take-over: a tmux pane by default, or the
+     * headless runtime when the caller (the v2 UI, which has no panes) asks.
+     *
+     * @return array{ok:bool, message?:string, name?:string}
+     */
+    private static function resume_taken_over(string $workdir, string $agentSessionId, ?string $profile, bool $headless): array
+    {
+        if (!$headless) {
+            return SessionLifecycleService::resume_agent_session($workdir, $agentSessionId, $profile);
+        }
+
+        $runtime = RuntimeRegistry::runtime_for('claude', RuntimeType::HEADLESS);
+
+        return $runtime instanceof ClaudeHeadlessRuntime
+            ? $runtime->resume($workdir, $agentSessionId, $profile)
+            : ['ok' => false, 'message' => 'Headless runtime unavailable for claude'];
     }
 }

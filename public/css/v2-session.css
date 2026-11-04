@@ -35,6 +35,9 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
   padding: calc(6px + var(--safe-top)) 8px 6px 4px;
   background: var(--surface); border-bottom: 2px solid var(--accent-line);
 }
+.v2s-bar { gap: 0; padding-right: 4px; }
+.v2s-bar > .v2-icon-btn { min-width: 34px; min-height: 40px; font-size: 1.15rem; }
+.v2s-mini { flex: none; display: flex; flex-direction: column; align-items: flex-end; padding: 0 4px; background: none; border: 0; color: var(--text-muted); font-size: 0.6rem; line-height: 1.15; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .v2s-titlebtn { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 4px 6px; background: none; border: 0; text-align: left; }
 .v2s-title { max-width: 100%; font-weight: 650; font-size: 1rem; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
 .v2s-sub { max-width: 100%; display: flex; gap: 8px; align-items: center; font-size: 0.74rem; color: var(--text-muted); overflow: hidden; white-space: nowrap; }
@@ -176,7 +179,7 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 @media (min-width: 760px) { .v2s-user { max-width: 75%; } }
 
 .v2-toast { bottom: calc(var(--footer-h) + var(--safe-bottom) + 12px); }
-.v2s-bar > .v2-icon-btn:first-child { font-size: 2rem; line-height: 1; padding-bottom: 4px; }
+.v2s-bar > .v2-icon-btn:first-child { min-width: 30px; font-size: 2rem; line-height: 1; padding-bottom: 4px; }
 
 /* option text with its explanation underneath */
 .v2s-optbox { display: flex; flex-direction: column; gap: 2px; min-width: 0; }

@@ -44,8 +44,17 @@ loaded by `/v2`.
   working, idle), title, agent/account/runtime/worker chips, folder, age,
   context %, worktree, a one-line message preview. A blocked prompt renders its
   question, its context and one full-width button per option. The whole card
-  opens the session; star and the `...` menu (Rename, move to
-  headless/terminal, Kill) sit above it.
+  opens the session; star and the `...` menu (Rename, Take over for a terminal
+  Claude session, Kill) sit above it.
+- **Headless only.** `/v2` creates and resumes everything headless: there is no
+  "Runs in" picker, an archived row has one Resume (it implies headless, for Claude
+  `V2Controller` always passes `runtime=headless`), Antigravity (tmux-only) is not
+  offered for new sessions, and nothing moves a session to a terminal. A session
+  that still runs in a terminal (tmux; Claude or Antigravity) is listed and opened
+  **read only**: a "Terminal, read only" chip, no composer, its prompt shown with every
+  control disabled, and a note to take it over. Take over (card menu and session
+  details) is the existing `switch_runtime` to headless; Claude only, since
+  Antigravity cannot run headless.
 - **Touch.** Controls are at least 44px, inputs are 16px (no iOS zoom), and the
   tab bar and sheets respect the safe-area inset.
 
@@ -60,24 +69,29 @@ as they are: `/session_star.php`, `/session_rename.php`, `/answer_prompt.php`,
 
 `POST /v2/action` is the JSON twin of the classic `POST /` handler (which
 answers with a redirect and a flash message that `fetch()` cannot use). It takes
-`action` = `new`, `resume`, `switch_runtime`, `kill`, `kill_bare`, `cleanup`,
+`action` = `new`, `resume`, `switch_runtime`, `take_over`, `take_over_confirm`, `kill`, `kill_bare`, `cleanup`,
 `install_hook` or `set_push_timer_interval`, with the same parameters as the
-classic one, plus `csrf_token`, and answers `{ok, message, redirect?}`. It has
+classic one, plus `csrf_token`, and answers `{ok, message, redirect?}`. `take_over` (a
+bare process) answers with a redirect to the new headless session, or
+`{needs_choice, pid, workdir, candidates, suggested_agent_session_id}` when the process
+could not be identified (nothing is stopped yet); the page then shows a picker and posts
+`take_over_confirm`. Both reach the host agent's `take_over_bare` / `take_over_bare_with_id`
+with `runtime=headless`, so the final resume goes through the headless runtime, not a pane. It has
 the same same-origin and CSRF checks as every other mutating endpoint.
 
 ## Dashboard coverage
 
 Covered: live session list with status/agent/account/runtime/worker/starred
 state and ordering, needs-input / working / idle filters, one-tap answers to
-single-question prompts, star, rename, kill, move a terminal session to headless, new session (agent, account, runtime, model, starting mode, task
-tools, an optional first message for headless and API agents, folder browser with new folder), "Hide idle unstarred", "Show worker
-sessions", poll interval, kill inactive > 12h, bare-process list with kill,
-lazy archived list with filter, Resume (terminal) and Resume headless, content
+single-question prompts, star, rename, kill, take over a terminal session as headless, new session (agent, account, model, starting mode, task
+tools, an optional first message, folder browser with new folder), "Hide idle unstarred", "Show worker
+sessions", poll interval, kill inactive > 12h, bare-process list with Take over (headless) and kill,
+lazy archived list with filter, Resume (headless), content
 search across live and archived sessions with Archive/Unarchive, usage meters
 per agent, health checks, hook install banner, push-check interval, agent
 unreachable banner, light/dark.
 
-Deferred to later steps: bare-process Take over and Identify, "Show last 3
+Deferred to later steps: bare-process Identify, "Show last 3
 messages" on a card, free-text and multi-question prompt answers (the card links
 to the session page for those), the folder-trust dialog (same), Web Push
 subscribe/unsubscribe, pull to refresh, the session, archived-session and file
@@ -153,6 +167,10 @@ finger may be scrolling (a code block, a field), need 80px of mostly horizontal
 travel, ignore the outer 24px (left to the browser's own back/forward gestures) and
 are ignored while a popup is open. Every sheet (`public/js/v2-sheets.js`, both pages)
 closes on a tap outside it or a swipe down from its fixed header.
+The bar also carries a very small stacked readout for this session's agent and
+account: 5-hour use, weekly use and context (`V2Quota.mini`, from `/quota.php?session=`,
+refreshed every five minutes; context follows the detail poll). It opens the same popup
+as the gauge button, which stays.
 The gauge button opens this session's context share and the usage meters (this
 session's agent first, every Claude account when several are configured), rendered
 by `public/js/v2-quota.js`, shared with the dashboard's Status tab: each agent a
@@ -169,8 +187,7 @@ browser's own. "Open original" opens the file.
 
 **Details sheet.** One panel per topic. Details: session name and id, workdir and
 resume command (copy), branch, worktree, account, runtime, context %. Actions: star,
-rename, move a terminal session to headless (moving to a terminal is deprecated and
-not offered), open in classic, kill. Then the task list; todo file (full
+rename, take over a terminal session (headless), open in classic, kill. Then the task list; todo file (full
 screen), plan and handoff files, uploaded files (open, delete, delete all); view
 options: show reasoning text, show subagent calls, confirm answers, poll
 interval. **Search** looks through this session (jumping to the hit, with a

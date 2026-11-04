@@ -1,6 +1,6 @@
 <?php
   $isWorker = $kind === 'worker';
-  $switchTo = $runtime === 'headless' ? 'tmux' : 'headless';
+  $readOnly = $runtime !== 'headless';
   $hasFreeText = false;
   foreach ($promptOptions as $opt) {
     if (stripos((string)$opt['label'], 'type something') !== false) { $hasFreeText = true; }
@@ -17,8 +17,8 @@
         <summary class="v2-icon-btn" aria-label="Session actions">&#8943;</summary>
         <div class="v2-menu-list">
           <button type="button" data-act="rename" data-title="<?= $this->e($title) ?>">Rename</button>
-          <?php if ($agentId === 'claude'): ?>
-            <button type="button" data-act="switch" data-runtime="<?= $this->e($switchTo) ?>">Move to <?= $switchTo === 'headless' ? 'headless' : 'terminal' ?></button>
+          <?php if ($readOnly && $agentId === 'claude'): ?>
+            <button type="button" data-act="switch" data-runtime="headless">Take over</button>
           <?php endif ?>
           <button type="button" class="v2-danger-text" data-act="kill">Kill session</button>
         </div>
@@ -28,7 +28,7 @@
     <div class="v2-chips">
       <span class="v2-chip v2-agent-<?= $this->e($agentId) ?>"><?= $this->e($agentLabel) ?></span>
       <?php if ($profile !== null): ?><span class="v2-chip<?= $profile !== 'Personal' ? ' v2-chip-accent' : '' ?>"><?= $this->e($profile) ?></span><?php endif ?>
-      <?php if ($runtime === 'headless'): ?><span class="v2-chip">Headless</span><?php endif ?>
+      <?php if ($readOnly): ?><span class="v2-chip v2-chip-warn">Terminal, read only</span><?php endif ?>
       <?php if ($isWorker): ?><span class="v2-chip v2-chip-accent">Worker</span><?php endif ?>
     </div>
 
@@ -52,9 +52,9 @@
       <div class="v2-prompt">
         <p class="v2-prompt-title"><?= $this->e((string)$blockedReason) ?></p>
         <?php if ($promptContext !== ''): ?><pre class="v2-prompt-context"><?= $this->e($promptContext) ?></pre><?php endif ?>
-        <?php if ($promptIsFolderTrust || $promptHasQuestions || ($promptOptions === [])): ?>
+        <?php if ($readOnly || $promptIsFolderTrust || $promptHasQuestions || ($promptOptions === [])): ?>
           <?php /* Folder trust can end the session, multi-question needs the whole form, and an option-less prompt has nothing to tap: open the session. */ ?>
-          <a class="v2-btn v2-btn-warn" href="/v2/session?session=<?= urlencode($name) ?>">Open session to answer</a>
+          <a class="v2-btn v2-btn-warn" href="/v2/session?session=<?= urlencode($name) ?>"><?= $readOnly ? 'Open session' : 'Open session to answer' ?></a>
         <?php else: ?>
           <div class="v2-options">
             <?php foreach ($promptOptions as $opt): ?>

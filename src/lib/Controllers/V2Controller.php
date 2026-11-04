@@ -43,7 +43,7 @@ class V2Controller extends Controller
             'hooksMissing' => $agentReachable && (bool)($hookResult['ok'] ?? false) && !($hookResult['installed'] ?? false),
             'healthChecks' => (bool)($healthResult['ok'] ?? false) ? ($healthResult['checks'] ?? []) : [],
             'pushTimerSeconds' => (bool)($pushTimerResult['ok'] ?? false) ? (int)($pushTimerResult['interval_seconds'] ?? 0) : null,
-            'agentOptions' => \App\Views\PageView::AGENT_OPTIONS,
+            'agentOptions' => array_diff_key(\App\Views\PageView::AGENT_OPTIONS, ['antigravity' => true]),
         ]);
     }
 
@@ -157,6 +157,14 @@ class V2Controller extends Controller
                 'runtime' => (string)($_POST['runtime'] ?? ''),
             ]),
             'kill' => $this->agent_plain(['action' => 'kill', 'session' => (string)($_POST['session'] ?? '')]),
+            'take_over' => $this->take_over(),
+            'take_over_confirm' => $this->agent_with_redirect([
+                'action' => 'take_over_bare_with_id',
+                'pid' => (int)($_POST['pid'] ?? 0),
+                'workdir' => trim((string)($_POST['workdir'] ?? '')),
+                'agent_session_id' => trim((string)($_POST['agent_session_id'] ?? '')),
+                'runtime' => 'headless',
+            ]),
             'kill_bare' => $this->agent_plain(['action' => 'kill_bare', 'pid' => (int)($_POST['pid'] ?? 0)]),
             'cleanup' => $this->cleanup(),
             'install_hook' => $this->agent_plain(['action' => 'install_session_hook'], 'App hooks installed for Claude Code and Codex.'),
@@ -194,23 +202,19 @@ class V2Controller extends Controller
             $params['profile'] = $profile;
         }
 
-        $runtime = (string)($_POST['runtime'] ?? '');
+        // v2 runs everything headless; Antigravity is tmux-only, so it cannot be created here.
+        if ($params['agent'] === 'antigravity') {
+            return ['ok' => false, 'message' => 'Antigravity needs a terminal and is not available in this UI.'];
+        }
 
-        if (in_array($runtime, ['headless', 'tmux'], true)) {
-            $params['runtime'] = $runtime;
+        if ($params['agent'] === 'claude') {
+            $params['runtime'] = 'headless';
         }
 
         $prompt = trim((string)($_POST['prompt'] ?? ''));
 
         if ($prompt === '') {
             return $this->agent_with_redirect($params, 'Created session');
-        }
-
-        // A first message needs a process that takes input at once; a terminal session is still starting up.
-        $agent = (string)$params['agent'];
-
-        if (!($agent === 'claude' ? $runtime !== 'tmux' : in_array($agent, ['codex', 'opencode', 'ollama'], true))) {
-            return ['ok' => false, 'message' => 'A first message can only be sent to a headless or API session.'];
         }
 
         $created = $this->agent_with_redirect($params, 'Created session');
@@ -245,11 +249,40 @@ class V2Controller extends Controller
             $params['profile'] = $profile;
         }
 
-        if (($_POST['runtime'] ?? '') === 'headless') {
-            $params['runtime'] = 'headless';
-        }
+        $params['runtime'] = 'headless';
 
         return $this->agent_with_redirect($params);
+    }
+
+    /**
+     * A bare Claude process becomes a headless session. A confident match is
+     * already stopped and resumed (redirect); otherwise nothing was killed and
+     * the candidates come back for the page to let a human pick.
+     *
+     * @return array<string, mixed>
+     */
+    private function take_over(): array
+    {
+        $result = AgentClient::agent_call(['action' => 'take_over_bare', 'pid' => (int)($_POST['pid'] ?? 0), 'runtime' => 'headless']);
+
+        if (!($result['ok'] ?? false) || !($result['needs_choice'] ?? false)) {
+            $out = ['ok' => (bool)($result['ok'] ?? false), 'message' => (string)($result['message'] ?? 'Taken over')];
+
+            if (($out['ok']) && is_string($result['name'] ?? null) && $result['name'] !== '') {
+                $out['redirect'] = '/v2/session?session=' . urlencode($result['name']);
+            }
+
+            return $out;
+        }
+
+        return [
+            'ok' => true,
+            'needs_choice' => true,
+            'pid' => (int)$result['pid'],
+            'workdir' => (string)$result['workdir'],
+            'candidates' => $result['candidates'] ?? [],
+            'suggested_agent_session_id' => $result['suggested_agent_session_id'] ?? null,
+        ];
     }
 
     /** @return array<string, mixed> */

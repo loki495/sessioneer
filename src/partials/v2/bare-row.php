@@ -8,5 +8,6 @@
       <?php if ($startedAt !== null): ?><span>started <?= $this->e($startedAt) ?></span><?php endif ?>
     </div>
   </div>
+  <button type="button" class="v2-btn" data-act="take-over" data-pid="<?= (int)$pid ?>">Take over</button>
   <button type="button" class="v2-btn v2-btn-danger" data-act="kill-bare" data-pid="<?= (int)$pid ?>">Kill</button>
 </article>

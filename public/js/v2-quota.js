@@ -77,5 +77,24 @@
     return groups.join('') || '<span class="v2-muted v2-small">No usage data available.</span>';
   }
 
-  window.V2Quota = { render: render, pacific: pacific, relative: relative };
+  // The few-character header readout for one session's agent/account: 5-hour and weekly use, then context.
+  function mini(data, agent, profile, ctxPct) {
+    var a = data && data.agents && data.agents[agent];
+    var pr = data && data.claude_profiles && agent === 'claude' && profile ? data.claude_profiles[profile] : null;
+    var quota = pr && pr.ok ? pr.quota : (a && a.ok ? a.quota : null);
+    var out = [];
+    [['5h', 'session'], ['wk', 'week_all']].forEach(function (r) {
+      var b = quota && quota[r[1]];
+      if (b && typeof b.pct === 'number') { out.push(line(r[0], b.pct)); }
+    });
+    if (typeof ctxPct === 'number' && isFinite(ctxPct)) { out.push(line('ctx', ctxPct)); }
+
+    return out.join('');
+  }
+
+  function line(label, pct) {
+    return '<span' + (pct >= 80 ? ' class="v2-warn"' : '') + '>' + label + ' ' + Math.round(pct) + '%</span>';
+  }
+
+  window.V2Quota = { mini: mini, render: render, pacific: pacific, relative: relative };
 }());

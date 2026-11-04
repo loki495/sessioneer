@@ -120,6 +120,16 @@
 </nav>
 
 <?php /* Sheets are <dialog>s: focus trap, Esc and backdrop come from the platform. */ ?>
+<dialog id="v2-takeover-dialog" class="v2-sheet">
+  <div class="v2-sheet-body">
+    <div class="v2-sheet-head"><h2>Which conversation?</h2><button type="button" class="v2-icon-btn" data-close aria-label="Close">&times;</button></div>
+    <p class="v2-muted v2-small">The process was not identified for certain. Nothing is stopped until you pick one.</p>
+    <p id="v2-takeover-none" class="v2-muted" hidden>No past conversations found for this folder.</p>
+    <select id="v2-takeover-select" aria-label="Conversation"></select>
+    <button type="button" class="v2-btn v2-btn-primary" id="v2-takeover-go">Take over as headless</button>
+  </div>
+</dialog>
+
 <dialog id="v2-new-dialog" class="v2-sheet">
   <form method="dialog" id="v2-new-form" class="v2-sheet-body">
     <div class="v2-sheet-head"><h2>New session</h2><button type="button" class="v2-icon-btn" data-close aria-label="Close">&times;</button></div>
@@ -131,12 +141,6 @@
     </label>
     <label class="v2-field" id="v2-new-profile-wrap" hidden>Account
       <select id="v2-new-profile" name="profile"><option value="">Default</option></select>
-    </label>
-    <label class="v2-field" id="v2-new-runtime-wrap">Runs in
-      <select id="v2-new-runtime" name="runtime">
-        <option value="headless" selected>Headless (no terminal)</option>
-        <option value="tmux">Terminal (tmux)</option>
-      </select>
     </label>
     <label class="v2-field">Model
       <select id="v2-new-model" name="model"><option value="">Default</option></select>

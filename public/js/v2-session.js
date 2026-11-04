@@ -696,6 +696,10 @@
     if (!d.blocked_reason) { promptEl.innerHTML = ''; return true; }
     promptEl.innerHTML = '<div class="v2s-prompt" id="v2s-prompt-card">' + promptHtml(d) + '</div>';
     showReply();
+    // A terminal session's prompt is shown, not answerable.
+    if (d.runtime !== 'headless') {
+      Array.prototype.forEach.call(promptEl.querySelectorAll('button, input, textarea'), function (c) { c.disabled = true; });
+    }
 
     return true;
   }
@@ -829,7 +833,7 @@
     bits.push('<span>' + (status === 'blocked' ? 'needs input' : status) + '</span>');
     if (d.agent && d.agent !== 'claude') { bits.push('<span class="v2-chip v2-agent-' + esc(d.agent) + '">' + esc(d.agent_label || d.agent) + '</span>'); }
     if (d.agent === 'claude' && d.profile) { bits.push('<span class="v2-chip v2-chip-accent">' + esc(d.profile) + '</span>'); }
-    if (d.runtime === 'headless') { bits.push('<span class="v2-chip">Headless</span>'); }
+    if (d.runtime !== 'headless') { bits.push('<span class="v2-chip v2-chip-warn">Terminal, read only</span>'); }
     if (d.git_branch) { bits.push('<span>' + esc(d.git_branch) + '</span>'); }
     var pct = d.context_used_percentage;
     if ((d.agent === 'claude' || d.agent === 'codex') && typeof pct === 'number' && isFinite(pct)) {
@@ -860,11 +864,14 @@
 
   function renderFooter(d) {
     var blocked = !!d.blocked_reason;
-    var readOnly = d.writable === false;
+    var terminal = d.runtime !== 'headless';
+    var readOnly = d.writable === false || terminal;
     var note = $('v2s-compose-note');
     $('v2s-compose').hidden = blocked || readOnly;
     note.hidden = !(blocked || readOnly);
-    note.textContent = readOnly ? (d.read_only_reason || 'This session is currently read-only.')
+    note.textContent = terminal ? (blocked ? 'This prompt is waiting in a terminal. Take the session over (session details) to answer it.'
+      : 'This session runs in a terminal and is read only here. Take it over (session details) to continue it headless.')
+      : readOnly ? (d.read_only_reason || 'This session is currently read-only.')
       : (d.prompt_external ? 'Open Codex Remote to answer this prompt and continue.' : 'Answer the prompt above to continue.');
     stopBtn.hidden = !(d.working && !blocked) || d.agent === 'ollama';
     sendBtn.textContent = d.working ? 'Queue' : 'Send';

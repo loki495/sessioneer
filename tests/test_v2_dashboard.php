@@ -117,7 +117,14 @@ try {
     }
     assert_contains('id="v2-new-dialog"', $body, 'GET /v2: new-session sheet present');
     assert_contains('name="agent"', $body, 'GET /v2: new-session agent picker present');
-    assert_contains('Headless (no terminal)', $body, 'GET /v2: new-session runtime picker present');
+    assert_true(!str_contains($body, 'Headless (no terminal)') && !str_contains($body, 'v2-new-runtime'), 'GET /v2: no Runs-in picker, everything is headless');
+    assert_true(!str_contains($body, '<option value="antigravity"'), 'GET /v2: Antigravity (terminal only) is not offered for new sessions');
+    assert_contains('id="v2-new-prompt-wrap"', $body, 'GET /v2: first message field always present');
+    assert_equal(1, substr_count($body, 'Terminal, read only'), 'GET /v2: only the terminal (non-headless) card is marked read only');
+    assert_contains('data-act="switch" data-runtime="headless">Take over</button>', $body, 'GET /v2: a terminal Claude card offers Take over');
+    assert_true(!str_contains($body, 'Move to terminal'), 'GET /v2: no way back to a terminal');
+    assert_contains('data-act="take-over"', $body, 'GET /v2: bare process has a Take over button');
+    assert_contains('id="v2-takeover-dialog"', $body, 'GET /v2: take-over picker sheet present');
     assert_contains('id="v2-settings-dialog"', $body, 'GET /v2: settings sheet present');
     assert_contains('Hide idle unstarred', $body, 'GET /v2: hide-idle setting kept from classic');
     assert_contains('Show worker sessions', $body, 'GET /v2: worker toggle kept from classic');
@@ -139,7 +146,7 @@ try {
     assert_true(is_array($archived) && ($archived['ok'] ?? false) === true, 'GET /v2/archived: ok');
     assert_contains('Refactor the old widget', (string)($archived['archived_html'] ?? ''), 'GET /v2/archived: archived row rendered');
     assert_contains('data-act="resume"', (string)($archived['archived_html'] ?? ''), 'GET /v2/archived: row can be resumed');
-    assert_contains('data-runtime="headless"', (string)($archived['archived_html'] ?? ''), 'GET /v2/archived: Claude row can resume headless');
+    assert_true(!str_contains((string)($archived['archived_html'] ?? ''), 'data-runtime'), 'GET /v2/archived: one Resume per row (it implies headless), no second Headless button');
 
     // --- action endpoint ---
     $csrf = v2_csrf($body);
@@ -160,17 +167,24 @@ try {
     assert_true(($withPrompt['ok'] ?? false) === true && !isset($withPrompt['notice']), 'POST /v2/action new with a first message (headless): created and the message sent');
     $viaCodex = json_decode($post('action=new&agent=codex&prompt=' . urlencode('hi') . '&workdir=' . $dir)['body'], true);
     assert_true(isset($viaCodex['notice']) && str_contains($viaCodex['notice'], 'first message was not sent'), 'POST /v2/action new: a refused first message still opens the session, with a notice');
-    foreach (['agent=claude&runtime=tmux', 'agent=antigravity'] as $terminal) {
-        $refused = json_decode($post('action=new&' . $terminal . '&prompt=' . urlencode('hi') . '&workdir=' . $dir)['body'], true);
-        assert_true(($refused['ok'] ?? null) === false && str_contains((string)$refused['message'], 'headless or API'), "POST /v2/action new with a first message ({$terminal}): refused before creating anything");
-    }
-    $blank = json_decode($post('action=new&agent=claude&runtime=tmux&prompt=%20%20&workdir=' . $dir)['body'], true);
+    $refused = json_decode($post('action=new&agent=antigravity&prompt=' . urlencode('hi') . '&workdir=' . $dir)['body'], true);
+    assert_true(($refused['ok'] ?? null) === false && str_contains((string)$refused['message'], 'Antigravity'), 'POST /v2/action new: Antigravity is refused before creating anything');
+    $forced = json_decode($post('action=new&agent=claude&runtime=tmux&workdir=' . $dir)['body'], true);
+    assert_equal('/v2/session?session=cc-fake-headless', $forced['redirect'] ?? null, 'POST /v2/action new: a requested terminal runtime is ignored, the session is headless');
+    $blank = json_decode($post('action=new&agent=claude&prompt=%20%20&workdir=' . $dir)['body'], true);
     assert_true(($blank['ok'] ?? false) === true, 'POST /v2/action new: a blank first message is ignored');
-    $resume = json_decode($post('action=resume&runtime=headless&agent_session_id=99999999-8888-4777-a666-555555555555&workdir=' . urlencode('/home/user/www/old-project') . '&profile=work')['body'], true);
+    $resume = json_decode($post('action=resume&agent_session_id=99999999-8888-4777-a666-555555555555&workdir=' . urlencode('/home/user/www/old-project') . '&profile=work')['body'], true);
     assert_equal('/v2/session?session=claude-headless-20260101-1700', $resume['redirect'] ?? null, 'POST /v2/action resume (headless): redirects to the resumed session');
 
     $switch = json_decode($post('action=switch_runtime&runtime=headless&session=' . V2_CANNED_SESSION)['body'], true);
     assert_equal('/v2/session?session=claude-headless-20260101-1700', $switch['redirect'] ?? null, 'POST /v2/action switch_runtime: redirects to the session carrying the conversation');
+
+    $takeOver = json_decode($post('action=take_over&pid=54321')['body'], true);
+    assert_true(($takeOver['needs_choice'] ?? false) === true && count($takeOver['candidates'] ?? []) === 1 && ($takeOver['workdir'] ?? '') === '/home/user/www/some-other-project', 'POST /v2/action take_over: an unidentified process comes back with its candidates');
+    $confirmed = json_decode($post('action=take_over_confirm&pid=54321&workdir=' . urlencode('/home/user/www/some-other-project') . '&agent_session_id=' . '99999999-8888-4777-a666-555555555555')['body'], true);
+    assert_true(($confirmed['ok'] ?? false) === true && str_starts_with((string)($confirmed['redirect'] ?? ''), '/v2/session?session='), 'POST /v2/action take_over_confirm: redirects to the new session');
+    $badTake = json_decode($post('action=take_over&pid=1')['body'], true);
+    assert_true(($badTake['ok'] ?? null) === false, 'POST /v2/action take_over of an unknown pid: refused');
 
     $killBare = json_decode($post('action=kill_bare&pid=54321')['body'], true);
     assert_true(($killBare['ok'] ?? false) === true, 'POST /v2/action kill_bare: ok');
