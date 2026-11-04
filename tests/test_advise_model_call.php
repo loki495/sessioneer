@@ -21,8 +21,8 @@ $usage = [
 ];
 
 $names = static fn (array $c): array => array_map(static fn (array $x): string => $x['agent'] . ':' . ($x['profile'] ?? '-'), $c);
-assert_equal(['claude:work', 'claude:extra', 'codex:-', 'opencode:-'], $names(AdviseModelCall::candidates($usage, 'work')), 'home profile first, a full profile skipped, then codex, then opencode');
-assert_equal(['claude:extra', 'claude:work', 'codex:-', 'opencode:-'], $names(AdviseModelCall::candidates($usage, 'zzz')), 'without a home profile the others sort by name');
+assert_equal(['claude:work', 'claude:extra', 'codex:-'], $names(AdviseModelCall::candidates($usage, 'work')), 'home profile first, a full profile skipped, then codex; opencode is never a candidate');
+assert_equal(['claude:extra', 'claude:work', 'codex:-'], $names(AdviseModelCall::candidates($usage, 'zzz')), 'without a home profile the others sort by name');
 $usage['codex']['quota'] = $full;
 unset($usage['opencode']);
 assert_equal(['claude:work', 'claude:extra'], $names(AdviseModelCall::candidates($usage, 'work')), 'a full or absent agent is dropped');
@@ -64,6 +64,21 @@ AdviseModelCall::resolve($judgment, null, $candidates, static function (array $c
 assert_equal(true, str_contains($seen, 'RESUME') && str_contains($seen, 'FRESH'), 'the prompt states both answers');
 
 assert_equal(['resume', 'fine'], AdviseModelCall::parse('resume : fine'), 'parse is case and space tolerant');
+assert_equal(200, mb_strlen(AdviseModelCall::parse('FRESH: ' . str_repeat('x', 500))[1]), 'a model reason is capped');
+
+$dir = sys_get_temp_dir() . '/sessioneer-test-advise-model-' . getmypid();
+mkdir($dir);
+register_shutdown_function(static function () use ($dir): void {
+    exec('rm -rf ' . escapeshellarg($dir));
+});
+file_put_contents($dir . '/t.jsonl', json_encode(['type' => 'user', 'message' => ['content' => 'my api_key: sk-live-abc and abcdefghijklmnopqrstuvwxyz0123 ok']]) . "\n");
+$prompted = '';
+AdviseModelCall::resolve($judgment, $dir . '/t.jsonl', $candidates, static function (array $c, string $p) use (&$prompted): ?string {
+    $prompted = $p;
+    return null;
+});
+assert_equal(true, str_contains($prompted, 'ok') && !str_contains($prompted, 'sk-live-abc') && !str_contains($prompted, 'abcdefghijklmnopqrstuvwxyz0123'), 'secret-shaped text is redacted from the prompt');
+assert_equal(true, str_contains($prompted, 'untrusted'), 'the prompt marks the transcript as untrusted');
 assert_equal(null, AdviseModelCall::parse(null), 'a null answer does not parse');
 
 echo "ok\n";
