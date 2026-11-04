@@ -92,7 +92,7 @@ try {
 
     if ($page !== null) {
         assert_true(cdp_set_viewport($page, 390, 844, 1.0, true), 'cdp: phone viewport (390x844) set');
-        assert_true(cdp_navigate($page, "{$base}/v2/session?session=" . V2B_SESSION), 'navigation to the v2 session page succeeds');
+        assert_true(cdp_navigate($page, "{$base}/session?session=" . V2B_SESSION), 'navigation to the v2 session page succeeds');
         assert_true(v2b_wait($page, "document.querySelectorAll('#v2s-list > *').length > 5"), 'the transcript renders');
 
         // --- transcript ---
@@ -328,10 +328,10 @@ try {
         cdp_evaluate($page, "delete history.back;");
         cdp_evaluate($page, "Object.defineProperty(history, 'length', { value: 1, configurable: true });");
         cdp_evaluate($page, $swipe(100, 260));
-        assert_true(v2b_wait($page, "location.pathname === '/v2'"), 'swipe: with nothing to go back to, a right swipe opens the dashboard');
+        assert_true(v2b_wait($page, "location.pathname === '/'"), 'swipe: with nothing to go back to, a right swipe opens the dashboard');
 
         // --- archived conversation: read-only transcript, Resume, search and jump ---
-        assert_true(cdp_navigate($page, "{$base}/v2/archived-session?agent_session_id=" . V2B_ARCHIVED), 'navigation to the v2 archived page succeeds');
+        assert_true(cdp_navigate($page, "{$base}/archived-session?agent_session_id=" . V2B_ARCHIVED), 'navigation to the v2 archived page succeeds');
         assert_true(v2b_wait($page, "document.querySelectorAll('#v2s-list > *').length > 5"), 'archived: the transcript renders');
         assert_equal('Refactor the old widget', cdp_evaluate($page, "document.getElementById('v2s-title').textContent"), 'archived: header title');
         assert_contains('Archived', (string)cdp_evaluate($page, "document.getElementById('v2s-sub').textContent"), 'archived: header says archived');
@@ -350,7 +350,7 @@ try {
 
         cdp_evaluate($page, "window.__posted = []; var of = window.fetch; window.fetch = function (u, o) { if (o && o.body) { window.__posted.push({ url: String(u), body: decodeURIComponent(o.body) }); } return of(u, o); }; true");
         cdp_evaluate($page, "document.getElementById('v2s-resume').click()");
-        assert_true(v2b_wait($page, "location.pathname === '/v2/session'"), 'archived: Resume (headless) lands on the new live session');
+        assert_true(v2b_wait($page, "location.pathname === '/session'"), 'archived: Resume (headless) lands on the new live session');
     }
 } finally {
     if ($page !== null) {

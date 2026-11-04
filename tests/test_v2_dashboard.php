@@ -78,17 +78,22 @@ try {
     $jar = tempnam(sys_get_temp_dir(), 'sessioneer-v2-cookies');
 
     // --- happy path: page ---
-    $page = curl_request('GET', "{$base}/v2", [], $jar);
+    $page = curl_request('GET', "{$base}/", [], $jar);
     $body = $page['body'];
     assert_equal(200, $page['status'], 'GET /v2: 200');
-    assert_equal(200, curl_request('GET', "{$base}/v2/")['status'], 'GET /v2/: 200 too');
+    $old = curl_request('GET', "{$base}/v2/");
+    assert_equal(302, $old['status'], 'GET /v2/: redirects');
+    assert_equal('/', $old['headers']['location'] ?? null, 'GET /v2/: to the dashboard');
+    assert_equal('/', curl_request('GET', "{$base}/v2")['headers']['location'] ?? null, 'GET /v2: to the dashboard');
+    assert_equal('/session?session=x&jump_line=3', curl_request('GET', "{$base}/v2/session?session=x&jump_line=3")['headers']['location'] ?? null, 'GET /v2/session: to /session, query kept');
+    assert_equal('/archived-session?agent_session_id=y', curl_request('GET', "{$base}/v2/archived-session?agent_session_id=y")['headers']['location'] ?? null, 'GET /v2/archived-session: to /archived-session');
     assert_contains('<title>Sessioneer</title>', $body, 'GET /v2: titled');
     assert_contains('name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"', $body, 'GET /v2: mobile viewport with safe-area support');
     assert_contains("localStorage.getItem('v2-theme')", $body, 'GET /v2: theme is resolved before first paint');
     assert_true(preg_match('#href="/css/v2\.css\?v=\d+"#', $body) === 1, 'GET /v2: stylesheet is cache-busted');
     assert_true(preg_match('#src="/js/v2\.js\?v=\d+"#', $body) === 1, 'GET /v2: script is cache-busted');
     assert_true(!str_contains($body, 'tailwind.css') && !str_contains($body, 'id="sessions-container"'), 'GET /v2: none of the classic page\'s own markup');
-    assert_contains('href="/" data-classic-link>Classic', $body, 'GET /v2: has a link back to the classic UI');
+    assert_contains('href="/classic" data-classic-link>Classic', $body, 'GET /v2: has a link back to the classic UI');
     assert_contains('v2-fold v2-health"', $body, 'GET /v2: the health section collapses');
     assert_contains('<details class="v2-fold-inner">', $body, 'GET /v2: a health group whose checks all pass is collapsed');
     assert_contains('<details class="v2-fold-inner" open>', $body, 'GET /v2: a group with a failing check is open');
@@ -98,7 +103,7 @@ try {
     assert_contains('&larr; Back to classic', $body, 'GET /v2: "Back to classic" is also in the settings and status views');
     assert_contains('Fix the login redirect bug', $body, 'GET /v2: canned session title shown');
     assert_contains('/home/user/www/demo-project', $body, 'GET /v2: canned workdir shown');
-    assert_contains('href="/v2/session?session=' . V2_CANNED_SESSION . '"', $body, 'GET /v2: card links to the v2 session page');
+    assert_contains('href="/session?session=' . V2_CANNED_SESSION . '"', $body, 'GET /v2: card links to the v2 session page');
     assert_true(!str_contains($body, 'href="/session.php?session='), 'GET /v2: no card links to the classic session page any more');
     assert_contains('Bare title', $body, 'GET /v2: bare process listed');
     assert_contains('data-act="kill-bare"', $body, 'GET /v2: bare process can be killed');
@@ -160,7 +165,7 @@ try {
     assert_true(($badKill['ok'] ?? null) === false && str_contains((string)$badKill['message'], 'Rejected'), 'POST /v2/action kill of an unknown session: refused with the agent\'s reason');
 
     $new = json_decode($post('action=new&agent=claude&runtime=headless&workdir=' . urlencode('/home/user/www/demo-project'))['body'], true);
-    assert_equal('/v2/session?session=cc-fake-headless', $new['redirect'] ?? null, 'POST /v2/action new: redirects to the new session and passes the runtime on');
+    assert_equal('/session?session=cc-fake-headless', $new['redirect'] ?? null, 'POST /v2/action new: redirects to the new session and passes the runtime on');
 
     $dir = urlencode('/home/user/www/demo-project');
     $withPrompt = json_decode($post('action=new&agent=claude&runtime=headless&prompt=' . urlencode('Run the tests') . '&workdir=' . $dir)['body'], true);
@@ -170,19 +175,19 @@ try {
     $refused = json_decode($post('action=new&agent=antigravity&prompt=' . urlencode('hi') . '&workdir=' . $dir)['body'], true);
     assert_true(($refused['ok'] ?? null) === false && str_contains((string)$refused['message'], 'Antigravity'), 'POST /v2/action new: Antigravity is refused before creating anything');
     $forced = json_decode($post('action=new&agent=claude&runtime=tmux&workdir=' . $dir)['body'], true);
-    assert_equal('/v2/session?session=cc-fake-headless', $forced['redirect'] ?? null, 'POST /v2/action new: a requested terminal runtime is ignored, the session is headless');
+    assert_equal('/session?session=cc-fake-headless', $forced['redirect'] ?? null, 'POST /v2/action new: a requested terminal runtime is ignored, the session is headless');
     $blank = json_decode($post('action=new&agent=claude&prompt=%20%20&workdir=' . $dir)['body'], true);
     assert_true(($blank['ok'] ?? false) === true, 'POST /v2/action new: a blank first message is ignored');
     $resume = json_decode($post('action=resume&agent_session_id=99999999-8888-4777-a666-555555555555&workdir=' . urlencode('/home/user/www/old-project') . '&profile=work')['body'], true);
-    assert_equal('/v2/session?session=claude-headless-20260101-1700', $resume['redirect'] ?? null, 'POST /v2/action resume (headless): redirects to the resumed session');
+    assert_equal('/session?session=claude-headless-20260101-1700', $resume['redirect'] ?? null, 'POST /v2/action resume (headless): redirects to the resumed session');
 
     $switch = json_decode($post('action=switch_runtime&runtime=headless&session=' . V2_CANNED_SESSION)['body'], true);
-    assert_equal('/v2/session?session=claude-headless-20260101-1700', $switch['redirect'] ?? null, 'POST /v2/action switch_runtime: redirects to the session carrying the conversation');
+    assert_equal('/session?session=claude-headless-20260101-1700', $switch['redirect'] ?? null, 'POST /v2/action switch_runtime: redirects to the session carrying the conversation');
 
     $takeOver = json_decode($post('action=take_over&pid=54321')['body'], true);
     assert_true(($takeOver['needs_choice'] ?? false) === true && count($takeOver['candidates'] ?? []) === 1 && ($takeOver['workdir'] ?? '') === '/home/user/www/some-other-project', 'POST /v2/action take_over: an unidentified process comes back with its candidates');
     $confirmed = json_decode($post('action=take_over_confirm&pid=54321&workdir=' . urlencode('/home/user/www/some-other-project') . '&agent_session_id=' . '99999999-8888-4777-a666-555555555555')['body'], true);
-    assert_true(($confirmed['ok'] ?? false) === true && str_starts_with((string)($confirmed['redirect'] ?? ''), '/v2/session?session='), 'POST /v2/action take_over_confirm: redirects to the new session');
+    assert_true(($confirmed['ok'] ?? false) === true && str_starts_with((string)($confirmed['redirect'] ?? ''), '/session?session='), 'POST /v2/action take_over_confirm: redirects to the new session');
     $badTake = json_decode($post('action=take_over&pid=1')['body'], true);
     assert_true(($badTake['ok'] ?? null) === false, 'POST /v2/action take_over of an unknown pid: refused');
 
@@ -204,11 +209,11 @@ try {
     $crossOrigin = curl_request('POST', "{$base}/v2/action", ['-H', 'Origin: http://attacker.example', '-d', 'csrf_token=' . urlencode($csrf) . '&action=cleanup'], $jar);
     assert_equal(403, $crossOrigin['status'], 'POST /v2/action from another origin: 403');
     assert_equal(405, curl_request('GET', "{$base}/v2/action", [], $jar)['status'], 'GET /v2/action: 405');
-    assert_equal(421, curl_request('GET', "{$base}/v2", ['-H', 'Host: attacker.example'])['status'], 'GET /v2 with an unlisted Host: 421');
+    assert_equal(421, curl_request('GET', "{$base}/", ['-H', 'Host: attacker.example'])['status'], 'GET /v2 with an unlisted Host: 421');
     assert_equal(404, curl_request('GET', "{$base}/v2/nope")['status'], 'GET /v2/nope: 404');
 
     // --- sad path: the host agent is down ---
-    $down = curl_request('GET', "{$downBase}/v2");
+    $down = curl_request('GET', "{$downBase}/");
     assert_equal(200, $down['status'], 'GET /v2 with the agent down: still renders');
     assert_contains('Cannot reach the host agent', $down['body'], 'GET /v2 with the agent down: says so');
     assert_contains('systemctl --user status sessioneer-agent.socket', $down['body'], 'GET /v2 with the agent down: names the fix');
@@ -220,11 +225,11 @@ try {
     assert_true(($downArchived['ok'] ?? null) === false, 'GET /v2/archived with the agent down: ok=false');
 
     // --- the classic dashboard only gained the link ---
-    $classic = curl_request('GET', "{$base}/", [], $jar);
-    assert_equal(200, $classic['status'], 'GET /: classic dashboard still renders');
-    assert_contains('href="/v2"', $classic['body'], 'GET /: classic dashboard links to the new UI');
-    assert_contains('Try the new UI', $classic['body'], 'GET /: link is labelled');
-    assert_contains('id="sessions-container"', $classic['body'], 'GET /: classic markup untouched');
+    $classic = curl_request('GET', "{$base}/classic", [], $jar);
+    assert_equal(200, $classic['status'], 'GET /classic: classic dashboard still renders');
+    assert_contains('href="/" class="shrink-0', $classic['body'], 'GET /classic: classic dashboard links to the new UI');
+    assert_contains('Try the new UI', $classic['body'], 'GET /classic: link is labelled');
+    assert_contains('id="sessions-container"', $classic['body'], 'GET /classic: classic markup untouched');
 } finally {
     foreach ([$server, $downServer] as $s) {
         if ($s !== null) {

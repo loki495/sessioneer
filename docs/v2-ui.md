@@ -1,9 +1,14 @@
-# UI v2 (`/v2`)
+# UI v2
 
-A mobile-first redesign served beside the classic UI. It reads the same
-host-agent data and calls the same actions; nothing in the classic UI changes
-except one "Try the new UI" link on its dashboard. `/v2` has a "Classic" link in
-its app bar and a "Back to classic" button in Settings and Status.
+A mobile-first redesign that is now the main UI: `/` is its dashboard, `/session`
+its session page and `/archived-session` its archived view. The previous UI
+stays reachable as a fallback at `/classic` (its pages keep their `.php` URLs,
+and its forms still post to `/`), linked from the app bar's "Classic" link and
+the "Back to classic" button in Settings and Status; the classic dashboard links
+back with "Try the new UI". The old page URLs `/v2`, `/v2/session` and
+`/v2/archived-session` redirect to the plain ones (query kept). The JSON
+endpoints keep their `/v2/` prefix. Push notifications and Quick Prompt session
+links open `/session`.
 
 The dashboard, the session page and the archived-session page exist so far. A
 session card opens the v2 session page (which links back to the classic one),
@@ -13,7 +18,7 @@ an archived row the v2 archived page; the file views move over in later steps.
 
 | Piece | Where |
 |---|---|
-| Routes `/v2`, `/v2/`, `/v2/session`, `/v2/history`, `/v2/archived-session`, `/v2/archived-history`, `/v2/fragment`, `/v2/archived`, `/v2/action` | `src/routes.php` |
+| Routes `/`, `/session`, `/archived-session`, `/classic`, the redirecting `/v2*` page URLs, and the JSON `/v2/history`, `/v2/archived-history`, `/v2/fragment`, `/v2/archived`, `/v2/action` | `src/routes.php` |
 | Pages, poll fragment, archived list, history, JSON action endpoint | `src/lib/Controllers/V2Controller.php` |
 | Render helpers (card, counts, archived and bare rows, session page) | `src/lib/Views/V2View.php` |
 | Templates | `src/partials/v2/` |
@@ -97,7 +102,7 @@ to the session page for those), the folder-trust dialog (same), Web Push
 subscribe/unsubscribe, pull to refresh, the session, archived-session and file
 pages, the sidebar, per-session context and mode controls.
 
-## Session page (`/v2/session?session=<name>`)
+## Session page (`/session?session=<name>`)
 
 One column, three parts: a sticky bar (back with a badge counting other sessions
 that need input, title with status and chips, search, details menu), the
@@ -216,7 +221,7 @@ Deferred: Web Push subscribe, pending messages surviving a reload
 highlight colours of the classic page (new entries flash instead), and the full-screen
 text editor for long drafts.
 
-## Archived-session page (`/v2/archived-session?agent_session_id=<id>`)
+## Archived-session page (`/archived-session?agent_session_id=<id>`)
 
 A dormant conversation opens in the same page shell as the session page,
 booted read only (`archived: true` in the bootstrap, `jump_line` supported).

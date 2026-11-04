@@ -12,7 +12,7 @@
     <h1>Sessioneer</h1>
     <p id="v2-subtitle" class="v2-muted v2-small"></p>
   </div>
-  <a class="v2-pill-link" href="/" data-classic-link>Classic</a>
+  <a class="v2-pill-link" href="/classic" data-classic-link>Classic</a>
   <button type="button" class="v2-icon-btn" id="v2-open-settings" aria-label="Settings">&#9881;</button>
 </header>
 
@@ -104,7 +104,7 @@
       </div>
     <?php endif ?>
 
-    <a class="v2-btn v2-btn-quiet v2-block" href="/" data-classic-link>&larr; Back to classic</a>
+    <a class="v2-btn v2-btn-quiet v2-block" href="/classic" data-classic-link>&larr; Back to classic</a>
   </section>
 </main>
 
@@ -186,7 +186,7 @@
     <label class="v2-check"><input type="checkbox" id="v2-show-workers"> Show worker sessions</label>
     <label class="v2-check"><input type="checkbox" id="v2-hide-idle"> Hide idle unstarred</label>
     <button type="button" class="v2-btn v2-btn-warn v2-block" data-act="cleanup">Kill sessions inactive &gt; 12h</button>
-    <a class="v2-btn v2-btn-quiet v2-block" href="/" data-classic-link>&larr; Back to classic</a>
+    <a class="v2-btn v2-btn-quiet v2-block" href="/classic" data-classic-link>&larr; Back to classic</a>
   </div>
 </dialog>
 

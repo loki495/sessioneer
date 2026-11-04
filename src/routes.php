@@ -22,15 +22,21 @@ $router->get('/api/quick-prompt', [\App\Controllers\QuickPromptController::class
 // public/index.php's 404 for a route with no match at all) for a GET to
 // one of these paths.
 
-$router->get('/', [DashboardController::class, 'index']);
+$router->get('/', [V2Controller::class, 'index']);
 $router->post('/', [DashboardController::class, 'handleAction']);
 
-// The redesigned UI, served beside the classic one.
-$router->get('/v2', [V2Controller::class, 'index']);
-$router->get('/v2/', [V2Controller::class, 'index']);
-$router->get('/v2/session', [V2Controller::class, 'session']);
+// The previous UI, kept as a fallback beside the redesign: its pages keep their .php URLs.
+$router->get('/classic', [DashboardController::class, 'index']);
+
+$router->get('/session', [V2Controller::class, 'session']);
+$router->get('/archived-session', [V2Controller::class, 'archivedSession']);
+
+// Old page URLs of the redesign, redirected to the plain ones. Its JSON endpoints keep the /v2 prefix.
+$router->get('/v2', [V2Controller::class, 'redirectPage']);
+$router->get('/v2/', [V2Controller::class, 'redirectPage']);
+$router->get('/v2/session', [V2Controller::class, 'redirectPage']);
+$router->get('/v2/archived-session', [V2Controller::class, 'redirectPage']);
 $router->get('/v2/history', [V2Controller::class, 'history']);
-$router->get('/v2/archived-session', [V2Controller::class, 'archivedSession']);
 $router->get('/v2/archived-history', [V2Controller::class, 'archivedHistory']);
 $router->get('/v2/fragment', [V2Controller::class, 'fragment']);
 $router->get('/v2/archived', [V2Controller::class, 'archived']);

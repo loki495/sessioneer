@@ -81,7 +81,7 @@ try {
     $cookieJar = tempnam(sys_get_temp_dir(), 'sessioneer-test-cookies');
 
     // --- Host allowlist: a rebinding hostname is refused before any route runs ---
-    $rebound = curl_request('GET', "{$baseUrl}/", ['-H', 'Host: attacker.example:' . $port]);
+    $rebound = curl_request('GET', "{$baseUrl}/classic", ['-H', 'Host: attacker.example:' . $port]);
     assert_equal(421, $rebound['status'], 'GET / with an unlisted Host: 421');
     assert_contains('ALLOWED_HOSTS', $rebound['body'], 'GET / with an unlisted Host: explains the fix');
     assert_true(!str_contains($rebound['body'], 'Sessioneer'), 'GET / with an unlisted Host: no page or CSRF token leaks');
@@ -89,7 +89,7 @@ try {
     assert_equal(421, $reboundPost['status'], 'POST with an unlisted Host and matching Origin: 421');
 
     // --- page reflects the canned agent's data ---
-    $result = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $result = curl_request('GET', "{$baseUrl}/classic", [], $cookieJar);
     assert_equal(200, $result['status'], 'GET /: 200');
     assert_contains('Sessioneer', $result['body'], 'GET /: page title present');
     assert_contains('2 active', $result['body'], 'GET /: session count from canned agent');
@@ -164,7 +164,7 @@ try {
     assert_equal(303, $result['status'], 'POST new: 303 redirect');
     assert_equal('/session.php?session=cc-fake-none', $result['headers']['location'] ?? '', 'POST new: redirects straight to the new session\'s own view, not back to the dashboard with a flash');
 
-    $follow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $follow = curl_request('GET', "{$baseUrl}/classic", [], $cookieJar);
     assert_equal(200, $follow['status'], 'GET / afterward: 200');
     assert_true(!str_contains($follow['body'], 'Created session'), 'GET / afterward: no flash message - there never was one to show');
     $csrfToken = extract_csrf_token($follow['body']);
@@ -180,7 +180,7 @@ try {
         '-d', 'action=kill&csrf_token=' . urlencode((string)$csrfToken) . '&session=cc-20260101-1200',
     ], $cookieJar);
     assert_equal(303, $result['status'], 'POST kill: 303 redirect');
-    $follow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $follow = curl_request('GET', "{$baseUrl}/classic", [], $cookieJar);
     assert_contains('Killed', $follow['body'], 'POST kill: flash shows success for the canned session name');
     $csrfToken = extract_csrf_token($follow['body']);
 
@@ -188,7 +188,7 @@ try {
     $result = curl_request('POST', "{$baseUrl}/", [
         '-d', 'action=kill&csrf_token=' . urlencode((string)$csrfToken) . '&session=cc-not-a-real-session',
     ], $cookieJar);
-    $follow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $follow = curl_request('GET', "{$baseUrl}/classic", [], $cookieJar);
     assert_contains('Rejected', $follow['body'], 'POST kill: flash shows rejection for an unrecognized session name');
     $csrfToken = extract_csrf_token($follow['body']);
 
@@ -197,7 +197,7 @@ try {
         '-d', 'action=kill_bare&csrf_token=' . urlencode((string)$csrfToken) . '&pid=54321',
     ], $cookieJar);
     assert_equal(303, $result['status'], 'POST kill_bare: 303 redirect');
-    $follow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $follow = curl_request('GET', "{$baseUrl}/classic", [], $cookieJar);
     assert_contains('Killed', $follow['body'], 'POST kill_bare: flash shows success for the canned pid');
     $csrfToken = extract_csrf_token($follow['body']);
 
@@ -305,7 +305,7 @@ try {
     // --- session.php: no ?session -> redirects home rather than erroring ---
     $result = curl_request('GET', "{$baseUrl}/session.php");
     assert_equal(303, $result['status'], 'GET /session.php with no session param: 303 redirect');
-    assert_equal('/', $result['headers']['location'] ?? '', 'GET /session.php with no session param: redirects to /');
+    assert_equal('/classic', $result['headers']['location'] ?? '', 'GET /session.php with no session param: redirects to the classic dashboard');
 
     // --- session.php: renders the canned session's detail + history ---
     $result = curl_request('GET', "{$baseUrl}/session.php?session=cc-20260101-1200", [], $cookieJar);
@@ -1019,7 +1019,7 @@ try {
     assert_equal(403, $result['status'], 'POST /session_send.php with a wrong csrf_token: 403');
 
     // --- session_send.php: valid CSRF, real message -> canned agent accepts it, returns JSON (no redirect, no page reload) ---
-    $csrfForSend = extract_csrf_token(curl_request('GET', "{$baseUrl}/", [], $cookieJar)['body']);
+    $csrfForSend = extract_csrf_token(curl_request('GET', "{$baseUrl}/classic", [], $cookieJar)['body']);
     $result = curl_request('POST', "{$baseUrl}/session_send.php", [
         '-d', 'session=' . urlencode('cc-20260101-1200') . '&csrf_token=' . urlencode((string)$csrfForSend) . '&message=' . urlencode('Please continue'),
     ], $cookieJar);
@@ -1323,7 +1323,7 @@ try {
     // anymore. ---
     $archivedResult = curl_request('GET', "{$baseUrl}/archived_session.php");
     assert_equal(303, $archivedResult['status'], 'GET /archived_session.php with no agent_session_id param: 303 redirect');
-    assert_equal('/', $archivedResult['headers']['location'] ?? '', 'GET /archived_session.php with no agent_session_id param: redirects to /');
+    assert_equal('/classic', $archivedResult['headers']['location'] ?? '', 'GET /archived_session.php with no agent_session_id param: redirects to the classic dashboard');
 
     // --- archived_session.php: renders the canned archived session's
     // detail + history, reusing the exact same TranscriptView rendering
@@ -1387,7 +1387,7 @@ try {
     // the unify-claude-sessions plan's phase 5). Own $archivedResume*
     // variables throughout, same reasoning as the rest of this
     // end-of-curl-only-tier block. ---
-    $archivedResumeFrontPage = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $archivedResumeFrontPage = curl_request('GET', "{$baseUrl}/classic", [], $cookieJar);
     $archivedResumeCsrfToken = extract_csrf_token($archivedResumeFrontPage['body']);
     assert_true($archivedResumeCsrfToken !== null, 'GET / (resume setup): page includes a csrf_token field');
 
@@ -1412,7 +1412,7 @@ try {
     // agent_session_id/workdir), so this only fails if DashboardController
     // or the canned fixture's own profile check regresses - not a stand-in
     // for "unrecognized session" (that's covered separately below). ---
-    $archivedResumeNoProfileFrontPage = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $archivedResumeNoProfileFrontPage = curl_request('GET', "{$baseUrl}/classic", [], $cookieJar);
     $archivedResumeNoProfileCsrfToken = extract_csrf_token($archivedResumeNoProfileFrontPage['body']);
 
     $archivedResumeNoProfileResult = curl_request('POST', "{$baseUrl}/", [
@@ -1422,7 +1422,7 @@ try {
     ], $cookieJar);
     assert_equal(303, $archivedResumeNoProfileResult['status'], 'POST resume (no profile): 303 redirect');
     assert_equal(
-        '/',
+        '/classic',
         $archivedResumeNoProfileResult['headers']['location'] ?? '',
         'POST resume (no profile): falls back to redirecting home, not to a session view - the account info needed to actually resume this session was never sent'
     );
@@ -1430,7 +1430,7 @@ try {
     // --- POST resume: canned agent rejects an unrecognized agent_session_id
     // - falls back to the classic flash-to-/ behavior, same as every other
     // action here, since there is no new session name to redirect to. ---
-    $archivedResumeRejectFrontPage = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $archivedResumeRejectFrontPage = curl_request('GET', "{$baseUrl}/classic", [], $cookieJar);
     $archivedResumeRejectCsrfToken = extract_csrf_token($archivedResumeRejectFrontPage['body']);
 
     $archivedResumeRejectResult = curl_request('POST', "{$baseUrl}/", [
@@ -1439,16 +1439,16 @@ try {
             . '&workdir=' . urlencode('/home/user/www/old-project'),
     ], $cookieJar);
     assert_equal(303, $archivedResumeRejectResult['status'], 'POST resume (unrecognized id): 303 redirect');
-    assert_equal('/', $archivedResumeRejectResult['headers']['location'] ?? '', 'POST resume (unrecognized id): falls back to redirecting home, not to a session view');
+    assert_equal('/classic', $archivedResumeRejectResult['headers']['location'] ?? '', 'POST resume (unrecognized id): falls back to redirecting home, not to a session view');
 
-    $archivedResumeRejectFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $archivedResumeRejectFollow = curl_request('GET', "{$baseUrl}/classic", [], $cookieJar);
     assert_contains('Rejected', $archivedResumeRejectFollow['body'], 'POST resume (unrecognized id): flash shows the rejection message');
 
     // --- Claude runtime choice (terminal vs headless): the New Session
     // form's picker, resume-as-headless, and switching a live session. Own
     // $runtime*-prefixed variables, same end-of-curl-only-tier reasoning as
     // the blocks around it. ---
-    $runtimeFrontPage = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $runtimeFrontPage = curl_request('GET', "{$baseUrl}/classic", [], $cookieJar);
     $runtimeCsrf = extract_csrf_token($runtimeFrontPage['body']);
     assert_contains('name="runtime"', $runtimeFrontPage['body'], 'GET /: the New Session form has a runtime picker');
     assert_true(preg_match('#<label id="new-session-runtime-label" class="hidden #', $runtimeFrontPage['body']) === 1, 'GET /: the runtime picker starts hidden (index.js reveals it for Claude only)');
@@ -1467,22 +1467,22 @@ try {
     // that follows each one.
     $runtimeNew = curl_request('POST', "{$baseUrl}/", ['-d', 'action=new&csrf_token=' . urlencode((string)$runtimeCsrf) . '&workdir=' . urlencode('/home/user/www/demo-project') . '&agent=claude&runtime=headless'], $cookieJar);
     assert_equal('/session.php?session=cc-fake-headless', $runtimeNew['headers']['location'] ?? '', 'POST new (runtime=headless): the choice reaches the agent');
-    $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $runtimeFollow = curl_request('GET', "{$baseUrl}/classic", [], $cookieJar);
     $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
 
     $runtimeNew = curl_request('POST', "{$baseUrl}/", ['-d', 'action=new&csrf_token=' . urlencode((string)$runtimeCsrf) . '&workdir=' . urlencode('/home/user/www/demo-project') . '&agent=claude&runtime='], $cookieJar);
     assert_equal('/session.php?session=cc-fake-none', $runtimeNew['headers']['location'] ?? '', 'POST new (empty runtime): still creates, with no runtime sent - the agent applies its own default');
-    $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $runtimeFollow = curl_request('GET', "{$baseUrl}/classic", [], $cookieJar);
     $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
 
     $runtimeNew = curl_request('POST', "{$baseUrl}/", ['-d', 'action=new&csrf_token=' . urlencode((string)$runtimeCsrf) . '&workdir=' . urlencode('/home/user/www/demo-project') . '&agent=claude&runtime=' . urlencode('tmux; rm -rf /')], $cookieJar);
     assert_equal('/session.php?session=cc-fake-none', $runtimeNew['headers']['location'] ?? '', 'POST new (garbage runtime): anything but "headless" or "tmux" is dropped, never forwarded');
-    $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $runtimeFollow = curl_request('GET', "{$baseUrl}/classic", [], $cookieJar);
     $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
 
     $runtimeNew = curl_request('POST', "{$baseUrl}/", ['-d', 'action=new&csrf_token=' . urlencode((string)$runtimeCsrf) . '&workdir=' . urlencode('/home/user/www/demo-project') . '&agent=claude&runtime=tmux'], $cookieJar);
     assert_equal('/session.php?session=cc-fake-tmux', $runtimeNew['headers']['location'] ?? '', 'POST new (runtime=tmux): the terminal choice reaches the agent');
-    $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $runtimeFollow = curl_request('GET', "{$baseUrl}/classic", [], $cookieJar);
     $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
 
     $runtimeResume = curl_request('POST', "{$baseUrl}/", [
@@ -1494,18 +1494,18 @@ try {
     ], $cookieJar);
     assert_equal(303, $runtimeResume['status'], 'POST resume (runtime=headless): 303 redirect');
     assert_equal('/session.php?session=' . CANNED_HEADLESS_RESUMED_SESSION_NAME, $runtimeResume['headers']['location'] ?? '', 'POST resume (runtime=headless): redirects to the headless session');
-    $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $runtimeFollow = curl_request('GET', "{$baseUrl}/classic", [], $cookieJar);
     $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
 
     $runtimeSwitch = curl_request('POST', "{$baseUrl}/", ['-d', 'action=switch_runtime&csrf_token=' . urlencode((string)$runtimeCsrf) . '&session=cc-20260101-1200&runtime=headless'], $cookieJar);
     assert_equal(303, $runtimeSwitch['status'], 'POST switch_runtime: 303 redirect');
     assert_equal('/session.php?session=' . CANNED_HEADLESS_RESUMED_SESSION_NAME, $runtimeSwitch['headers']['location'] ?? '', 'POST switch_runtime: redirects to the session that now carries the conversation');
-    $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $runtimeFollow = curl_request('GET', "{$baseUrl}/classic", [], $cookieJar);
     $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
 
     $runtimeSwitchBad = curl_request('POST', "{$baseUrl}/", ['-d', 'action=switch_runtime&csrf_token=' . urlencode((string)$runtimeCsrf) . '&session=cc-20260101-1200&runtime=tmux'], $cookieJar);
-    assert_equal('/', $runtimeSwitchBad['headers']['location'] ?? '', 'POST switch_runtime (rejected): falls back to home with a flash, not a session view');
-    $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    assert_equal('/classic', $runtimeSwitchBad['headers']['location'] ?? '', 'POST switch_runtime (rejected): falls back to home with a flash, not a session view');
+    $runtimeFollow = curl_request('GET', "{$baseUrl}/classic", [], $cookieJar);
     assert_contains('Rejected', $runtimeFollow['body'], 'POST switch_runtime (rejected): the agent\'s reason is shown');
     $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
 
@@ -1517,7 +1517,7 @@ try {
     // button, and the picker's confirm step. Own $takeOver*-prefixed
     // variables, same end-of-curl-only-tier reasoning as the rest of this
     // block. ---
-    $takeOverFrontPage = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $takeOverFrontPage = curl_request('GET', "{$baseUrl}/classic", [], $cookieJar);
     $takeOverCsrfToken = extract_csrf_token($takeOverFrontPage['body']);
     assert_true($takeOverCsrfToken !== null, 'GET / (take-over setup): page includes a csrf_token field');
 
@@ -1686,7 +1686,7 @@ function run_headless_browser_checks(string $browser, int $port): void
 {
     $base = "http://127.0.0.1:{$port}";
 
-    $home = headless_dump_dom($browser, "{$base}/");
+    $home = headless_dump_dom($browser, "{$base}/classic");
 
     if ($home === null) {
         return;

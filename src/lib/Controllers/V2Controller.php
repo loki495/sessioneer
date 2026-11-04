@@ -18,6 +18,16 @@ use App\Views\V2View;
  */
 class V2Controller extends Controller
 {
+    /** The redesign's former page URLs (/v2, /v2/session, /v2/archived-session) now live at the plain ones. */
+    public function redirectPage(): void
+    {
+        $path = rtrim((string)parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH), '/');
+        $plain = ['/v2' => '/', '/v2/session' => '/session', '/v2/archived-session' => '/archived-session'][$path] ?? '/';
+        $query = (string)($_SERVER['QUERY_STRING'] ?? '');
+
+        header('Location: ' . $plain . ($query !== '' ? '?' . $query : ''), true, 302);
+    }
+
     public function index(): void
     {
         AuthService::start_app_session();
@@ -60,7 +70,7 @@ class V2Controller extends Controller
         $sessionName = trim((string)($_GET['session'] ?? ''));
 
         if ($sessionName === '') {
-            header('Location: /v2', true, 303);
+            header('Location: /', true, 303);
 
             return;
         }
@@ -110,7 +120,7 @@ class V2Controller extends Controller
         $agentSessionId = trim((string)($_GET['agent_session_id'] ?? ''));
 
         if ($agentSessionId === '') {
-            header('Location: /v2', true, 303);
+            header('Location: /', true, 303);
 
             return;
         }
@@ -315,7 +325,7 @@ class V2Controller extends Controller
             $out = ['ok' => (bool)($result['ok'] ?? false), 'message' => (string)($result['message'] ?? 'Taken over')];
 
             if (($out['ok']) && is_string($result['name'] ?? null) && $result['name'] !== '') {
-                $out['redirect'] = '/v2/session?session=' . urlencode($result['name']);
+                $out['redirect'] = '/session?session=' . urlencode($result['name']);
             }
 
             return $out;
@@ -372,7 +382,7 @@ class V2Controller extends Controller
         $out = ['ok' => $ok, 'message' => $ok && $okMessage !== null ? $okMessage : (string)($result['message'] ?? 'Unknown error')];
 
         if ($ok && is_string($result['name'] ?? null) && $result['name'] !== '') {
-            $out['redirect'] = '/v2/session?session=' . urlencode($result['name']);
+            $out['redirect'] = '/session?session=' . urlencode($result['name']);
         }
 
         return $out;

@@ -132,7 +132,7 @@ final class QuickPromptService
     {
         $id = $result['session_id'] ?? null;
         $reference = is_string($id) && preg_match('/^[a-zA-Z0-9_-]{1,128}$/D', $id) === 1
-            ? ['session_id' => $id, 'session_url' => rtrim($base, '/') . '/session.php?session=' . rawurlencode($id)] : [];
+            ? ['session_id' => $id, 'session_url' => rtrim($base, '/') . '/session?session=' . rawurlencode($id)] : [];
         if (($result['type'] ?? null) === 'error') {
             // Only accept the fixed public error contract from our host action.
             $why = [];
