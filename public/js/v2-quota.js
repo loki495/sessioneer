@@ -66,12 +66,12 @@
         profiles.forEach(function (p) {
           var pr = data.claude_profiles[p];
           var body = pr && pr.ok ? rows(pr.quota) : '';
-          if (body) { groups.push('<section class="v2-quota-group"><h3 class="v2-subtitle">' + esc(a.label || id) + ' · ' + esc(pr.label || p) + '</h3>' + body + '</section>'); }
+          if (body) { groups.push('<section class="v2-quota-group v2-qg-' + esc(id) + '"><h3 class="v2-subtitle">' + esc(a.label || id) + ' · ' + esc(pr.label || p) + '</h3>' + body + '</section>'); }
         });
         return;
       }
       var html = rows(a.quota);
-      if (html) { groups.push('<section class="v2-quota-group"><h3 class="v2-subtitle">' + esc(a.label || id) + '</h3>' + html + '</section>'); }
+      if (html) { groups.push('<section class="v2-quota-group v2-qg-' + esc(id) + '"><h3 class="v2-subtitle">' + esc(a.label || id) + '</h3>' + html + '</section>'); }
     });
 
     return groups.join('') || '<span class="v2-muted v2-small">No usage data available.</span>';

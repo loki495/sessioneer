@@ -462,7 +462,7 @@
     $('v2s-sessions-list').innerHTML = rows.length ? rows.map(function (x) {
       var st = statusOfRow(x);
       var folder = String(x.workdir || '').replace(/\/+$/, '').split('/').pop();
-      return '<div class="v2s-srow' + (x.name === session ? ' is-current' : '') + '">'
+      return '<div class="v2s-srow' + (x.name === session ? ' is-current' : '') + (x.starred ? ' is-starred' : '') + '">'
         + '<a class="v2s-srow-main" href="/v2/session?session=' + encodeURIComponent(x.name) + '"><i class="v2-dot v2-dot-' + st + '" role="img" aria-label="' + (st === 'blocked' ? 'needs input' : st) + '"></i>'
         + '<span class="v2s-srow-text"><b>' + esc(x.title || x.name) + '</b><small>' + esc(folder) + '</small></span></a>'
         + '<button type="button" class="v2-icon-btn" data-star="' + esc(x.name) + '" aria-pressed="' + (x.starred ? 'true' : 'false') + '" aria-label="' + (x.starred ? 'Unstar' : 'Star') + '">' + (x.starred ? '&#9733;' : '&#9734;') + '</button></div>';
