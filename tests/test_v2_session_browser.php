@@ -213,6 +213,14 @@ try {
         assert_true(v2b_wait($page, "window.__posted.filter(function (p) { return p.url.indexOf('session_send') >= 0; }).length === 1"), 'footer: sending posts the message');
         assert_true(v2b_wait($page, "document.getElementById('v2s-text').value === ''"), 'footer: and clears the box once accepted');
 
+        // Enter on a touch screen never sends (a soft keyboard reports shiftKey at the start of a sentence); Shift+Enter sends elsewhere
+        $enter = "(function (coarse) { var real = window.matchMedia; window.matchMedia = function (q) { return { matches: coarse && q.indexOf('pointer: coarse') >= 0 }; }; var t = document.getElementById('v2s-text'); t.value = 'typed'; t.dispatchEvent(new Event('input')); window.__posted = []; var ev = new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true }); t.dispatchEvent(ev); window.matchMedia = real; return ev.defaultPrevented; }(%s))";
+        assert_equal(false, cdp_evaluate($page, sprintf($enter, 'true')), 'footer: on a touch screen Shift+Enter is left alone (a newline), never a send');
+        assert_equal(0, cdp_evaluate($page, "window.__posted.filter(function (p) { return p.url.indexOf('session_send') >= 0; }).length"), 'footer: and nothing was posted');
+        assert_equal(true, cdp_evaluate($page, sprintf($enter, 'false')), 'footer: with a mouse and keyboard Shift+Enter sends');
+        assert_true(v2b_wait($page, "window.__posted.filter(function (p) { return p.url.indexOf('session_send') >= 0; }).length === 1"), 'footer: and posts the message');
+        assert_true(v2b_wait($page, "document.getElementById('v2s-text').value === ''"), 'footer: and clears the box');
+
         // a failed send is rolled back, explained, and keeps what was typed
         cdp_evaluate($page, "(function () { var t = document.getElementById('v2s-text'); t.value = '   '; t.dispatchEvent(new Event('input')); }())");
         assert_equal(true, cdp_evaluate($page, "document.getElementById('v2s-send').disabled"), 'footer: whitespace alone cannot be sent');

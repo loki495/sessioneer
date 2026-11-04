@@ -76,7 +76,7 @@ $bootstrap = json_encode([
         <div class="v2s-composerow">
           <button type="button" class="v2-icon-btn v2s-attach" id="v2s-attach-btn" aria-label="Attach file">+</button>
           <input type="file" id="v2s-file" multiple hidden>
-          <textarea id="v2s-text" rows="1" placeholder="Message" enterkeyhint="send" aria-label="Message"></textarea>
+          <textarea id="v2s-text" rows="1" placeholder="Message" enterkeyhint="enter" aria-label="Message"></textarea>
           <button type="button" class="v2-btn v2-btn-danger v2s-stop" id="v2s-stop" hidden>Stop</button>
           <button type="button" class="v2-btn v2-btn-primary v2s-send" id="v2s-send" disabled>Send</button>
         </div>

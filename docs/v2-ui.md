@@ -146,7 +146,7 @@ setting as the dashboard, paused while the tab is hidden, and a rotated transcri
 
 **Footer.** Send (reads Queue while the agent is working), Stop (interrupt),
 attach files (uploaded to the project, removed again when the chip is removed),
-a draft kept per session, Shift+Enter sends. Up and down buttons jump one message
+a draft kept per session, Shift+Enter sends (not on a touch screen, where Enter is always a newline and the Send button sends). Up and down buttons jump one message
 at a time and skip tool calls; the bottom button shows a dot when new content
 arrived off screen. The controls button opens model, permission mode and effort
 (Claude), the model catalog (Codex with effort, OpenCode, Ollama) or the fixed
