@@ -200,7 +200,34 @@ class V2Controller extends Controller
             $params['runtime'] = $runtime;
         }
 
-        return $this->agent_with_redirect($params, 'Created session');
+        $prompt = trim((string)($_POST['prompt'] ?? ''));
+
+        if ($prompt === '') {
+            return $this->agent_with_redirect($params, 'Created session');
+        }
+
+        // A first message needs a process that takes input at once; a terminal session is still starting up.
+        $agent = (string)$params['agent'];
+
+        if (!($agent === 'claude' ? $runtime !== 'tmux' : in_array($agent, ['codex', 'opencode', 'ollama'], true))) {
+            return ['ok' => false, 'message' => 'A first message can only be sent to a headless or API session.'];
+        }
+
+        $created = $this->agent_with_redirect($params, 'Created session');
+        $name = (string)(parse_url((string)($created['redirect'] ?? ''), PHP_URL_QUERY) ?? '');
+        parse_str($name, $query);
+
+        if (!($created['ok'] ?? false) || !is_string($query['session'] ?? null)) {
+            return $created;
+        }
+
+        $sent = AgentClient::agent_call(['action' => 'send_message', 'session' => $query['session'], 'text' => $prompt, 'attachment_paths' => []]);
+
+        if (!($sent['ok'] ?? false)) {
+            $created['notice'] = 'Session created, but the first message was not sent: ' . (string)($sent['message'] ?? 'unknown error');
+        }
+
+        return $created;
     }
 
     /** @return array<string, mixed> */

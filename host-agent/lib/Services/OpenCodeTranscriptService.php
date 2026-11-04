@@ -491,6 +491,7 @@ class OpenCodeTranscriptService
                 'options' => $options,
                 'pending' => in_array($status, ['running', 'pending'], true),
                 'answer' => $answer,
+                'answer_output' => is_string($output) && trim($output) !== '' ? trim($output) : null,
                 'tool_name' => 'question',
             ];
 

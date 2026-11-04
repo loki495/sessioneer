@@ -171,6 +171,40 @@
     return out ? '<div class="v2s-media">' + out + '</div>' : '';
   }
 
+  // ---- answered questions as Question / Answer rows ----
+  var ANSWERED_PREFIX = 'User has answered your questions:';
+  var ANSWERS_KEY = 'v2s-answers:' + session;
+  var ANSWERS_KEEP = 12;
+
+  function storedAnswers() {
+    try { var v = JSON.parse(load(ANSWERS_KEY, '[]')); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+  }
+  // The exact pairs this browser sent beat the regex, which cannot tell a quote inside an answer from the closing one.
+  function rememberAnswers(pairs) {
+    var all = storedAnswers();
+    all.push(pairs);
+    save(ANSWERS_KEY, JSON.stringify(all.slice(-ANSWERS_KEEP)));
+  }
+  // Claude Code and OpenCode write: User has answered your questions: "Q"="A", "Q2"="B". You can now continue ...
+  function parseAnswered(text) {
+    var t = String(text == null ? '' : text).trim();
+    if (t.indexOf(ANSWERED_PREFIX) !== 0) { return null; }
+    var known = storedAnswers().filter(function (pairs) {
+      return pairs.length && pairs.every(function (p) { return t.indexOf(p.q) !== -1 && t.indexOf(p.a) !== -1; });
+    })[0];
+    if (known) { return known; }
+    var re = /"([\s\S]*?)"="([\s\S]*?)"(?=, "|\.\s*You can now continue|\s*$)/g;
+    var pairs = [];
+    var m;
+    while ((m = re.exec(t.slice(ANSWERED_PREFIX.length))) !== null) { pairs.push({ q: m[1], a: m[2] }); }
+    return pairs.length ? pairs : null;
+  }
+  function answerRows(pairs) {
+    return '<div class="v2s-qa">' + pairs.map(function (p) {
+      return '<div class="v2s-qa-row"><span class="v2s-label">Question</span><p>' + esc(p.q) + '</p><span class="v2s-label">Answer</span><p class="v2s-qa-a">' + esc(p.a) + '</p></div>';
+    }).join('') + '</div>';
+  }
+
   function textBlock(text) {
     return '<div class="v2s-text">' + renderMarkdown(text) + '</div>'
       + '<div class="v2s-actions"><button type="button" class="v2s-link" data-act="copy" data-raw="' + rawRef(text) + '">Copy</button></div>';
@@ -190,6 +224,8 @@
         return '<div data-line="' + line + '">' + (block.description ? '<p class="v2s-desc">' + esc(block.description) + '</p>' : '')
           + codeBlock(text, block.tool_name || 'Call') + '</div>' + media;
       case 'tool_result':
+        var answered = parseAnswered(text);
+        if (answered) { return '<div data-line="' + line + '">' + answerRows(answered) + '</div>' + media; }
         return '<div data-line="' + line + '">'
           + (block.agent_type != null ? '<div class="v2s-text">' + renderMarkdown(text) + '</div>' : codeBlock(prettyJson(text), 'Output'))
           + '</div>' + media;
@@ -454,13 +490,14 @@
   }
 
   // Pending (optimistic) entries ---------------------------------------
-  function addPending(text) {
+  function addPending(text, pairs) {
     var el = renderEntry({ role: 'user', blocks: [{ kind: 'text', text: text }], line: 0, timestamp: null });
+    if (pairs) { var body = el.querySelector('[data-line]'); if (body) { body.innerHTML = answerRows(pairs); } }
     el.classList.add('v2s-pending');
     el.removeAttribute('data-lines');
     el.querySelector('.v2s-meta').innerHTML = '<span class="pending-note">Sending…</span>';
     listEl.appendChild(el);
-    var item = { el: el, text: text.trim(), at: Date.now() };
+    var item = { el: el, text: text.trim(), at: Date.now(), pairs: pairs || null };
     pending.push(item);
     showEmpty();
     toBottom();
@@ -580,7 +617,9 @@
     else if (block.options && block.options.length) {
       html += '<ul class="v2s-answered">' + block.options.map(function (o) { return '<li>' + o.number + '. ' + esc(o.label) + '</li>'; }).join('') + '</ul>';
     }
-    if (block.answer) { html += '<p class="v2s-answered">Answered: ' + esc(block.answer) + '</p>'; }
+    var rows = block.answer ? (parseAnswered(block.answer_output) || (questions.length === 1 ? [{ q: questions[0].question || title, a: block.answer }] : null)) : null;
+    if (rows) { html += answerRows(rows); }
+    else if (block.answer) { html += '<p class="v2s-answered">Answered: ' + esc(block.answer) + '</p>'; }
     else if (block.pending) { html += '<p class="v2s-answered">Awaiting your answer</p>'; }
 
     return html + '</div>';
@@ -668,6 +707,7 @@
 
   function afterAnswer(res, card, optimistic, okFallback) {
     if (res && res.ok) {
+      if (optimistic && optimistic.pairs) { rememberAnswers(optimistic.pairs); }
       renderThinking({ working: false, blocked_reason: null }, true);
       // The request only waits for the keys to be sent; the agent needs a moment to move past the prompt.
       setTimeout(pollNow, 300);
@@ -683,12 +723,19 @@
     return !prefs.confirm || window.confirm('Send "' + label + '" to this session?');
   }
 
+  // A one-question AskUserQuestion on screen: its question and the answer as rows (null for a permission prompt).
+  function singleQuestionPairs(answer) {
+    var input = detail.prompt_tool_name === 'AskUserQuestion' ? detail.prompt_tool_input : null;
+    var q = input && Array.isArray(input.questions) && input.questions.length === 1 ? input.questions[0].question : null;
+    return q ? [{ q: q, a: answer }] : null;
+  }
+
   function answerPlain(btn) {
     var label = btn.getAttribute('data-label');
     if (!confirmAnswer(label)) { return; }
     var card = closest(btn, '.v2s-prompt, .v2s-qblock');
     markPending(card, true);
-    var opt = addPending(label);
+    var opt = addPending(label, singleQuestionPairs(label));
     post('/answer_prompt.php', { session: session, option: btn.getAttribute('data-option'), expected_label: label })
       .then(function (res) { afterAnswer(res, card, opt, 'Failed to send answer'); })
       .catch(function () { afterAnswer(null, card, opt, 'Network error: answer not sent'); });
@@ -703,7 +750,7 @@
     var reveal = scope.querySelector('[data-act="reveal-free"]');
     var card = scope;
     markPending(card, true);
-    var opt = addPending(text);
+    var opt = addPending(text, singleQuestionPairs(text));
     post('/answer_prompt.php', { session: session, option: reveal ? reveal.getAttribute('data-option') : '0', text: text })
       .then(function (res) { afterAnswer(res, card, opt, 'Failed to send reply'); })
       .catch(function () { afterAnswer(null, card, opt, 'Network error: reply not sent'); });
@@ -719,6 +766,7 @@
   function collectMulti(wrap) {
     var answers = [];
     var parts = [];
+    var pairs = [];
     var qs2 = wrap.querySelectorAll('[data-q]');
     for (var i = 0; i < qs2.length; i++) {
       var q = qs2[i];
@@ -737,18 +785,21 @@
         if (free) { picks.push({ text: typed }); }
         answers.push(picks);
         parts.push(label + ': ' + real.map(labelOf).concat(free ? [typed] : []).join(', '));
+        pairs.push({ q: label, a: real.map(labelOf).concat(free ? [typed] : []).join(', ') });
       } else if (free) {
         answers.push({ text: typed });
         parts.push(label + ': ' + typed);
+        pairs.push({ q: label, a: typed });
       } else if (real.length) {
         answers.push(parseInt(real[0].value, 10));
         parts.push(label + ': ' + labelOf(real[0]));
+        pairs.push({ q: label, a: labelOf(real[0]) });
       } else {
         return null;
       }
     }
 
-    return { answers: answers, summary: parts.join('\n') };
+    return { answers: answers, summary: parts.join('\n'), pairs: pairs };
   }
 
   function answerMulti(btn) {
@@ -757,7 +808,7 @@
     if (collected === null) { toast('Please answer every question before sending.', true); return; }
     var card = closest(btn, '.v2s-prompt, .v2s-qblock');
     markPending(card, true);
-    var opt = addPending(collected.summary);
+    var opt = addPending(collected.summary, collected.pairs);
     post('/answer_multi_question.php', { session: session, answers: JSON.stringify(collected.answers) })
       .then(function (res) { afterAnswer(res, card, opt, 'Failed to send answers'); })
       .catch(function () { afterAnswer(null, card, opt, 'Network error: answers not sent'); });
@@ -1134,7 +1185,7 @@
   window.V2S.api = {
     session: session, csrf: function () { return csrf; }, esc: esc, toast: toast, post: post, getJson: getJson, qs: qs,
     copy: copyText, fileSize: fileSize, relTime: relTime, save: save, load: load, prefs: prefs,
-    detail: function () { return detail; },
+    detail: function () { return detail; }, parseAnswered: parseAnswered, answerRows: answerRows, rememberAnswers: rememberAnswers,
     pollNow: pollNow, schedule: schedule,
     jumpTo: function (line) { resetTranscript(); return loadFirstPage(line); },
     reload: function () { resetTranscript(); return loadFirstPage(null); },
@@ -1144,6 +1195,10 @@
   };
 
   // ---- start ----
+  try {
+    var notice = sessionStorage.getItem('v2-notice');
+    if (notice) { sessionStorage.removeItem('v2-notice'); toast(notice, true); }
+  } catch (e) {}
   textEl.value = load(DRAFT_KEY, '');
   document.body.classList.toggle('v2s-hide-reasoning', !prefs.reasoning);
   document.body.classList.toggle('v2s-hide-subagent', !prefs.subagent);

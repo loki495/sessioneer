@@ -151,6 +151,17 @@ try {
     $new = json_decode($post('action=new&agent=claude&runtime=headless&workdir=' . urlencode('/home/user/www/demo-project'))['body'], true);
     assert_equal('/v2/session?session=cc-fake-headless', $new['redirect'] ?? null, 'POST /v2/action new: redirects to the new session and passes the runtime on');
 
+    $dir = urlencode('/home/user/www/demo-project');
+    $withPrompt = json_decode($post('action=new&agent=claude&runtime=headless&prompt=' . urlencode('Run the tests') . '&workdir=' . $dir)['body'], true);
+    assert_true(($withPrompt['ok'] ?? false) === true && !isset($withPrompt['notice']), 'POST /v2/action new with a first message (headless): created and the message sent');
+    $viaCodex = json_decode($post('action=new&agent=codex&prompt=' . urlencode('hi') . '&workdir=' . $dir)['body'], true);
+    assert_true(isset($viaCodex['notice']) && str_contains($viaCodex['notice'], 'first message was not sent'), 'POST /v2/action new: a refused first message still opens the session, with a notice');
+    foreach (['agent=claude&runtime=tmux', 'agent=antigravity'] as $terminal) {
+        $refused = json_decode($post('action=new&' . $terminal . '&prompt=' . urlencode('hi') . '&workdir=' . $dir)['body'], true);
+        assert_true(($refused['ok'] ?? null) === false && str_contains((string)$refused['message'], 'headless or API'), "POST /v2/action new with a first message ({$terminal}): refused before creating anything");
+    }
+    $blank = json_decode($post('action=new&agent=claude&runtime=tmux&prompt=%20%20&workdir=' . $dir)['body'], true);
+    assert_true(($blank['ok'] ?? false) === true, 'POST /v2/action new: a blank first message is ignored');
     $resume = json_decode($post('action=resume&runtime=headless&agent_session_id=99999999-8888-4777-a666-555555555555&workdir=' . urlencode('/home/user/www/old-project') . '&profile=work')['body'], true);
     assert_equal('/v2/session?session=claude-headless-20260101-1700', $resume['redirect'] ?? null, 'POST /v2/action resume (headless): redirects to the resumed session');
 

@@ -378,7 +378,7 @@ $response = match ($action) {
     // SessionService::send_message()'s own real semantics) - lets
     // test_ui_smoke.php prove session_send.php's attachments[] field
     // actually reaches the agent action as attachment_paths.
-    'send_message' => in_array($request['session'] ?? null, [CANNED_SESSION_NAME, CANNED_NEW_SESSION_NAME], true) && (trim((string)($request['text'] ?? '')) !== '' || !empty($request['attachment_paths']))
+    'send_message' => in_array($request['session'] ?? null, [CANNED_SESSION_NAME, CANNED_NEW_SESSION_NAME, 'cc-fake-headless'], true) && (trim((string)($request['text'] ?? '')) !== '' || !empty($request['attachment_paths']))
         ? ['ok' => true, 'message' => 'Sent message to ' . $request['session']]
         : ['ok' => false, 'message' => 'Message cannot be empty'],
     'set_mode' => ($request['session'] ?? null) === CANNED_SESSION_NAME && in_array($request['mode'] ?? null, ['manual', 'accept edits', 'plan', 'auto'], true)
