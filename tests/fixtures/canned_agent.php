@@ -509,6 +509,10 @@ $response = match ($action) {
             : ['ok' => true, 'matches' => []])
         : ['ok' => false, 'message' => 'Transcript file not found'],
     'star_session' => ['ok' => true],
+    'health_check' => ['ok' => true, 'checks' => [
+        ['key' => 'tmux', 'section' => 'Services', 'label' => 'tmux server', 'ok' => true],
+        ['key' => 'hook', 'section' => 'Hooks', 'label' => 'Session hook', 'ok' => false, 'detail' => 'not installed'],
+    ]],
     default => ['ok' => false, 'message' => 'Unknown action'],
 };
 

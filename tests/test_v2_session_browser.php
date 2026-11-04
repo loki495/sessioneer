@@ -230,6 +230,8 @@ try {
         cdp_evaluate($page, "window.__posted = []; document.querySelector('#v2s-sessions-list [data-star]').click()");
         assert_true(v2b_wait($page, "document.querySelectorAll('#v2s-sessions-list [aria-pressed=\"true\"]').length === 1"), 'sessions popup: the star toggle marks the row');
         assert_equal(true, cdp_evaluate($page, "document.getElementById('v2s-sessions').open"), 'sessions popup: stays open after starring');
+        assert_equal(1, cdp_evaluate($page, "document.querySelectorAll('#v2s-sessions-list .is-starred').length"), 'sessions popup: a starred row is highlighted');
+        assert_equal('sticky', cdp_evaluate($page, "getComputedStyle(document.querySelector('#v2s-sessions .v2-sheet-head')).position"), 'popups: the header stays fixed while the body scrolls');
         cdp_evaluate($page, "document.getElementById('v2s-sessions').close()");
 
         // --- usage popup: this agent first, Pacific reset time plus relative, a divider between agents ---
@@ -250,6 +252,10 @@ try {
         cdp_evaluate($page, $swipe(5, 200));
         assert_equal(true, cdp_evaluate($page, "location.pathname === '/v2/session'"), 'swipe: nothing leaves the page while a popup is open');
         cdp_evaluate($page, "document.getElementById('v2s-sessions').close()");
+        cdp_evaluate($page, "window.__back = 0; history.back = function () { window.__back++; }; Object.defineProperty(history, 'length', { value: 3, configurable: true });");
+        cdp_evaluate($page, $swipe(5, 200));
+        assert_equal(1, cdp_evaluate($page, 'window.__back'), 'swipe: from the left edge goes back in history, not to a fixed page');
+        cdp_evaluate($page, "delete history.length;");
 
         // --- scroll lock: the transcript behind a popup does not scroll ---
         cdp_evaluate($page, "document.querySelector('[data-open=\"v2s-info\"]').click()");
@@ -286,6 +292,13 @@ try {
         $errors = array_values(array_filter(cdp_drain_console_errors($page), static fn (string $m): bool => !str_contains($m, 'Failed to load resource')));
         assert_equal([], $errors, 'the page raised no uncaught exception and logged no console error');
         assert_equal(true, cdp_evaluate($page, 'document.documentElement.scrollWidth <= window.innerWidth'), 'the page does not scroll sideways on a phone');
+
+        // no history to go back to: the left-edge swipe lands on the dashboard
+        cdp_evaluate($page, "Array.prototype.forEach.call(document.querySelectorAll('dialog[open]'), function (d) { d.close(); })");
+        cdp_evaluate($page, "delete history.back;");
+        cdp_evaluate($page, "Object.defineProperty(history, 'length', { value: 1, configurable: true });");
+        cdp_evaluate($page, $swipe(5, 200));
+        assert_true(v2b_wait($page, "location.pathname === '/v2'"), 'swipe: with nothing to go back to, the left edge opens the dashboard');
     }
 } finally {
     if ($page !== null) {

@@ -64,15 +64,17 @@
   </section>
 
   <section class="v2-panel" id="v2-panel-status" data-panel="status" hidden>
-    <div class="v2-card v2-card-flat v2-col">
-      <h2 class="v2-section-title">Usage</h2>
+    <details class="v2-card v2-card-flat v2-col v2-fold" open>
+      <summary class="v2-section-title">Usage</summary>
       <div id="v2-quota" class="v2-quota"><span class="v2-muted v2-small">Loading&hellip;</span></div>
-    </div>
+    </details>
 
-    <details class="v2-card v2-card-flat v2-col v2-health"<?= $allOk && $healthChecks !== [] ? '' : ' open' ?>>
+    <details class="v2-card v2-card-flat v2-col v2-fold v2-health"<?= $allOk && $healthChecks !== [] ? '' : ' open' ?>>
       <summary class="v2-section-title">Health <span class="v2-chip <?= $allOk ? 'v2-chip-ok' : 'v2-chip-warn' ?>"><?= $healthChecks === [] ? 'unknown' : ($allOk ? 'all OK' : 'needs attention') ?></span></summary>
       <?php foreach ($groups as $section => $checks): ?>
-        <h3 class="v2-subtitle"><?= $this->e($section) ?></h3>
+        <?php $groupOk = true; foreach ($checks as $c) { if (!($c['ok'] ?? false)) { $groupOk = false; } } ?>
+        <details class="v2-fold-inner"<?= $groupOk ? '' : ' open' ?>>
+        <summary class="v2-subtitle"><?= $this->e($section) ?> <span class="v2-chip <?= $groupOk ? 'v2-chip-ok' : 'v2-chip-warn' ?>"><?= $groupOk ? 'OK' : 'check' ?></span></summary>
         <ul class="v2-checks">
           <?php foreach ($checks as $check): ?>
             <li class="<?= ($check['ok'] ?? false) ? 'is-ok' : 'is-bad' ?>">
@@ -83,6 +85,7 @@
             </li>
           <?php endforeach ?>
         </ul>
+        </details>
       <?php endforeach ?>
       <?php if ($healthChecks === []): ?><p class="v2-muted v2-small">No health data (the host agent may be unreachable).</p><?php endif ?>
     </details>

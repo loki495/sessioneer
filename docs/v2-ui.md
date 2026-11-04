@@ -35,6 +35,11 @@ loaded by `/v2`.
 - **Navigation.** A bottom tab bar (Sessions, Search, Archived, Status) with a
   badge for sessions needing input, a floating "+ New" button, and a Settings
   sheet. Sheets are `<dialog>` elements.
+- **Depth.** Neutrals are slightly blue-tinted (page, card and inset shades differ), and one
+  accent (`--accent`, with `--accent-soft` and `--accent-line` derived from it) draws
+  structure: bar and footer rules, card and sheet borders, section titles, buttons and
+  chips. Sheet headers stay fixed while the body scrolls. Each agent has a colour
+  (`--agent-*`) used for its usage group tint. Starred sessions get a faint amber tint.
 - **Cards.** One card per session: status dot and left accent (needs input,
   working, idle), title, agent/account/runtime/worker chips, folder, age,
   context %, worktree, a one-line message preview. A blocked prompt renders its
@@ -142,7 +147,7 @@ recognizable answer text in its transcript, so its answers stay as they are.
 **Sessions and usage popups.** The bar's list button (or a swipe from the right
 screen edge) opens a popup of every session: needs-input first, then working, then
 idle, starred first within each, a filter box, a star toggle per row, tap to switch.
-A swipe from the left screen edge returns to the dashboard; both swipes start within
+A swipe from the left screen edge goes back in history (the dashboard when there is none); both swipes start within
 20px of the edge so wide code blocks scroll normally, and are ignored while a popup
 is open. The gauge button opens this session's context share and the usage meters
 (this session's agent first, every Claude account when several are configured),

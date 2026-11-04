@@ -1174,7 +1174,7 @@
     var dx = e.changedTouches[0].clientX - s.x;
     var dy = e.changedTouches[0].clientY - s.y;
     if (Math.abs(dy) > Math.abs(dx) / 1.5) { return; }
-    if (s.side === 'left' && dx >= SWIPE_PX) { window.location.href = '/v2'; }
+    if (s.side === 'left' && dx >= SWIPE_PX) { if (window.history.length > 1) { window.history.back(); } else { window.location.href = '/v2'; } }
     else if (s.side === 'right' && dx <= -SWIPE_PX) { V2S.api.openSheet('v2s-sessions'); }
   }, { passive: true });
 
