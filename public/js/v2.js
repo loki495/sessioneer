@@ -287,8 +287,8 @@
     searchResults.innerHTML = results.map(function (r) {
       var first = r.matches[0].line;
       var url = r.session_name
-        ? '/v2/session?session=' + encodeURIComponent(r.session_name) + '&jump_line=' + encodeURIComponent(first)
-        : '/v2/archived-session?agent_session_id=' + encodeURIComponent(r.agent_session_id) + '&jump_line=' + encodeURIComponent(first);
+        ? '/session?session=' + encodeURIComponent(r.session_name) + '&jump_line=' + encodeURIComponent(first)
+        : '/archived-session?agent_session_id=' + encodeURIComponent(r.agent_session_id) + '&jump_line=' + encodeURIComponent(first);
       var snippets = r.matches.map(function (m) {
         return '<p class="v2-result-snippet">' + highlight(String(m.snippet || ''), query) + '</p>';
       }).join('');

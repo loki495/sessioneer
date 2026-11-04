@@ -1,6 +1,6 @@
 <header id="session-header" class="select-none sticky top-0 z-20 bg-slate-950/95 backdrop-blur border-b border-slate-800">
   <div class="max-w-2xl lg:max-w-4xl mx-auto px-4 py-2 grid grid-cols-[auto_1fr_auto] items-center gap-2">
-    <a href="/" class="text-sm text-slate-400 hover:underline whitespace-nowrap" aria-label="All sessions" title="All sessions">&larr;</a>
+    <a href="/classic" class="text-sm text-slate-400 hover:underline whitespace-nowrap" aria-label="All sessions" title="All sessions">&larr;</a>
     <div class="min-w-0 text-center">
       <div class="flex items-center justify-center gap-1.5 min-w-0">
         <div id="header-title" data-session-title class="min-w-0 text-sm font-medium text-slate-200 truncate cursor-pointer"

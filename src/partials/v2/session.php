@@ -9,7 +9,7 @@ $this->layout('v2/layout', ['title' => $title]);
 
 <?php if (!$found): ?>
 <div class="v2s-missing">
-  <a class="v2-pill-link" href="/v2">&larr; Sessions</a>
+  <a class="v2-pill-link" href="/">&larr; Sessions</a>
   <div class="v2-banner v2-banner-bad" role="alert">
     <strong>Session not found.</strong>
     <span><?= $this->e((string)($detail['message'] ?? 'Unknown error')) ?></span>
@@ -29,7 +29,7 @@ $bootstrap = json_encode([
 ?>
 <div id="v2s" class="v2s">
   <header class="v2s-bar">
-    <a class="v2-icon-btn v2s-back" href="/v2" aria-label="All sessions">&#8249;<i class="v2-badge v2s-back-badge" id="v2s-back-badge" hidden></i></a>
+    <a class="v2-icon-btn v2s-back" href="/" aria-label="All sessions">&#8249;<i class="v2-badge v2s-back-badge" id="v2s-back-badge" hidden></i></a>
     <button type="button" class="v2s-titlebtn" data-open="v2s-info" aria-label="Session details">
       <span class="v2s-title" id="v2s-title"><?= $this->e($title) ?></span>
       <span class="v2s-sub" id="v2s-sub"></span>
@@ -47,7 +47,7 @@ $bootstrap = json_encode([
     <div class="v2s-col">
       <div id="v2s-jump" class="v2s-notice" hidden>
         <span>Showing a search result</span>
-        <a href="<?= $archived ? '/v2/archived-session?agent_session_id=' : '/v2/session?session=' ?><?= urlencode($sessionName) ?>" class="v2-inline-link">Back to latest &rarr;</a>
+        <a href="<?= $archived ? '/archived-session?agent_session_id=' : '/session?session=' ?><?= urlencode($sessionName) ?>" class="v2-inline-link">Back to latest &rarr;</a>
       </div>
       <div id="v2s-older" class="v2s-older" hidden>
         <button type="button" class="v2-btn" id="v2s-load-older">Load older</button>
@@ -115,7 +115,7 @@ $bootstrap = json_encode([
   <div class="v2-sheet-head"><h2>Sessions</h2><button type="button" class="v2-icon-btn" data-close aria-label="Close">&times;</button></div>
   <input type="search" id="v2s-sessions-filter" placeholder="Filter sessions" autocomplete="off">
   <div id="v2s-sessions-list" class="v2-col"></div>
-  <a class="v2-btn" href="/v2">All sessions dashboard</a>
+  <a class="v2-btn" href="/">All sessions dashboard</a>
 </div></dialog>
 
 <dialog class="v2-sheet" id="v2s-quota"><div class="v2-sheet-body">

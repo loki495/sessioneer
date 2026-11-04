@@ -229,7 +229,7 @@ class DashboardController extends Controller
         }
 
         $_SESSION['flash'] = ['msg' => $message, 'ok' => $ok];
-        header('Location: /', true, 303);
+        header('Location: /classic', true, 303);
     }
 
     /**

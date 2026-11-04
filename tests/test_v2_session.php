@@ -78,9 +78,9 @@ try {
     $jar = tempnam(sys_get_temp_dir(), 'sessioneer-v2s-cookies');
 
     // --- happy path: the page ---
-    $page = curl_request('GET', "{$base}/v2/session?session=" . V2S_SESSION, [], $jar);
+    $page = curl_request('GET', "{$base}/session?session=" . V2S_SESSION, [], $jar);
     $body = $page['body'];
-    assert_equal(200, $page['status'], 'GET /v2/session: 200');
+    assert_equal(200, $page['status'], 'GET /session: 200');
     assert_contains('<title>Fix the login redirect bug</title>', $body, 'page: titled with the session title');
     assert_contains('name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"', $body, 'page: mobile viewport with safe-area support, pinch zoom left to the browser');
     assert_true(preg_match('#href="/css/v2-session\.css\?v=\d+"#', $body) === 1, 'page: session stylesheet is cache-busted');
@@ -95,7 +95,7 @@ try {
         assert_contains('<dialog class="v2-sheet" id="' . $sheet . '">', $body, "page: {$sheet} is a native dialog sheet");
     }
     assert_contains('href="/session.php?session=' . V2S_SESSION . '" data-classic-link>Open in classic', $body, 'page: keeps a link to the classic session page');
-    assert_contains('href="/v2" aria-label="All sessions"', $body, 'page: back to the v2 dashboard');
+    assert_contains('href="/" aria-label="All sessions"', $body, 'page: back to the v2 dashboard');
     assert_contains('font-size', (string)file_get_contents(dirname(__DIR__) . '/public/css/v2.css'), 'sanity: v2.css readable');
 
     $boot = v2s_bootstrap($body);
@@ -108,12 +108,12 @@ try {
     $scriptTag = substr($body, (int)strpos($body, 'window.V2S = '), (int)strpos($body, '</script>', (int)strpos($body, 'window.V2S = ')) - (int)strpos($body, 'window.V2S = '));
     assert_true(!str_contains($scriptTag, '<') && !str_contains($scriptTag, '&'), 'bootstrap: < and & are hex-escaped so transcript text can never close the script tag');
 
-    $jump = curl_request('GET', "{$base}/v2/session?session=" . V2S_SESSION . '&jump_line=7', [], $jar);
+    $jump = curl_request('GET', "{$base}/session?session=" . V2S_SESSION . '&jump_line=7', [], $jar);
     assert_equal(7, (v2s_bootstrap($jump['body']) ?? [])['jumpLine'] ?? null, 'page: jump_line is handed to the script');
-    $badJump = curl_request('GET', "{$base}/v2/session?session=" . V2S_SESSION . '&jump_line=-3', [], $jar);
+    $badJump = curl_request('GET', "{$base}/session?session=" . V2S_SESSION . '&jump_line=-3', [], $jar);
     assert_true(($b = v2s_bootstrap($badJump['body'])) !== null && $b['jumpLine'] === null, 'page: a negative jump_line is ignored');
 
-    $brandNew = curl_request('GET', "{$base}/v2/session?session=" . V2S_NEW_SESSION, [], $jar);
+    $brandNew = curl_request('GET', "{$base}/session?session=" . V2S_NEW_SESSION, [], $jar);
     assert_equal(200, $brandNew['status'], 'page: a session with no transcript yet still renders');
     assert_contains('id="v2s-empty"', $brandNew['body'], 'page: and has the "nothing recorded" placeholder to show');
 
@@ -146,8 +146,8 @@ try {
     assert_equal(['PLAN.md', 'handoff-2026-08-08.md'], array_column($plan['files'] ?? [], 'name'), 'files: plan/handoff list');
 
     // --- archived-session page ---
-    $arch = curl_request('GET', "{$base}/v2/archived-session?agent_session_id=" . V2S_ARCHIVED . '&jump_line=5', [], $jar);
-    assert_equal(200, $arch['status'], 'GET /v2/archived-session: 200');
+    $arch = curl_request('GET', "{$base}/archived-session?agent_session_id=" . V2S_ARCHIVED . '&jump_line=5', [], $jar);
+    assert_equal(200, $arch['status'], 'GET /archived-session: 200');
     assert_contains('<title>Refactor the old widget</title>', $arch['body'], 'archived page: titled with the conversation title');
     $archBoot = v2s_bootstrap($arch['body']);
     assert_equal(true, $archBoot['archived'] ?? null, 'archived page: bootstrap says archived');
@@ -155,21 +155,21 @@ try {
     assert_equal(5, $archBoot['jumpLine'] ?? null, 'archived page: jump_line is handed to the script');
     assert_true(preg_match('#src="/js/v2-archived\.js\?v=\d+"#', $arch['body']) === 1, 'archived page: loads v2-archived.js');
     assert_true(!str_contains($arch['body'], 'v2-session-sheets.js') && !str_contains($arch['body'], 'v2s-controls'), 'archived page: none of the live-only sheets');
-    assert_contains('/v2/archived-session?agent_session_id=' . V2S_ARCHIVED, $arch['body'], 'archived page: "Back to latest" stays on the archived view');
+    assert_contains('/archived-session?agent_session_id=' . V2S_ARCHIVED, $arch['body'], 'archived page: "Back to latest" stays on the archived view');
     assert_true(!str_contains($arch['body'], 'tailwind.css') && !str_contains($arch['body'], 'data-classic-link'), 'archived page: no classic stylesheet or link');
     $archHistory = json_decode(curl_request('GET', "{$base}/v2/archived-history?agent_session_id=" . V2S_ARCHIVED . '&limit=30', [], $jar)['body'], true);
     assert_true(($archHistory['ok'] ?? false) === true && count($archHistory['entries'] ?? []) > 5, 'GET /v2/archived-history: entries returned');
     assert_equal(true, $archHistory['has_more'] ?? null, 'GET /v2/archived-history: paging flags passed through');
     assert_equal(false, json_decode(curl_request('GET', "{$base}/v2/archived-history?agent_session_id=nope", [], $jar)['body'], true)['ok'] ?? null, 'archived history for an unknown conversation: ok=false');
-    $archMissing = curl_request('GET', "{$base}/v2/archived-session?agent_session_id=nope", [], $jar);
+    $archMissing = curl_request('GET', "{$base}/archived-session?agent_session_id=nope", [], $jar);
     assert_contains('Session not found.', $archMissing['body'], 'archived page for an unknown conversation: says so');
     assert_true(!str_contains($archMissing['body'], 'window.V2S'), 'archived page for an unknown conversation: no script boots');
-    $archNone = curl_request('GET', "{$base}/v2/archived-session", [], $jar);
+    $archNone = curl_request('GET', "{$base}/archived-session", [], $jar);
     assert_equal(303, $archNone['status'], 'archived page with no id: redirects');
-    assert_equal('/v2', $archNone['headers']['location'] ?? null, 'archived page with no id: to the v2 dashboard');
-    assert_contains('Session not found.', curl_request('GET', "{$downBase}/v2/archived-session?agent_session_id=" . V2S_ARCHIVED)['body'], 'archived page with the agent down: still renders a message');
+    assert_equal('/', $archNone['headers']['location'] ?? null, 'archived page with no id: to the v2 dashboard');
+    assert_contains('Session not found.', curl_request('GET', "{$downBase}/archived-session?agent_session_id=" . V2S_ARCHIVED)['body'], 'archived page with the agent down: still renders a message');
     $dashArchived = json_decode(curl_request('GET', "{$base}/v2/archived", [], $jar)['body'], true);
-    assert_contains('href="/v2/archived-session?agent_session_id=' . V2S_ARCHIVED . '"', $dashArchived['archived_html'] ?? '', 'archived list rows open the v2 archived page');
+    assert_contains('href="/archived-session?agent_session_id=' . V2S_ARCHIVED . '"', $dashArchived['archived_html'] ?? '', 'archived list rows open the v2 archived page');
     assert_true(!str_contains($dashArchived['archived_html'] ?? '', '/archived_session.php'), 'archived list rows no longer link to the classic page');
     $v2js = (string)file_get_contents(dirname(__DIR__) . '/public/js/v2-session-sheets.js') . (string)file_get_contents(dirname(__DIR__) . '/public/js/v2.js');
     assert_true(!str_contains($v2js, '/archived_session.php'), 'search results: archived hits link to the v2 page');
@@ -179,20 +179,20 @@ try {
     assert_equal(403, $noCsrf['status'], 'footer send without a CSRF token: 403');
     $crossOrigin = curl_request('POST', "{$base}/session_send.php", ['-H', 'Origin: http://attacker.example', '-d', "csrf_token={$csrf}&session=" . V2S_SESSION . '&message=hi'], $jar);
     assert_equal(403, $crossOrigin['status'], 'footer send from another origin: 403');
-    assert_equal(421, curl_request('GET', "{$base}/v2/session?session=" . V2S_SESSION, ['-H', 'Host: attacker.example'])['status'], 'page with an unlisted Host: 421');
-    assert_equal(404, curl_request('POST', "{$base}/v2/session", ['-d', 'x=1'])['status'], 'POST to the page is not a route');
+    assert_equal(421, curl_request('GET', "{$base}/session?session=" . V2S_SESSION, ['-H', 'Host: attacker.example'])['status'], 'page with an unlisted Host: 421');
+    assert_equal(404, curl_request('POST', "{$base}/session", ['-d', 'x=1'])['status'], 'POST to the page is not a route');
 
-    $none = curl_request('GET', "{$base}/v2/session", [], $jar);
+    $none = curl_request('GET', "{$base}/session", [], $jar);
     assert_equal(303, $none['status'], 'page with no session: redirects');
-    assert_equal('/v2', $none['headers']['location'] ?? null, 'page with no session: to the v2 dashboard');
+    assert_equal('/', $none['headers']['location'] ?? null, 'page with no session: to the v2 dashboard');
 
-    $missing = curl_request('GET', "{$base}/v2/session?session=cc-not-real", [], $jar);
+    $missing = curl_request('GET', "{$base}/session?session=cc-not-real", [], $jar);
     assert_equal(200, $missing['status'], 'page for an unknown session: renders a message, not an error page');
     assert_contains('Session not found.', $missing['body'], 'page for an unknown session: says so');
-    assert_contains('href="/v2"', $missing['body'], 'page for an unknown session: way back to the dashboard');
+    assert_contains('href="/"', $missing['body'], 'page for an unknown session: way back to the dashboard');
     assert_true(!str_contains($missing['body'], 'window.V2S'), 'page for an unknown session: no script boots against nothing');
 
-    $down = curl_request('GET', "{$downBase}/v2/session?session=" . V2S_SESSION);
+    $down = curl_request('GET', "{$downBase}/session?session=" . V2S_SESSION);
     assert_equal(200, $down['status'], 'page with the agent down: still renders');
     assert_contains('Session not found.', $down['body'], 'page with the agent down: says it could not load the session');
     $downHistory = json_decode(curl_request('GET', "{$downBase}/v2/history?session=" . V2S_SESSION)['body'], true);

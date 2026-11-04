@@ -406,7 +406,7 @@ foreach ([[], ['prompt' => ''], ['prompt' => '   '], ['prompt' => "\0text"], ['p
 assert_equal(400, $web->submit('{', $server)['_http'], 'malformed JSON handled');
 assert_equal(400, $web->submit('{"prompt":"' . "\xff" . '"}', $server)['_http'], 'malformed UTF-8 JSON handled');
 assert_equal('answer', $submit(['prompt' => 'hello'])['type'], 'immediate terminal short answer returned');
-assert_equal('https://sessioneer.example/session.php?session=safe-id', $submit(['prompt' => 'hello'])['session_url'], 'URL ignores Host and forwarded headers');
+assert_equal('https://sessioneer.example/session?session=safe-id', $submit(['prompt' => 'hello'])['session_url'], 'URL ignores Host and forwarded headers');
 $probe['text'] = str_repeat('a', 2001);
 assert_equal('session', $submit(['prompt' => 'hello'])['type'], 'long result opens session');
 $probe['text'] = 'short'; $probe['has_tools'] = true;

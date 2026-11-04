@@ -26,7 +26,7 @@ class SessionController extends Controller
         $sessionName = trim((string)($_GET['session'] ?? $_POST['session'] ?? ''));
 
         if ($sessionName === '') {
-            header('Location: /', true, 303);
+            header('Location: /classic', true, 303);
 
             return;
         }
@@ -100,7 +100,7 @@ class SessionController extends Controller
         $agentSessionId = trim((string)($_GET['agent_session_id'] ?? $_POST['agent_session_id'] ?? ''));
 
         if ($agentSessionId === '') {
-            header('Location: /', true, 303);
+            header('Location: /classic', true, 303);
 
             return;
         }

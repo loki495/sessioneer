@@ -7,7 +7,7 @@ $this->layout('layout', [
 
 <header class="select-none sticky top-0 z-20 bg-slate-950/95 backdrop-blur border-b border-slate-800">
   <div class="max-w-2xl lg:max-w-4xl mx-auto px-4 py-2 flex items-center gap-2">
-    <a href="/" class="text-sm text-slate-400 hover:underline whitespace-nowrap">&larr; All sessions</a>
+    <a href="/classic" class="text-sm text-slate-400 hover:underline whitespace-nowrap">&larr; All sessions</a>
     <div class="text-sm font-medium text-slate-200 truncate flex-1 text-center">
       <?= $found ? $this->e((string)($detail['title'] ?? $agentSessionId)) : '' ?>
     </div>

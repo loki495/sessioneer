@@ -369,7 +369,7 @@ class PushDeliveryService
 
             if ($subscriptions !== []) {
                 foreach ($subscriptions as $subscription) {
-                    $result = self::send_push_notification($subscription, $notification['title'], $notification['body'], '/session.php?session=' . urlencode($name), $notification['actions'] ?? null);
+                    $result = self::send_push_notification($subscription, $notification['title'], $notification['body'], '/session?session=' . urlencode($name), $notification['actions'] ?? null);
                     $sendResults[] = $result;
 
                     if ($result['expired']) {

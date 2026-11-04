@@ -235,7 +235,7 @@
       if (!window.confirm('Take this session over as a headless one? The conversation continues; the terminal process is stopped.')) { return; }
       action({ action: 'switch_runtime', session: session, runtime: 'headless' });
     } else if (what === 'kill') {
-      if (window.confirm('Kill session ' + session + '?')) { action({ action: 'kill', session: session }, '/v2'); }
+      if (window.confirm('Kill session ' + session + '?')) { action({ action: 'kill', session: session }, '/'); }
     }
   });
 
@@ -376,8 +376,8 @@
     results.innerHTML = rows.length ? rows.map(function (r) {
       var first = r.matches[0].line;
       var url = r.session_name
-        ? '/v2/session?session=' + encodeURIComponent(r.session_name) + '&jump_line=' + encodeURIComponent(first)
-        : '/v2/archived-session?agent_session_id=' + encodeURIComponent(r.agent_session_id) + '&jump_line=' + encodeURIComponent(first);
+        ? '/session?session=' + encodeURIComponent(r.session_name) + '&jump_line=' + encodeURIComponent(first)
+        : '/archived-session?agent_session_id=' + encodeURIComponent(r.agent_session_id) + '&jump_line=' + encodeURIComponent(first);
       return '<a class="v2s-hit" href="' + url + '"><b>' + esc(r.title) + (r.session_name ? ' · live' : '') + '</b>'
         + r.matches.map(function (m) { return '<span class="v2-result-snippet">' + highlight(String(m.snippet || ''), query) + '</span>'; }).join('') + '</a>';
     }).join('') : '<p class="v2-muted v2-center">No matches</p>';
@@ -478,7 +478,7 @@
       var st = statusOfRow(x);
       var folder = String(x.workdir || '').replace(/\/+$/, '').split('/').pop();
       return '<div class="v2s-srow' + (x.name === session ? ' is-current' : '') + (x.starred ? ' is-starred' : '') + '">'
-        + '<a class="v2s-srow-main" href="/v2/session?session=' + encodeURIComponent(x.name) + '"><i class="v2-dot v2-dot-' + st + '" role="img" aria-label="' + (st === 'blocked' ? 'needs input' : st) + '"></i>'
+        + '<a class="v2s-srow-main" href="/session?session=' + encodeURIComponent(x.name) + '"><i class="v2-dot v2-dot-' + st + '" role="img" aria-label="' + (st === 'blocked' ? 'needs input' : st) + '"></i>'
         + '<span class="v2s-srow-text"><b>' + esc(x.title || x.name) + '</b>'
         + '<span class="v2s-srow-chips">' + rowChips(x) + '</span>'
         + '<small>' + esc(folder) + ' · ' + esc(api.relTime(x.activity ? new Date(x.activity * 1000).toISOString() : '')) + '</small>'

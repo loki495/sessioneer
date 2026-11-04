@@ -11,7 +11,7 @@ Web container environment (the Compose file forwards these from `.env`):
 | Variable | Default / meaning |
 |---|---|
 | `QUICK_PROMPT_API_TOKEN` | Empty; required dedicated bearer token. |
-| `QUICK_PROMPT_BASE_URL` | Empty; required trusted HTTPS application root, e.g. `https://sessioneer.example`. No credentials, query, or fragment. Session links append `/session.php?session=ID`; Host/forwarded headers never supply this root. |
+| `QUICK_PROMPT_BASE_URL` | Empty; required trusted HTTPS application root, e.g. `https://sessioneer.example`. No credentials, query, or fragment. Session links append `/session?session=ID`; Host/forwarded headers never supply this root. |
 | `QUICK_PROMPT_WAIT_SECONDS` | `6`, integer clamped to 0–15 seconds. Completion wait **after dispatch**, not the agent lifetime. |
 | `QUICK_PROMPT_MAX_ANSWER_BYTES` | `2000`, integer clamped to 1–8192 UTF-8 bytes. |
 | `QUICK_PROMPT_RATE_LIMIT` | `10`, integer clamped to 1–60 requests per rolling minute, shared by all users of this token and all PHP workers. |
@@ -103,11 +103,11 @@ The test is the outcome, not a prediction, so it works with the router off. A se
 Successful HTTP 200 responses are one of (an archived one-line answer has `"archived":true` and no link, see Cleanup):
 
 ```json
-{"type":"answer","text":"The failing test is caused by...","session_url":"https://sessioneer.example/session.php?session=claude-headless-123","session_id":"claude-headless-123"}
+{"type":"answer","text":"The failing test is caused by...","session_url":"https://sessioneer.example/session?session=claude-headless-123","session_id":"claude-headless-123"}
 ```
 
 ```json
-{"type":"session","status":"running","session_url":"https://sessioneer.example/session.php?session=claude-headless-123","session_id":"claude-headless-123"}
+{"type":"session","status":"running","session_url":"https://sessioneer.example/session?session=claude-headless-123","session_id":"claude-headless-123"}
 ```
 
 Session statuses include `running`, `blocked` (approval or human input), `completed` (long or tool-bearing output), `interrupted`, and `unknown` (delivery/state cannot be confirmed). Only a reliable terminal result for this submission may become an inline answer. Any tool-bearing output opens the session, conservatively. A partial assistant message never counts as completion.
