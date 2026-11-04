@@ -17,6 +17,7 @@ require __DIR__ . '/lib/free_port.php';
 require __DIR__ . '/lib/cdp.php';
 
 const V2B_SESSION = 'cc-20260101-1200';
+const V2B_BLOCKED = 'cc-20260101-1300';
 
 function v2b_wait(array &$page, string $expression, float $timeout = 8.0): bool
 {
@@ -203,6 +204,46 @@ try {
         assert_true(v2b_wait($page, "document.getElementById('v2s-compose-status').textContent === 'Session is busy'"), 'footer: a refused send shows the reason');
         assert_equal('keep me', cdp_evaluate($page, "document.getElementById('v2s-text').value"), 'footer: and keeps the typed message');
         assert_equal($pendingBefore, cdp_evaluate($page, "document.querySelectorAll('.v2s-pending').length"), 'footer: and removes the optimistic bubble it added');
+
+
+        // --- sessions popup: needs-input first, filter, star toggle, tap switches ---
+        cdp_evaluate($page, "document.querySelector('[data-open=\"v2s-sessions\"]').click()");
+        assert_true(v2b_wait($page, "document.querySelectorAll('#v2s-sessions-list .v2s-srow').length === 2"), 'sessions popup: lists every session');
+        assert_equal(V2B_BLOCKED, cdp_evaluate($page, "decodeURIComponent(document.querySelector('#v2s-sessions-list .v2s-srow-main').getAttribute('href').split('session=')[1])"), 'sessions popup: the session needing input is first');
+        assert_equal(1, cdp_evaluate($page, "document.querySelectorAll('#v2s-sessions-list .is-current').length"), 'sessions popup: the open session is marked');
+        cdp_evaluate($page, "(function () { var i = document.getElementById('v2s-sessions-filter'); i.value = 'zzz-nothing'; i.dispatchEvent(new Event('input')); }())");
+        assert_contains('No sessions', (string)cdp_evaluate($page, "document.getElementById('v2s-sessions-list').textContent"), 'sessions popup: a filter with no match says so');
+        cdp_evaluate($page, "(function () { var i = document.getElementById('v2s-sessions-filter'); i.value = ''; i.dispatchEvent(new Event('input')); }())");
+        cdp_evaluate($page, "window.__posted = []; document.querySelector('#v2s-sessions-list [data-star]').click()");
+        assert_true(v2b_wait($page, "document.querySelectorAll('#v2s-sessions-list [aria-pressed=\"true\"]').length === 1"), 'sessions popup: the star toggle marks the row');
+        assert_equal(true, cdp_evaluate($page, "document.getElementById('v2s-sessions').open"), 'sessions popup: stays open after starring');
+        cdp_evaluate($page, "document.getElementById('v2s-sessions').close()");
+
+        // --- usage popup: this agent first, Pacific reset time plus relative, a divider between agents ---
+        cdp_evaluate($page, "document.querySelector('[data-open=\"v2s-quota\"]').click()");
+        assert_true(v2b_wait($page, "document.querySelectorAll('#v2s-quota-body .v2-quota-group').length >= 2"), 'usage popup: one group per agent');
+        $q = (string)cdp_evaluate($page, "document.getElementById('v2s-quota-body').textContent");
+        assert_contains('Claude Code', $q, 'usage popup: this session\'s agent');
+        assert_true(preg_match('/Resets .* P[SD]T · in /', $q) === 1, 'usage popup: reset time is in Pacific time with a relative part');
+        assert_contains('12%', $q, 'usage popup: the session\'s context share');
+        cdp_evaluate($page, "document.getElementById('v2s-quota').close()");
+
+        // --- edge swipes: right edge opens the sessions popup, a mid-screen swipe does nothing ---
+        $swipe = static fn (int $x0, int $x1): string => "(function () { function t(type, x) { var tt = new Touch({ identifier: 1, target: document.body, clientX: x, clientY: 300 }); document.dispatchEvent(new TouchEvent(type, { touches: type === 'touchend' ? [] : [tt], changedTouches: [tt], bubbles: true })); } t('touchstart', {$x0}); t('touchend', {$x1}); }())";
+        cdp_evaluate($page, $swipe(200, 100));
+        assert_equal(false, cdp_evaluate($page, "document.getElementById('v2s-sessions').open"), 'swipe: from mid-screen does nothing');
+        cdp_evaluate($page, $swipe(385, 250));
+        assert_equal(true, cdp_evaluate($page, "document.getElementById('v2s-sessions').open"), 'swipe: from the right edge opens the sessions popup');
+        cdp_evaluate($page, $swipe(5, 200));
+        assert_equal(true, cdp_evaluate($page, "location.pathname === '/v2/session'"), 'swipe: nothing leaves the page while a popup is open');
+        cdp_evaluate($page, "document.getElementById('v2s-sessions').close()");
+
+        // --- scroll lock: the transcript behind a popup does not scroll ---
+        cdp_evaluate($page, "document.querySelector('[data-open=\"v2s-info\"]').click()");
+        assert_equal('hidden', cdp_evaluate($page, "getComputedStyle(document.getElementById('v2s-scroll')).overflowY"), 'scroll lock: the transcript is locked behind a popup');
+        assert_true(str_contains((string)cdp_evaluate($page, "document.getElementById('v2s-info-body').textContent"), 'Fix the login redirect bug'), 'details: the full session name is shown');
+        cdp_evaluate($page, "document.getElementById('v2s-info').close()");
+        assert_equal('auto', cdp_evaluate($page, "getComputedStyle(document.getElementById('v2s-scroll')).overflowY"), 'scroll lock: released when the popup closes');
 
         // --- search and jump ---
         cdp_evaluate($page, "document.querySelector('[data-open=\"v2s-search\"]').click()");

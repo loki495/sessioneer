@@ -508,6 +508,7 @@ $response = match ($action) {
             ? ['ok' => true, 'matches' => [['line' => 3, 'snippet' => 'Refactor the old widget', 'role' => 'assistant', 'kind' => 'text']]]
             : ['ok' => true, 'matches' => []])
         : ['ok' => false, 'message' => 'Transcript file not found'],
+    'star_session' => ['ok' => true],
     default => ['ok' => false, 'message' => 'Unknown action'],
 };
 

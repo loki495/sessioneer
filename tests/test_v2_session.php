@@ -90,7 +90,7 @@ try {
     foreach (['v2s-list', 'v2s-prompt', 'v2s-thinking', 'v2s-send', 'v2s-stop', 'v2s-text', 'v2s-attach-btn', 'v2s-prev', 'v2s-next', 'v2s-bottom', 'v2s-load-older', 'v2s-load-until-user', 'v2s-viewer', 'v2s-fullscreen', 'v2s-search-input', 'v2s-opt-reasoning', 'v2s-opt-subagent', 'v2s-opt-confirm', 'v2s-opt-poll', 'v2s-todo-file', 'v2s-uploads', 'v2s-plan-files'] as $id) {
         assert_contains('id="' . $id . '"', $body, "page: #{$id} present");
     }
-    foreach (['v2s-controls', 'v2s-search', 'v2s-info'] as $sheet) {
+    foreach (['v2s-controls', 'v2s-search', 'v2s-info', 'v2s-sessions', 'v2s-quota'] as $sheet) {
         assert_contains('<dialog class="v2-sheet" id="' . $sheet . '">', $body, "page: {$sheet} is a native dialog sheet");
     }
     assert_contains('href="/session.php?session=' . V2S_SESSION . '" data-classic-link>Open in classic', $body, 'page: keeps a link to the classic session page');

@@ -32,6 +32,8 @@ $bootstrap = json_encode([
       <span class="v2s-title" id="v2s-title"><?= $this->e($title) ?></span>
       <span class="v2s-sub" id="v2s-sub"></span>
     </button>
+    <button type="button" class="v2-icon-btn" data-open="v2s-sessions" aria-label="Sessions">&#9776;</button>
+    <button type="button" class="v2-icon-btn" data-open="v2s-quota" aria-label="Usage and context">&#9201;</button>
     <button type="button" class="v2-icon-btn" data-open="v2s-search" aria-label="Search this session">&#9906;</button>
     <button type="button" class="v2-icon-btn" data-open="v2s-info" aria-label="Session menu">&#8943;</button>
   </header>
@@ -82,6 +84,18 @@ $bootstrap = json_encode([
 <dialog class="v2-sheet" id="v2s-controls"><div class="v2-sheet-body">
   <div class="v2-sheet-head"><h2>Session controls</h2><button type="button" class="v2-icon-btn" data-close aria-label="Close">&times;</button></div>
   <div id="v2s-controls-body" class="v2-col"></div>
+</div></dialog>
+
+<dialog class="v2-sheet" id="v2s-sessions"><div class="v2-sheet-body">
+  <div class="v2-sheet-head"><h2>Sessions</h2><button type="button" class="v2-icon-btn" data-close aria-label="Close">&times;</button></div>
+  <input type="search" id="v2s-sessions-filter" placeholder="Filter sessions" autocomplete="off">
+  <div id="v2s-sessions-list" class="v2-col"></div>
+  <a class="v2-btn" href="/v2">All sessions dashboard</a>
+</div></dialog>
+
+<dialog class="v2-sheet" id="v2s-quota"><div class="v2-sheet-body">
+  <div class="v2-sheet-head"><h2>Usage</h2><button type="button" class="v2-icon-btn" data-close aria-label="Close">&times;</button></div>
+  <div id="v2s-quota-body" class="v2-quota"></div>
 </div></dialog>
 
 <dialog class="v2-sheet" id="v2s-search"><div class="v2-sheet-body">
@@ -137,5 +151,6 @@ $bootstrap = json_encode([
 
 <script>window.V2S = <?= $bootstrap ?>;</script>
 <script src="<?= \App\Assets::versioned_url('/js/markdown.js') ?>"></script>
+<script src="<?= \App\Assets::versioned_url('/js/v2-quota.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/v2-session.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/v2-session-sheets.js') ?>"></script>

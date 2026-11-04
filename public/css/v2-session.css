@@ -26,7 +26,7 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 /* The shell is the viewport: the transcript is the one scroller between a sticky bar and the footer, so the
    footer never detaches while scrolling on iOS. v2-session.js narrows --vvh to the visual viewport while the
    keyboard is open. */
-.v2s { position: fixed; inset: 0 0 auto 0; height: var(--vvh, 100dvh); display: flex; flex-direction: column; background: var(--bg); }
+.v2s { position: fixed; inset: var(--vvtop, 0px) 0 auto 0; height: var(--vvh, 100dvh); display: flex; flex-direction: column; background: var(--bg); }
 .v2s-col { max-width: 44rem; margin: 0 auto; width: 100%; }
 .v2s-missing { padding: 16px; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
 
@@ -36,7 +36,7 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
   background: var(--surface); border-bottom: 1px solid var(--border);
 }
 .v2s-titlebtn { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 4px 6px; background: none; border: 0; text-align: left; }
-.v2s-title { max-width: 100%; font-weight: 650; font-size: 1rem; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v2s-title { max-width: 100%; font-weight: 650; font-size: 1rem; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
 .v2s-sub { max-width: 100%; display: flex; gap: 8px; align-items: center; font-size: 0.74rem; color: var(--text-muted); overflow: hidden; white-space: nowrap; }
 .v2s-sub .v2-dot { margin: 0; width: 8px; height: 8px; }
 .v2s-sub .v2-chip { padding: 0 7px; font-size: 0.68rem; }
@@ -129,15 +129,15 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 
 /* ---- footer ---- */
 .v2s-footer { flex: none; background: var(--surface); border-top: 1px solid var(--border); padding: 4px 8px calc(8px + var(--safe-bottom)); }
-.v2s-bar2 { display: flex; gap: 6px; align-items: center; padding-bottom: 4px; }
-.v2s-navbtn { position: relative; width: 44px; height: 36px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); font-size: 0.95rem; color: var(--text); }
+.v2s-bar2 { display: flex; gap: 12px; align-items: center; padding-bottom: 6px; }
+.v2s-navbtn { position: relative; width: 38px; height: 36px; padding: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); font-size: 0.95rem; color: var(--text); }
 .v2s-navbtn:disabled { opacity: 0.4; }
 .v2s-newdot { position: absolute; top: 3px; right: 3px; width: 9px; height: 9px; border-radius: 50%; background: var(--blocked); }
-.v2s-ctrlbtn { flex: 1; min-width: 0; height: 36px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); font-size: 0.8rem; color: var(--text-muted); text-align: right; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.v2s-composerow { display: flex; gap: 6px; align-items: flex-end; }
+.v2s-ctrlbtn { flex: 1; min-width: 0; height: 36px; padding: 0 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); font-size: 0.8rem; color: var(--text-muted); text-align: right; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.v2s-composerow { display: flex; gap: 10px; align-items: flex-end; }
 .v2s-composerow textarea { flex: 1; min-height: var(--tap); max-height: 9rem; resize: none; line-height: 1.35; padding-top: 10px; overscroll-behavior: contain; }
 .v2s-attach { background: var(--surface-2); border: 1px solid var(--border); }
-.v2s-send, .v2s-stop { padding: 0 14px; }
+.v2s-send, .v2s-stop { padding: 0 12px; }
 .v2s-attached { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 6px; }
 .v2s-chip-x { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 4px 6px 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); font-size: 0.8rem; }
 .v2s-chip-x span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 12rem; }
@@ -187,3 +187,16 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 .v2s-reply .v2s-text { max-height: 40dvh; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 6px; }
 .v2s-back { position: relative; }
 .v2s-back-badge { top: 2px; left: auto; right: 0; font-style: normal; }
+
+/* page behind a sheet, the image viewer or the full-screen text must not scroll */
+body:has(dialog[open], .v2s-viewer:not([hidden]), .v2s-fullscreen:not([hidden])) .v2s-scroll { overflow: hidden; }
+
+/* sessions popup */
+.v2s-srow { display: flex; align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+.v2s-srow.is-current { border-color: var(--accent); }
+.v2s-srow-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: var(--tap); padding: 6px 4px 6px 12px; color: inherit; text-decoration: none; }
+.v2s-srow-main .v2-dot { flex: none; margin: 0; }
+.v2s-srow-text { min-width: 0; display: flex; flex-direction: column; }
+.v2s-srow-text b { font-size: 0.92rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v2s-srow-text small { font-size: 0.74rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v2s-ctx { padding-bottom: 12px; font-size: 0.9rem; }
