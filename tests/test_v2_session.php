@@ -96,6 +96,14 @@ try {
     }
     assert_contains('href="/session.php?session=' . V2S_SESSION . '" data-classic-link>Open in classic', $body, 'page: keeps a link to the classic session page');
     assert_contains('href="/" aria-label="All sessions"', $body, 'page: back to the v2 dashboard');
+    assert_contains('id="v2s-info-head-actions"', $body, 'page: star/rename/kill live in the info sheet header');
+    $js = (string)file_get_contents(dirname(__DIR__) . '/public/js/v2-session-sheets.js');
+    foreach (['star', 'rename', 'kill'] as $act) {
+        assert_contains("data-info=\"{$act}\"", $js, "sheets.js: {$act} button is built");
+    }
+    assert_contains("\$('v2s-info-head-actions').innerHTML", $js, 'sheets.js: header buttons are rendered into the sheet header');
+    assert_contains('v2s-current-pill', $js, 'sheets.js: the current session row carries a Current pill');
+    assert_contains("openSheet('v2s-info');\n      return;", $js, 'sheets.js: tapping the current session row opens the details sheet');
     assert_contains('font-size', (string)file_get_contents(dirname(__DIR__) . '/public/css/v2.css'), 'sanity: v2.css readable');
 
     $boot = v2s_bootstrap($body);

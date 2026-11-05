@@ -134,7 +134,7 @@ $bootstrap = json_encode([
 </div></dialog>
 
 <dialog class="v2-sheet" id="v2s-info"><div class="v2-sheet-body">
-  <div class="v2-sheet-head"><h2>Session</h2><button type="button" class="v2-icon-btn" data-close aria-label="Close">&times;</button></div>
+  <div class="v2-sheet-head"><h2>Session</h2><div class="v2s-head-actions"><span id="v2s-info-head-actions" class="v2s-head-actions"></span><button type="button" class="v2-icon-btn" data-close aria-label="Close">&times;</button></div></div>
   <section class="v2s-sec"><h3 class="v2-subtitle">Details</h3><div id="v2s-info-body" class="v2-col"></div></section>
   <section class="v2s-sec"><h3 class="v2-subtitle">Actions</h3>
     <div id="v2s-info-actions" class="v2s-row-actions"></div>
