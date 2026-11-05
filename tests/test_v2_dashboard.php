@@ -111,6 +111,7 @@ try {
     assert_contains('I&#039;ll clean up the temp directory now.', $body, 'GET /v2: last message preview shown on the working card');
     assert_equal(1, substr_count($body, 'v2-preview'), 'GET /v2: the blocked card shows its prompt instead of a preview');
     assert_contains('data-status="blocked"', $body, 'GET /v2: blocked card marked');
+    assert_contains('v2-chip-id" title="Conversation ', $body, 'GET /v2: a live card shows its conversation id tail');
     assert_contains('Do you want to proceed?', $body, 'GET /v2: blocked prompt question shown');
     assert_contains('rm -rf /tmp/dashboard-example', $body, 'GET /v2: blocked prompt context shown');
     assert_equal(2, substr_count($body, 'data-act="answer"'), 'GET /v2: both prompt options are one-tap buttons');

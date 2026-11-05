@@ -245,10 +245,13 @@ class ArchivedSessionService
             }
         }
 
-        usort($transcripts, fn(array $a, array $b) => $b['last_activity'] <=> $a['last_activity']);
+        // Id hits first so the result cap never drops the session whose id was typed.
+        usort($transcripts, fn(array $a, array $b) => [self::id_match($b['agent_session_id'], $query) !== [], $b['last_activity']]
+            <=> [self::id_match($a['agent_session_id'], $query) !== [], $a['last_activity']]);
 
         foreach ($transcripts as $t) {
-            $matches = TranscriptService::search_transcript_file($t['path'], $query, max(1, $maxMatchesPerSession));
+            $matches = self::id_match($t['agent_session_id'], $query)
+                ?: TranscriptService::search_transcript_file($t['path'], $query, max(1, $maxMatchesPerSession));
 
             if ($matches === []) {
                 continue;
@@ -274,7 +277,8 @@ class ArchivedSessionService
             $ocTranscripts = OpenCodeTranscriptService::list_all_transcripts();
 
             foreach ($ocTranscripts as $t) {
-                $matches = OpenCodeTranscriptService::search_transcript($t['session_id'], $query, max(1, $maxMatchesPerSession));
+                $matches = self::id_match($t['session_id'], $query)
+                    ?: OpenCodeTranscriptService::search_transcript($t['session_id'], $query, max(1, $maxMatchesPerSession));
 
                 if ($matches === []) {
                     continue;
@@ -296,6 +300,21 @@ class ArchivedSessionService
         }
 
         return ['ok' => true, 'results' => $results];
+    }
+
+    /**
+     * A conversation id (or part of one) typed into search finds that session even
+     * though the id is not in the transcript text.
+     *
+     * @return array<int, array{line:int, snippet:string, role:?string, kind:string}>
+     */
+    private static function id_match(string $conversationId, string $query): array
+    {
+        $q = trim($query);
+
+        return strlen($q) >= 4 && stripos($conversationId, $q) !== false
+            ? [['line' => 1, 'snippet' => $conversationId, 'role' => null, 'kind' => 'id']]
+            : [];
     }
 
     /**

@@ -122,6 +122,7 @@ class V2View extends View
             'profile' => $agentId === 'claude' ? SessionRowView::profile_label($s['profile'] ?? null) : null,
             'runtime' => (string)($s['runtime'] ?? 'tmux'),
             'kind' => (string)($s['kind'] ?? 'user'),
+            'conversationId' => $s['agent_session_id'] ?? null,
             'parentSessionId' => $s['parent_session_id'] ?? null,
             'starred' => !empty($s['starred']),
             'workdir' => $s['workdir'] ?? null,
