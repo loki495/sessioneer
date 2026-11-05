@@ -425,6 +425,12 @@ class DashboardController extends Controller
         $pid = (int)($_POST['pid'] ?? 0);
         $agentSessionId = trim((string)($_POST['agent_session_id'] ?? ''));
 
+        if ($agentSessionId === '') {
+            echo json_encode(['ok' => false, 'message' => 'Pick a conversation to resume']);
+
+            return;
+        }
+
         // The working directory is the process's own, re-read on the host
         // rather than taken from the client.
         echo json_encode(AgentClient::agent_call([

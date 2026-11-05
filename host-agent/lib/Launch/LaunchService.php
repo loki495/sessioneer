@@ -105,11 +105,18 @@ class LaunchService
      */
     private static function kill_terminal(string $name, bool $force): array
     {
-        $detail = \sessioneer_dispatch_action(['action' => 'session_detail', 'session' => $name]);
-        $status = ($detail['status'] ?? null) ?? (!empty($detail['blocked_reason']) ? 'blocked' : (!empty($detail['working']) ? 'working' : 'idle'));
+        if (!$force) {
+            $detail = \sessioneer_dispatch_action(['action' => 'session_detail', 'session' => $name]);
 
-        if ($status !== 'idle' && !$force) {
-            return ['ok' => false, 'name' => $name, 'message' => "Session {$name} is {$status}; stopping it would drop that work (use --force)"];
+            if (($detail['ok'] ?? false) !== true) {
+                return ['ok' => false, 'name' => $name, 'message' => "Could not read the status of {$name} (use --force to stop it anyway)"];
+            }
+
+            $status = ($detail['status'] ?? null) ?? (!empty($detail['blocked_reason']) ? 'blocked' : (!empty($detail['working']) ? 'working' : 'idle'));
+
+            if ($status !== 'idle') {
+                return ['ok' => false, 'name' => $name, 'message' => "Session {$name} is {$status}; stopping it would drop that work (use --force)"];
+            }
         }
 
         $killed = SessionLifecycleService::kill_agent_session($name);

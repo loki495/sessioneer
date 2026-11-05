@@ -402,6 +402,13 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
             return ['ok' => false, 'message' => 'Rejected: no prompt is currently pending on this session'];
         }
 
+        $expectedId = $answers['expected_request_id'] ?? null;
+
+        if (is_string($expectedId) && $expectedId !== '' && $expectedId !== ($raw['request_id'] ?? null)) {
+            return ['ok' => false, 'message' => 'Rejected: the prompt changed since it was read'];
+        }
+
+        unset($answers['expected_request_id']);
         $response = ClaudeHeadlessPromptProtocol::response($raw, $answers);
 
         if ($response === null) {
@@ -526,6 +533,7 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
             'blocked_reason' => $prompt['question'] ?? null,
             'resume_hint' => null,
             'prompt_context' => $prompt['context'] ?? null,
+            'prompt_request_id' => $prompt['request_id'] ?? null,
             'prompt_options' => $prompt['options'] ?? [],
             'prompt_multi_question' => $prompt['multi_question'] ?? false,
             'prompt_is_folder_trust' => false,

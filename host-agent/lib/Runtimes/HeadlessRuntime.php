@@ -111,6 +111,12 @@ class HeadlessRuntime implements RuntimeProvider
             return ['ok' => false, 'message' => 'Rejected: no prompt is currently pending on this session'];
         }
 
+        $expectedId = $answers['expected_request_id'] ?? null;
+
+        if (is_string($expectedId) && $expectedId !== '' && $expectedId !== ($pending['request_id'] ?? null)) {
+            return ['ok' => false, 'message' => 'Rejected: the prompt changed since it was read'];
+        }
+
         // Permission prompt: POST the v2 permission reply endpoint. v2 serves
         // pending requests from the directory-scoped
         // GET /api/permission/request, so the blocked shape carries a live

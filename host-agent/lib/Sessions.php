@@ -547,7 +547,7 @@ function sessioneer_dispatch_action(array $request): array
         case 'answer_prompt':
             $answerSession = (string)($request['session'] ?? '');
             if (sessioneer_is_headless_session($answerSession)) {
-                return sessioneer_headless_answer_prompt($answerSession, ['option' => (int)($request['option'] ?? 0)]);
+                return sessioneer_headless_answer_prompt($answerSession, ['option' => (int)($request['option'] ?? 0)] + sessioneer_expected_request_id($request));
             }
             return PromptInteractionService::answer_prompt(
                 $answerSession,
@@ -561,7 +561,7 @@ function sessioneer_dispatch_action(array $request): array
                 return sessioneer_headless_answer_prompt($answerTextSession, [
                     'option' => (int)($request['option'] ?? 0),
                     'text' => (string)($request['text'] ?? ''),
-                ]);
+                ] + sessioneer_expected_request_id($request));
             }
             return PromptInteractionService::answer_prompt_with_text($answerTextSession, (int)($request['option'] ?? 0), (string)($request['text'] ?? ''));
 
@@ -570,7 +570,7 @@ function sessioneer_dispatch_action(array $request): array
             if (sessioneer_is_headless_session($answerMultiSession)) {
                 return sessioneer_headless_answer_prompt($answerMultiSession, [
                     'answers' => is_array($request['answers'] ?? null) ? $request['answers'] : [],
-                ]);
+                ] + sessioneer_expected_request_id($request));
             }
             return PromptInteractionService::answer_multi_question($answerMultiSession, is_array($request['answers'] ?? null) ? $request['answers'] : []);
 
@@ -786,6 +786,7 @@ function sessioneer_merge_headless_sessions(array $sessions): array
             // actions just like a tmux session's blocked prompt.
             'blocked_reason' => is_string($blocked['question'] ?? null) ? $blocked['question'] : null,
             'prompt_context' => is_string($blocked['context'] ?? null) ? $blocked['context'] : null,
+            'prompt_request_id' => is_string($blocked['request_id'] ?? null) ? $blocked['request_id'] : null,
             'prompt_options' => is_array($blocked['options'] ?? null) ? $blocked['options'] : [],
             'prompt_multi_question' => (bool)($blocked['multi_question'] ?? false),
             'prompt_is_folder_trust' => (bool)($blocked['is_folder_trust'] ?? false),
@@ -1266,6 +1267,20 @@ function sessioneer_list_models(string $agent = 'opencode'): array
 }
 
 /**
+ * The prompt id a caller read before answering; a headless runtime refuses the
+ * answer when the pending prompt is no longer that one.
+ *
+ * @param array<string, mixed> $request
+ * @return array{expected_request_id?: string}
+ */
+function sessioneer_expected_request_id(array $request): array
+{
+    return is_string($request['expected_request_id'] ?? null) && $request['expected_request_id'] !== ''
+        ? ['expected_request_id' => $request['expected_request_id']]
+        : [];
+}
+
+/**
  * Answers a headless session's pending prompt via the headless runtime
  * (question by option number or label). Wrap so the dispatch action can stay
  * a thin switch; returns a handled failure if the runtime isn't available.
@@ -1460,6 +1475,7 @@ function sessioneer_headless_detail_shape(array $serve, string $agentId = 'openc
         'working' => ($status['status'] ?? null) === 'working',
         'blocked_reason' => is_string($blocked['question'] ?? null) ? $blocked['question'] : null,
         'prompt_context' => is_string($blocked['context'] ?? null) ? $blocked['context'] : null,
+        'prompt_request_id' => is_string($blocked['request_id'] ?? null) ? $blocked['request_id'] : null,
         'prompt_options' => is_array($blocked['options'] ?? null) ? $blocked['options'] : [],
         'prompt_multi_question' => (bool)($blocked['multi_question'] ?? false),
         'prompt_is_folder_trust' => (bool)($blocked['is_folder_trust'] ?? false),

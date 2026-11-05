@@ -131,14 +131,20 @@ class OpenCodeSessionLauncher implements SessionLauncher
             return ['ok' => false, 'message' => "No tracked OpenCode session found for '{$target}'"];
         }
 
-        $status = $this->status_of($name);
+        $force = !empty($request['force']);
 
-        if ($status === null) {
-            return ['ok' => false, 'name' => $name, 'message' => "Could not read the status of {$name} from opencode serve"];
-        }
+        // --force skips the status read: a stale row must be clearable while
+        // opencode serve is down, which is exactly when the read fails.
+        if (!$force) {
+            $status = $this->status_of($name);
 
-        if ($status !== 'idle' && empty($request['force'])) {
-            return ['ok' => false, 'name' => $name, 'message' => "Session {$name} is {$status}; stopping it would drop that work (use --force)"];
+            if ($status === null) {
+                return ['ok' => false, 'name' => $name, 'message' => "Could not read the status of {$name} from opencode serve (use --force to stop it anyway)"];
+            }
+
+            if ($status !== 'idle') {
+                return ['ok' => false, 'name' => $name, 'message' => "Session {$name} is {$status}; stopping it would drop that work (use --force)"];
+            }
         }
 
         // Best effort: a session that is already idle can reject an interrupt,

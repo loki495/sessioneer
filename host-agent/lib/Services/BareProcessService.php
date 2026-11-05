@@ -837,6 +837,41 @@ class BareProcessService
     }
 
     /**
+     * Why a caller-named conversation may not be resumed in place of the one
+     * $pid runs, or null when it may: a process whose conversation is
+     * confirmed can only be taken over for that conversation, and one that is
+     * not may only go to a candidate take_over_bare_process() offers. Without
+     * this a stale or mistyped id kills the right process and resumes the
+     * wrong conversation.
+     */
+    public static function take_over_choice_error(int $pid, string $agentSessionId): ?string
+    {
+        $detail = self::resolve_bare_process_detail($pid);
+
+        if ($detail['ok'] !== true) {
+            return (string)$detail['message'];
+        }
+
+        if (($detail['confidence'] ?? null) === 'confirmed') {
+            return $detail['agent_session_id'] === $agentSessionId
+                ? null
+                : "Process {$pid} is running conversation {$detail['agent_session_id']}, not {$agentSessionId}";
+        }
+
+        foreach (ProcessInspector::find_claude_processes() as $proc) {
+            if ($proc['pid'] === $pid && is_string($proc['cwd'])) {
+                $candidates = self::bare_process_take_over_candidates($proc['cwd'], $proc['started_at'] ?? time(), $pid)['candidates'];
+
+                return in_array($agentSessionId, array_column($candidates, 'agent_session_id'), true)
+                    ? null
+                    : "Conversation {$agentSessionId} is not one of the candidates for process {$pid}";
+            }
+        }
+
+        return 'Rejected: not a currently running claude process, or its working directory could not be determined';
+    }
+
+    /**
      * "Take over" a foreign (bare/untracked) claude process - the
      * unify-claude-sessions plan's phase 6. Two outcomes:
      *
