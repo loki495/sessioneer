@@ -171,7 +171,7 @@ history (the dashboard when there is none). Swipes work anywhere except where a
 finger may be scrolling (a code block, a field), need 80px of mostly horizontal
 travel, ignore the outer 24px (left to the browser's own back/forward gestures) and
 are ignored while a popup is open. Every sheet (`public/js/v2-sheets.js`, both pages)
-closes on a tap outside it or a swipe down from its fixed header.
+closes on a tap outside it, a swipe down from its fixed header, or a swipe right anywhere inside it (not over a field, code block or sideways-scrolling area, nor from the screen edges).
 The bar also carries a very small stacked readout for this session's agent and
 account: 5-hour use, weekly use and context (`V2Quota.mini`, from `/quota.php?session=`,
 refreshed every five minutes; context follows the detail poll). It opens the same popup

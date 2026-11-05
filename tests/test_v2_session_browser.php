@@ -279,6 +279,10 @@ try {
         cdp_evaluate($page, "window.__back = 0; history.back = function () { window.__back++; }; Object.defineProperty(history, 'length', { value: 3, configurable: true });");
         cdp_evaluate($page, $swipe(100, 260));
         assert_equal(0, cdp_evaluate($page, 'window.__back'), 'swipe: nothing happens while a popup is open');
+        cdp_evaluate($page, $swipe(100, 260, 'document.querySelector("#v2s-sessions .v2-sheet-body")'));
+        assert_equal(false, cdp_evaluate($page, "document.getElementById('v2s-sessions').open"), 'popup: a swipe right inside it closes it');
+        cdp_evaluate($page, "document.querySelector('[data-open=\"v2s-sessions\"]').click()");
+        assert_equal(true, cdp_evaluate($page, "document.getElementById('v2s-sessions').open"), 'popup: it can be opened again');
 
         // popups close on a tap outside and on a swipe down from the header
         cdp_evaluate($page, "document.getElementById('v2s-sessions').click()");
