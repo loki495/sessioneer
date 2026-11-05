@@ -144,7 +144,11 @@ class SessionControl
         $pending = is_string($detail['prompt_request_id'] ?? null) ? $detail['prompt_request_id'] : null;
         $seen = is_string($request['expected_request_id'] ?? null) ? trim($request['expected_request_id']) : '';
 
-        if ($seen !== '' && $pending !== null && $seen !== $pending) {
+        if ($seen !== '' && $pending === null) {
+            return ['ok' => false, 'name' => $name, 'message' => 'This session shows no request id to check (a terminal session has none); use --expect LABEL'];
+        }
+
+        if ($seen !== '' && $seen !== $pending) {
             return ['ok' => false, 'name' => $name, 'message' => 'The prompt is not the one you read (request ' . $pending . ', not ' . $seen . '); run --show'];
         }
 

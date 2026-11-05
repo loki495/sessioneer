@@ -368,6 +368,7 @@ try {
                         'item/tool/requestUserInput',
                     ], true)) {
                         $prompt = CodexPromptProtocol::normalize_prompt($method, $params);
+                        $prompt['request_id'] = (string)$message['id'];
                         $pendingPrompts[$threadId] = ['request_id' => $message['id'], 'method' => $method, 'params' => $params, 'prompt' => $prompt];
                         SessionStatusStore::update_status($threadId, ['status' => 'blocked', 'blocked' => $prompt]);
                         continue;
@@ -457,7 +458,17 @@ try {
 
             if ($method === 'sessioneer/answerPrompt') {
                 $pending = $pendingPrompts[$threadId] ?? null;
-                $response = is_array($pending) ? CodexPromptProtocol::prompt_response($pending, is_array($params['answers'] ?? null) ? $params['answers'] : []) : null;
+                $answers = is_array($params['answers'] ?? null) ? $params['answers'] : [];
+                $expectedId = $answers['expected_request_id'] ?? null;
+                unset($answers['expected_request_id']);
+                // Checked here, against the request the app-server is waiting on, so no
+                // newer prompt can slip in between a caller's read and this answer.
+                if (is_array($pending) && is_string($expectedId) && $expectedId !== '' && $expectedId !== (string)$pending['request_id']) {
+                    unset($clients[$clientId]);
+                    codex_bridge_reply($stream, ['ok' => false, 'message' => 'Rejected: the prompt changed since it was read']);
+                    continue;
+                }
+                $response = is_array($pending) ? CodexPromptProtocol::prompt_response($pending, $answers) : null;
                 unset($clients[$clientId]);
                 if ($pending === null || $response === null) {
                     codex_bridge_reply($stream, ['ok' => false, 'message' => 'Rejected: no matching Codex prompt or invalid answer']);
