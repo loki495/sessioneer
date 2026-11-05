@@ -30,6 +30,7 @@
       <?php if ($profile !== null): ?><span class="v2-chip<?= $profile !== 'Personal' ? ' v2-chip-accent' : '' ?>"><?= $this->e($profile) ?></span><?php endif ?>
       <?php if ($readOnly): ?><span class="v2-chip v2-chip-warn">Terminal, read only</span><?php endif ?>
       <?php if ($isWorker): ?><span class="v2-chip v2-chip-accent">Worker</span><?php endif ?>
+      <?php if (!empty($conversationId)): ?><span class="v2-chip v2-chip-id" title="Conversation <?= $this->e((string)$conversationId) ?>">&hellip;<?= $this->e(substr((string)$conversationId, -8)) ?></span><?php endif ?>
     </div>
 
     <?php if ($isWorker && $parentSessionId !== null): ?>

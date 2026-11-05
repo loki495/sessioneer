@@ -236,6 +236,7 @@ select { background-image: linear-gradient(45deg, transparent 50%, var(--text-mu
 .v2-chip-accent { color: var(--accent); }
 .v2-chip-ok { color: var(--working); background: var(--working-bg); border-color: transparent; }
 .v2-chip-warn { color: var(--blocked); background: var(--blocked-bg); border-color: transparent; }
+.v2-chip-id { font-family: ui-monospace, monospace; }
 .v2-agent-opencode { color: #7c3aed; }
 .v2-agent-codex { color: #0e7490; }
 .v2-agent-antigravity { color: #b45309; }
