@@ -47,6 +47,7 @@ try {
         'a bad --history' => [['--show', 'a', '--history', 'x'], '--history must be a positive number'],
         'a stray --option' => [['--option', '1', '--show', 'a'], '--option only applies to --answer'],
         'a stray --text' => [['--text', 'hi', '--kill', 'a'], '--text only applies to --answer'],
+        'a stray --expect-request' => [['--expect-request', 'r', '--show', 'a'], '--expect-request only applies to --answer'],
         'a stray --expect' => [['--expect', 'Yes', '--show', 'a'], '--expect only applies to --answer'],
         'a stray --as-user' => [['--as-user', '--kill', 'a'], '--as-user only applies to --send'],
         'an answer with nothing to answer' => [['--answer', 'a'], 'exactly one of --option N or --answers JSON'],
@@ -119,6 +120,10 @@ try {
     [$code, , $err] = $cli(['--answer', 'idle', '--option', '1']);
     assert_equal(1, $code, '--answer: a refusal exits 1');
     assert_contains('has no prompt waiting', $err, '--answer: with the reason');
+
+    $before = count(requests($logPath));
+    $cli(['--answer', 'blocked', '--option', '1', '--expect-request', 'req-7']);
+    assert_equal('req-7', requests($logPath)[$before]['expected_request_id'] ?? null, '--answer --expect-request: the request id read from --show is sent');
 
     echo "--interrupt\n";
     [$code, $out] = $cli(['--interrupt', 'blocked']);
