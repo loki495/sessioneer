@@ -1509,7 +1509,7 @@ try {
         preg_match('#<button type="submit" name="runtime" value="tmux"[^>]*>\s*Terminal#', $archivedFragmentBody['archived_html'] ?? '') === 1,
         'the archived row\'s Terminal button submits runtime=tmux (a resume naming no runtime is headless)'
     );
-    $runtimeFollow = curl_request('GET', "{$baseUrl}/", [], $cookieJar);
+    $runtimeFollow = curl_request('GET', "{$baseUrl}/classic", [], $cookieJar);
     $runtimeCsrf = extract_csrf_token($runtimeFollow['body']);
 
     $runtimeSwitch = curl_request('POST', "{$baseUrl}/", ['-d', 'action=switch_runtime&csrf_token=' . urlencode((string)$runtimeCsrf) . '&session=cc-20260101-1200&runtime=headless'], $cookieJar);
@@ -1582,6 +1582,12 @@ try {
     ], $cookieJar);
     $takeOverConfirmRejectBody = json_decode($takeOverConfirmRejectResult['body'], true);
     assert_equal(false, $takeOverConfirmRejectBody['ok'] ?? null, 'POST /take_over_bare_confirm.php: canned agent rejects a agent_session_id that does not match the resolved candidate');
+
+    $takeOverConfirmEmptyResult = curl_request('POST', "{$baseUrl}/take_over_bare_confirm.php", [
+        '-d', 'pid=54321&agent_session_id=&csrf_token=' . urlencode((string)$takeOverCsrfToken),
+    ], $cookieJar);
+    $takeOverConfirmEmptyBody = json_decode($takeOverConfirmEmptyResult['body'], true);
+    assert_equal(false, $takeOverConfirmEmptyBody['ok'] ?? null, 'POST /take_over_bare_confirm.php: an empty agent_session_id is refused before it reaches the agent');
 
     // --- bare_process_detail.php: the "Identify" button's endpoint, read-
     // only (GET-only, no CSRF needed - same reasoning as

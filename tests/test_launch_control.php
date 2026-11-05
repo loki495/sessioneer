@@ -149,6 +149,14 @@ foreach ([
 assert_contains('No tracked session found', (string)act(['action' => 'launch_answer', 'target' => 'nope', 'option' => 1])['message'], 'an unknown session is refused');
 assert_true(status_is($name, 'blocked'), 'none of the refusals answered the prompt');
 
+echo "Answer: bound to the prompt that was read\n";
+$requestId = (string)($shown['prompt_request_id'] ?? '');
+assert_true($requestId !== '', 'a shown prompt carries its request id');
+$stale = act(['action' => 'answer_prompt', 'session' => $name, 'option' => 1, 'expected_request_id' => 'not-the-pending-request']);
+assert_equal(false, $stale['ok'] ?? null, 'an answer naming another request id is refused');
+assert_contains('changed', (string)$stale['message'], 'and says the prompt changed');
+assert_true(status_is($name, 'blocked'), 'the pending prompt was not answered');
+
 echo "Answer: happy paths\n";
 $label = (string)$shown['prompt_options'][0]['label'];
 $answered = act(['action' => 'launch_answer', 'target' => $name, 'option' => 1, 'expected_label' => strtoupper($label)]);
@@ -221,6 +229,16 @@ assert_equal(true, $paneKill['ok'] ?? null, 'the CLI kill reaches a tmux session
 assert_true(!in_array($paneName, array_column(TmuxService::list_tracked_tmux_sessions(), 'name'), true), 'and the pane is gone');
 assert_equal(null, SidecarStore::read_sidecar($paneName), 'with its sidecar');
 
+echo "Kill: an unreadable terminal session\n";
+SidecarStore::write_sidecar('cc-ghost-kill', ['workdir' => $workdir, 'spawned_at' => time(), 'agent_session_id' => null, 'spawned_by_app' => true, 'agent' => 'claude', 'runtime' => 'tmux', 'title' => null, 'profile' => null]);
+$ghost = act(['action' => 'launch_kill', 'target' => 'cc-ghost-kill']);
+assert_equal(false, $ghost['ok'] ?? null, 'a terminal session whose status cannot be read is not killed without --force');
+assert_contains('--force', (string)$ghost['message'], 'and the message says how');
+assert_true(SidecarStore::read_sidecar('cc-ghost-kill') !== null, 'its row stays');
+$ghostForced = act(['action' => 'launch_kill', 'target' => 'cc-ghost-kill', 'force' => true]);
+assert_true(!str_contains((string)($ghostForced['message'] ?? ''), 'Could not read the status'), 'with --force the status is not even read');
+SidecarStore::delete_sidecar('cc-ghost-kill');
+
 echo "Terminal Claude: list\n";
 
 /** @return array{pid:int, id:string} */
@@ -251,6 +269,10 @@ assert_contains('needs a process id', (string)act(['action' => 'launch_take_over
 assert_contains('not a currently running claude process', (string)act(['action' => 'launch_take_over', 'target' => '999999'])['message'], 'a pid that is not a Claude process is refused');
 assert_contains('No terminal Claude process', (string)act(['action' => 'launch_take_over', 'target' => 'cccccccc-1111-4111-8111-cccccccccccc'])['message'], 'so is a conversation nothing runs');
 assert_true(pid_alive($bare['pid']), 'and nothing was stopped');
+$wrong = act(['action' => 'launch_take_over', 'target' => (string)$bare['pid'], 'agent_session_id' => 'cccccccc-1111-4111-8111-cccccccccccc']);
+assert_equal(false, $wrong['ok'] ?? null, 'a process whose conversation is known is not taken over for another one');
+assert_contains('is running conversation', (string)$wrong['message'], 'and the message names the conversation it runs');
+assert_true(pid_alive($bare['pid']), 'and nothing was stopped');
 $taken = act(['action' => 'launch_take_over', 'target' => $bareId]);
 assert_equal(true, $taken['ok'] ?? null, 'a terminal Claude is taken over by its conversation id' . (($taken['ok'] ?? false) === true ? '' : ' - got ' . json_encode($taken)));
 $takenName = (string)($taken['name'] ?? '');
@@ -269,10 +291,14 @@ assert_equal($pidId, SidecarStore::read_sidecar((string)$byPid['name'])['agent_s
 
 $ambiguous = start_bare($wrapper, $workdir, '');
 $candidateId = 'eeeeeeee-1111-4111-8111-eeeeeeeeeeee';
-copy(__DIR__ . '/fixtures/transcript_sample.jsonl', "{$transcriptDir}/{$candidateId}.jsonl");
+// A candidate is offered only for the working directory the process runs in.
+file_put_contents("{$transcriptDir}/{$candidateId}.jsonl", json_encode(['type' => 'user', 'uuid' => 'u0', 'cwd' => $workdir, 'timestamp' => '2026-01-01T00:00:00Z', 'message' => ['role' => 'user', 'content' => 'Fix the bug']]) . "\n" . file_get_contents(__DIR__ . '/fixtures/transcript_sample.jsonl'));
 $choice = act(['action' => 'launch_take_over', 'target' => (string)$ambiguous['pid']]);
 assert_equal(true, $choice['needs_choice'] ?? null, 'a process whose conversation cannot be told asks for a choice');
 assert_true(pid_alive($ambiguous['pid']), 'and stops nothing');
+$notOffered = act(['action' => 'launch_take_over', 'target' => (string)$ambiguous['pid'], 'agent_session_id' => 'cccccccc-1111-4111-8111-cccccccccccc']);
+assert_equal(false, $notOffered['ok'] ?? null, 'an unresolved process is only taken over for one of its candidates');
+assert_true(pid_alive($ambiguous['pid']), 'and nothing was stopped');
 $confirmed = act(['action' => 'launch_take_over', 'target' => (string)$ambiguous['pid'], 'agent_session_id' => $candidateId]);
 assert_equal(true, $confirmed['ok'] ?? null, 'naming the conversation completes the take over' . (($confirmed['ok'] ?? false) === true ? '' : ' - got ' . json_encode($confirmed)));
 $made[] = (string)($confirmed['name'] ?? '');

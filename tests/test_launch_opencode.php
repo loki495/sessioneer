@@ -344,6 +344,17 @@ assert_equal(true, $idle['ok'] ?? null, 'an idle session is stopped without --fo
 $client->failStatus = true;
 $downKill = $launcher->kill(['target' => 'ses_old']);
 assert_equal(false, $downKill['ok'] ?? null, 'a serve that cannot report status is a handled kill failure');
+assert_contains('--force', (string)$downKill['message'], 'which names --force as the way out');
+assert_true(SidecarStore::read_sidecar('ses_old') !== null, 'and keeps the row');
+$client->failStatus = false;
+$client->failStatus = true;
+$client->failDelete = true;
+$downForced = $launcher->kill(['target' => 'ses_old', 'force' => true]);
+assert_true(!str_contains((string)($downForced['message'] ?? ''), 'Could not read the status'), 'a forced kill does not stop at the unreadable status');
+$client->failDelete = false;
+$downForced = $launcher->kill(['target' => 'ses_old', 'force' => true]);
+assert_equal(true, $downForced['ok'] ?? null, 'a forced kill clears a stale row while serve is unreachable');
+assert_equal(null, SidecarStore::read_sidecar('ses_old'), 'and removes it');
 $client->failStatus = false;
 
 echo "Peers and send\n";

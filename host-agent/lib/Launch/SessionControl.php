@@ -35,7 +35,7 @@ class SessionControl
     private const SHOWN_KEYS = [
         'agent', 'runtime', 'status', 'workdir', 'title', 'agent_session_id', 'current_mode', 'current_model',
         'last_turn_error', 'blocked_reason', 'prompt_context', 'prompt_options', 'prompt_multi_question',
-        'prompt_tool_name', 'prompt_tool_input', 'prompt_questions', 'last_message', 'git_branch',
+        'prompt_tool_name', 'prompt_tool_input', 'prompt_questions', 'prompt_request_id', 'last_message', 'git_branch',
     ];
 
     /** The tracked session a name or conversation id refers to, whatever its agent or runtime. */
@@ -138,10 +138,14 @@ class SessionControl
 
         $text = is_string($request['text'] ?? null) ? trim($request['text']) : '';
 
+        // Bind the answer to the prompt that was read above: a headless runtime
+        // refuses it if another request has reached the head of its queue since.
+        $bound = ['session' => $name] + (is_string($detail['prompt_request_id'] ?? null) ? ['expected_request_id' => $detail['prompt_request_id']] : []);
+
         $reply = match (true) {
-            $answers !== null => self::dispatch(['action' => 'answer_multi_question', 'session' => $name, 'answers' => $answers]),
-            $text !== '' => self::dispatch(['action' => 'answer_prompt_with_text', 'session' => $name, 'option' => $option, 'text' => $text]),
-            default => self::dispatch(['action' => 'answer_prompt', 'session' => $name, 'option' => $option]),
+            $answers !== null => self::dispatch(['action' => 'answer_multi_question', 'answers' => $answers] + $bound),
+            $text !== '' => self::dispatch(['action' => 'answer_prompt_with_text', 'option' => $option, 'text' => $text] + $bound),
+            default => self::dispatch(['action' => 'answer_prompt', 'option' => $option, 'expected_label' => $expected] + $bound),
         };
 
         return ['name' => $name] + $reply + ['message' => ($reply['ok'] ?? false) === true ? 'Answered' : 'Could not answer'];
@@ -244,6 +248,12 @@ class SessionControl
 
         if ($chosen === '') {
             return BareProcessService::take_over_bare_process($pid, $runtime === RuntimeType::HEADLESS);
+        }
+
+        $refused = BareProcessService::take_over_choice_error($pid, $chosen);
+
+        if ($refused !== null) {
+            return ['ok' => false, 'message' => $refused];
         }
 
         $workdir = self::workdir_for($pid, $chosen);
