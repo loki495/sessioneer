@@ -44,6 +44,7 @@ function usage(): string
       Who am I:          sessioneer --whoami
       Peer sessions:     sessioneer --peers [--json]
       Usage stats:       sessioneer --usage
+      Resume or fresh:   sessioneer --advise [SESSION...] [--act] [--json]
       Run to the end:    sessioneer --wait [--timeout N] --workdir DIR "do the thing"
 
     PROMPT is the message to deliver; "-" reads it from stdin. A new session
@@ -122,6 +123,16 @@ function usage(): string
                         accounts, or a single "default"), each profile with its
                         quota and fetched_at time. Read-only; never refreshes
                         anything.
+      --advise          judge whether an idle Claude or Codex headless session should be
+                        resumed or replaced by a fresh one, from its transcript size, cache
+                        age and the account's quota, without waking it. No SESSION: a table
+                        of every tracked session. One SESSION (name or conversation id):
+                        the verdict, with one small model call if it is a close one.
+      --act             with --advise and exactly one SESSION: do what the verdict says.
+                        Resume sends a short continue prompt to that session. Fresh starts
+                        a new session (--model/--effort apply) that writes the handoff from
+                        the old transcript, then archives the old one. Refused when the
+                        session is not idle, there is no clear verdict, or the quota is full.
       --wait            after launching, block until the session is idle and print
                         its final assistant message to stdout (the session name
                         goes to stderr). Exits 1 if the launch fails, the turn
@@ -251,7 +262,7 @@ function emit_envelope(array $envelope): void
     echo json_encode($envelope, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
 }
 
-$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'bare', 'take-over:', 'as-user'], $restIndex);
+$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'advise', 'act', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'bare', 'take-over:', 'as-user'], $restIndex);
 
 if ($opts === false) {
     fail("bad options\n\n" . usage());
@@ -309,6 +320,7 @@ $kill = $opt('kill');
 $list = isset($opts['list']);
 $send = $opt('send');
 $peers = isset($opts['peers']);
+$advise = isset($opts['advise']);
 $show = $opt('show');
 $answer = $opt('answer');
 $interrupt = $opt('interrupt');
@@ -318,8 +330,8 @@ $takeOver = $opt('take-over');
 // Every action that is not a launch or a resume.
 $nonLaunch = $kill !== null || $list || $send !== null || $peers || $show !== null || $answer !== null || $interrupt !== null || $bare || $takeOver !== null;
 
-if (count(array_filter([$kill !== null, $list, $send !== null, $peers, isset($opts['usage']), $show !== null, $answer !== null, $interrupt !== null, $bare, $takeOver !== null])) > 1) {
-    fail('--kill, --list, --show, --answer, --interrupt, --bare, --take-over, --send, --peers and --usage cannot be combined');
+if (count(array_filter([$kill !== null, $list, $send !== null, $peers, isset($opts['usage']), $advise, $show !== null, $answer !== null, $interrupt !== null, $bare, $takeOver !== null])) > 1) {
+    fail('--kill, --list, --show, --answer, --interrupt, --bare, --take-over, --send, --peers, --usage and --advise cannot be combined');
 }
 
 // Modifiers belong to one action each; a stray one would otherwise be ignored.
@@ -376,6 +388,42 @@ if ($answer !== null) {
     } else {
         $answerPayload = ['option' => (int)$optionNumber, 'text' => $opt('text'), 'expected_label' => $opt('expect'), 'expected_request_id' => $opt('expect-request')];
     }
+}
+
+if (isset($opts['act']) && !$advise) {
+    fail('--act only applies to --advise');
+}
+
+if ($advise) {
+    if (isset($opts['act']) && count($positional) !== 1) {
+        fail('--advise --act needs exactly one session name or conversation id');
+    }
+
+    $reply = AgentClient::agent_call(array_filter([
+        'action' => 'advise',
+        'target' => $positional[0] ?? null,
+        'act' => isset($opts['act']) ? true : null,
+        'model' => $opt('model'),
+        'effort' => $opt('effort'),
+    ], static fn ($v): bool => $v !== null && $v !== ''));
+
+    if (isset($opts['json'])) {
+        echo json_encode($reply, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
+    } elseif (($reply['ok'] ?? false) === true && !isset($opts['act'])) {
+        foreach ($reply['sessions'] as $s) {
+            $a = $s['advice'];
+            echo implode("\t", [
+                $s['name'], $s['status'], strtoupper((string)$a['verdict']),
+                isset($a['context_tokens']) ? round($a['context_tokens'] / 1000) . 'k' : '-',
+                isset($a['cache_age_seconds']) ? ($a['cache_cold'] ? 'cold ' : 'warm ') . round($a['cache_age_seconds'] / 60) . 'm' : '-',
+                $a['reason'],
+            ]), "\n";
+        }
+    } else {
+        fwrite(STDERR, 'sessioneer: ' . (string)($reply['message'] ?? 'done') . "\n");
+    }
+
+    exit(($reply['ok'] ?? false) === true ? 0 : 1);
 }
 
 if (isset($opts['usage'])) {
