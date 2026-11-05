@@ -193,12 +193,14 @@
 
     body.innerHTML = html;
 
-    var actions = '<button type="button" class="v2-btn" data-info="star">' + (d.starred ? '&#9733; Unstar' : '&#9734; Star') + '</button>'
-      + '<button type="button" class="v2-btn" data-info="rename">Rename</button>';
+    $('v2s-info-head-actions').innerHTML = '<button type="button" class="v2-btn" data-info="star">' + (d.starred ? '&#9733; Unstar' : '&#9734; Star') + '</button>'
+      + '<button type="button" class="v2-btn" data-info="rename">Rename</button>'
+      + '<button type="button" class="v2-btn v2-btn-danger" data-info="kill">Kill</button>';
+
+    var actions = '';
     if ((d.agent || 'claude') === 'claude' && d.runtime !== 'headless') {
       actions += '<button type="button" class="v2-btn" data-info="switch" data-runtime="headless">Take over (headless)</button>';
     }
-    actions += '<button type="button" class="v2-btn v2-btn-danger" data-info="kill">Kill session</button>';
     $('v2s-info-actions').innerHTML = actions;
 
     var todos = d.todos || [];
@@ -478,9 +480,9 @@
       var st = statusOfRow(x);
       var folder = String(x.workdir || '').replace(/\/+$/, '').split('/').pop();
       return '<div class="v2s-srow' + (x.name === session ? ' is-current' : '') + (x.starred ? ' is-starred' : '') + '">'
-        + '<a class="v2s-srow-main" href="/session?session=' + encodeURIComponent(x.name) + '"><i class="v2-dot v2-dot-' + st + '" role="img" aria-label="' + (st === 'blocked' ? 'needs input' : st) + '"></i>'
+        + '<a class="v2s-srow-main"' + (x.name === session ? ' data-current' : '') + ' href="/session?session=' + encodeURIComponent(x.name) + '"><i class="v2-dot v2-dot-' + st + '" role="img" aria-label="' + (st === 'blocked' ? 'needs input' : st) + '"></i>'
         + '<span class="v2s-srow-text"><b>' + esc(x.title || x.name) + '</b>'
-        + '<span class="v2s-srow-chips">' + rowChips(x) + '</span>'
+        + '<span class="v2s-srow-chips">' + (x.name === session ? '<span class="v2s-current-pill">Current</span>' : '') + rowChips(x) + '</span>'
         + '<small>' + esc(folder) + ' · ' + esc(api.relTime(x.activity ? new Date(x.activity * 1000).toISOString() : '')) + '</small>'
         + (rowPreview(x) ? '<small class="v2s-srow-preview">' + esc(rowPreview(x)) + '</small>' : '') + '</span></a>'
         + '<button type="button" class="v2-icon-btn" data-star="' + esc(x.name) + '" aria-pressed="' + (x.starred ? 'true' : 'false') + '" aria-label="' + (x.starred ? 'Unstar' : 'Star') + '">' + (x.starred ? '&#9733;' : '&#9734;') + '</button></div>';
@@ -496,6 +498,12 @@
   }
   $('v2s-sessions-filter').addEventListener('input', renderSessionRows);
   $('v2s-sessions-list').addEventListener('click', function (e) {
+    if (closest(e.target, '[data-current]')) {
+      e.preventDefault();
+      $('v2s-sessions').close();
+      openSheet('v2s-info');
+      return;
+    }
     var b = closest(e.target, '[data-star]');
     if (!b) { return; }
     var name = b.getAttribute('data-star');
