@@ -30,6 +30,7 @@ putenv('QUICK_PROMPT_DEFAULT_MODEL=');
 putenv('QUICK_PROMPT_API_TOKEN=' . str_repeat('fixture-token-', 5));
 putenv('QUICK_PROMPT_BASE_URL=https://trusted.example');
 putenv('QUICK_PROMPT_WAIT_SECONDS=1');
+putenv('QUICK_PROMPT_ROUTER_URL=');
 putenv('QUICK_PROMPT_RATE_LIMIT=60');
 putenv('SESSIONEER_ALLOWED_HOSTS=');
 putenv('CLAUDE_BIN=' . __DIR__ . '/fixtures/fake_claude_stream');
