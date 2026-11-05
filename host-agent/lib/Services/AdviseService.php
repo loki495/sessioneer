@@ -120,6 +120,7 @@ final class AdviseService
                 'fresh_handoff_tokens' => self::HANDOFF_TOKENS,
                 'fresh_reread_per_turn' => self::HANDOFF_TOKENS,
             ],
+            'quota_known' => $quota !== null,
             'quota_blocked' => $blocked,
             'restart_after' => $restartAfter ?: null,
             'prompts' => [

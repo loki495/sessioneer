@@ -53,6 +53,7 @@ $blocked = AdviseService::advise($small, $quota, 'c1', $now);
 assert_equal(true, $blocked['quota_blocked'], 'a window at 95% blocks');
 assert_equal($now + 5000, $blocked['restart_after'], 'restart waits for the blocking window reset');
 assert_equal(false, AdviseService::advise($small, null, 'c1', $now)['quota_blocked'], 'no quota data does not block');
+assert_equal([false, true], [AdviseService::advise($small, null, 'c1', $now)['quota_known'], $blocked['quota_known']], 'missing quota data is reported as unknown, not as fine');
 
 assert_equal(null, AdviseService::claude_facts($dir . '/missing.jsonl'), 'missing transcript has no facts');
 assert_equal('unsupported', AdviseService::advise(null, null, 'c5', $now)['verdict'], 'no facts is unsupported');

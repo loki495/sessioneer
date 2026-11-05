@@ -480,6 +480,9 @@ function sessioneer_dispatch_action(array $request): array
         case 'launch_take_over':
             return SessionControl::take_over($request);
 
+        case 'advise':
+            return \HostAgent\Services\AdviseRunner::run($request);
+
         case 'resume':
             $resumeWorkdir = (string)($request['workdir'] ?? '');
             $resumeId = (string)($request['agent_session_id'] ?? '');
