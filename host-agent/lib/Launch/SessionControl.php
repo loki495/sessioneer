@@ -25,6 +25,7 @@ use HostAgent\Stores\SidecarStore;
  *   history           int     show: also return the last N transcript entries
  *   option            int     answer: the 1-based option number
  *   expected_label    string  answer: refuse unless that option's label is this
+ *   expected_request_id string answer: refuse unless the waiting prompt has this request id (headless); defaults to the id read during the call
  *   text              string  answer: free text sent with the option
  *   answers           array   answer: one entry per question of a multi-question prompt
  *   agent_session_id  string  take_over: the conversation to resume (confirm step)
@@ -140,7 +141,14 @@ class SessionControl
 
         // Bind the answer to the prompt that was read above: a headless runtime
         // refuses it if another request has reached the head of its queue since.
-        $bound = ['session' => $name] + (is_string($detail['prompt_request_id'] ?? null) ? ['expected_request_id' => $detail['prompt_request_id']] : []);
+        $pending = is_string($detail['prompt_request_id'] ?? null) ? $detail['prompt_request_id'] : null;
+        $seen = is_string($request['expected_request_id'] ?? null) ? trim($request['expected_request_id']) : '';
+
+        if ($seen !== '' && $pending !== null && $seen !== $pending) {
+            return ['ok' => false, 'name' => $name, 'message' => 'The prompt is not the one you read (request ' . $pending . ', not ' . $seen . '); run --show'];
+        }
+
+        $bound = ['session' => $name] + ($seen !== '' || $pending !== null ? ['expected_request_id' => $seen !== '' ? $seen : $pending] : []);
 
         $reply = match (true) {
             $answers !== null => self::dispatch(['action' => 'answer_multi_question', 'answers' => $answers] + $bound),

@@ -34,7 +34,7 @@ function usage(): string
       Stop a session:    sessioneer --kill NAME_OR_CONVERSATION_ID [--force]
       List sessions:     sessioneer --list [--json]
       Show a session:    sessioneer --show TARGET [--history N] [--json]
-      Answer a prompt:   sessioneer --answer TARGET --option N [--text "..."] [--expect LABEL]
+      Answer a prompt:   sessioneer --answer TARGET --option N [--text "..."] [--expect LABEL] [--expect-request ID]
                          sessioneer --answer TARGET --answers JSON
       Interrupt:         sessioneer --interrupt TARGET
       Terminal Claudes:  sessioneer --bare [--json]
@@ -95,6 +95,9 @@ function usage(): string
       --answers JSON    with --answer, the answers to a multi-question prompt
       --expect LABEL    with --answer --option, refuse unless option N is labelled
                         LABEL, so a prompt that changed is not answered blind
+      --expect-request ID
+                        with --answer, refuse unless the prompt waiting is the one
+                        --show printed as its request id (headless sessions)
       --interrupt TARGET
                         stop the session's current turn (like Escape)
       --bare            list Claude processes running in a terminal Sessioneer did
@@ -189,6 +192,10 @@ function show_text(array $s): string
     if (($s['blocked_reason'] ?? '') !== '' || $options !== [] || $questions) {
         $out .= "\nBlocked: " . (string)($s['blocked_reason'] ?? '') . "\n";
 
+        if (($s['prompt_request_id'] ?? '') !== '') {
+            $out .= 'Request: ' . $s['prompt_request_id'] . "\n";
+        }
+
         if (($s['prompt_context'] ?? '') !== '') {
             $out .= $s['prompt_context'] . "\n";
         }
@@ -243,7 +250,7 @@ function emit_envelope(array $envelope): void
     echo json_encode($envelope, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
 }
 
-$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'interrupt:', 'bare', 'take-over:', 'as-user'], $restIndex);
+$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'bare', 'take-over:', 'as-user'], $restIndex);
 
 if ($opts === false) {
     fail("bad options\n\n" . usage());
@@ -321,6 +328,7 @@ foreach ([
     'text' => [$answer !== null, '--text only applies to --answer'],
     'answers' => [$answer !== null, '--answers only applies to --answer'],
     'expect' => [$answer !== null, '--expect only applies to --answer'],
+    'expect-request' => [$answer !== null, '--expect-request only applies to --answer'],
     'as-user' => [$send !== null, '--as-user only applies to --send'],
 ] as $modifier => [$allowed, $message]) {
     if (isset($opts[$modifier]) && !$allowed) {
@@ -363,9 +371,9 @@ if ($answer !== null) {
             fail('--text and --expect go with --option, not --answers');
         }
 
-        $answerPayload = ['answers' => $decoded];
+        $answerPayload = ['answers' => $decoded, 'expected_request_id' => $opt('expect-request')];
     } else {
-        $answerPayload = ['option' => (int)$optionNumber, 'text' => $opt('text'), 'expected_label' => $opt('expect')];
+        $answerPayload = ['option' => (int)$optionNumber, 'text' => $opt('text'), 'expected_label' => $opt('expect'), 'expected_request_id' => $opt('expect-request')];
     }
 }
 

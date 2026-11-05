@@ -156,6 +156,10 @@ $stale = act(['action' => 'answer_prompt', 'session' => $name, 'option' => 1, 'e
 assert_equal(false, $stale['ok'] ?? null, 'an answer naming another request id is refused');
 assert_contains('changed', (string)$stale['message'], 'and says the prompt changed');
 assert_true(status_is($name, 'blocked'), 'the pending prompt was not answered');
+$notSeen = act(['action' => 'launch_answer', 'target' => $name, 'option' => 1, 'expected_request_id' => 'not-the-prompt-you-read']);
+assert_equal(false, $notSeen['ok'] ?? null, 'launch_answer refuses a request id other than the pending one');
+assert_contains('not the one you read', (string)$notSeen['message'], 'and says so');
+assert_true(status_is($name, 'blocked'), 'without answering');
 
 echo "Answer: happy paths\n";
 $label = (string)$shown['prompt_options'][0]['label'];
