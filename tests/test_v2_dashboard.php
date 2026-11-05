@@ -189,6 +189,8 @@ try {
     assert_true(($takeOver['needs_choice'] ?? false) === true && count($takeOver['candidates'] ?? []) === 1 && ($takeOver['workdir'] ?? '') === '/home/user/www/some-other-project', 'POST /v2/action take_over: an unidentified process comes back with its candidates');
     $confirmed = json_decode($post('action=take_over_confirm&pid=54321&workdir=' . urlencode('/home/user/www/some-other-project') . '&agent_session_id=' . '99999999-8888-4777-a666-555555555555')['body'], true);
     assert_true(($confirmed['ok'] ?? false) === true && str_starts_with((string)($confirmed['redirect'] ?? ''), '/session?session='), 'POST /v2/action take_over_confirm: redirects to the new session');
+    $noPick = json_decode($post('action=take_over_confirm&pid=54321&agent_session_id=')['body'], true);
+    assert_true(($noPick['ok'] ?? null) === false && !isset($noPick['redirect']), 'POST /v2/action take_over_confirm without a conversation: refused before reaching the agent');
     $badTake = json_decode($post('action=take_over&pid=1')['body'], true);
     assert_true(($badTake['ok'] ?? null) === false, 'POST /v2/action take_over of an unknown pid: refused');
 

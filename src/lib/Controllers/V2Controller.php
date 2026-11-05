@@ -212,15 +212,16 @@ class V2Controller extends Controller
                 'session' => (string)($_POST['session'] ?? ''),
                 'runtime' => (string)($_POST['runtime'] ?? ''),
             ]),
-            'kill' => $this->agent_plain(['action' => 'kill', 'session' => (string)($_POST['session'] ?? '')]),
+            'kill' => $this->agent_plain(['action' => 'launch_kill', 'target' => (string)($_POST['session'] ?? ''), 'force' => true]),
             'take_over' => $this->take_over(),
-            'take_over_confirm' => $this->agent_with_redirect([
-                'action' => 'take_over_bare_with_id',
-                'pid' => (int)($_POST['pid'] ?? 0),
-                'workdir' => trim((string)($_POST['workdir'] ?? '')),
-                'agent_session_id' => trim((string)($_POST['agent_session_id'] ?? '')),
-                'runtime' => 'headless',
-            ]),
+            'take_over_confirm' => trim((string)($_POST['agent_session_id'] ?? '')) === ''
+                ? ['ok' => false, 'message' => 'Pick a conversation to resume']
+                : $this->agent_with_redirect([
+                    'action' => 'launch_take_over',
+                    'target' => (string)(int)($_POST['pid'] ?? 0),
+                    'agent_session_id' => trim((string)($_POST['agent_session_id'] ?? '')),
+                    'runtime' => 'headless',
+                ]),
             'kill_bare' => $this->agent_plain(['action' => 'kill_bare', 'pid' => (int)($_POST['pid'] ?? 0)]),
             'cleanup' => $this->cleanup(),
             'install_hook' => $this->agent_plain(['action' => 'install_session_hook'], 'App hooks installed for Claude Code and Codex.'),
@@ -319,7 +320,7 @@ class V2Controller extends Controller
      */
     private function take_over(): array
     {
-        $result = AgentClient::agent_call(['action' => 'take_over_bare', 'pid' => (int)($_POST['pid'] ?? 0), 'runtime' => 'headless']);
+        $result = AgentClient::agent_call(['action' => 'launch_take_over', 'target' => (string)(int)($_POST['pid'] ?? 0), 'runtime' => 'headless']);
 
         if (!($result['ok'] ?? false) || !($result['needs_choice'] ?? false)) {
             $out = ['ok' => (bool)($result['ok'] ?? false), 'message' => (string)($result['message'] ?? 'Taken over')];

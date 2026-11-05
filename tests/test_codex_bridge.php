@@ -216,6 +216,10 @@ try {
     // Answering from Sessioneer replies to the daemon with the request's own id.
     $daemon->send(['id' => 78, 'method' => 'item/commandExecution/requestApproval', 'params' => ['threadId' => $T, 'itemId' => 'item-2', 'command' => 'rm x']]);
     assert_true(wait_until(static fn(): bool => pending_prompt($bridgeSocket, $T) !== null), 'a second request is held');
+    assert_equal('78', pending_prompt($bridgeSocket, $T)['request_id'] ?? null, 'the held prompt carries its request id');
+    $stale = ask_bridge($bridgeSocket, 'sessioneer/answerPrompt', ['threadId' => $T, 'answers' => ['option' => 3, 'expected_request_id' => '77']]);
+    assert_equal(false, $stale['ok'] ?? null, 'an answer bound to another request id is rejected');
+    assert_equal('78', pending_prompt($bridgeSocket, $T)['request_id'] ?? null, 'and the prompt is still pending');
     $answer = ask_bridge($bridgeSocket, 'sessioneer/answerPrompt', ['threadId' => $T, 'answers' => ['option' => 3]]);
     assert_equal(true, $answer['ok'] ?? null, 'the answer is accepted');
     $reply = $daemon->expect(static fn(array $m): bool => ($m['id'] ?? null) === 78 && !isset($m['method']));
