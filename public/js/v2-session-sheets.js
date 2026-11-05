@@ -193,7 +193,8 @@
 
     body.innerHTML = html;
 
-    $('v2s-info-head-actions').innerHTML = '<button type="button" class="v2-btn" data-info="star">' + (d.starred ? '&#9733; Unstar' : '&#9734; Star') + '</button>'
+    $('v2s-info-head-actions').innerHTML = '<button type="button" class="v2-icon-btn" data-info="sessions" aria-label="Sessions">&#9776;</button>'
+      + '<button type="button" class="v2-icon-btn" data-info="star" aria-pressed="' + (d.starred ? 'true' : 'false') + '" aria-label="' + (d.starred ? 'Unstar' : 'Star') + '">' + (d.starred ? '&#9733;' : '&#9734;') + '</button>'
       + '<button type="button" class="v2-btn" data-info="rename">Rename</button>'
       + '<button type="button" class="v2-btn v2-btn-danger" data-info="kill">Kill</button>';
 
@@ -220,6 +221,7 @@
     var what = b.getAttribute('data-info');
 
     if (what === 'copy') { api.copy(b.getAttribute('data-value')); }
+    else if (what === 'sessions') { $('v2s-info').close(); openSheet('v2s-sessions'); }
     else if (what === 'star') {
       var on = !d.starred;
       api.post('/session_star.php', { session: session, starred: on ? '1' : '0' }).then(function (res) {

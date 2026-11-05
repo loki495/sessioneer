@@ -301,6 +301,11 @@ try {
         cdp_evaluate($page, "document.querySelector('[data-open=\"v2s-info\"]').click()");
         assert_equal('hidden', cdp_evaluate($page, "getComputedStyle(document.getElementById('v2s-scroll')).overflowY"), 'scroll lock: the transcript is locked behind a popup');
         assert_true(str_contains((string)cdp_evaluate($page, "document.getElementById('v2s-info-body').textContent"), 'Fix the login redirect bug'), 'details: the full session name is shown');
+        assert_equal('', trim((string)cdp_evaluate($page, "document.querySelector('#v2s-info-head-actions [data-info=\"star\"]').textContent.replace(/[\\u2605\\u2606]/g, '')")), 'details: the star button is an icon with no text');
+        cdp_evaluate($page, "document.querySelector('#v2s-info-head-actions [data-info=\"sessions\"]').click()");
+        assert_equal(true, cdp_evaluate($page, "document.getElementById('v2s-sessions').open && !document.getElementById('v2s-info').open"), 'details: the header button swaps to the sessions popup');
+        assert_true(v2b_wait($page, "!!document.querySelector('#v2s-sessions-list .is-current .v2s-current-pill')"), 'sessions popup: the open session is flagged Current');
+        cdp_evaluate($page, "document.getElementById('v2s-sessions').close(); document.querySelector('[data-open=\"v2s-info\"]').click()");
         assert_true((int)cdp_evaluate($page, "document.querySelectorAll('#v2s-info .v2s-sec').length") >= 4, 'details: one panel per topic');
         assert_true(!str_contains((string)cdp_evaluate($page, "document.getElementById('v2s-info').textContent"), 'Move to terminal'), 'details: moving to a terminal is no longer offered');
         cdp_evaluate($page, "document.getElementById('v2s-info').close()");
