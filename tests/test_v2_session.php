@@ -94,7 +94,7 @@ try {
     foreach (['v2s-controls', 'v2s-search', 'v2s-info', 'v2s-sessions', 'v2s-quota'] as $sheet) {
         assert_contains('<dialog class="v2-sheet" id="' . $sheet . '">', $body, "page: {$sheet} is a native dialog sheet");
     }
-    assert_contains('href="/session.php?session=' . V2S_SESSION . '" data-classic-link>Open in classic', $body, 'page: keeps a link to the classic session page');
+    assert_true(!str_contains($body, 'data-classic-link'), 'page: no link to a classic page');
     assert_contains('href="/" aria-label="All sessions"', $body, 'page: back to the v2 dashboard');
     assert_contains('id="v2s-info-head-actions"', $body, 'page: star/rename/kill live in the info sheet header');
     $js = (string)file_get_contents(dirname(__DIR__) . '/public/js/v2-session-sheets.js');
@@ -206,11 +206,9 @@ try {
     $downHistory = json_decode(curl_request('GET', "{$downBase}/v2/history?session=" . V2S_SESSION)['body'], true);
     assert_true(($downHistory['ok'] ?? null) === false, 'history with the agent down: ok=false');
 
-    // --- the classic page is untouched ---
-    $classic = curl_request('GET', "{$base}/session.php?session=" . V2S_SESSION, [], $jar);
-    assert_equal(200, $classic['status'], 'classic session page still renders');
-    assert_contains('id="history-list"', $classic['body'], 'classic session page: its own markup');
-    assert_true(!str_contains($classic['body'], 'v2-session'), 'classic session page: loads none of the v2 files');
+    // --- the classic pages are gone ---
+    assert_equal(404, curl_request('GET', "{$base}/session.php?session=" . V2S_SESSION, [], $jar)['status'], 'classic session page: gone');
+    assert_equal(404, curl_request('GET', "{$base}/archived_session.php?agent_session_id=" . V2S_ARCHIVED, [], $jar)['status'], 'classic archived page: gone');
 
     // --- scripts: plain ES5 (no transpiler, mobile Safari), and they parse ---
     foreach (['v2-session.js', 'v2-session-sheets.js', 'v2-archived.js'] as $file) {

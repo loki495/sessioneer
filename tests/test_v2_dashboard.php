@@ -6,8 +6,8 @@ declare(strict_types=1);
  * classic one): happy path against the canned fake agent (same fixture
  * test_ui_smoke.php uses, never touches tmux), the JSON action endpoint's
  * success and refusal paths, and the sad paths - an unreachable host agent,
- * a missing CSRF token, a wrong Host. Also proves the classic dashboard only
- * gained the "Try the new UI" link.
+ * a missing CSRF token, a wrong Host. Also proves the classic UI is gone
+ * (404 on /classic and the old .php pages).
  */
 
 require __DIR__ . '/lib/assert.php';
@@ -93,14 +93,13 @@ try {
     assert_true(preg_match('#href="/css/v2\.css\?v=\d+"#', $body) === 1, 'GET /v2: stylesheet is cache-busted');
     assert_true(preg_match('#src="/js/v2\.js\?v=\d+"#', $body) === 1, 'GET /v2: script is cache-busted');
     assert_true(!str_contains($body, 'tailwind.css') && !str_contains($body, 'id="sessions-container"'), 'GET /v2: none of the classic page\'s own markup');
-    assert_contains('href="/classic" data-classic-link>Classic', $body, 'GET /v2: has a link back to the classic UI');
+    assert_true(!str_contains($body, '/classic'), 'GET /: no link to a classic UI');
     assert_contains('v2-fold v2-health"', $body, 'GET /v2: the health section collapses');
     assert_contains('<details class="v2-fold-inner">', $body, 'GET /v2: a health group whose checks all pass is collapsed');
     assert_contains('<details class="v2-fold-inner" open>', $body, 'GET /v2: a group with a failing check is open');
     assert_contains('<details class="v2-card v2-card-flat v2-col v2-fold" open>', $body, 'GET /v2: the usage section collapses too, open by default');
     assert_contains('/js/v2-sheets.js', $body, 'GET /v2: sheets close on a tap outside or a swipe down');
     assert_contains('/js/v2-quota.js', $body, 'GET /v2: loads the shared usage renderer');
-    assert_contains('&larr; Back to classic', $body, 'GET /v2: "Back to classic" is also in the settings and status views');
     assert_contains('Fix the login redirect bug', $body, 'GET /v2: canned session title shown');
     assert_contains('/home/user/www/demo-project', $body, 'GET /v2: canned workdir shown');
     assert_contains('href="/session?session=' . V2_CANNED_SESSION . '"', $body, 'GET /v2: card links to the v2 session page');
@@ -227,12 +226,9 @@ try {
     $downArchived = json_decode(curl_request('GET', "{$downBase}/v2/archived")['body'], true);
     assert_true(($downArchived['ok'] ?? null) === false, 'GET /v2/archived with the agent down: ok=false');
 
-    // --- the classic dashboard only gained the link ---
-    $classic = curl_request('GET', "{$base}/classic", [], $jar);
-    assert_equal(200, $classic['status'], 'GET /classic: classic dashboard still renders');
-    assert_contains('href="/" class="shrink-0', $classic['body'], 'GET /classic: classic dashboard links to the new UI');
-    assert_contains('Try the new UI', $classic['body'], 'GET /classic: link is labelled');
-    assert_contains('id="sessions-container"', $classic['body'], 'GET /classic: classic markup untouched');
+    // --- the classic UI is gone ---
+    assert_equal(404, curl_request('GET', "{$base}/classic", [], $jar)['status'], 'GET /classic: no classic UI any more');
+    assert_equal(404, curl_request('GET', "{$base}/session.php?session=" . V2_CANNED_SESSION, [], $jar)['status'], 'GET /session.php: classic page gone');
 } finally {
     foreach ([$server, $downServer] as $s) {
         if ($s !== null) {

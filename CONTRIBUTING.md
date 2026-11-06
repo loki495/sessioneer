@@ -92,7 +92,7 @@ See git history (`host-agent/lib/Services/QuotaService.php`,
 ## Session/dashboard content search
 
 Broader than the archived list's own client-side title/name filter
-(`filterArchivedRows()` in `index.js`, a plain substring match against
+(a plain substring match in `v2.js` against
 each row's already-rendered text) - this searches actual message
 content, server-side, since most of it was never loaded into any page's
 DOM in the first place.
@@ -119,10 +119,8 @@ DOM in the first place.
   `/archived_session_search.php`) do the same for one session's own
   transcript.
 - Clicking a result is a **full page navigation**, not an in-place fetch:
-  `/session`/`/archived-session?...&jump_line=<line>` in the main UI
-  (`V2Controller::session()`/`archivedSession()`), or
-  `session.php`/`archived_session.php?...&jump_line=<line>` in the classic
-  one (`SessionController::show()`/`showArchived()`), reuses the *existing*
+  `/session`/`/archived-session?...&jump_line=<line>`
+  (`V2Controller::session()`/`archivedSession()`) reuses the *existing*
   `before` pagination cursor - `before = jumpLine + 1` is exactly "the
   page whose last entry is `jumpLine` itself," the same semantics
   `TranscriptService::read_transcript_page()` already had - rather than
@@ -134,17 +132,15 @@ DOM in the first place.
   so there's nothing extra to wire; an archived (dormant, non-polling)
   session has no such follow-up, hence "Back to latest" being the only
   way forward there.
-- Every rendered transcript block carries `data-line="<line>"` (both the
-  PHP render and `session.js`'s own poll-time mirror - see CLAUDE.md's
-  "Conventions worth knowing" for the exact pairing requirement), which
+- Every rendered transcript block carries `data-line="<line>"` (drawn by
+  `renderBlock()` in `v2-session.js`), which
   is how a jump target is found regardless of whether it ended up
   standalone or swept into a grouped "N tool calls" pair.
 - `Element.scrollIntoView()` silently no-op'd
   on this page in a real headless-Chrome automation context used to
   verify the jump-to-match flow end to end - confirmed by calling
   `window.scrollTo()` directly in that same context immediately
-  afterward, which worked. The jump-scroll in both `session.js` and
-  `archived-session.js` uses an explicit `window.scrollTo()` computed
+  afterward, which worked. The jump-scroll in `v2-session.js` uses an explicit `window.scrollTo()` computed
   from the target's own `getBoundingClientRect()` instead, sidestepping
   whatever `scrollIntoView()`-specific behavior caused this rather than
   risking the same silent no-op for a real user on some browser/context.
@@ -175,32 +171,19 @@ sessioneer/
 │       ├── Http/
 │       │   └── Router.php    # App\Http\Router - deliberately simple exact-path matcher, no groups/
 │       │                     # middleware/path params yet; match() is a pure lookup, no output of its own
-│       ├── Controllers/      # App\Controllers\* - one class per feature area (V2Controller,
-│       │                     # DashboardController, SessionController, BrowseController, UploadController,
-│       │                     # PushController,
-│       │                     # QuotaController), each method a thin action: an AuthService guard (via
-│       │                     # Controller's require_post_json()/start_readonly_json() helpers, for
-│       │                     # everything except the two full-page renders), an AgentClient::agent_call(),
-│       │                     # then handing the result to a View to render
+│       ├── Controllers/      # App\Controllers\* - V2Controller (pages, poll fragments, JSON action
+│       │                     # endpoint), DashboardController (sessions list, content search),
+│       │                     # SessionController, BrowseController, UploadController, PushController,
+│       │                     # QuotaController; each method a thin action: an AuthService guard (via
+│       │                     # Controller's require_post_json()/start_readonly_json() helpers), an
+│       │                     # AgentClient::agent_call(), then a View or JSON
 │       ├── Services/
 │       │   └── AuthService.php  # Host allowlist + same-origin check + CSRF token + session start
-│       └── Views/           # App\Views\* - one render class per feature area (TranscriptView,
-│                             # SessionRowView, BlockedPromptView, QuotaFooterView, HealthBoxView,
-│                             # PushNotifyView, plus V2View (the main UI's dashboard, session page
-│                             # and archived page) and PageView for the two full-page templates) -
-│                             # each a thin self::render('template', [...]) wrapper, no HTML of its
-│                             # own; View.php owns the shared League\Plates engine they all extend.
-│                             # MarkdownRenderer.php is the one exception - a pure string-in/HTML-out
-│                             # helper (no template, no League\Plates), used by TranscriptView for
-│                             # 'text'-kind transcript blocks; mirrored in public/js/session.js's
-│                             # renderMarkdown() for the poll-time path
-├── src/partials/            # every template Plates resolves against, grouped by feature, not one flat dir
-│   ├── layout.php             # shared <html>/<head>/<body> shell (Plates layout()/section())
-│   ├── pages/                  # the dashboard/session-detail page content - what PageView renders
-│   ├── v2/                     # the main UI's dashboard, session page, archived page and cards (V2View)
-│   ├── header.php, sidebar.php, compose-bar.php  # classic session page chrome - plain `include`s, not Plates templates
-│   └── transcript/, blocked-prompt/, session-row/, quota-footer/, health-box/, push-notify/
-│                             # one subdirectory of templates per App\Views\* class above
+│       └── Views/           # App\Views\* - V2View (dashboard, session and archived pages, cards) and
+│                             # PushNotifyView; View.php owns the shared League\Plates engine.
+├── src/partials/            # every template Plates resolves against
+│   ├── v2/                   # the dashboard, session and archived pages and their cards
+│   └── push-notify/          # the Web Push control shown in Settings
 ├── host-agent/             # installed natively on the HOST, not in Docker
 │   ├── agent.php            # per-connection entry point (systemd socket activation)
 │   ├── push_trigger.php     # entry point run periodically by the sessioneer-push-check systemd timer
@@ -380,16 +363,15 @@ often present but not loaded (Arch:
 The tables, who writes them, and why SQLite rather than JSON files are in
 [`docs/state.md`](docs/state.md).
 
-## Frontend (CSS and JS type-checking)
+## Frontend (JS type-checking)
 
 ```
 npm install          # once
-npm run build:css    # regenerate the committed public/css/tailwind.css after changing classes
 npm run typecheck    # JSDoc type-check of public/js/*.js
 ```
 
-`public/js/*.js` is plain, unbundled ES5 and nothing is built to run the app;
-`npm` is only needed when you change markup, classes or JS. Details, and why the
+`public/js/*.js` is plain, unbundled ES5 and the CSS is hand-written; nothing is
+built to run the app, and `npm` is only needed for the type-check. Details, and why the
 type-check doesn't report zero yet, are in [`docs/frontend.md`](docs/frontend.md).
 
 The README screenshots come from a canned demo agent, not real sessions:
@@ -416,10 +398,7 @@ demanding everything pass at once. New code must not add to the baseline;
 existing entries can be cleaned up incrementally. Entries are keyed to the
 exact message and path, so a file whose code changes shape surfaces them as
 `ignore.unmatched` errors: regenerate the baseline rather than hand-editing
-it. One cluster deserves a real look: `src/lib/Views/TranscriptView.php` has
-`always true`/`always false` comparisons in its tool-call rendering, meaning
-either dead code or a docblock narrower than the data - not yet triaged.
-
+it. 
 ## Running tests
 
 Prerequisites:
@@ -495,9 +474,8 @@ above).
 
 1. Branch from `master` and open a pull request against `master`; nothing is
    pushed to `master` directly.
-2. Before pushing, run `composer phpstan` and `bash tests/run.sh` (add
-   `npm run build:css` if you changed classes, and commit the regenerated
-   CSS).
+2. Before pushing, run `composer phpstan` and `bash tests/run.sh` (and `npm run typecheck`
+   if you changed JS).
 3. The **Core tests (PHP 8.3)** CI job must pass before a PR can merge, and the
    branch must be up to date with `master`. That job passes when all three
    parallel test shards pass; together they run the full suite including the

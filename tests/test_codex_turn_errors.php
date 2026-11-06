@@ -5,7 +5,6 @@ declare(strict_types=1);
 require __DIR__ . '/lib/assert.php';
 require dirname(__DIR__) . '/host-agent/lib/Sessions.php';
 
-use App\Views\TranscriptView;
 use HostAgent\Runtimes\CodexBridgeClient;
 use HostAgent\Runtimes\CodexHeadlessRuntime;
 use HostAgent\Services\CodexTranscriptService;
@@ -32,9 +31,6 @@ try {
     $detail = sessioneer_headless_detail_shape($runtime->detail('quota-fixture')['session'], 'codex');
     assert_contains('Codex quota reached.', $detail['last_turn_error'] ?? '', 'queued turn quota failure reaches the session response without bridge events');
     assert_contains('18:30', $detail['last_turn_error'] ?? '', 'quota reset guidance is preserved');
-    $html = TranscriptView::render_turn_error_html($detail, 'Codex');
-    assert_contains('Codex quota reached.', $html, 'quota failure renders in the transcript');
-    assert_true(!str_contains($html, '<script>'), 'error message HTML is escaped');
 
     SessionStatusStore::update_status('quota-fixture', ['last_turn_error' => json_encode($error)]);
     $stored = sessioneer_headless_detail_shape(['id' => 'quota-fixture'], 'codex');
@@ -43,7 +39,6 @@ try {
         $client->turns[] = ['status' => $status, 'error' => null];
         $detail = sessioneer_headless_detail_shape($runtime->detail('quota-fixture')['session'], 'codex');
         assert_equal(null, $detail['last_turn_error'], $status . ' turn clears the old quota warning despite stale stored state');
-        assert_equal('', TranscriptView::render_turn_error_html($detail, 'Codex'), $status . ' turn has no error card');
     }
     SessionStatusStore::update_status('quota-fixture', ['status' => 'idle']);
     $active = sessioneer_headless_detail_shape(['id' => 'quota-fixture', 'status' => ['type' => 'active']], 'codex');

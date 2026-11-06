@@ -10,10 +10,7 @@ use League\Plates\Engine;
  * Every App\Views\* class extends this - it owns the shared Plates engine
  * (one instance, lazily built) and a render() helper so concrete View
  * classes never touch League\Plates directly. Template root is src/partials/,
- * the same directory session.php/index.php's own page partials already live
- * in - component templates get their own subdirectory per feature
- * (partials/transcript/, partials/blocked-prompt/, ...) rather than a
- * second templates root.
+ * where the page partials live (partials/v2/, partials/push-notify/).
  */
 abstract class View
 {

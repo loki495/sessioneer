@@ -1,8 +1,7 @@
 // Service worker for Web Push notifications - see push_subscribe.php and
-// the "Notify me" button's JS (in AgentClient.php's push_notify_button_html())
-// for the subscribe flow. Registered at root scope (/sw.js), so it can
+// the "Notify me" button's JS (push-notify.js) for the subscribe flow. Registered at root scope (/sw.js), so it can
 // receive pushes and handle notification clicks regardless of which page
-// (index.php or session.php) is currently open, or even if none is.
+// (the dashboard or a session page) is currently open, or even if none is.
 //
 // The push handler ALWAYS calls event.waitUntil(showNotification(...)),
 // synchronously, even in a hypothetical no-data-parsed case - iOS Safari
