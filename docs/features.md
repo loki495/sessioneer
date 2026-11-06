@@ -447,18 +447,20 @@ deliberately narrow.
 - UI v2: the mobile-first main UI (`/`, `/session`, `/archived-session`), sharing the classic UI's data
   and actions (details, coverage and what is deferred in `docs/v2-ui.md`). The previous UI stays at
   `/classic` as a fallback, linked both ways; the old `/v2` page URLs redirect.
-- Starring: the star on a session card (dashboard and sidebar) stores a `starred` flag in the
+- Starring: the star on a session card (dashboard and session page; the
+  classic UI's sidebar too) stores a `starred` flag in the
   session's sidecar. The list orders starred sessions first, then blocked, working and idle, each
-  newest activity first. "Hide idle unstarred" (dashboard and sidebar, kept in localStorage) hides
+  newest activity first. "Hide idle unstarred" (dashboard, kept in localStorage) hides
   idle sessions that are not starred. Starred cards get a faint amber background.
-- Renaming: the Rename button on a session card (dashboard, sidebar and the session page header; not on
-  archived sessions) asks for a name and stores it in the session's sidecar as
+- Renaming: the Rename action on a session card's menu (dashboard; the session page's details
+  sheet too, and the classic UI's sidebar and header) asks for a name and stores it in the
+  session's sidecar as
   `custom_title`, for every agent. It overrides the agent's title in the list
   and in the session detail, survives the headless sync that rewrites the
   sidecar, and is dropped when the session is killed. An empty name clears it.
   Names are trimmed, whitespace-collapsed and capped at 120 characters.
 - Dashboard and session-detail polling pause while the browser tab is hidden;
-  manual and mobile pull-to-refresh remain available.
+  manual refresh (and pull-to-refresh in the classic UI) remains available.
 - Transcript blocks support Markdown, collapsing, copying, attachments,
   tool-call grouping, subagent/worker lineage, thinking state, and turn errors
   where the source agent records them.

@@ -61,7 +61,7 @@ sessioneer --take-over 12345
 | `--timeout N` | With `--wait`, give up after N seconds (a positive integer). Default: no limit. The session keeps running after a timeout. |
 | `--json` | With `--wait`: print one JSON object on stdout instead of the plain text, on success and on failure alike — see [For programs](#for-programs). Otherwise: print the launch/list/peers reply as JSON instead of the plain output. Everything human stays on stderr. |
 
-On success it prints the session name (the dashboard opens it at `session.php?session=NAME`) and exits 0; any refusal prints `sessioneer: <message>` on stderr and exits 1.
+On success it prints the session name (the dashboard opens it at `/session?session=NAME`) and exits 0; any refusal prints `sessioneer: <message>` on stderr and exits 1.
 
 ## What `--resume` does
 
