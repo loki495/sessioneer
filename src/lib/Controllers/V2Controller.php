@@ -53,14 +53,15 @@ class V2Controller extends Controller
             'hooksMissing' => $agentReachable && (bool)($hookResult['ok'] ?? false) && !($hookResult['installed'] ?? false),
             'healthChecks' => (bool)($healthResult['ok'] ?? false) ? ($healthResult['checks'] ?? []) : [],
             'pushTimerSeconds' => (bool)($pushTimerResult['ok'] ?? false) ? (int)($pushTimerResult['interval_seconds'] ?? 0) : null,
-            'agentOptions' => array_diff_key(\App\Views\PageView::AGENT_OPTIONS, ['antigravity' => true]),
+            'vapidPublicKey' => $agentReachable ? (string)(AgentClient::agent_call(['action' => 'push_public_key'])['public_key'] ?? '') : '',
+            'agentOptions' => array_diff_key(\App\Views\V2View::AGENT_OPTIONS, ['antigravity' => true]),
         ]);
     }
 
     /**
      * The session page. Only the detail is rendered into the page (header,
      * controls, prompt); the transcript is fetched by v2-session.js from the
-     * classic session_history.php, so there is one renderer for the first
+     * /v2/history, so there is one renderer for the first
      * page, load-earlier and live polling alike.
      */
     public function session(): void
@@ -91,8 +92,7 @@ class V2Controller extends Controller
     }
 
     /**
-     * The classic session_history.php plus `include_thinking`, which only the
-     * v2 page asks for (the classic renderers have no block kind for it).
+     * The host agent's `session_history`, plus `include_thinking` (reasoning blocks).
      */
     public function history(): void
     {

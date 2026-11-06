@@ -88,8 +88,7 @@ from a real one.
   blocked/stopped sessions (see "Web Push notifications" below).
 
 The UI is the current, mobile-first redesign: `/` is the dashboard,
-`/session` a session and `/archived-session` an archived conversation. The
-previous UI is still reachable as a fallback at `/classic`.
+`/session` a session and `/archived-session` an archived conversation.
 
 ## Command line
 
@@ -285,8 +284,7 @@ New sessions in the main UI run **headless**, with no terminal: the New Session
 form has no "Runs in" picker, an archived session has one **Resume** (headless),
 and a session that still runs in a terminal (tmux; Claude or Antigravity) is
 listed and opened read-only with a **Take over** action for Claude that moves
-it to headless. The classic UI at `/classic` still offers the tmux runtime and
-its Terminal buttons. For a headless session Sessioneer runs the installed
+it to headless. For a headless session Sessioneer runs the installed
 `claude` binary (`claude -p`, stream-json)
 on your own logged-in claude.ai account, through the
 `sessioneer-claude-headless-manager.service` that `host-agent/install.sh`

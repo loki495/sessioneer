@@ -12,7 +12,6 @@ declare(strict_types=1);
 require __DIR__ . '/lib/assert.php';
 require dirname(__DIR__) . '/host-agent/lib/Sessions.php';
 
-use App\Views\TranscriptView;
 use HostAgent\Services\ClaudeModelCatalog;
 use HostAgent\Services\Config;
 use HostAgent\Services\SelectableModel;
@@ -81,16 +80,5 @@ $listed = sessioneer_list_models('claude');
 assert_true($listed['ok'] === true, 'the claude model list is answered');
 assert_equal(['sonnet', 'fable', 'opus', 'haiku'], array_column($listed['models'], 'id'), 'every family row except Default, in picker order');
 assert_equal('Opus 5.5', array_column($listed['models'], 'name', 'id')['opus'], 'each row carries its full name');
-
-echo "TranscriptView::model_options\n";
-$rendered = TranscriptView::model_options(['model_labels' => ['sonnet' => 'Sonnet 5', 'opus' => 'Opus 5.5']]);
-assert_equal(['default' => 'Default', 'sonnet' => 'Sonnet 5', 'fable' => 'Fable', 'opus' => 'Opus 5.5', 'haiku' => 'Haiku'], $rendered, 'labels override, missing ones fall back to the plain name');
-assert_equal(array_keys(TranscriptView::MODEL_OPTIONS), array_keys($rendered), 'the option keys stay exactly the picker keys, whatever the labels say');
-$hostile = TranscriptView::model_options(['model_labels' => ['sonnet' => ['x'], 'opus' => '', 'evil' => 'Injected', 'fable' => 5]]);
-assert_equal(TranscriptView::MODEL_OPTIONS, $hostile, 'non-string, empty and unknown-key labels are ignored');
-assert_equal(TranscriptView::MODEL_OPTIONS, TranscriptView::model_options([]), 'a detail with no labels renders the plain names');
-assert_equal(TranscriptView::MODEL_OPTIONS, TranscriptView::model_options(['model_labels' => 'nope']), 'a non-array labels field renders the plain names');
-assert_contains('Opus 5.5', TranscriptView::render_model_toggle_html(['current_model' => 'opus', 'model_labels' => ['opus' => 'Opus 5.5']]), 'the rendered dropdown shows the full name');
-assert_true(!str_contains(TranscriptView::render_model_toggle_html(['current_model' => 'opus', 'model_labels' => ['opus' => '<b>x</b>']]), '<b>x</b>'), 'a label is HTML-escaped');
 
 test_exit();

@@ -23,10 +23,7 @@ $router->get('/api/quick-prompt', [\App\Controllers\QuickPromptController::class
 // one of these paths.
 
 $router->get('/', [V2Controller::class, 'index']);
-$router->post('/', [DashboardController::class, 'handleAction']);
 
-// The previous UI, kept as a fallback beside the redesign: its pages keep their .php URLs.
-$router->get('/classic', [DashboardController::class, 'index']);
 
 $router->get('/session', [V2Controller::class, 'session']);
 $router->get('/archived-session', [V2Controller::class, 'archivedSession']);
@@ -43,33 +40,17 @@ $router->get('/v2/archived', [V2Controller::class, 'archived']);
 $router->get('/v2/action', [V2Controller::class, 'action']);
 $router->post('/v2/action', [V2Controller::class, 'action']);
 
-$router->get('/sessions_fragment.php', [DashboardController::class, 'fragment']);
 $router->get('/sessions_list.php', [DashboardController::class, 'list']);
-$router->get('/sidebar_sessions.php', [DashboardController::class, 'sidebarFragment']);
-$router->get('/archived_sessions_fragment.php', [DashboardController::class, 'archivedFragment']);
-$router->get('/take_over_bare.php', [DashboardController::class, 'takeOverBare']);
-$router->post('/take_over_bare.php', [DashboardController::class, 'takeOverBare']);
-$router->get('/take_over_bare_confirm.php', [DashboardController::class, 'takeOverBareConfirm']);
-$router->post('/take_over_bare_confirm.php', [DashboardController::class, 'takeOverBareConfirm']);
-$router->get('/bare_process_detail.php', [DashboardController::class, 'bareProcessDetail']);
 $router->get('/search_sessions.php', [DashboardController::class, 'search']);
 
-// Reads `session` from either GET or POST with no method check at all.
-$router->get('/session.php', [SessionController::class, 'show']);
-$router->post('/session.php', [SessionController::class, 'show']);
 
 $router->get('/session_detail.php', [SessionController::class, 'detail']);
 $router->get('/session_plan_files.php', [SessionController::class, 'planFiles']);
 $router->get('/session_plan_file.php', [SessionController::class, 'planFileContent']);
 $router->get('/session_todo_file.php', [SessionController::class, 'todoFile']);
-$router->get('/session_history.php', [SessionController::class, 'history']);
 $router->get('/session_attachment.php', [SessionController::class, 'attachment']);
 $router->get('/session_search.php', [SessionController::class, 'search']);
 
-// Reads `agent_session_id` from either GET or POST, same as session.php's own `session` param.
-$router->get('/archived_session.php', [SessionController::class, 'showArchived']);
-$router->post('/archived_session.php', [SessionController::class, 'showArchived']);
-$router->get('/archived_session_history_fragment.php', [SessionController::class, 'archivedHistoryFragment']);
 $router->get('/archived_session_attachment.php', [SessionController::class, 'archivedAttachment']);
 $router->get('/archived_session_search.php', [SessionController::class, 'archivedSearch']);
 

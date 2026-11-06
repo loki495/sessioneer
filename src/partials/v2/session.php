@@ -138,7 +138,6 @@ $bootstrap = json_encode([
   <section class="v2s-sec"><h3 class="v2-subtitle">Details</h3><div id="v2s-info-body" class="v2-col"></div></section>
   <section class="v2s-sec"><h3 class="v2-subtitle">Actions</h3>
     <div id="v2s-info-actions" class="v2s-row-actions"></div>
-    <a class="v2-btn" id="v2s-classic" href="/session.php?session=<?= urlencode($sessionName) ?>" data-classic-link>Open in classic</a>
   </section>
   <section class="v2s-sec" id="v2s-tasks-sec" hidden><h3 class="v2-subtitle">Tasks</h3><ul id="v2s-tasks" class="v2-checks"></ul></section>
   <section class="v2s-sec"><h3 class="v2-subtitle">Files</h3>

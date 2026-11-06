@@ -1,10 +1,7 @@
 // @ts-check
 // Lightweight inline markdown renderer, shared by every page that renders
-// transcript/message text (mirrors the PHP side's MarkdownRenderer - kept
-// in its own file, loaded before session.js/index.js/archived-session.js,
-// since it's pure text-to-HTML with zero DOM/session dependencies, unlike
-// almost everything else those files do. Extracted from session.js
-// because it has no shared state at all.
+// transcript/message text. Pure text-to-HTML with zero DOM/session
+// dependencies, so it lives in its own file, loaded before the page scripts.
 var MD_NUL = String.fromCharCode(0);
 
 function mdExtractFencedCodeBlocks(text) {

@@ -1,35 +1,31 @@
 # UI v2
 
-A mobile-first redesign that is now the main UI: `/` is its dashboard, `/session`
-its session page and `/archived-session` its archived view. The previous UI
-stays reachable as a fallback at `/classic` (its pages keep their `.php` URLs,
-and its forms still post to `/`), linked from the app bar's "Classic" link and
-the "Back to classic" button in Settings and Status; the classic dashboard links
-back with "Try the new UI". The old page URLs `/v2`, `/v2/session` and
-`/v2/archived-session` redirect to the plain ones (query kept). The JSON
-endpoints keep their `/v2/` prefix. Push notifications and Quick Prompt session
-links open `/session`.
-
-The dashboard, the session page and the archived-session page are all part of
-this UI. A session card opens the session page, an archived row the archived
-page, and the file views (plan, todo, uploads) live in the session page's
+A mobile-first UI: `/` is the dashboard, `/session` the session page and
+`/archived-session` the archived view. The previous (classic) UI was removed;
+its URLs answer 404 (git tag `classic-ui-final` marks the last state). The old
+page URLs `/v2`, `/v2/session` and `/v2/archived-session` redirect to the plain
+ones (query kept). The JSON endpoints keep their `/v2/` prefix and the other
+JSON `*.php` endpoints are the API the pages call. Push notifications and Quick
+Prompt session links open `/session`. A session card opens the session page, an
+archived row the archived page. The file views (plan, todo, uploads) live in the session page's
 details sheet.
 
 ## What it is made of
 
 | Piece | Where |
 |---|---|
-| Routes `/`, `/session`, `/archived-session`, `/classic`, the redirecting `/v2*` page URLs, and the JSON `/v2/history`, `/v2/archived-history`, `/v2/fragment`, `/v2/archived`, `/v2/action` | `src/routes.php` |
+| Routes `/`, `/session`, `/archived-session`, the redirecting `/v2*` page URLs, and the JSON `/v2/history`, `/v2/archived-history`, `/v2/fragment`, `/v2/archived`, `/v2/action` | `src/routes.php` |
 | Pages, poll fragment, archived list, history, JSON action endpoint | `src/lib/Controllers/V2Controller.php` |
 | Render helpers (card, counts, archived and bare rows, session page) | `src/lib/Views/V2View.php` |
 | Templates | `src/partials/v2/` |
 | Design tokens and the dashboard's styling | `public/css/v2.css` (hand-written, no build step) |
 | Session page styling | `public/css/v2-session.css` (uses the same tokens) |
-| Dashboard behaviour (tabs, filters, polling, actions) | `public/js/v2.js` (plain ES5, like the classic JS) |
+| Dashboard behaviour (tabs, filters, polling, actions) | `public/js/v2.js` (plain ES5) |
 | Session page behaviour | `public/js/v2-session.js` (transcript, polling, prompts, footer) and `public/js/v2-session-sheets.js` (controls, details, files, search, viewers) |
 
-There is no new framework and no build step. The classic `tailwind.css` is not
-loaded by `/v2`.
+There is no framework and no build step. Browser push is subscribed from a
+Notifications card in Settings (`push-notify.js`, which also keeps the CSRF token
+the service worker needs to answer prompts from a notification).
 
 ## Design
 
@@ -67,17 +63,15 @@ loaded by `/v2`.
 ## Data and actions
 
 The page and its poll (`/v2/fragment`, every 3s by default, paused while the tab
-is hidden) call the same `list` action as the classic dashboard. The poll
+is hidden) call the host agent's `list` action. The poll
 leaves the list alone while a card menu is open. Existing endpoints are reused
 as they are: `/session_star.php`, `/session_rename.php`, `/answer_prompt.php`,
 `/browse.php`, `/create_folder.php`, `/session_list_models.php`,
 `/session_list_claude_profiles.php`, `/search_sessions.php`, `/quota.php`.
 
-`POST /v2/action` is the JSON twin of the classic `POST /` handler (which
-answers with a redirect and a flash message that `fetch()` cannot use). It takes
+`POST /v2/action` is the JSON action endpoint. It takes
 `action` = `new`, `resume`, `switch_runtime`, `take_over`, `take_over_confirm`, `kill`, `kill_bare`, `cleanup`,
-`install_hook` or `set_push_timer_interval`, with the same parameters as the
-classic one, plus `csrf_token`, and answers `{ok, message, redirect?}`. `take_over` (a
+`install_hook` or `set_push_timer_interval`, plus `csrf_token`, and answers `{ok, message, redirect?}`. `take_over` (a
 bare process) answers with a redirect to the new headless session, or
 `{needs_choice, pid, workdir, candidates, suggested_agent_session_id}` when the process
 could not be identified (nothing is stopped yet); the page then shows a picker and posts
@@ -101,7 +95,7 @@ Deferred: bare-process Identify (Take over and Kill are there; identifying a
 bare process as a particular conversation is not), "Show last 3 messages" on a
 card, answering a free-text, multi-question or folder-trust prompt on the card
 itself (the card opens the session page for those), Web Push
-subscribe/unsubscribe, pull to refresh, the classic page's "New content"
+subscribe/unsubscribe, pull to refresh, a "New content"
 divider and per-block highlight colours, and the full-screen draft editor.
 There is no sidebar: the sessions popup in the session page replaces it.
 
@@ -115,10 +109,10 @@ the iOS keyboard and a pinch-zoom does not resize it.
 
 **Rendering.** The server renders only the shell and a bootstrap JSON (the
 session detail, hex-escaped so transcript text cannot close the `<script>`); the
-transcript comes from `/v2/history` (the classic `session_history` action plus
+transcript comes from `/v2/history` (the `session_history` action plus
 `include_thinking`) and is drawn by one client renderer for the first page,
 "Load older", and the live tail. Each user and assistant message is a bubble or
-free text with markdown (`markdown.js`, shared with the classic pages); every tool
+free text with markdown (`markdown.js`); every tool
 call and its result is one collapsed `<details>` whose headline is the call's
 description; pretty-printed JSON results; plan, question, subagent and
 task-notification cards; inline images and attachments as thumbnails. Polling is
@@ -126,7 +120,7 @@ task-notification cards; inline images and attachments as thumbnails. Polling is
 setting as the dashboard, paused while the tab is hidden, and a rotated transcript
 (`/clear`, `/compact`, `--resume`) restarts from its first page.
 
-**Blocked prompts** (the panel above the footer, answered through the classic
+**Blocked prompts** (the panel above the footer, answered through
 `answer_prompt.php` / `answer_multi_question.php`):
 
 - No heading repeats the first question. A question form shows its questions
@@ -153,7 +147,7 @@ a draft kept per session, Shift+Enter sends (not on a touch screen, where Enter 
 at a time and skip tool calls; the bottom button shows a dot when new content
 arrived off screen. The controls button opens model, permission mode and effort
 (Claude), the model catalog (Codex with effort, OpenCode, Ollama) or the fixed
-Antigravity list; each change posts to the classic endpoint and the next poll
+Antigravity list; each change posts to its JSON endpoint and the next poll
 shows what the session actually ended up with.
 
 **Answered questions.** An answered question form (Claude Code's and OpenCode's
@@ -196,7 +190,7 @@ browser's own. "Open original" opens the file.
 
 **Details sheet.** One panel per topic. Details: session name and id, workdir and
 resume command (copy), branch, worktree, account, runtime, context %. Actions: star,
-rename, take over a terminal session (headless), open in classic, kill. Then the task list; todo file (full
+rename, take over a terminal session (headless), kill. Then the task list; todo file (full
 screen), plan and handoff files, uploaded files (open, delete, delete all); view
 options: show reasoning text, show subagent calls, confirm answers, poll
 interval. **Search** looks through this session (jumping to the hit, with a
@@ -220,16 +214,15 @@ task list, uploads, in-session and all-session search, rename, star, kill, switc
 runtime, resume command, copy buttons, other-sessions-need-input badge, one
 message up and down, zoomable images, light and dark.
 
-Deferred: Web Push subscribe, pending messages surviving a reload
-(classic keeps them in localStorage), the "New content" divider and per-block
-highlight colours of the classic page (new entries flash instead), and the full-screen
+Deferred: Web Push subscribe, pending messages surviving a reload,
+the "New content" divider and per-block highlight colours (new entries flash instead), and the full-screen
 text editor for long drafts.
 
 ## Archived-session page (`/archived-session?agent_session_id=<id>`)
 
 A dormant conversation opens in the same page shell as the session page,
 booted read only (`archived: true` in the bootstrap, `jump_line` supported).
-The transcript comes from `/v2/archived-history` (the classic
+The transcript comes from `/v2/archived-history` (the
 `archived_session_history` call as JSON entries, rendered by the same
 `v2-session.js` code, so bubbles, tool calls, images and attachments match the
 live page); there is no polling and no composer. `v2-archived.js` adds the
@@ -238,14 +231,14 @@ posting `resume` (headless, with the account) to `/v2/action` and following the
 redirect into the new live session. That is also how an archived conversation is
 unarchived. Search covers this conversation (jumping to the hit) and all
 sessions (live hits open the session page, archived ones this page). Archived
-rows on the dashboard and archived search hits link here. The classic JSON
+rows on the dashboard and archived search hits link here. The JSON
 endpoints it uses (`archived_session_search.php`, `archived_session_attachment.php`,
 `search_sessions.php`) are the v2 API and stay. Antigravity conversations (no
 headless form) show no Resume.
 
 ## Host-agent additions for the session page
 
-Additive changes, none visible to the classic UI:
+Additive changes:
 
 - `session_history` takes `include_thinking`. Only then are an assistant's
   reasoning blocks returned, as `{kind: "thinking", text}` blocks; a model that
@@ -263,8 +256,8 @@ these show up on it only after they are merged and deployed.
 
 ## Running a second instance
 
-The container serves `public/` with `php -S` behind a bind-mount. To preview a
-worktree on the LAN without touching it, run the same server natively:
+The container serves `public/` with `php -S` behind a bind-mount. To
+preview a worktree on the LAN without touching it, run the same server natively:
 
 ```bash
 cd <worktree>

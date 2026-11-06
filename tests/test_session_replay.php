@@ -35,7 +35,12 @@ if (getenv('TMUX_SOCKET') === $realTmuxSocket || getenv('TMUX_SOCKET') === false
  */
 function extract_csrf_token(string $html): ?string
 {
-    return preg_match('/name="csrf_token" value="([^"]*)"/', $html, $m) === 1 ? $m[1] : null;
+    if (preg_match('/window\.V2S = (\{.*?\});<\/script>/s', $html, $m) !== 1) {
+        return null;
+    }
+    $boot = json_decode($m[1], true);
+
+    return is_array($boot) && is_string($boot['csrfToken'] ?? null) ? $boot['csrfToken'] : null;
 }
 
 $workdir = getenv('WWW_ROOT') . '/project-a';
@@ -94,11 +99,11 @@ try {
     $cookieJar = tempnam(sys_get_temp_dir(), 'sessioneer-test-replay-cookies');
     $sessionName = $ctx['session_name'];
 
-    $page = curl_request('GET', "{$baseUrl}/session.php?session=" . urlencode($sessionName), [], $cookieJar);
-    assert_equal(200, $page['status'], 'GET /session.php: 200 for the freshly-created replay fixture session');
+    $page = curl_request('GET', "{$baseUrl}/session?session=" . urlencode($sessionName), [], $cookieJar);
+    assert_equal(200, $page['status'], 'GET /session: 200 for the freshly-created replay fixture session');
 
     $csrfToken = extract_csrf_token($page['body']);
-    assert_true($csrfToken !== null, 'GET /session.php: page includes a csrf_token field');
+    assert_true($csrfToken !== null, 'GET /session: page includes a csrf_token field');
 
     // Data-driven off each step's own JSON (tests/fixtures/replay/
     // full-session.replay.json) rather than a hardcoded step index - lets
@@ -124,7 +129,7 @@ try {
 
             $history = curl_request(
                 'GET',
-                "{$baseUrl}/session_history.php?session=" . urlencode($sessionName) . "&after={$lastSeenLine}&limit=30",
+                "{$baseUrl}/v2/history?session=" . urlencode($sessionName) . "&after={$lastSeenLine}&limit=30",
                 [],
                 $cookieJar
             );
