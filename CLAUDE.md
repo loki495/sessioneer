@@ -409,7 +409,7 @@ that only `create_agent_session()`-spawned sessions have).
 
 ## Conventions worth knowing before editing
 
-- **OpenCode server integration is ui-only.** Every call goes to the `/api`
+- **OpenCode server integration is v2-only.** Every call goes to the `/api`
   surface (`/api/session`, `/api/session/active`, `/api/permission/request`,
   `/api/model`); there is no v1 server left to fall back to. The permission and
   form lists are directory-scoped, so the headless sync queries them per live
