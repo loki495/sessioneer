@@ -95,6 +95,11 @@ try {
         assert_contains('<dialog class="ui-sheet" id="' . $sheet . '">', $body, "page: {$sheet} is a native dialog sheet");
     }
     assert_true(!str_contains($body, 'data-classic-link'), 'page: no link to a classic page');
+    assert_contains('data-advise-host data-csrf=', $body, 'page: an idle-able headless Claude session carries the Continue/Start-new advice host');
+    assert_contains('ui-advise.js', $body, 'page: loads the advice script');
+    $advJs = (string)file_get_contents(dirname(__DIR__) . '/public/js/ui-advise.js');
+    assert_contains('data-advise-choice', $advJs, 'ui-advise.js: renders the two choice buttons');
+    assert_true(!preg_match('/\\b(const|let)\\s|=>|`/', $advJs), 'ui-advise.js: plain ES5');
     assert_contains('href="/" aria-label="All sessions"', $body, 'page: back to the dashboard');
     assert_contains('id="sess-info-head-actions"', $body, 'page: star/rename/kill live in the info sheet header');
     $js = (string)file_get_contents(dirname(__DIR__) . '/public/js/ui-session-sheets.js');

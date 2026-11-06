@@ -341,6 +341,18 @@ $response = match ($action) {
     'switch_runtime' => ($request['session'] ?? null) === CANNED_SESSION_NAME && ($request['runtime'] ?? null) === 'headless'
         ? ['ok' => true, 'message' => 'Now running headless (no terminal)', 'name' => CANNED_HEADLESS_RESUMED_SESSION_NAME]
         : ['ok' => false, 'message' => 'Rejected: the session is busy or already running that way'],
+    // Advice for the canned headless session; a pick (choice) acts and answers with the session it landed on.
+    'advise' => ($request['target'] ?? null) === CANNED_HEADLESS_RESUMED_SESSION_NAME
+        ? (!empty($request['act'])
+            ? (in_array($request['choice'] ?? null, ['resume', 'fresh'], true)
+                ? ['ok' => true, 'acted' => $request['choice'], 'session' => $request['choice'] === 'fresh' ? 'cc-fake-headless' : CANNED_HEADLESS_RESUMED_SESSION_NAME, 'message' => 'done']
+                : ['ok' => false, 'message' => 'Nothing to act on'])
+            : ['ok' => true, 'sessions' => [['name' => CANNED_HEADLESS_RESUMED_SESSION_NAME, 'status' => 'idle', 'advice' => [
+                'verdict' => 'fresh', 'reason' => 'Large context: every later turn re-reads it, a handoff is far smaller.', 'context_tokens' => 200000,
+                'cache_age_seconds' => 7200, 'cache_cold' => true, 'quota_blocked' => false,
+                'cost' => ['resume_rewrite_tokens' => 200000, 'resume_reread_per_turn' => 200000, 'fresh_handoff_tokens' => 6000, 'fresh_reread_per_turn' => 6000],
+            ]]]])
+        : ['ok' => false, 'message' => "No tracked Claude or Codex headless session matches '" . ($request['target'] ?? '') . "'"],
     'launch_kill' => ($request['target'] ?? null) === CANNED_SESSION_NAME && ($request['force'] ?? null) === true
         ? ['ok' => true, 'name' => CANNED_SESSION_NAME, 'message' => 'Killed ' . CANNED_SESSION_NAME]
         : ['ok' => false, 'message' => 'Rejected: not a currently active managed session'],

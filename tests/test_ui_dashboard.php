@@ -17,6 +17,7 @@ require_once __DIR__ . '/lib/free_port.php';
 
 const UI_CANNED_SESSION = 'cc-20260101-1200';
 const UI_CANNED_BLOCKED_SESSION = 'cc-20260101-1300';
+const UI_ADVISE_SESSION = 'claude-headless-20260101-1700';
 
 /** @return array{process: resource, port: int}|null */
 function ui_start_server(string $agentSocket): ?array
@@ -153,6 +154,16 @@ try {
     assert_contains('data-act="resume"', (string)($archived['archived_html'] ?? ''), 'GET /archived: row can be resumed');
     assert_true(!str_contains((string)($archived['archived_html'] ?? ''), 'data-runtime'), 'GET /archived: one Resume per row (it implies headless), no second Headless button');
 
+    // --- advice buttons on an idle headless Claude card, and only there ---
+    require_once dirname(__DIR__) . '/vendor/autoload.php';
+    $cardOf = static fn (array $over): string => \App\Views\UiView::card_html($over + ['name' => 'c1', 'agent' => 'claude', 'runtime' => 'headless', 'status' => 'idle', 'activity' => time()], 'x');
+    assert_contains('data-advise-open', $cardOf([]), 'card: idle headless Claude offers the advice button');
+    assert_contains('data-advise-open', $cardOf(['agent' => 'codex']), 'card: idle headless Codex offers it too');
+    assert_true(!str_contains($cardOf(['runtime' => 'tmux']), 'data-advise'), 'card: a terminal session does not');
+    assert_true(!str_contains($cardOf(['agent' => 'opencode']), 'data-advise'), 'card: an unsupported agent does not');
+    assert_true(!str_contains($cardOf(['status' => 'working']), 'data-advise'), 'card: a working session does not');
+    assert_contains('ui-advise.js', $body, 'GET /: loads the advice script');
+
     // --- action endpoint ---
     $csrf = ui_csrf($body);
     assert_true($csrf !== '', 'GET /: page embeds a CSRF token for its scripts');
@@ -195,6 +206,17 @@ try {
 
     $killBare = json_decode($post('action=kill_bare&pid=54321')['body'], true);
     assert_true(($killBare['ok'] ?? false) === true, 'POST /action kill_bare: ok');
+
+    $advice = json_decode($post('action=advise&session=' . UI_ADVISE_SESSION)['body'], true);
+    assert_equal('fresh', $advice['advice']['verdict'] ?? null, 'POST /action advise: returns the verdict');
+    assert_equal(200000, $advice['advice']['cost']['resume_rewrite_tokens'] ?? null, 'POST /action advise: returns the cost numbers');
+    assert_equal('idle', $advice['status'] ?? null, 'POST /action advise: returns the session status');
+    assert_true(($json = json_decode($post('action=advise&session=nope')['body'], true)) && ($json['ok'] ?? null) === false, 'POST /action advise of an unknown session: refused');
+    $adviseFresh = json_decode($post('action=advise_act&choice=fresh&session=' . UI_ADVISE_SESSION)['body'], true);
+    assert_equal('/session?session=cc-fake-headless', $adviseFresh['redirect'] ?? null, 'POST /action advise_act fresh: redirects to the new session');
+    $adviseResume = json_decode($post('action=advise_act&choice=resume&session=' . UI_ADVISE_SESSION)['body'], true);
+    assert_equal('/session?session=' . UI_ADVISE_SESSION, $adviseResume['redirect'] ?? null, 'POST /action advise_act resume: stays on the session');
+    assert_true(($adviseBad = json_decode($post('action=advise_act&choice=x&session=' . UI_ADVISE_SESSION)['body'], true)) && ($adviseBad['ok'] ?? null) === false, 'POST /action advise_act with a bad choice: refused');
 
     $unknown = json_decode($post('action=rm_rf')['body'], true);
     assert_equal(['ok' => false, 'message' => 'Unknown action'], $unknown, 'POST /action with an unknown action: refused');

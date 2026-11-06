@@ -20,7 +20,8 @@ final class AdviseRunner
 
     /**
      * Request: `target` (session name or conversation id; absent = every tracked headless session),
-     * `act` (bool; needs a target), plus `model`/`effort` for the fresh session `act` may start.
+     * `act` (bool; needs a target), `choice` (resume|fresh: a person's explicit pick that replaces the verdict when acting, the
+     * dashboard buttons; the idle and quota guards still apply), `no_model` (skip the middle-band model call), plus `model`/`effort` for the fresh session `act` may start.
      * $deps replaces the collaborators in tests: quota, model_runner, launch, kill.
      *
      * @param array<string,mixed> $request
@@ -41,7 +42,7 @@ final class AdviseRunner
 
         $rows = [];
         foreach (self::sessions($target) as $session) {
-            $rows[] = self::judge($session, $usage, $target !== '', $deps);
+            $rows[] = self::judge($session, $usage, $target !== '' && empty($request['no_model']), $deps);
         }
 
         if ($target !== '' && $rows === []) {
@@ -121,7 +122,11 @@ final class AdviseRunner
     private static function act(array $row, array $request, array $deps): array
     {
         $advice = $row['advice'];
-        $verdict = $advice['verdict'];
+        $choice = $request['choice'] ?? null;
+        if ($choice !== null && (!in_array($choice, ['resume', 'fresh'], true) || !isset($advice['prompts']))) {
+            return ['ok' => false, 'message' => 'Nothing to act on: ' . ($advice['reason'] ?? 'no readable transcript')];
+        }
+        $verdict = $choice ?? $advice['verdict'];
         $launch = $deps['launch'] ?? [LaunchService::class, 'launch'];
 
         if ($row['status'] !== 'idle') {

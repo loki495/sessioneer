@@ -22,6 +22,7 @@ details sheet.
 | Design tokens and the dashboard's styling | `public/css/ui.css` (hand-written, no build step) |
 | Session page styling | `public/css/ui-session.css` (uses the same tokens) |
 | Dashboard behaviour (tabs, filters, polling, actions) | `public/js/ui.js` (plain ES5) |
+| Continue-here / start-a-new-one buttons | `public/js/ui-advise.js` (plain ES5, mounts on `[data-advise-host]`) |
 | Session page behaviour | `public/js/ui-session.js` (transcript, polling, prompts, footer) and `public/js/ui-session-sheets.js` (controls, details, files, search, viewers) |
 
 There is no framework and no build step. Browser push is subscribed from a
@@ -72,13 +73,30 @@ as they are: `/session_star.php`, `/session_rename.php`, `/answer_prompt.php`,
 
 `POST /action` is the JSON action endpoint. It takes
 `action` = `new`, `resume`, `switch_runtime`, `take_over`, `take_over_confirm`, `kill`, `kill_bare`, `cleanup`,
-`install_hook` or `set_push_timer_interval`, plus `csrf_token`, and answers `{ok, message, redirect?}`. `take_over` (a
+`install_hook`, `set_push_timer_interval`, `advise` or `advise_act`, plus `csrf_token`, and answers `{ok, message, redirect?}`. `take_over` (a
 bare process) answers with a redirect to the new headless session, or
 `{needs_choice, pid, workdir, candidates, suggested_agent_session_id}` when the process
 could not be identified (nothing is stopped yet); the page then shows a picker and posts
 `take_over_confirm`. Both reach the host agent's `take_over_bare` / `take_over_bare_with_id`
-with `runtime=headless`, so the final resume goes through the headless runtime, not a pane. It has
-the same same-origin and CSRF checks as every other mutating endpoint.
+with `runtime=headless`, so the final resume goes through the headless runtime, not a pane.
+`advise` (`session`) answers `{status, advice}` from the host agent's `advise` action: the verdict, context
+size, cache age and the token cost of each path. `advise_act` (`session`, `choice` = `resume` or `fresh`) acts on
+the person's pick, not the verdict: resume sends the continue prompt to the same conversation, fresh starts a new
+session that writes the handoff from the old transcript and then archives the old one, only after the new one took its
+prompt. It answers with a redirect to the session that carries on. The idle and quota (90%) guards still apply. Nothing is
+sent to the old session on `advise`, and the one small model call for a close verdict happens only there, for the one
+session asked about. `/action` has the same same-origin and CSRF checks as every other mutating endpoint.
+
+## Continue here or start a new one
+
+An idle headless Claude or Codex card has a **Continue or start a new one?** button, and the session page has the
+same button below the transcript. Tapping it asks for advice for that one session and shows the reason, the context
+size and cache age, and two buttons: **Continue here** (resume; its line gives the tokens re-written now when the
+cache is cold, and re-read each turn) and **Start a new one** (a handoff of about 6k tokens, re-read each turn; archives this
+session). The advised one is highlighted and marked recommended; a close call (`judgment`) highlights neither.
+Both buttons are disabled while the session is not idle or its account quota is nearly full. Starting a new one
+asks for confirmation. The poll leaves the list alone while an advice panel is open. The thresholds are in
+[cli.md](cli.md) under `--advise`.
 
 ## Dashboard coverage
 
