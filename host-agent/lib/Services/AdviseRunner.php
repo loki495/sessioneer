@@ -146,7 +146,16 @@ final class AdviseRunner
             return ['ok' => ($sent['ok'] ?? false) === true, 'acted' => 'resume', 'session' => $sent['name'] ?? $row['name'], 'message' => (string) ($sent['message'] ?? '')];
         }
 
-        $new = $launch($base + array_filter(['prompt' => $advice['prompts']['fresh'], 'model' => $request['model'] ?? null, 'effort' => $request['effort'] ?? null]));
+        // A replacement never gets wider permissions than the session it replaces; a mode the launcher cannot reproduce fails the launch, which leaves the old session alone.
+        $old = SidecarStore::read_sidecar($row['name']) ?? [];
+        $mode = (string) (SessionStatusStore::read_status($row['name'])['mode'] ?? '');
+        $restrict = array_filter([
+            'no_tools' => !empty($old['no_tools']),
+            'allowed_tools' => $old['allowed_tools'] ?? null,
+            'disallowed_tools' => $old['disallowed_tools'] ?? null,
+            'starting_mode' => $mode !== '' && $mode !== 'default' ? $mode : null,
+        ]);
+        $new = $launch($base + $restrict + array_filter(['prompt' => $advice['prompts']['fresh'], 'model' => $request['model'] ?? null, 'effort' => $request['effort'] ?? null]));
         // The old session is only stopped once the new one exists AND took its prompt.
         if (($new['ok'] ?? false) !== true) {
             return ['ok' => false, 'acted' => 'fresh', 'session' => $new['name'] ?? null, 'message' => 'Fresh session not started cleanly; the old session was left as it is: ' . (string) ($new['message'] ?? '')];
