@@ -147,7 +147,7 @@ setting as the dashboard, paused while the tab is hidden, and a rotated transcri
   answer shows an optimistic reply and is rolled back with the reason when the
   agent refuses it, and "Confirm before sending prompt answers" is a view option.
 
-**Footer.** Send (reads Queue while the agent is working), Stop (interrupt),
+**Footer.** Send (reads Queue while the agent is working), Stop (interrupt, after a confirmation; solid red while usable),
 attach files (uploaded to the project, removed again when the chip is removed),
 a draft kept per session, Shift+Enter sends (not on a touch screen, where Enter is always a newline and the Send button sends). Up and down buttons jump one message
 at a time and skip tool calls; the bottom button shows a dot when new content

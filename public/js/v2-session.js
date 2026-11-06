@@ -979,6 +979,7 @@
   }
 
   function stopTurn() {
+    if (!window.confirm('Stop the current turn?')) { return; }
     stopBtn.disabled = true;
     post('/session_escape.php', { session: session }).then(function (res) {
       stopBtn.disabled = false;
