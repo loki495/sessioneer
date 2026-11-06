@@ -10,9 +10,10 @@ back with "Try the new UI". The old page URLs `/v2`, `/v2/session` and
 endpoints keep their `/v2/` prefix. Push notifications and Quick Prompt session
 links open `/session`.
 
-The dashboard, the session page and the archived-session page exist so far. A
-session card opens the v2 session page (which links back to the classic one),
-an archived row the v2 archived page; the file views move over in later steps.
+The dashboard, the session page and the archived-session page are all part of
+this UI. A session card opens the session page, an archived row the archived
+page, and the file views (plan, todo, uploads) live in the session page's
+details sheet.
 
 ## What it is made of
 
@@ -96,11 +97,13 @@ search across live and archived sessions with Archive/Unarchive, usage meters
 per agent, health checks, hook install banner, push-check interval, agent
 unreachable banner, light/dark.
 
-Deferred to later steps: bare-process Identify, "Show last 3
-messages" on a card, free-text and multi-question prompt answers (the card links
-to the session page for those), the folder-trust dialog (same), Web Push
-subscribe/unsubscribe, pull to refresh, the session, archived-session and file
-pages, the sidebar, per-session context and mode controls.
+Deferred: bare-process Identify (Take over and Kill are there; identifying a
+bare process as a particular conversation is not), "Show last 3 messages" on a
+card, answering a free-text, multi-question or folder-trust prompt on the card
+itself (the card opens the session page for those), Web Push
+subscribe/unsubscribe, pull to refresh, the classic page's "New content"
+divider and per-block highlight colours, and the full-screen draft editor.
+There is no sidebar: the sessions popup in the session page replaces it.
 
 ## Session page (`/session?session=<name>`)
 
@@ -260,8 +263,8 @@ these show up on it only after they are merged and deployed.
 
 ## Running a second instance
 
-The classic container serves `public/` with `php -S` behind a bind-mount. To
-preview a worktree on the LAN without touching it, run the same server natively:
+The container serves `public/` with `php -S` behind a bind-mount. To preview a
+worktree on the LAN without touching it, run the same server natively:
 
 ```bash
 cd <worktree>

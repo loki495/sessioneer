@@ -119,8 +119,10 @@ DOM in the first place.
   `/archived_session_search.php`) do the same for one session's own
   transcript.
 - Clicking a result is a **full page navigation**, not an in-place fetch:
-  `session.php`/`archived_session.php?...&jump_line=<line>`
-  (`SessionController::show()`/`showArchived()`) reuses the *existing*
+  `/session`/`/archived-session?...&jump_line=<line>` in the main UI
+  (`V2Controller::session()`/`archivedSession()`), or
+  `session.php`/`archived_session.php?...&jump_line=<line>` in the classic
+  one (`SessionController::show()`/`showArchived()`), reuses the *existing*
   `before` pagination cursor - `before = jumpLine + 1` is exactly "the
   page whose last entry is `jumpLine` itself," the same semantics
   `TranscriptService::read_transcript_page()` already had - rather than
@@ -173,8 +175,9 @@ sessioneer/
 │       ├── Http/
 │       │   └── Router.php    # App\Http\Router - deliberately simple exact-path matcher, no groups/
 │       │                     # middleware/path params yet; match() is a pure lookup, no output of its own
-│       ├── Controllers/      # App\Controllers\* - one class per feature area (DashboardController,
-│       │                     # SessionController, BrowseController, UploadController, PushController,
+│       ├── Controllers/      # App\Controllers\* - one class per feature area (V2Controller,
+│       │                     # DashboardController, SessionController, BrowseController, UploadController,
+│       │                     # PushController,
 │       │                     # QuotaController), each method a thin action: an AuthService guard (via
 │       │                     # Controller's require_post_json()/start_readonly_json() helpers, for
 │       │                     # everything except the two full-page renders), an AgentClient::agent_call(),
@@ -183,7 +186,8 @@ sessioneer/
 │       │   └── AuthService.php  # Host allowlist + same-origin check + CSRF token + session start
 │       └── Views/           # App\Views\* - one render class per feature area (TranscriptView,
 │                             # SessionRowView, BlockedPromptView, QuotaFooterView, HealthBoxView,
-│                             # PushNotifyView, plus PageView for the two full-page templates) -
+│                             # PushNotifyView, plus V2View (the main UI's dashboard, session page
+│                             # and archived page) and PageView for the two full-page templates) -
 │                             # each a thin self::render('template', [...]) wrapper, no HTML of its
 │                             # own; View.php owns the shared League\Plates engine they all extend.
 │                             # MarkdownRenderer.php is the one exception - a pure string-in/HTML-out
@@ -193,7 +197,8 @@ sessioneer/
 ├── src/partials/            # every template Plates resolves against, grouped by feature, not one flat dir
 │   ├── layout.php             # shared <html>/<head>/<body> shell (Plates layout()/section())
 │   ├── pages/                  # the dashboard/session-detail page content - what PageView renders
-│   ├── header.php, sidebar.php, compose-bar.php  # session page chrome - plain `include`s, not Plates templates
+│   ├── v2/                     # the main UI's dashboard, session page, archived page and cards (V2View)
+│   ├── header.php, sidebar.php, compose-bar.php  # classic session page chrome - plain `include`s, not Plates templates
 │   └── transcript/, blocked-prompt/, session-row/, quota-footer/, health-box/, push-notify/
 │                             # one subdirectory of templates per App\Views\* class above
 ├── host-agent/             # installed natively on the HOST, not in Docker

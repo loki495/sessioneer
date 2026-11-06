@@ -29,6 +29,11 @@ The CSS used to come from Tailwind's CDN script. It was replaced because a page
 fetching a script from a third-party host at runtime is an external dependency
 for an app whose point is that everything runs locally.
 
+The main UI's CSS (`public/css/v2.css` and `public/css/v2-session.css`) is
+hand-written and outside this build: it uses CSS custom properties and needs no
+`npm` step. `npm run build:css` matters only for the classic UI's Tailwind
+classes.
+
 ## Type-checking the JS (JSDoc + tsc)
 
 `npm run typecheck` runs `tsc --noEmit` over the plain `.js` files (see

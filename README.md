@@ -26,22 +26,25 @@ binding" below for how access is actually controlled.
 
 ## Screenshots
 
-![Dashboard listing active sessions](docs/screenshots/dashboard.png)
+The dashboard lists tracked Claude Code, Codex, OpenCode, Antigravity and
+Ollama sessions currently running on your box, one card per session, with a
+filter for what needs input and the starred ones first:
 
-The dashboard lists tracked Claude Code, Codex, OpenCode, and Antigravity
-sessions currently running on your box, using tmux names or each headless
-agent's native session ID as appropriate.
+![Dashboard listing active sessions](docs/screenshots/dashboard.png)
 
 A session waiting on a tool-permission approval, with the numbered choices (1. Yes / 2. No)
 answerable right in the browser:
 
 ![A session showing a blocked tool-permission prompt with numbered Yes/No choices](docs/screenshots/blocked-prompt.png)
 
-The dashboard and a blocked prompt, on a phone-sized viewport (this app is
-an installable PWA, meant to be added to an iOS/Android home screen):
+The same two screens on a phone-sized viewport (this app is an installable
+PWA, meant to be added to an iOS/Android home screen):
 
-<img src="docs/screenshots/mobile-dashboard.png" alt="Dashboard on a mobile viewport" width="360">
-<img src="docs/screenshots/mobile-blocked-prompt.png" alt="Blocked prompt on a mobile viewport" width="360">
+<img src="docs/screenshots/mobile-dashboard.png" alt="Dashboard on a mobile viewport" width="400">
+<img src="docs/screenshots/mobile-blocked-prompt.png" alt="Blocked prompt on a mobile viewport" width="400">
+
+The screenshots come from a canned demo agent with made-up sessions, never
+from a real one.
 
 ## What it does
 
@@ -50,39 +53,83 @@ an installable PWA, meant to be added to an iOS/Android home screen):
 > [`docs/features.md`](docs/features.md).
 
 - **Session list**: name/title, working directory, relative last-active
-  time, attached/detached (tmux-backed sessions), live context-usage
-  percentage, and flow state (`idle` / `working` / `blocked`).
+  time, agent, account and runtime, live context-usage percentage, and flow
+  state (`idle` / `working` / `blocked`). Filter by needs-input, working or
+  idle; star the sessions you care about and hide the idle ones you don't.
 - **Blocked-on-input warning**: if a session needs a human decision (folder
   trust on first launch in a new directory, a tool-permission approval, a
-  user input prompt), it shows in the UI with a count and link to jump
-  directly to the blocked session.
+  user input prompt), it shows with a count and an answer button, on the
+  dashboard or straight on the session page.
 - **Approve/deny tool permissions**: tool-use requires explicit approval in
   some agents (Claude Code, Antigravity); Sessioneer shows the blocked
   prompt in full (command, arguments, what's being written) and lets you
   approve or deny without touching the terminal.
 - **Answer `AskUserQuestion` / `UserPrompt` prompts**: some agents ask
   follow-up questions during a run (`"which one: A or B?"`); Sessioneer
-  shows them and collects answers.
-- **Launch from the command line**: `bin/sessioneer` starts, resumes,
-  reuses, lists or stops headless Claude, Codex and OpenCode sessions and
-  local Ollama chats (and prints the last known
-  usage stats as JSON with `--usage`, or blocks until a session is idle and
-  prints its final message with `--wait`), so scripts and other
-  sessions can spawn a continuation you then follow in the dashboard (see
-  [`docs/cli.md`](docs/cli.md)). Put it on your `PATH` by symlinking it, e.g.
-  `ln -s "$PWD/bin/sessioneer" ~/.local/bin/sessioneer`.
+  shows them and collects answers, including typed answers.
+- **Launch, drive and inspect from the command line**: `bin/sessioneer`
+  starts, resumes, waits for, shows, answers, takes over and stops sessions
+  for every supported agent, and lists the other sessions in a repository.
+  See ["Command line"](#command-line) below and [`docs/cli.md`](docs/cli.md).
 - **Quick Prompt (optional)**: a bearer-token `POST /api/quick-prompt` starts a
   new headless session from a phone shortcut (see "iOS Quick Prompt" below).
-- **Rename sessions**: a Rename button on each session card (dashboard,
-  sidebar) and a pencil in the session page header set your own name for any session; leave it empty to go back to the
+- **Rename sessions**: from a session card's `...` menu or the session page's
+  details, set your own name for any session; leave it empty to go back to the
   agent's title.
 - **Kill sessions**: stop a running session without killing the whole
-  terminal/tmux.
+  terminal/tmux. Its conversation stays resumable.
 - **View transcripts**: read the full conversation history for a session,
-  including all tool calls and results.
-- **Mobile-first PWA**: responsive design, works as an installed home-screen
-  icon on iOS/Android, with Web Push notifications for blocked/stopped
-  sessions (see "Web Push notifications" below).
+  including all tool calls and results, images and attachments, with search
+  inside the session or across every session (live and archived).
+- **Archived sessions**: browse finished conversations and resume one as a
+  new live session.
+- **Mobile-first PWA**: responsive design, light and dark themes, works as an
+  installed home-screen icon on iOS/Android, with Web Push notifications for
+  blocked/stopped sessions (see "Web Push notifications" below).
+
+The UI is the current, mobile-first redesign: `/` is the dashboard,
+`/session` a session and `/archived-session` an archived conversation. The
+previous UI is still reachable as a fallback at `/classic`.
+
+## Command line
+
+`bin/sessioneer` is the host-side command-line client for the same host agent
+the dashboard talks to, for scripts and for other agents' sessions. It needs no
+login or token, and any process running as you already has its access. Put it
+on your `PATH` with `ln -s "$PWD/bin/sessioneer" ~/.local/bin/sessioneer`.
+
+```bash
+# new headless Claude session with a first prompt
+sessioneer --workdir ~/www/app --model sonnet --mode plan "Review the failing test"
+
+# continue a conversation (a tracked session receives the prompt, no second process)
+sessioneer --resume <conversation-id> "Now apply the fix"
+
+# run to completion, then print the final answer
+sessioneer --wait --timeout 600 "Summarise the open TODOs"
+
+# a session is blocked on a prompt: read it, answer it safely
+sessioneer --show <session>
+sessioneer --answer <session> --option 1 --expect Yes
+
+# list terminal Claude processes Sessioneer did not start, and take one over
+sessioneer --bare
+sessioneer --take-over <pid>
+
+# talk to another session, from inside a session
+sessioneer --peers
+sessioneer --send <session> "The migration on my branch is ready to review"
+
+# stop a session, or print the last known usage for every agent as JSON
+sessioneer --kill <session>
+sessioneer --usage
+```
+
+`--agent` picks `claude` (default), `codex`, `opencode` or `ollama`; `--model`,
+`--effort`, `--mode`, `--profile` and the tool flags cover the launch options
+each agent supports. `--json` prints machine-readable output.
+[`docs/cli.md`](docs/cli.md) has every flag, the exact refusal rules and the
+agent-specific notes.
 
 ## Network binding (read this)
 
@@ -164,7 +211,7 @@ of the real socket and every request fails with "Cannot reach host agent."
 
 4. Open `http://<BIND_ADDR>:<APP_PORT>/` (`http://127.0.0.1:8091/` by default).
 
-5. The dashboard's health box checks the prerequisites and each agent's
+5. The dashboard's **Status** tab checks the prerequisites and each agent's
    integration. Its **Install hooks** button merges Sessioneer's Claude Code
    and Codex hooks into your existing hook files, leaving unrelated hooks in
    place. The agent sections below cover the remaining per-agent steps.
@@ -234,11 +281,13 @@ an `AskUserQuestion` are the deliberate pane-based exceptions because Claude's
 hook payload does not contain enough UI state. Bare-process discovery and
 **Take over** are currently Claude-only.
 
-New Claude sessions run **headless**, with no terminal, unless you pick
-Terminal (tmux) in the New Session form's "Runs in" list; the **Headless**
-button on an archived Claude session, or the switch on a running session's
-row, moves an existing conversation; Resume and Take over are headless too
-unless you pick the **Terminal** button on an archived row. For a headless session Sessioneer runs the installed `claude` binary (`claude -p`, stream-json)
+New sessions in the main UI run **headless**, with no terminal: the New Session
+form has no "Runs in" picker, an archived session has one **Resume** (headless),
+and a session that still runs in a terminal (tmux; Claude or Antigravity) is
+listed and opened read-only with a **Take over** action for Claude that moves
+it to headless. The classic UI at `/classic` still offers the tmux runtime and
+its Terminal buttons. For a headless session Sessioneer runs the installed
+`claude` binary (`claude -p`, stream-json)
 on your own logged-in claude.ai account, through the
 `sessioneer-claude-headless-manager.service` that `host-agent/install.sh`
 installs. This is not the Claude Agent SDK library, which uses an API key or
@@ -307,8 +356,8 @@ retained as a fallback. OpenCode creates its `ses_*` ID only after the first
 prompt; Sessioneer binds it reactively from `opencode.db`. Pending permissions
 come from the directory-scoped `GET /api/permission/request`, which Sessioneer
 queries once per live session directory; the permissions plugin mirrors the
-same request into a local store as a fallback. The dashboard health section
-checks both the service and plugin file.
+same request into a local store as a fallback. The Status tab checks both the
+service and plugin file.
 
 The events service listens to each tracked headless session's exact OpenCode
 directory and records question prompts for Sessioneer's existing answer forms.
