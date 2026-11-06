@@ -1,11 +1,11 @@
-/* Sessioneer v2 session page, sheets: footer controls, session details (files,
+/* Sessioneer session page, sheets: footer controls, session details (files,
    tasks, actions, view options), in-session search, the image viewer and the
-   full-screen text view. Loaded after v2-session.js, whose V2S.api it extends.
+   full-screen text view. Loaded after ui-session.js, whose UiSession.api it extends.
    Plain ES5 (see CLAUDE.md). */
 (function () {
   'use strict';
 
-  var api = window.V2S && window.V2S.api;
+  var api = window.UiSession && window.UiSession.api;
   if (!api) { return; }
 
   var esc = api.esc;
@@ -20,7 +20,7 @@
     return '<option value="' + esc(value) + '"' + (selected ? ' selected' : '') + '>' + esc(label) + '</option>';
   }
   function field(label, id, inner, hint) {
-    return '<label class="v2-field">' + esc(label) + '<select id="' + id + '">' + inner + '</select>' + (hint ? '<small>' + esc(hint) + '</small>' : '') + '</label>';
+    return '<label class="ui-field">' + esc(label) + '<select id="' + id + '">' + inner + '</select>' + (hint ? '<small>' + esc(hint) + '</small>' : '') + '</label>';
   }
 
   // ======================================================================
@@ -53,14 +53,14 @@
       if (d.current_model) { parts.push((d.current_provider ? d.current_provider + '/' : '') + d.current_model); }
       if (d.agent === 'codex' && d.current_effort) { parts.push(d.current_effort); }
     }
-    $('v2s-ctrl-summary').textContent = parts.length ? parts.join(' · ') : 'Controls';
+    $('sess-ctrl-summary').textContent = parts.length ? parts.join(' · ') : 'Controls';
   }
 
   function statusLine(text, bad) {
-    var el = $('v2s-ctrl-status');
+    var el = $('sess-ctrl-status');
     if (!el) { return; }
     el.textContent = text || '';
-    el.className = 'v2-small ' + (bad ? 'v2-warn' : 'v2-muted');
+    el.className = 'ui-small ' + (bad ? 'ui-warn' : 'ui-muted');
   }
 
   // Applies one change; the next poll shows what the session really ended up with.
@@ -85,7 +85,7 @@
       if (!current) { select.insertAdjacentHTML('afterbegin', option('', 'Default model', true)); select.selectedIndex = 0; }
       select.disabled = false;
       select._models = data.models;
-      if (agent === 'codex') { fillCodexEffort(select, $('v2s-c-effort'), api.detail().current_effort); }
+      if (agent === 'codex') { fillCodexEffort(select, $('sess-c-effort'), api.detail().current_effort); }
     }).catch(function () { select.innerHTML = option('', 'Models unavailable', true); });
   }
 
@@ -97,64 +97,64 @@
   }
 
   function buildControls(d) {
-    var body = $('v2s-controls-body');
+    var body = $('sess-controls-body');
     var agent = d.agent || 'claude';
     var html = '';
 
     if (agent === 'claude') {
       var model = d.current_model || '';
-      html += field('Model', 'v2s-c-model', (model ? '' : option('', 'Model unknown', true))
+      html += field('Model', 'sess-c-model', (model ? '' : option('', 'Model unknown', true))
         + Object.keys(MODEL_KEYS).map(function (k) { return option(k, claudeModelLabel(d, k), k === model); }).join(''));
       var modes = MODES;
       if (d.current_mode && !MODES[d.current_mode]) { modes = {}; Object.keys(MODES).forEach(function (k) { modes[k] = MODES[k]; }); modes[d.current_mode] = d.current_mode; }
-      html += field('Permission mode', 'v2s-c-mode', (d.current_mode ? '' : option('', 'Mode unknown', true))
+      html += field('Permission mode', 'sess-c-mode', (d.current_mode ? '' : option('', 'Mode unknown', true))
         + Object.keys(modes).map(function (k) { return option(k, modes[k], k === d.current_mode); }).join(''));
-      html += field('Reasoning effort', 'v2s-c-effort',
+      html += field('Reasoning effort', 'sess-c-effort',
         option('', d.effort_available ? 'Default effort' : 'Unavailable', !d.current_effort)
         + Object.keys(EFFORTS).map(function (k) { return option(k, EFFORTS[k], k === d.current_effort); }).join(''),
         d.effort_message || 'Session-only reasoning effort');
     } else if (agent === 'antigravity') {
-      html += field('Model', 'v2s-c-agy', (d.current_antigravity_model ? '' : option('', 'Switch model…', true))
+      html += field('Model', 'sess-c-agy', (d.current_antigravity_model ? '' : option('', 'Switch model…', true))
         + Object.keys(AGY_MODELS).map(function (k) { return option(k, AGY_MODELS[k], k === d.current_antigravity_model); }).join(''),
         'Changes the account-wide default model for every Antigravity session.');
     } else if (agent === 'codex') {
-      html += field('Model', 'v2s-c-catalog', option('', 'Loading models…', true));
-      html += field('Reasoning effort', 'v2s-c-effort', option('', 'Default effort', true));
+      html += field('Model', 'sess-c-catalog', option('', 'Loading models…', true));
+      html += field('Reasoning effort', 'sess-c-effort', option('', 'Default effort', true));
     } else {
-      html += field('Model', 'v2s-c-catalog', option('', 'Loading models…', true));
+      html += field('Model', 'sess-c-catalog', option('', 'Loading models…', true));
     }
 
-    body.innerHTML = html + '<p id="v2s-ctrl-status" class="v2-small v2-muted" role="status"></p>';
+    body.innerHTML = html + '<p id="sess-ctrl-status" class="ui-small ui-muted" role="status"></p>';
 
     if (agent === 'claude') {
-      $('v2s-c-model').disabled = !d.current_model;
-      $('v2s-c-mode').disabled = !d.current_mode;
-      $('v2s-c-effort').disabled = d.effort_available !== true;
+      $('sess-c-model').disabled = !d.current_model;
+      $('sess-c-mode').disabled = !d.current_mode;
+      $('sess-c-effort').disabled = d.effort_available !== true;
     } else if (agent === 'codex') {
-      $('v2s-c-catalog').disabled = true;
-      $('v2s-c-effort').disabled = true;
-      fillCatalog('v2s-c-catalog', 'codex', d.current_model || '', null);
+      $('sess-c-catalog').disabled = true;
+      $('sess-c-effort').disabled = true;
+      fillCatalog('sess-c-catalog', 'codex', d.current_model || '', null);
     } else if (agent !== 'antigravity') {
-      $('v2s-c-catalog').disabled = true;
-      fillCatalog('v2s-c-catalog', agent === 'ollama' ? 'ollama' : '', d.current_model || '', d.current_provider || '');
+      $('sess-c-catalog').disabled = true;
+      fillCatalog('sess-c-catalog', agent === 'ollama' ? 'ollama' : '', d.current_model || '', d.current_provider || '');
     }
   }
 
-  $('v2s-controls-body').addEventListener('change', function (e) {
+  $('sess-controls-body').addEventListener('change', function (e) {
     var id = e.target.id;
     var d = api.detail();
-    if (id === 'v2s-c-model') { applyChange('/session_model.php', { session: session, model: e.target.value }, 'model'); }
-    else if (id === 'v2s-c-mode') { applyChange('/session_mode.php', { session: session, mode: e.target.value }, 'mode'); }
-    else if (id === 'v2s-c-effort' && (d.agent || 'claude') === 'claude') { applyChange('/session_effort.php', { session: session, effort: e.target.value }, 'effort'); }
-    else if (id === 'v2s-c-agy') { applyChange('/session_antigravity_model.php', { session: session, model: e.target.value }, 'model'); }
-    else if (id === 'v2s-c-catalog' || id === 'v2s-c-effort') {
+    if (id === 'sess-c-model') { applyChange('/session_model.php', { session: session, model: e.target.value }, 'model'); }
+    else if (id === 'sess-c-mode') { applyChange('/session_mode.php', { session: session, mode: e.target.value }, 'mode'); }
+    else if (id === 'sess-c-effort' && (d.agent || 'claude') === 'claude') { applyChange('/session_effort.php', { session: session, effort: e.target.value }, 'effort'); }
+    else if (id === 'sess-c-agy') { applyChange('/session_antigravity_model.php', { session: session, model: e.target.value }, 'model'); }
+    else if (id === 'sess-c-catalog' || id === 'sess-c-effort') {
       var opt = e.target.options[e.target.selectedIndex];
-      var model = $('v2s-c-catalog');
-      if (id === 'v2s-c-catalog' && d.agent === 'codex') { fillCodexEffort(model, $('v2s-c-effort'), ''); }
+      var model = $('sess-c-catalog');
+      if (id === 'sess-c-catalog' && d.agent === 'codex') { fillCodexEffort(model, $('sess-c-effort'), ''); }
       var params = { session: session, model: model.value };
       var chosen = model.options[model.selectedIndex];
       if (chosen && chosen.getAttribute('data-provider')) { params.model_provider = chosen.getAttribute('data-provider'); }
-      if (d.agent === 'codex') { params.effort = $('v2s-c-effort').value; }
+      if (d.agent === 'codex') { params.effort = $('sess-c-effort').value; }
       if (!params.model) { return; }
       applyChange('/session_model.php', params, 'model');
     }
@@ -166,8 +166,8 @@
 
   function kv(label, value, copyable) {
     if (!value) { return ''; }
-    return '<div class="v2s-kv"><div><small>' + esc(label) + '</small><code>' + esc(value) + '</code></div>'
-      + (copyable ? '<button type="button" class="v2-btn" data-info="copy" data-value="' + esc(value) + '">Copy</button>' : '') + '</div>';
+    return '<div class="sess-kv"><div><small>' + esc(label) + '</small><code>' + esc(value) + '</code></div>'
+      + (copyable ? '<button type="button" class="ui-btn" data-info="copy" data-value="' + esc(value) + '">Copy</button>' : '') + '</div>';
   }
 
   function resumeCommand(d) {
@@ -177,7 +177,7 @@
   }
 
   function buildInfo(d) {
-    var body = $('v2s-info-body');
+    var body = $('sess-info-body');
     var html = '';
     html += kv('Session name', d.title || d.name, true);
     html += kv('Session', session, true);
@@ -193,35 +193,35 @@
 
     body.innerHTML = html;
 
-    $('v2s-info-head-actions').innerHTML = '<button type="button" class="v2-icon-btn" data-info="sessions" aria-label="Sessions">&#9776;</button>'
-      + '<button type="button" class="v2-icon-btn" data-info="star" aria-pressed="' + (d.starred ? 'true' : 'false') + '" aria-label="' + (d.starred ? 'Unstar' : 'Star') + '">' + (d.starred ? '&#9733;' : '&#9734;') + '</button>'
-      + '<button type="button" class="v2-btn" data-info="rename">Rename</button>'
-      + '<button type="button" class="v2-btn v2-btn-danger" data-info="kill">Kill</button>';
+    $('sess-info-head-actions').innerHTML = '<button type="button" class="ui-icon-btn" data-info="sessions" aria-label="Sessions">&#9776;</button>'
+      + '<button type="button" class="ui-icon-btn" data-info="star" aria-pressed="' + (d.starred ? 'true' : 'false') + '" aria-label="' + (d.starred ? 'Unstar' : 'Star') + '">' + (d.starred ? '&#9733;' : '&#9734;') + '</button>'
+      + '<button type="button" class="ui-btn" data-info="rename">Rename</button>'
+      + '<button type="button" class="ui-btn ui-btn-danger" data-info="kill">Kill</button>';
 
     var actions = '';
     if ((d.agent || 'claude') === 'claude' && d.runtime !== 'headless') {
-      actions += '<button type="button" class="v2-btn" data-info="switch" data-runtime="headless">Take over (headless)</button>';
+      actions += '<button type="button" class="ui-btn" data-info="switch" data-runtime="headless">Take over (headless)</button>';
     }
-    $('v2s-info-actions').innerHTML = actions;
+    $('sess-info-actions').innerHTML = actions;
 
     var todos = d.todos || [];
-    $('v2s-tasks-sec').hidden = todos.length === 0;
-    $('v2s-tasks').innerHTML = todos.map(function (t) {
+    $('sess-tasks-sec').hidden = todos.length === 0;
+    $('sess-tasks').innerHTML = todos.map(function (t) {
       var done = t.status === 'completed';
       var icon = done ? '&#10003;' : (t.status === 'in_progress' ? '&#9679;' : '&#9675;');
       var label = t.status === 'in_progress' ? (t.activeForm || t.content) : t.content;
-      return '<li><span style="margin-right:8px" aria-hidden="true">' + icon + '</span><span' + (done ? ' class="v2s-tasks-done"' : '') + '>' + esc(label) + '</span></li>';
+      return '<li><span style="margin-right:8px" aria-hidden="true">' + icon + '</span><span' + (done ? ' class="sess-tasks-done"' : '') + '>' + esc(label) + '</span></li>';
     }).join('');
   }
 
-  $('v2s-info').addEventListener('click', function (e) {
+  $('sess-info').addEventListener('click', function (e) {
     var b = closest(e.target, '[data-info]');
     if (!b) { return; }
     var d = api.detail();
     var what = b.getAttribute('data-info');
 
     if (what === 'copy') { api.copy(b.getAttribute('data-value')); }
-    else if (what === 'sessions') { $('v2s-info').close(); openSheet('v2s-sessions'); }
+    else if (what === 'sessions') { $('sess-info').close(); openSheet('sess-sessions'); }
     else if (what === 'star') {
       var on = !d.starred;
       api.post('/session_star.php', { session: session, starred: on ? '1' : '0' }).then(function (res) {
@@ -245,7 +245,7 @@
 
   // The JSON twin of the classic dashboard action; a redirect from the server wins over `fallback`.
   function action(params, fallback) {
-    api.post('/v2/action', params).then(function (res) {
+    api.post('/action', params).then(function (res) {
       if (res.ok && (res.redirect || fallback)) { window.location.href = res.redirect || fallback; return; }
       api.toast(res.message || (res.ok ? 'Done' : 'Failed'), !res.ok);
     }).catch(function () { api.toast('Network error', true); });
@@ -257,7 +257,7 @@
     try { return decodeURIComponent(window.escape(bin)); } catch (e) { return bin; }
   }
 
-  $('v2s-todo-file').addEventListener('click', function () {
+  $('sess-todo-file').addEventListener('click', function () {
     var btn = this;
     btn.disabled = true;
     api.getJson('/session_todo_file.php?' + api.qs({ session: session })).then(function (res) {
@@ -269,31 +269,31 @@
 
   function loadPlanFiles() {
     return api.getJson('/session_plan_files.php?' + api.qs({ session: session })).then(function (res) {
-      var el = $('v2s-plan-files');
-      if (!res.ok) { el.innerHTML = '<p class="v2-muted v2-small">Could not load plan files.</p>'; return; }
+      var el = $('sess-plan-files');
+      if (!res.ok) { el.innerHTML = '<p class="ui-muted ui-small">Could not load plan files.</p>'; return; }
       el.innerHTML = (res.files || []).length
-        ? '<h3 class="v2-subtitle">Plan and handoff files</h3>' + res.files.map(function (f) {
-          return '<div class="v2s-file-row"><a href="/session_plan_file.php?' + api.qs({ session: session, filename: f.name }) + '" target="_blank" rel="noopener">' + esc(f.name) + '</a><span class="v2-muted v2-small">' + esc(api.fileSize(f.size)) + '</span></div>';
+        ? '<h3 class="ui-subtitle">Plan and handoff files</h3>' + res.files.map(function (f) {
+          return '<div class="sess-file-row"><a href="/session_plan_file.php?' + api.qs({ session: session, filename: f.name }) + '" target="_blank" rel="noopener">' + esc(f.name) + '</a><span class="ui-muted ui-small">' + esc(api.fileSize(f.size)) + '</span></div>';
         }).join('')
-        : '<p class="v2-muted v2-small">No plan or handoff files found.</p>';
+        : '<p class="ui-muted ui-small">No plan or handoff files found.</p>';
     }).catch(function () {});
   }
 
   function loadUploads() {
     return api.getJson('/uploaded_files.php?' + api.qs({ session: session })).then(function (res) {
       var files = res && res.ok ? (res.files || []) : [];
-      $('v2s-uploads-clear').hidden = files.length === 0;
-      $('v2s-upload-total').textContent = files.length ? api.fileSize(res.total_size || 0) : '';
-      $('v2s-uploads').innerHTML = files.length ? files.map(function (f) {
-        return '<div class="v2s-file-row"><a href="/uploaded_file_view.php?' + api.qs({ session: session, filename: f.name }) + '" target="_blank" rel="noopener">' + esc(f.name) + '</a>'
-          + '<span class="v2-row"><span class="v2-muted v2-small">' + esc(api.fileSize(f.size)) + '</span>'
-          + '<button type="button" class="v2-icon-btn" data-del="' + esc(f.name) + '" aria-label="Delete ' + esc(f.name) + '">&times;</button></span></div>';
-      }).join('') : '<p class="v2-muted v2-small">No uploaded files.</p>';
+      $('sess-uploads-clear').hidden = files.length === 0;
+      $('sess-upload-total').textContent = files.length ? api.fileSize(res.total_size || 0) : '';
+      $('sess-uploads').innerHTML = files.length ? files.map(function (f) {
+        return '<div class="sess-file-row"><a href="/uploaded_file_view.php?' + api.qs({ session: session, filename: f.name }) + '" target="_blank" rel="noopener">' + esc(f.name) + '</a>'
+          + '<span class="ui-row"><span class="ui-muted ui-small">' + esc(api.fileSize(f.size)) + '</span>'
+          + '<button type="button" class="ui-icon-btn" data-del="' + esc(f.name) + '" aria-label="Delete ' + esc(f.name) + '">&times;</button></span></div>';
+      }).join('') : '<p class="ui-muted ui-small">No uploaded files.</p>';
     }).catch(function () {});
   }
-  api.refreshFiles = function () { if ($('v2s-info').open) { loadUploads(); } };
+  api.refreshFiles = function () { if ($('sess-info').open) { loadUploads(); } };
 
-  $('v2s-uploads').addEventListener('click', function (e) {
+  $('sess-uploads').addEventListener('click', function (e) {
     var b = closest(e.target, '[data-del]');
     if (!b) { return; }
     b.disabled = true;
@@ -302,7 +302,7 @@
       loadUploads();
     });
   });
-  $('v2s-uploads-clear').addEventListener('click', function () {
+  $('sess-uploads-clear').addEventListener('click', function () {
     if (!window.confirm('Delete all uploaded files for this session?')) { return; }
     api.post('/delete_all_uploaded_files.php', { session: session }).then(function (res) {
       if (!res.ok) { api.toast(res.message || 'Could not delete', true); }
@@ -312,29 +312,29 @@
 
   // ---- view options ----
   function applyViewOptions() {
-    document.body.classList.toggle('v2s-hide-reasoning', !api.prefs.reasoning);
-    document.body.classList.toggle('v2s-hide-subagent', !api.prefs.subagent);
+    document.body.classList.toggle('sess-hide-reasoning', !api.prefs.reasoning);
+    document.body.classList.toggle('sess-hide-subagent', !api.prefs.subagent);
   }
   function syncOptions() {
-    $('v2s-opt-reasoning').checked = api.prefs.reasoning;
-    $('v2s-opt-subagent').checked = api.prefs.subagent;
-    $('v2s-opt-confirm').checked = api.prefs.confirm;
-    $('v2s-opt-poll').value = String(api.prefs.pollMs);
+    $('sess-opt-reasoning').checked = api.prefs.reasoning;
+    $('sess-opt-subagent').checked = api.prefs.subagent;
+    $('sess-opt-confirm').checked = api.prefs.confirm;
+    $('sess-opt-poll').value = String(api.prefs.pollMs);
   }
-  $('v2s-opt-reasoning').addEventListener('change', function () {
+  $('sess-opt-reasoning').addEventListener('change', function () {
     api.prefs.reasoning = this.checked;
     api.save('v2s-reasoning', this.checked ? '1' : '0');
     applyViewOptions();
     // Reasoning is only sent by the host agent when asked for, so the transcript is fetched again.
     api.reload();
   });
-  $('v2s-opt-subagent').addEventListener('change', function () {
+  $('sess-opt-subagent').addEventListener('change', function () {
     api.prefs.subagent = this.checked; api.save('v2s-subagent', this.checked ? '1' : '0'); applyViewOptions();
   });
-  $('v2s-opt-confirm').addEventListener('change', function () {
+  $('sess-opt-confirm').addEventListener('change', function () {
     api.prefs.confirm = this.checked; api.save('v2s-confirm', this.checked ? '1' : '0');
   });
-  $('v2s-opt-poll').addEventListener('change', function () {
+  $('sess-opt-poll').addEventListener('change', function () {
     api.prefs.pollMs = parseInt(this.value, 10) || 3000; api.save('v2-poll', String(api.prefs.pollMs)); api.schedule();
   });
 
@@ -342,8 +342,8 @@
   // search
   // ======================================================================
 
-  var searchInput = $('v2s-search-input');
-  var results = $('v2s-search-results');
+  var searchInput = $('sess-search-input');
+  var results = $('sess-search-results');
   var searchTimer = null;
   var searchAbort = null;
 
@@ -362,17 +362,17 @@
   }
 
   function scope() {
-    return document.querySelector('input[name="v2s-scope"]:checked').value;
+    return document.querySelector('input[name="sess-scope"]:checked').value;
   }
 
   function renderHits(data, query) {
-    if (!data || !data.ok) { results.innerHTML = '<p class="v2-muted v2-center">' + esc((data && data.message) || 'Search failed') + '</p>'; return; }
+    if (!data || !data.ok) { results.innerHTML = '<p class="ui-muted ui-center">' + esc((data && data.message) || 'Search failed') + '</p>'; return; }
     if (scope() === 'session') {
       var matches = data.matches || [];
       results.innerHTML = matches.length ? matches.map(function (m) {
-        return '<button type="button" class="v2s-hit" data-line="' + m.line + '"><b>' + esc(m.role === 'user' ? 'You' : 'Agent') + ' · ' + esc(api.relTime(m.timestamp ? new Date(m.timestamp * 1000).toISOString() : '')) + '</b>'
-          + '<span class="v2-result-snippet">' + highlight(String(m.snippet || ''), query) + '</span></button>';
-      }).join('') : '<p class="v2-muted v2-center">No matches</p>';
+        return '<button type="button" class="sess-hit" data-line="' + m.line + '"><b>' + esc(m.role === 'user' ? 'You' : 'Agent') + ' · ' + esc(api.relTime(m.timestamp ? new Date(m.timestamp * 1000).toISOString() : '')) + '</b>'
+          + '<span class="ui-result-snippet">' + highlight(String(m.snippet || ''), query) + '</span></button>';
+      }).join('') : '<p class="ui-muted ui-center">No matches</p>';
 
       return;
     }
@@ -382,9 +382,9 @@
       var url = r.session_name
         ? '/session?session=' + encodeURIComponent(r.session_name) + '&jump_line=' + encodeURIComponent(first)
         : '/archived-session?agent_session_id=' + encodeURIComponent(r.agent_session_id) + '&jump_line=' + encodeURIComponent(first);
-      return '<a class="v2s-hit" href="' + url + '"><b>' + esc(r.title) + (r.session_name ? ' · live' : '') + '</b>'
-        + r.matches.map(function (m) { return '<span class="v2-result-snippet">' + highlight(String(m.snippet || ''), query) + '</span>'; }).join('') + '</a>';
-    }).join('') : '<p class="v2-muted v2-center">No matches</p>';
+      return '<a class="sess-hit" href="' + url + '"><b>' + esc(r.title) + (r.session_name ? ' · live' : '') + '</b>'
+        + r.matches.map(function (m) { return '<span class="ui-result-snippet">' + highlight(String(m.snippet || ''), query) + '</span>'; }).join('') + '</a>';
+    }).join('') : '<p class="ui-muted ui-center">No matches</p>';
   }
 
   function runSearch() {
@@ -394,18 +394,18 @@
     if (!query) { results.innerHTML = ''; return; }
     searchTimer = setTimeout(function () {
       searchAbort = typeof AbortController === 'function' ? new AbortController() : null;
-      results.innerHTML = '<p class="v2-muted v2-center">Searching…</p>';
+      results.innerHTML = '<p class="ui-muted ui-center">Searching…</p>';
       var url = scope() === 'session' ? '/session_search.php?' + api.qs({ session: session, q: query }) : '/search_sessions.php?' + api.qs({ q: query });
       api.getJson(url, searchAbort ? searchAbort.signal : undefined).then(function (data) { renderHits(data, query); })
-        .catch(function (err) { if (!err || err.name !== 'AbortError') { results.innerHTML = '<p class="v2-muted v2-center">Network error</p>'; } });
+        .catch(function (err) { if (!err || err.name !== 'AbortError') { results.innerHTML = '<p class="ui-muted ui-center">Network error</p>'; } });
     }, 300);
   }
   searchInput.addEventListener('input', runSearch);
-  Array.prototype.forEach.call(document.querySelectorAll('input[name="v2s-scope"]'), function (r) { r.addEventListener('change', runSearch); });
+  Array.prototype.forEach.call(document.querySelectorAll('input[name="sess-scope"]'), function (r) { r.addEventListener('change', runSearch); });
   results.addEventListener('click', function (e) {
     var hit = closest(e.target, 'button[data-line]');
     if (!hit) { return; }
-    $('v2s-search').close();
+    $('sess-search').close();
     api.jumpTo(parseInt(hit.getAttribute('data-line'), 10));
   });
 
@@ -413,15 +413,15 @@
   // viewers
   // ======================================================================
 
-  var viewer = $('v2s-viewer');
-  var stage = $('v2s-viewer-stage');
-  var vimg = $('v2s-viewer-img');
+  var viewer = $('sess-viewer');
+  var stage = $('sess-viewer-stage');
+  var vimg = $('sess-viewer-img');
 
   // Covers the footer and every sheet; pinching is the browser's own zoom, tapping toggles fit / natural size.
   function viewImage(src) {
     stage.classList.remove('is-full');
     vimg.src = src;
-    $('v2s-viewer-open').href = src;
+    $('sess-viewer-open').href = src;
     viewer.hidden = false;
     document.body.style.overflow = 'hidden';
   }
@@ -431,21 +431,21 @@
     document.body.style.overflow = '';
   }
   vimg.addEventListener('click', function () { stage.classList.toggle('is-full'); });
-  $('v2s-viewer-close').addEventListener('click', closeViewer);
+  $('sess-viewer-close').addEventListener('click', closeViewer);
 
   var fsText = '';
   function fullscreen(title, text) {
     fsText = text;
-    $('v2s-fullscreen-title').textContent = title || '';
-    $('v2s-fullscreen-text').textContent = text;
-    $('v2s-fullscreen').hidden = false;
+    $('sess-fullscreen-title').textContent = title || '';
+    $('sess-fullscreen-text').textContent = text;
+    $('sess-fullscreen').hidden = false;
   }
-  $('v2s-fullscreen-close').addEventListener('click', function () { $('v2s-fullscreen').hidden = true; });
-  $('v2s-fullscreen-copy').addEventListener('click', function () { api.copy(fsText); });
+  $('sess-fullscreen-close').addEventListener('click', function () { $('sess-fullscreen').hidden = true; });
+  $('sess-fullscreen-copy').addEventListener('click', function () { api.copy(fsText); });
 
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') { return; }
-    if (!viewer.hidden) { closeViewer(); } else if (!$('v2s-fullscreen').hidden) { $('v2s-fullscreen').hidden = true; }
+    if (!viewer.hidden) { closeViewer(); } else if (!$('sess-fullscreen').hidden) { $('sess-fullscreen').hidden = true; }
   });
 
   // ======================================================================
@@ -456,10 +456,10 @@
   function statusOfRow(x) { return x.blocked_reason ? 'blocked' : (x.working ? 'working' : 'idle'); }
   function rowChips(x) {
     var bits = [];
-    if (x.agent_label || x.agent) { bits.push('<span class="v2-chip v2-agent-' + esc(x.agent || 'claude') + '">' + esc(x.agent_label || x.agent) + '</span>'); }
-    if ((x.agent || 'claude') === 'claude' && x.profile) { bits.push('<span class="v2-chip v2-chip-accent">' + esc(x.profile) + '</span>'); }
-    if (x.runtime !== 'headless') { bits.push('<span class="v2-chip v2-chip-warn">Terminal, read only</span>'); }
-    if (typeof x.context_used_percentage === 'number') { bits.push('<span class="v2-chip">ctx ' + Math.round(x.context_used_percentage) + '%</span>'); }
+    if (x.agent_label || x.agent) { bits.push('<span class="ui-chip ui-agent-' + esc(x.agent || 'claude') + '">' + esc(x.agent_label || x.agent) + '</span>'); }
+    if ((x.agent || 'claude') === 'claude' && x.profile) { bits.push('<span class="ui-chip ui-chip-accent">' + esc(x.profile) + '</span>'); }
+    if (x.runtime !== 'headless') { bits.push('<span class="ui-chip ui-chip-warn">Terminal, read only</span>'); }
+    if (typeof x.context_used_percentage === 'number') { bits.push('<span class="ui-chip">ctx ' + Math.round(x.context_used_percentage) + '%</span>'); }
     return bits.join('');
   }
   // What the session is waiting on, else the last message.
@@ -471,39 +471,39 @@
     return text.replace(/\s+/g, ' ').slice(0, 140);
   }
   function renderSessionRows() {
-    var q = $('v2s-sessions-filter').value.trim().toLowerCase();
+    var q = $('sess-sessions-filter').value.trim().toLowerCase();
     var order = { blocked: 0, working: 1, idle: 2 };
     var rows = sessionRows.filter(function (x) {
       return !q || (String(x.title || '') + ' ' + x.name + ' ' + String(x.workdir || '')).toLowerCase().indexOf(q) !== -1;
     }).sort(function (a, b) {
       return (order[statusOfRow(a)] - order[statusOfRow(b)]) || ((b.starred ? 1 : 0) - (a.starred ? 1 : 0)) || ((b.activity || 0) - (a.activity || 0));
     });
-    $('v2s-sessions-list').innerHTML = rows.length ? rows.map(function (x) {
+    $('sess-sessions-list').innerHTML = rows.length ? rows.map(function (x) {
       var st = statusOfRow(x);
       var folder = String(x.workdir || '').replace(/\/+$/, '').split('/').pop();
-      return '<div class="v2s-srow' + (x.name === session ? ' is-current' : '') + (x.starred ? ' is-starred' : '') + '">'
-        + '<a class="v2s-srow-main"' + (x.name === session ? ' data-current' : '') + ' href="/session?session=' + encodeURIComponent(x.name) + '"><i class="v2-dot v2-dot-' + st + '" role="img" aria-label="' + (st === 'blocked' ? 'needs input' : st) + '"></i>'
-        + '<span class="v2s-srow-text"><b>' + esc(x.title || x.name) + '</b>'
-        + '<span class="v2s-srow-chips">' + (x.name === session ? '<span class="v2s-current-pill">Current</span>' : '') + rowChips(x) + '</span>'
+      return '<div class="sess-srow' + (x.name === session ? ' is-current' : '') + (x.starred ? ' is-starred' : '') + '">'
+        + '<a class="sess-srow-main"' + (x.name === session ? ' data-current' : '') + ' href="/session?session=' + encodeURIComponent(x.name) + '"><i class="ui-dot ui-dot-' + st + '" role="img" aria-label="' + (st === 'blocked' ? 'needs input' : st) + '"></i>'
+        + '<span class="sess-srow-text"><b>' + esc(x.title || x.name) + '</b>'
+        + '<span class="sess-srow-chips">' + (x.name === session ? '<span class="sess-current-pill">Current</span>' : '') + rowChips(x) + '</span>'
         + '<small>' + esc(folder) + ' · ' + esc(api.relTime(x.activity ? new Date(x.activity * 1000).toISOString() : '')) + '</small>'
-        + (rowPreview(x) ? '<small class="v2s-srow-preview">' + esc(rowPreview(x)) + '</small>' : '') + '</span></a>'
-        + '<button type="button" class="v2-icon-btn" data-star="' + esc(x.name) + '" aria-pressed="' + (x.starred ? 'true' : 'false') + '" aria-label="' + (x.starred ? 'Unstar' : 'Star') + '">' + (x.starred ? '&#9733;' : '&#9734;') + '</button></div>';
-    }).join('') : '<p class="v2-muted v2-center">No sessions</p>';
+        + (rowPreview(x) ? '<small class="sess-srow-preview">' + esc(rowPreview(x)) + '</small>' : '') + '</span></a>'
+        + '<button type="button" class="ui-icon-btn" data-star="' + esc(x.name) + '" aria-pressed="' + (x.starred ? 'true' : 'false') + '" aria-label="' + (x.starred ? 'Unstar' : 'Star') + '">' + (x.starred ? '&#9733;' : '&#9734;') + '</button></div>';
+    }).join('') : '<p class="ui-muted ui-center">No sessions</p>';
   }
   function loadSessions() {
-    $('v2s-sessions-list').innerHTML = '<p class="v2-muted v2-center">Loading…</p>';
+    $('sess-sessions-list').innerHTML = '<p class="ui-muted ui-center">Loading…</p>';
     api.getJson('/sessions_list.php').then(function (data) {
-      if (!data || !data.ok) { $('v2s-sessions-list').innerHTML = '<p class="v2-muted v2-center">' + esc((data && data.message) || 'Could not load sessions') + '</p>'; return; }
+      if (!data || !data.ok) { $('sess-sessions-list').innerHTML = '<p class="ui-muted ui-center">' + esc((data && data.message) || 'Could not load sessions') + '</p>'; return; }
       sessionRows = data.sessions || [];
       renderSessionRows();
-    }).catch(function () { $('v2s-sessions-list').innerHTML = '<p class="v2-muted v2-center">Network error</p>'; });
+    }).catch(function () { $('sess-sessions-list').innerHTML = '<p class="ui-muted ui-center">Network error</p>'; });
   }
-  $('v2s-sessions-filter').addEventListener('input', renderSessionRows);
-  $('v2s-sessions-list').addEventListener('click', function (e) {
+  $('sess-sessions-filter').addEventListener('input', renderSessionRows);
+  $('sess-sessions-list').addEventListener('click', function (e) {
     if (closest(e.target, '[data-current]')) {
       e.preventDefault();
-      $('v2s-sessions').close();
-      openSheet('v2s-info');
+      $('sess-sessions').close();
+      openSheet('sess-info');
       return;
     }
     var b = closest(e.target, '[data-star]');
@@ -521,14 +521,14 @@
   });
 
   function loadQuota() {
-    var box = $('v2s-quota-body');
-    box.innerHTML = '<p class="v2-muted v2-center">Loading…</p>';
+    var box = $('sess-quota-body');
+    box.innerHTML = '<p class="ui-muted ui-center">Loading…</p>';
     api.getJson('/quota.php?' + api.qs({ session: session })).then(function (data) {
       var d = api.detail();
       var pct = data && data.context && typeof data.context.pct === 'number' ? data.context.pct : d.context_used_percentage;
-      var ctx = typeof pct === 'number' && isFinite(pct) ? '<p class="v2s-ctx">This session has used <b>' + Math.round(pct) + '%</b> of its context.</p>' : '';
-      box.innerHTML = ctx + window.V2Quota.render(data, { first: d.agent || 'claude' });
-    }).catch(function () { box.innerHTML = '<p class="v2-muted v2-center">Could not load usage.</p>'; });
+      var ctx = typeof pct === 'number' && isFinite(pct) ? '<p class="sess-ctx">This session has used <b>' + Math.round(pct) + '%</b> of its context.</p>' : '';
+      box.innerHTML = ctx + window.UiQuota.render(data, { first: d.agent || 'claude' });
+    }).catch(function () { box.innerHTML = '<p class="ui-muted ui-center">Could not load usage.</p>'; });
   }
 
   // ======================================================================
@@ -537,11 +537,11 @@
 
   function openSheet(id) {
     var dlg = $(id);
-    if (id === 'v2s-controls') { buildControls(api.detail()); }
-    if (id === 'v2s-info') { buildInfo(api.detail()); syncOptions(); loadPlanFiles(); loadUploads(); }
-    if (id === 'v2s-sessions') { $('v2s-sessions-filter').value = ''; loadSessions(); }
-    if (id === 'v2s-quota') { loadQuota(); }
-    if (id === 'v2s-search') { setTimeout(function () { searchInput.focus(); }, 50); }
+    if (id === 'sess-controls') { buildControls(api.detail()); }
+    if (id === 'sess-info') { buildInfo(api.detail()); syncOptions(); loadPlanFiles(); loadUploads(); }
+    if (id === 'sess-sessions') { $('sess-sessions-filter').value = ''; loadSessions(); }
+    if (id === 'sess-quota') { loadQuota(); }
+    if (id === 'sess-search') { setTimeout(function () { searchInput.focus(); }, 50); }
     if (!dlg.open) { dlg.showModal(); }
   }
 
@@ -550,12 +550,12 @@
   api.fullscreen = fullscreen;
   api.viewImage = viewImage;
   // Header readout: usage windows change slowly, so they are fetched rarely; context rides on every detail poll.
-  var miniEl = $('v2s-mini');
+  var miniEl = $('sess-mini');
   var miniQuota = null;
   function renderMini(d) {
     var pct = d.context_used_percentage;
     if (miniQuota && miniQuota.context && typeof miniQuota.context.pct === 'number' && typeof pct !== 'number') { pct = miniQuota.context.pct; }
-    var html = miniQuota ? window.V2Quota.mini(miniQuota, d.agent || 'claude', d.profile, pct) : '';
+    var html = miniQuota ? window.UiQuota.mini(miniQuota, d.agent || 'claude', d.profile, pct) : '';
     if (miniEl.innerHTML !== html) { miniEl.innerHTML = html; }
     miniEl.hidden = html === '';
   }

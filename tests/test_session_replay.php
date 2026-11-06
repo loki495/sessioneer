@@ -35,7 +35,7 @@ if (getenv('TMUX_SOCKET') === $realTmuxSocket || getenv('TMUX_SOCKET') === false
  */
 function extract_csrf_token(string $html): ?string
 {
-    if (preg_match('/window\.V2S = (\{.*?\});<\/script>/s', $html, $m) !== 1) {
+    if (preg_match('/window\.UiSession = (\{.*?\});<\/script>/s', $html, $m) !== 1) {
         return null;
     }
     $boot = json_decode($m[1], true);
@@ -129,7 +129,7 @@ try {
 
             $history = curl_request(
                 'GET',
-                "{$baseUrl}/v2/history?session=" . urlencode($sessionName) . "&after={$lastSeenLine}&limit=30",
+                "{$baseUrl}/history?session=" . urlencode($sessionName) . "&after={$lastSeenLine}&limit=30",
                 [],
                 $cookieJar
             );

@@ -1,12 +1,12 @@
-/* Sessioneer v2 session page, core: transcript, live polling, blocked prompts,
+/* Sessioneer session page, core: transcript, live polling, blocked prompts,
    header and the message footer. Plain ES5 on purpose (see CLAUDE.md). The
    sheets (controls, details, files, search, viewers) live in
-   v2-session-sheets.js and use the small API this file publishes on V2S.api. */
+   ui-session-sheets.js and use the small API this file publishes on UiSession.api. */
 (function () {
   'use strict';
 
-  var boot = window.V2S;
-  var shell = document.getElementById('v2s');
+  var boot = window.UiSession;
+  var shell = document.getElementById('sess');
   if (!boot || !shell) { return; }
 
   // markdown.js (shared with the classic pages) calls this global.
@@ -45,20 +45,20 @@
     while (el && el.nodeType === 1) { if (el.matches(sel)) { return el; } el = el.parentNode; }
     return null;
   }
-  var scroller = $('v2s-scroll');
-  var listEl = $('v2s-list');
-  var thinkingEl = $('v2s-thinking');
-  var errorEl = $('v2s-error');
-  var promptEl = $('v2s-prompt');
-  var textEl = $('v2s-text');
-  var sendBtn = $('v2s-send');
-  var stopBtn = $('v2s-stop');
+  var scroller = $('sess-scroll');
+  var listEl = $('sess-list');
+  var thinkingEl = $('sess-thinking');
+  var errorEl = $('sess-error');
+  var promptEl = $('sess-prompt');
+  var textEl = $('sess-text');
+  var sendBtn = $('sess-send');
+  var stopBtn = $('sess-stop');
 
   var toastTimer = null;
   function toast(message, bad) {
-    var el = $('v2-toast');
+    var el = $('ui-toast');
     el.textContent = message;
-    el.className = 'v2-toast' + (bad ? ' is-bad' : '');
+    el.className = 'ui-toast' + (bad ? ' is-bad' : '');
     el.hidden = false;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { el.hidden = true; }, bad ? 6000 : 2500);
@@ -150,28 +150,28 @@
 
   function codeBlock(text, tag) {
     var ref = rawRef(text);
-    return '<div class="v2s-code">' + (tag ? '<div class="v2s-code-tag">' + esc(tag) + '</div>' : '')
+    return '<div class="sess-code">' + (tag ? '<div class="sess-code-tag">' + esc(tag) + '</div>' : '')
       + '<pre>' + esc(text) + '</pre>'
-      + '<div class="v2s-code-actions"><button type="button" class="v2s-link" data-act="copy" data-raw="' + ref + '">Copy</button>'
-      + '<button type="button" class="v2s-link" data-act="fullscreen" data-raw="' + ref + '" data-title="' + esc(tag || 'Output') + '">Full screen</button></div></div>';
+      + '<div class="sess-code-actions"><button type="button" class="sess-link" data-act="copy" data-raw="' + ref + '">Copy</button>'
+      + '<button type="button" class="sess-link" data-act="fullscreen" data-raw="' + ref + '" data-title="' + esc(tag || 'Output') + '">Full screen</button></div></div>';
   }
 
   function mediaHtml(block, line) {
     var out = '';
     if (block.image) {
       var src = 'data:' + esc(block.image.media_type) + ';base64,' + esc(block.image.data);
-      out += '<img class="v2s-thumb" data-act="image" src="' + src + '" data-full="' + src + '" loading="lazy" alt="Image">';
+      out += '<img class="sess-thumb" data-act="image" src="' + src + '" data-full="' + src + '" loading="lazy" alt="Image">';
     }
     (block.attachments || []).forEach(function (a) {
       var url = ARCH ? '/archived_session_attachment.php?' + qs({ agent_session_id: session, line: line, file_uuid: a.file_uuid })
         : '/session_attachment.php?' + qs({ session: session, line: line, file_uuid: a.file_uuid });
       if (a.isImage) {
-        out += '<span><img class="v2s-thumb" data-act="image" src="' + esc(url) + '" data-full="' + esc(url) + '" loading="lazy" alt="' + esc(a.filename) + '"></span>';
+        out += '<span><img class="sess-thumb" data-act="image" src="' + esc(url) + '" data-full="' + esc(url) + '" loading="lazy" alt="' + esc(a.filename) + '"></span>';
       } else {
-        out += '<a class="v2s-file" href="' + esc(url) + '" download="' + esc(a.filename) + '"><span aria-hidden="true">&#8681;</span><span>' + esc(a.filename) + '</span><span class="v2-muted">' + esc(fileSize(a.size || 0)) + '</span></a>';
+        out += '<a class="sess-file" href="' + esc(url) + '" download="' + esc(a.filename) + '"><span aria-hidden="true">&#8681;</span><span>' + esc(a.filename) + '</span><span class="ui-muted">' + esc(fileSize(a.size || 0)) + '</span></a>';
       }
     });
-    return out ? '<div class="v2s-media">' + out + '</div>' : '';
+    return out ? '<div class="sess-media">' + out + '</div>' : '';
   }
 
   // ---- answered questions as Question / Answer rows ----
@@ -203,14 +203,14 @@
     return pairs.length ? pairs : null;
   }
   function answerRows(pairs) {
-    return '<div class="v2s-qa">' + pairs.map(function (p) {
-      return '<div class="v2s-qa-row"><span class="v2s-label">Question</span><p>' + esc(p.q) + '</p><span class="v2s-label">Answer</span><p class="v2s-qa-a">' + esc(p.a) + '</p></div>';
+    return '<div class="sess-qa">' + pairs.map(function (p) {
+      return '<div class="sess-qa-row"><span class="sess-label">Question</span><p>' + esc(p.q) + '</p><span class="sess-label">Answer</span><p class="sess-qa-a">' + esc(p.a) + '</p></div>';
     }).join('') + '</div>';
   }
 
   function textBlock(text) {
-    return '<div class="v2s-text">' + renderMarkdown(text) + '</div>'
-      + '<div class="v2s-actions"><button type="button" class="v2s-link" data-act="copy" data-raw="' + rawRef(text) + '">Copy</button></div>';
+    return '<div class="sess-text">' + renderMarkdown(text) + '</div>'
+      + '<div class="sess-actions"><button type="button" class="sess-link" data-act="copy" data-raw="' + rawRef(text) + '">Copy</button></div>';
   }
 
   function renderBlock(block, line, ctx) {
@@ -220,28 +220,28 @@
       case 'text':
         return '<div data-line="' + line + '">' + textBlock(text) + '</div>';
       case 'thinking':
-        return '<div class="v2s-think" data-line="' + line + '"><span class="v2s-label">Reasoning</span><div class="v2s-text">' + renderMarkdown(text) + '</div></div>';
+        return '<div class="sess-think" data-line="' + line + '"><span class="sess-label">Reasoning</span><div class="sess-text">' + renderMarkdown(text) + '</div></div>';
       case 'plan':
-        return '<div data-line="' + line + '"><span class="v2s-label">Plan</span>' + textBlock(text) + '</div>';
+        return '<div data-line="' + line + '"><span class="sess-label">Plan</span>' + textBlock(text) + '</div>';
       case 'tool_use':
-        return '<div data-line="' + line + '">' + (block.description ? '<p class="v2s-desc">' + esc(block.description) + '</p>' : '')
+        return '<div data-line="' + line + '">' + (block.description ? '<p class="sess-desc">' + esc(block.description) + '</p>' : '')
           + codeBlock(text, block.tool_name || 'Call') + '</div>' + media;
       case 'tool_result':
         var answered = parseAnswered(text);
         if (answered) { return '<div data-line="' + line + '">' + answerRows(answered) + '</div>' + media; }
         return '<div data-line="' + line + '">'
-          + (block.agent_type != null ? '<div class="v2s-text">' + renderMarkdown(text) + '</div>' : codeBlock(prettyJson(text), 'Output'))
+          + (block.agent_type != null ? '<div class="sess-text">' + renderMarkdown(text) + '</div>' : codeBlock(prettyJson(text), 'Output'))
           + '</div>' + media;
       case 'task_notification':
         var status = block.status === 'failed' ? 'Subagent failed' : (block.status == null || block.status === 'completed' ? 'Subagent finished' : 'Subagent ' + block.status);
-        return '<div data-line="' + line + '"><p class="v2s-desc">' + esc(block.summary != null ? status + ': ' + block.summary : status) + '</p>'
-          + '<div class="v2s-text">' + renderMarkdown(text) + '</div></div>';
+        return '<div data-line="' + line + '"><p class="sess-desc">' + esc(block.summary != null ? status + ': ' + block.summary : status) + '</p>'
+          + '<div class="sess-text">' + renderMarkdown(text) + '</div></div>';
       case 'image':
-        return media || (text ? '<p class="v2-muted v2-small" data-line="' + line + '">' + esc(text) + '</p>' : '');
+        return media || (text ? '<p class="ui-muted ui-small" data-line="' + line + '">' + esc(text) + '</p>' : '');
       case 'question':
         return questionBlock(block, line);
       default:
-        return text ? '<p class="v2-muted v2-small" data-line="' + line + '">' + esc(text) + '</p>' : '';
+        return text ? '<p class="ui-muted ui-small" data-line="' + line + '">' + esc(text) + '</p>' : '';
     }
   }
 
@@ -279,7 +279,7 @@
 
   function metaHtml(entry, label) {
     var t = relTime(entry.timestamp);
-    return '<div class="v2s-meta">' + (label ? '<span class="v2s-label">' + esc(label) + '</span>' : '')
+    return '<div class="sess-meta">' + (label ? '<span class="sess-label">' + esc(label) + '</span>' : '')
       + (t ? '<span title="' + esc(entry.timestamp || '') + '">' + esc(t) + '</span>' : '') + '</div>';
   }
 
@@ -288,16 +288,16 @@
     var isSub = kind === 'sub_call' || kind === 'sub_result';
     var blocksHtml = (entry.blocks || []).map(function (b) { return renderBlock(b, entry.line, { sub: isSub }); }).join('');
     var el = document.createElement('div');
-    var cls = 'v2s-entry';
+    var cls = 'sess-entry';
     var label = '';
 
-    if (kind === 'user') { cls += ' v2s-user'; }
-    else if (kind === 'assistant') { cls += ' v2s-assistant'; }
-    else if (kind === 'thinking') { cls += ' v2s-assistant'; }
+    if (kind === 'user') { cls += ' sess-user'; }
+    else if (kind === 'assistant') { cls += ' sess-assistant'; }
+    else if (kind === 'thinking') { cls += ' sess-assistant'; }
     else {
-      cls += ' v2s-card';
-      if (kind.indexOf('plan') === 0 || kind === 'question') { cls += ' v2s-plan'; }
-      if (isSub) { cls += ' v2s-sub-card'; if (!hasMedia(entry)) { cls += ' v2s-sub-only'; } }
+      cls += ' sess-card';
+      if (kind.indexOf('plan') === 0 || kind === 'question') { cls += ' sess-plan'; }
+      if (isSub) { cls += ' sess-sub-card'; if (!hasMedia(entry)) { cls += ' sess-sub-only'; } }
       label = KIND_LABEL[kind] || '';
     }
     if (kind === 'assistant') { label = ''; }
@@ -346,9 +346,9 @@
   function renderToolCall(callEntry, resultEntry) {
     var s = toolSummary(callEntry, resultEntry);
     var d = document.createElement('details');
-    d.className = 'v2s-tool';
+    d.className = 'sess-tool';
     d.setAttribute('data-lines', lineAttr([callEntry, resultEntry]));
-    d.innerHTML = '<summary><b>' + esc(s.head) + '</b><span>' + esc(s.line) + '</span></summary><div class="v2s-tool-body">' + toolBody(callEntry, resultEntry) + '</div>';
+    d.innerHTML = '<summary><b>' + esc(s.head) + '</b><span>' + esc(s.line) + '</span></summary><div class="sess-tool-body">' + toolBody(callEntry, resultEntry) + '</div>';
     d._call = callEntry;
 
     return d;
@@ -356,7 +356,7 @@
 
   function upgradeToolCall(el, resultEntry) {
     el.setAttribute('data-lines', lineAttr([el._call, resultEntry]));
-    el.querySelector('.v2s-tool-body').innerHTML = toolBody(el._call, resultEntry);
+    el.querySelector('.sess-tool-body').innerHTML = toolBody(el._call, resultEntry);
   }
 
   function newTailState() { return { pendingCall: null }; }
@@ -404,7 +404,7 @@
   var pending = [];
 
   function showEmpty() {
-    $('v2s-empty').hidden = listEl.children.length > 0;
+    $('sess-empty').hidden = listEl.children.length > 0;
   }
 
   function nearBottom() {
@@ -412,7 +412,7 @@
   }
   function toBottom() {
     scroller.scrollTop = scroller.scrollHeight;
-    $('v2s-newdot').hidden = true;
+    $('sess-newdot').hidden = true;
   }
   function historyUrl(extra) {
     var p = { session: session, limit: 30 };
@@ -424,14 +424,14 @@
       p.agent_session_id = session;
       delete p.include_thinking;
 
-      return '/v2/archived-history?' + qs(p);
+      return '/archived-history?' + qs(p);
     }
 
-    return '/v2/history?' + qs(p);
+    return '/history?' + qs(p);
   }
 
   function setOlderButtons() {
-    $('v2s-older').hidden = !T.hasMore;
+    $('sess-older').hidden = !T.hasMore;
   }
 
   function flash(el, cls) {
@@ -466,10 +466,10 @@
       setOlderButtons();
       showEmpty();
       showReply();
-      $('v2s-jump').hidden = !jumpLine;
+      $('sess-jump').hidden = !jumpLine;
       if (jumpLine) {
         var target = listEl.querySelector('[data-lines~="' + jumpLine + '"]');
-        if (target) { target.scrollIntoView({ block: 'center' }); flash(target, 'v2s-hl-jump'); }
+        if (target) { target.scrollIntoView({ block: 'center' }); flash(target, 'sess-hl-jump'); }
       } else {
         toBottom();
       }
@@ -493,7 +493,7 @@
       var before = scroller.scrollHeight;
       listEl.insertBefore(frag, listEl.firstChild);
       scroller.scrollTop += scroller.scrollHeight - before;
-      older.forEach(function (n) { flash(n, 'v2s-hl-jump'); });
+      older.forEach(function (n) { flash(n, 'sess-hl-jump'); });
       T.nextBefore = data.next_before == null ? null : data.next_before;
       T.hasMore = !!data.has_more;
       setOlderButtons();
@@ -504,9 +504,9 @@
   function addPending(text, pairs) {
     var el = renderEntry({ role: 'user', blocks: [{ kind: 'text', text: text }], line: 0, timestamp: null });
     if (pairs) { var body = el.querySelector('[data-line]'); if (body) { body.innerHTML = answerRows(pairs); } }
-    el.classList.add('v2s-pending');
+    el.classList.add('sess-pending');
     el.removeAttribute('data-lines');
-    el.querySelector('.v2s-meta').innerHTML = '<span class="pending-note">Sending…</span>';
+    el.querySelector('.sess-meta').innerHTML = '<span class="pending-note">Sending…</span>';
     listEl.appendChild(el);
     var item = { el: el, text: text.trim(), at: Date.now(), pairs: pairs || null };
     pending.push(item);
@@ -549,10 +549,10 @@
       var touched = renderEntries(fresh, tail, frag);
       fresh.forEach(function (e) { T.newest = e.line; });
       listEl.appendChild(frag);
-      touched.forEach(function (n) { flash(n, 'v2s-hl-new'); });
+      touched.forEach(function (n) { flash(n, 'sess-hl-new'); });
       showEmpty();
       showReply();
-      if (wasNear) { toBottom(); } else { $('v2s-newdot').hidden = false; }
+      if (wasNear) { toBottom(); } else { $('sess-newdot').hidden = false; }
     }).catch(function () {});
   }
 
@@ -561,22 +561,22 @@
   // ======================================================================
 
   function optionButtons(options, session) {
-    var html = '<div class="v2s-opts" data-prompt-options>';
+    var html = '<div class="sess-opts" data-prompt-options>';
     var hasFree = false;
     options.forEach(function (o) {
       var label = String(o.label);
       if (label.toLowerCase().indexOf('type something') !== -1) {
         hasFree = true;
-        html += '<button type="button" class="v2-btn v2-btn-quiet" data-act="reveal-free" data-option="' + o.number + '">' + o.number + '. ' + esc(label) + '</button>';
+        html += '<button type="button" class="ui-btn ui-btn-quiet" data-act="reveal-free" data-option="' + o.number + '">' + o.number + '. ' + esc(label) + '</button>';
       } else {
-        html += '<button type="button" class="v2-btn v2-btn-warn" data-act="answer" data-option="' + o.number + '" data-label="' + esc(label) + '"><span class="v2s-optbox"><span>' + o.number + '. ' + esc(label) + '</span>'
+        html += '<button type="button" class="ui-btn ui-btn-warn" data-act="answer" data-option="' + o.number + '" data-label="' + esc(label) + '"><span class="sess-optbox"><span>' + o.number + '. ' + esc(label) + '</span>'
           + (o.description ? '<small>' + esc(o.description) + '</small>' : '') + '</span></button>';
       }
     });
     html += '</div>';
     if (hasFree) {
-      html += '<div class="v2s-free" hidden><textarea rows="3" placeholder="Type your reply" aria-label="Free-text reply"></textarea>'
-        + '<button type="button" class="v2-btn v2-btn-primary v2s-qinline" data-act="send-free">Send reply</button></div>';
+      html += '<div class="sess-free" hidden><textarea rows="3" placeholder="Type your reply" aria-label="Free-text reply"></textarea>'
+        + '<button type="button" class="ui-btn ui-btn-primary sess-qinline" data-act="send-free">Send reply</button></div>';
     }
 
     return html;
@@ -589,29 +589,29 @@
   }
 
   function optionLabel(o) {
-    return '<span class="v2s-optbox"><span class="v2s-lab">' + esc(o.label || '') + '</span>'
+    return '<span class="sess-optbox"><span class="sess-lab">' + esc(o.label || '') + '</span>'
       + (o.description ? '<small>' + esc(o.description) + '</small>' : '') + '</span>';
   }
 
   function multiForm(questions) {
-    var html = '<div class="v2s-multi" data-multi>';
+    var html = '<div class="sess-multi" data-multi>';
     questions.forEach(function (q, qi) {
       var opts = q.options || [];
       var multi = q.multiSelect === true || q.multiple === true;
       var allowCustom = q.custom !== false && (!multi || customOnMulti());
-      html += '<div class="v2s-q" data-q="' + qi + '" data-multi-select="' + (multi ? 1 : 0) + '">'
-        + (q.header ? '<span class="v2s-label">' + esc(q.header) + '</span>' : '') + '<p>' + esc(q.question || '') + '</p>';
+      html += '<div class="sess-q" data-q="' + qi + '" data-multi-select="' + (multi ? 1 : 0) + '">'
+        + (q.header ? '<span class="sess-label">' + esc(q.header) + '</span>' : '') + '<p>' + esc(q.question || '') + '</p>';
       opts.forEach(function (o, oi) {
-        html += '<label class="v2-check"><input type="' + (multi ? 'checkbox' : 'radio') + '" name="q' + qi + '" value="' + (oi + 1) + '">' + optionLabel(o) + '</label>';
+        html += '<label class="ui-check"><input type="' + (multi ? 'checkbox' : 'radio') + '" name="q' + qi + '" value="' + (oi + 1) + '">' + optionLabel(o) + '</label>';
       });
       if (allowCustom) {
-        html += '<label class="v2-check"><input type="' + (multi ? 'checkbox' : 'radio') + '" name="q' + qi + '" value="' + (opts.length + 1) + '" data-free="1">'
-          + '<span class="v2s-optbox"><span class="v2s-lab">Type something…</span></span></label>'
+        html += '<label class="ui-check"><input type="' + (multi ? 'checkbox' : 'radio') + '" name="q' + qi + '" value="' + (opts.length + 1) + '" data-free="1">'
+          + '<span class="sess-optbox"><span class="sess-lab">Type something…</span></span></label>'
           + '<textarea rows="2" placeholder="Your answer" aria-label="Your answer to: ' + esc(q.question || '') + '" hidden></textarea>';
       }
       html += '</div>';
     });
-    html += '<button type="button" class="v2-btn v2-btn-primary" data-act="send-multi">Send answers</button></div>';
+    html += '<button type="button" class="ui-btn ui-btn-primary" data-act="send-multi">Send answers</button></div>';
 
     return html;
   }
@@ -620,18 +620,18 @@
     var questions = Array.isArray(block.questions) ? block.questions : [];
     var isMulti = questions.length > 1 || (questions[0] && (questions[0].multiSelect === true || questions[0].multiple === true));
     var title = block.question || block.text || 'Waiting on input';
-    var html = '<div class="v2s-qblock" data-line="' + line + '">';
-    if (block.header) { html += '<span class="v2s-label">' + esc(block.header) + '</span>'; }
-    if (!isMulti) { html += '<p class="v2s-desc">' + esc(title) + '</p>'; }
+    var html = '<div class="sess-qblock" data-line="' + line + '">';
+    if (block.header) { html += '<span class="sess-label">' + esc(block.header) + '</span>'; }
+    if (!isMulti) { html += '<p class="sess-desc">' + esc(title) + '</p>'; }
     if (block.pending && isMulti) { html += multiForm(questions); }
     else if (block.pending && block.options && block.options.length) { html += optionButtons(block.options); }
     else if (block.options && block.options.length) {
-      html += '<ul class="v2s-answered">' + block.options.map(function (o) { return '<li>' + o.number + '. ' + esc(o.label) + '</li>'; }).join('') + '</ul>';
+      html += '<ul class="sess-answered">' + block.options.map(function (o) { return '<li>' + o.number + '. ' + esc(o.label) + '</li>'; }).join('') + '</ul>';
     }
     var rows = block.answer ? (parseAnswered(block.answer_output) || (questions.length === 1 ? [{ q: questions[0].question || title, a: block.answer }] : null)) : null;
     if (rows) { html += answerRows(rows); }
-    else if (block.answer) { html += '<p class="v2s-answered">Answered: ' + esc(block.answer) + '</p>'; }
-    else if (block.pending) { html += '<p class="v2s-answered">Awaiting your answer</p>'; }
+    else if (block.answer) { html += '<p class="sess-answered">Answered: ' + esc(block.answer) + '</p>'; }
+    else if (block.pending) { html += '<p class="sess-answered">Awaiting your answer</p>'; }
 
     return html + '</div>';
   }
@@ -640,12 +640,12 @@
   var answerPending = false;
 
   // The agent's own words before the question, when the transcript has them; filled by showReply().
-  var REPLY_SLOT = '<details class="v2s-reply" id="v2s-prompt-reply" hidden><summary>What the agent said before asking</summary><div class="v2s-text"></div></details>';
+  var REPLY_SLOT = '<details class="sess-reply" id="sess-prompt-reply" hidden><summary>What the agent said before asking</summary><div class="sess-text"></div></details>';
 
   function promptHtml(d) {
     var html = REPLY_SLOT;
     if (d.prompt_external) {
-      return html + '<p class="v2-small">Open Codex Remote to answer this prompt and continue.</p>';
+      return html + '<p class="ui-small">Open Codex Remote to answer this prompt and continue.</p>';
     }
     // A question form already shows its questions; repeating the first one as a heading only confuses (several questions).
     if (d.prompt_questions && d.prompt_questions.length) {
@@ -653,7 +653,7 @@
     }
     if (d.blocked_reason) { html += '<h3>' + esc(d.blocked_reason) + '</h3>'; }
     if (d.prompt_context) { html += codeBlock(d.prompt_context, d.prompt_tool_name ? 'Awaiting approval: ' + d.prompt_tool_name : 'Awaiting approval'); }
-    if (d.prompt_is_folder_trust) { html += '<p class="v2-small">This is a folder-trust prompt: trusting lets the agent run code from this folder.</p>'; }
+    if (d.prompt_is_folder_trust) { html += '<p class="ui-small">This is a folder-trust prompt: trusting lets the agent run code from this folder.</p>'; }
     if (d.prompt_options && d.prompt_options.length) { html += optionButtons(withDescriptions(d.prompt_options, d.prompt_tool_input)); }
 
     return html;
@@ -675,7 +675,7 @@
   function precedingReply() {
     var kids = listEl.children;
     for (var i = kids.length - 1; i >= 0; i--) {
-      if (kids[i].classList.contains('v2s-pending')) { continue; }
+      if (kids[i].classList.contains('sess-pending')) { continue; }
       var kind = kids[i].getAttribute('data-msg');
       if (kind === 'user') { return null; }
       if (kind === 'assistant') {
@@ -688,14 +688,14 @@
   }
 
   function showReply() {
-    var slot = $('v2s-prompt-reply');
+    var slot = $('sess-prompt-reply');
     if (!slot) { return; }
     var text = precedingReply();
     if (text === (slot._text || null)) { return; }
     slot._text = text;
     slot.hidden = !text;
     slot.open = !!text;
-    slot.querySelector('.v2s-text').innerHTML = text ? renderMarkdown(text) : '';
+    slot.querySelector('.sess-text').innerHTML = text ? renderMarkdown(text) : '';
   }
 
   function renderPrompt(d) {
@@ -705,7 +705,7 @@
     lastPromptKey = key;
     answerPending = false;
     if (!d.blocked_reason) { promptEl.innerHTML = ''; return true; }
-    promptEl.innerHTML = '<div class="v2s-prompt" id="v2s-prompt-card">' + promptHtml(d) + '</div>';
+    promptEl.innerHTML = '<div class="sess-prompt" id="sess-prompt-card">' + promptHtml(d) + '</div>';
     showReply();
     // A terminal session's prompt is shown, not answerable.
     if (d.runtime !== 'headless') {
@@ -748,7 +748,7 @@
   function answerPlain(btn) {
     var label = btn.getAttribute('data-label');
     if (!confirmAnswer(label)) { return; }
-    var card = closest(btn, '.v2s-prompt, .v2s-qblock');
+    var card = closest(btn, '.sess-prompt, .sess-qblock');
     markPending(card, true);
     var opt = addPending(label, singleQuestionPairs(label));
     post('/answer_prompt.php', { session: session, option: btn.getAttribute('data-option'), expected_label: label })
@@ -757,11 +757,11 @@
   }
 
   function answerFree(btn) {
-    var wrap = closest(btn, '.v2s-free');
+    var wrap = closest(btn, '.sess-free');
     var ta = wrap.querySelector('textarea');
     var text = ta.value.trim();
     if (!text) { ta.focus(); return; }
-    var scope = closest(btn, '.v2s-prompt, .v2s-qblock');
+    var scope = closest(btn, '.sess-prompt, .sess-qblock');
     var reveal = scope.querySelector('[data-act="reveal-free"]');
     var card = scope;
     markPending(card, true);
@@ -773,7 +773,7 @@
 
   // Mirrors the classic collectMultiQuestionAnswers(): null means a question was left unanswered.
   function labelOf(input) {
-    return closest(input, 'label').querySelector('.v2s-lab').textContent;
+    return closest(input, 'label').querySelector('.sess-lab').textContent;
   }
 
   // Mirrors the classic collectMultiQuestionAnswers(): null means a question was left unanswered.
@@ -821,7 +821,7 @@
     var wrap = closest(btn, '[data-multi]');
     var collected = collectMulti(wrap);
     if (collected === null) { toast('Please answer every question before sending.', true); return; }
-    var card = closest(btn, '.v2s-prompt, .v2s-qblock');
+    var card = closest(btn, '.sess-prompt, .sess-qblock');
     markPending(card, true);
     var opt = addPending(collected.summary, collected.pairs);
     post('/answer_multi_question.php', { session: session, answers: JSON.stringify(collected.answers) })
@@ -837,31 +837,31 @@
 
   function renderHeader(d) {
     var title = d.title || d.name || session;
-    $('v2s-title').textContent = title;
+    $('sess-title').textContent = title;
     document.title = (d.blocked_reason ? '(!) ' : '') + title;
     var status = statusOf(d);
-    var bits = ['<i class="v2-dot v2-dot-' + status + '" role="img" aria-label="' + (status === 'blocked' ? 'needs input' : status) + '"></i>'];
+    var bits = ['<i class="ui-dot ui-dot-' + status + '" role="img" aria-label="' + (status === 'blocked' ? 'needs input' : status) + '"></i>'];
     bits.push('<span>' + (status === 'blocked' ? 'needs input' : status) + '</span>');
-    if (d.agent && d.agent !== 'claude') { bits.push('<span class="v2-chip v2-agent-' + esc(d.agent) + '">' + esc(d.agent_label || d.agent) + '</span>'); }
-    if (d.agent === 'claude' && d.profile) { bits.push('<span class="v2-chip v2-chip-accent">' + esc(d.profile) + '</span>'); }
-    if (d.runtime !== 'headless') { bits.push('<span class="v2-chip v2-chip-warn">Terminal, read only</span>'); }
+    if (d.agent && d.agent !== 'claude') { bits.push('<span class="ui-chip ui-agent-' + esc(d.agent) + '">' + esc(d.agent_label || d.agent) + '</span>'); }
+    if (d.agent === 'claude' && d.profile) { bits.push('<span class="ui-chip ui-chip-accent">' + esc(d.profile) + '</span>'); }
+    if (d.runtime !== 'headless') { bits.push('<span class="ui-chip ui-chip-warn">Terminal, read only</span>'); }
     if (d.git_branch) { bits.push('<span>' + esc(d.git_branch) + '</span>'); }
     var pct = d.context_used_percentage;
     if ((d.agent === 'claude' || d.agent === 'codex') && typeof pct === 'number' && isFinite(pct)) {
-      bits.push('<span' + (pct >= 80 ? ' class="v2-warn"' : '') + '>ctx ' + Math.round(pct) + '%</span>');
+      bits.push('<span' + (pct >= 80 ? ' class="ui-warn"' : '') + '>ctx ' + Math.round(pct) + '%</span>');
     }
-    $('v2s-sub').innerHTML = bits.join('');
+    $('sess-sub').innerHTML = bits.join('');
   }
 
   function renderArchivedHeader(d) {
     var title = d.title || session;
-    $('v2s-title').textContent = title;
+    $('sess-title').textContent = title;
     document.title = title;
-    var bits = ['<span class="v2-chip">Archived</span>'];
-    if (d.agent && d.agent !== 'claude') { bits.push('<span class="v2-chip v2-agent-' + esc(d.agent) + '">' + esc(d.agent_label || d.agent) + '</span>'); }
-    if (d.agent === 'claude' && d.profile) { bits.push('<span class="v2-chip v2-chip-accent">' + esc(d.profile) + '</span>'); }
+    var bits = ['<span class="ui-chip">Archived</span>'];
+    if (d.agent && d.agent !== 'claude') { bits.push('<span class="ui-chip ui-agent-' + esc(d.agent) + '">' + esc(d.agent_label || d.agent) + '</span>'); }
+    if (d.agent === 'claude' && d.profile) { bits.push('<span class="ui-chip ui-chip-accent">' + esc(d.profile) + '</span>'); }
     if (d.last_activity) { bits.push('<span>' + esc(relTime(new Date(d.last_activity * 1000).toISOString())) + '</span>'); }
-    $('v2s-sub').innerHTML = bits.join('');
+    $('sess-sub').innerHTML = bits.join('');
   }
 
   var lastThinking = null;
@@ -870,7 +870,7 @@
     if (show === lastThinking) { return; }
     lastThinking = show;
     thinkingEl.innerHTML = show
-      ? '<div class="v2s-working"><span class="v2-row"><span class="v2-thinking"><i></i><i></i><i></i></span>Working…</span></div>'
+      ? '<div class="sess-working"><span class="ui-row"><span class="ui-thinking"><i></i><i></i><i></i></span>Working…</span></div>'
       : '';
     stopBtn.hidden = !show || d.agent === 'ollama' ? true : false;
     if (show && nearBottom()) { toBottom(); }
@@ -881,15 +881,15 @@
     var text = d.last_turn_error || null;
     if (text === lastError) { return; }
     lastError = text;
-    errorEl.innerHTML = text ? '<div class="v2s-error"><b>' + esc(d.agent_label || 'The agent') + ' reported a problem</b><br>' + esc(text) + '</div>' : '';
+    errorEl.innerHTML = text ? '<div class="sess-error"><b>' + esc(d.agent_label || 'The agent') + ' reported a problem</b><br>' + esc(text) + '</div>' : '';
   }
 
   function renderFooter(d) {
     var blocked = !!d.blocked_reason;
     var terminal = d.runtime !== 'headless';
     var readOnly = d.writable === false || terminal;
-    var note = $('v2s-compose-note');
-    $('v2s-compose').hidden = blocked || readOnly;
+    var note = $('sess-compose-note');
+    $('sess-compose').hidden = blocked || readOnly;
     note.hidden = !(blocked || readOnly);
     note.textContent = terminal ? (blocked ? 'This prompt is waiting in a terminal. Take the session over (session details) to answer it.'
       : 'This session runs in a terminal and is read only here. Take it over (session details) to continue it headless.')
@@ -897,13 +897,13 @@
       : (d.prompt_external ? 'Open Codex Remote to answer this prompt and continue.' : 'Answer the prompt above to continue.');
     stopBtn.hidden = !(d.working && !blocked) || d.agent === 'ollama';
     sendBtn.textContent = d.working ? 'Queue' : 'Send';
-    V2S.api.controlsSummary(d);
-    $('v2s-bottom').classList.toggle('v2-btn-warn', blocked);
+    UiSession.api.controlsSummary(d);
+    $('sess-bottom').classList.toggle('ui-btn-warn', blocked);
     sizeFooter();
   }
 
   function sizeFooter() {
-    var h = $('v2s-footer').offsetHeight;
+    var h = $('sess-footer').offsetHeight;
     document.documentElement.style.setProperty('--footer-h', h + 'px');
   }
 
@@ -915,7 +915,7 @@
     var near = nearBottom();
     var changed = renderPrompt(d);
     renderFooter(d);
-    V2S.api.onDetail(d);
+    UiSession.api.onDetail(d);
     if (changed && near) { toBottom(); }
   }
 
@@ -935,16 +935,16 @@
     sendBtn.disabled = textEl.value.trim() === '' && attachments.length === 0;
   }
   function setStatus(text) {
-    var el = $('v2s-compose-status');
+    var el = $('sess-compose-status');
     el.textContent = text || '';
     el.hidden = !text;
     sizeFooter();
   }
   function renderAttached() {
-    var el = $('v2s-attached');
+    var el = $('sess-attached');
     el.hidden = attachments.length === 0;
     el.innerHTML = attachments.map(function (a, i) {
-      return '<span class="v2s-chip-x"><span>' + esc(a.filename) + '</span><button type="button" data-act="unattach" data-i="' + i + '" aria-label="Remove ' + esc(a.filename) + '">&times;</button></span>';
+      return '<span class="sess-chip-x"><span>' + esc(a.filename) + '</span><button type="button" data-act="unattach" data-i="' + i + '" aria-label="Remove ' + esc(a.filename) + '">&times;</button></span>';
     }).join('');
     sizeFooter();
   }
@@ -1009,7 +1009,7 @@
     chain.then(function () {
       if (attachments.length) { setStatus(''); }
       renderAttached(); updateSend();
-      V2S.api.refreshFiles();
+      UiSession.api.refreshFiles();
     });
   }
 
@@ -1085,10 +1085,10 @@
     getJson('/sessions_list.php').then(function (data) {
       if (!data || !data.ok) { return; }
       var n = (data.sessions || []).filter(function (x) { return x.name !== session && (x.status === 'blocked' || !!x.blocked_reason); }).length;
-      var badge = $('v2s-back-badge');
+      var badge = $('sess-back-badge');
       badge.hidden = n === 0;
       badge.textContent = n;
-      $('v2s-back-badge').parentNode.setAttribute('aria-label', n ? 'All sessions (' + n + ' need input)' : 'All sessions');
+      $('sess-back-badge').parentNode.setAttribute('aria-label', n ? 'All sessions (' + n + ' need input)' : 'All sessions');
     }).catch(function () {});
   }
 
@@ -1106,18 +1106,18 @@
   document.addEventListener('click', function (e) {
     var el = closest(e.target, '[data-act]');
     var opener = closest(e.target, '[data-open]');
-    if (opener) { V2S.api.openSheet(opener.getAttribute('data-open')); return; }
+    if (opener) { UiSession.api.openSheet(opener.getAttribute('data-open')); return; }
     if (closest(e.target, '[data-close]')) { closest(e.target, 'dialog').close(); return; }
     if (!el) { return; }
     var act = el.getAttribute('data-act');
     var raw = el.getAttribute('data-raw');
 
     if (act === 'copy') { copyText(raws[parseInt(raw, 10)] || ''); }
-    else if (act === 'fullscreen') { V2S.api.fullscreen(el.getAttribute('data-title'), raws[parseInt(raw, 10)] || ''); }
-    else if (act === 'image') { V2S.api.viewImage(el.getAttribute('data-full') || el.src); }
+    else if (act === 'fullscreen') { UiSession.api.fullscreen(el.getAttribute('data-title'), raws[parseInt(raw, 10)] || ''); }
+    else if (act === 'image') { UiSession.api.viewImage(el.getAttribute('data-full') || el.src); }
     else if (act === 'answer') { answerPlain(el); }
     else if (act === 'reveal-free') {
-      var free = closest(el, '.v2s-prompt, .v2s-qblock').querySelector('.v2s-free');
+      var free = closest(el, '.sess-prompt, .sess-qblock').querySelector('.sess-free');
       free.hidden = !free.hidden;
       if (!free.hidden) { free.querySelector('textarea').focus(); }
     }
@@ -1127,27 +1127,27 @@
       var removed = attachments.splice(parseInt(el.getAttribute('data-i'), 10), 1)[0];
       renderAttached(); updateSend();
       // The file was uploaded for this message only; leaving it behind would orphan it in the project.
-      if (removed) { post('/delete_uploaded_file.php', { session: session, filename: removed.filename }).then(V2S.api.refreshFiles); }
+      if (removed) { post('/delete_uploaded_file.php', { session: session, filename: removed.filename }).then(UiSession.api.refreshFiles); }
     }
   });
 
   // A question's "Type something" choice reveals its own textarea (radio or checkbox).
   document.addEventListener('change', function (e) {
-    var input = closest(e.target, '.v2s-q input');
+    var input = closest(e.target, '.sess-q input');
     if (!input) { return; }
-    var ta = closest(input, '.v2s-q').querySelector('textarea');
+    var ta = closest(input, '.sess-q').querySelector('textarea');
     if (!ta) { return; }
-    var free = closest(input, '.v2s-q').querySelector('input[data-free]');
+    var free = closest(input, '.sess-q').querySelector('input[data-free]');
     ta.hidden = !free.checked;
     if (!ta.hidden) { ta.focus(); }
   });
 
-  $('v2s-load-older').addEventListener('click', function () { loadOlder(false); });
-  $('v2s-load-until-user').addEventListener('click', function () { loadOlder(true); });
-  $('v2s-prev').addEventListener('click', goPrev);
-  $('v2s-next').addEventListener('click', goNext);
-  $('v2s-bottom').addEventListener('click', toBottom);
-  scroller.addEventListener('scroll', function () { if (nearBottom()) { $('v2s-newdot').hidden = true; } }, { passive: true });
+  $('sess-load-older').addEventListener('click', function () { loadOlder(false); });
+  $('sess-load-until-user').addEventListener('click', function () { loadOlder(true); });
+  $('sess-prev').addEventListener('click', goPrev);
+  $('sess-next').addEventListener('click', goNext);
+  $('sess-bottom').addEventListener('click', toBottom);
+  scroller.addEventListener('scroll', function () { if (nearBottom()) { $('sess-newdot').hidden = true; } }, { passive: true });
 
   sendBtn.addEventListener('click', sendMessage);
   stopBtn.addEventListener('click', stopTurn);
@@ -1161,8 +1161,8 @@
   textEl.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && e.shiftKey && !(window.matchMedia && window.matchMedia('(pointer: coarse)').matches)) { e.preventDefault(); sendMessage(); }
   });
-  $('v2s-attach-btn').addEventListener('click', function () { $('v2s-file').click(); });
-  $('v2s-file').addEventListener('change', function (e) {
+  $('sess-attach-btn').addEventListener('click', function () { $('sess-file').click(); });
+  $('sess-file').addEventListener('change', function (e) {
     if (e.target.files && e.target.files.length) { onFiles(e.target.files); }
     e.target.value = '';
   });
@@ -1192,7 +1192,7 @@
   // outer strip are left to the browser's own edge gestures (back / forward).
   var BROWSER_EDGE_PX = 24, SWIPE_PX = 80, swipe = null;
   function overlayOpen() {
-    return !!document.querySelector('dialog[open], .v2s-viewer:not([hidden]), .v2s-fullscreen:not([hidden])');
+    return !!document.querySelector('dialog[open], .sess-viewer:not([hidden]), .sess-fullscreen:not([hidden])');
   }
   // True when `el` or an ancestor can scroll sideways (a wide code block), or is a field the finger may select in.
   function scrollsSideways(el) {
@@ -1220,14 +1220,14 @@
     var dy = e.changedTouches[0].clientY - s.y;
     if (Math.abs(dx) < SWIPE_PX || Math.abs(dy) > Math.abs(dx) / 2) { return; }
     if (dx > 0) { if (window.history.length > 1) { window.history.back(); } else { window.location.href = '/'; } }
-    else { V2S.api.openSheet('v2s-sessions'); }
+    else { UiSession.api.openSheet('sess-sessions'); }
   }, { passive: true });
 
   // ======================================================================
-  // public API for v2-session-sheets.js
+  // public API for ui-session-sheets.js
   // ======================================================================
 
-  window.V2S.api = {
+  window.UiSession.api = {
     session: session, csrf: function () { return csrf; }, esc: esc, toast: toast, post: post, getJson: getJson, qs: qs,
     copy: copyText, fileSize: fileSize, relTime: relTime, save: save, load: load, prefs: prefs,
     detail: function () { return detail; }, parseAnswered: parseAnswered, answerRows: answerRows, rememberAnswers: rememberAnswers,
@@ -1245,11 +1245,11 @@
     if (notice) { sessionStorage.removeItem('v2-notice'); toast(notice, true); }
   } catch (e) {}
   textEl.value = load(DRAFT_KEY, '');
-  document.body.classList.toggle('v2s-hide-reasoning', !prefs.reasoning);
-  document.body.classList.toggle('v2s-hide-subagent', !prefs.subagent);
+  document.body.classList.toggle('sess-hide-reasoning', !prefs.reasoning);
+  document.body.classList.toggle('sess-hide-subagent', !prefs.subagent);
   if (ARCH) {
     renderArchivedHeader(detail);
-    $('v2s-compose').hidden = true;
+    $('sess-compose').hidden = true;
     sizeFooter();
     loadFirstPage(T.jump);
   } else {

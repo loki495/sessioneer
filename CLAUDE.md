@@ -341,10 +341,10 @@ Docker-spawned, makes that impossible by construction — not by convention.
    agent socket - so a containerised app uses its host-bridge recipe instead of
    calling the socket from the container. The repo consumes it in no code path
    of its own; the package is tested through `tests/test_sessioneer_client.php`.
-5. `App\Views\*` (`V2View` for the dashboard, session and archived pages and
+5. `App\Views\*` (`UiView` for the dashboard, session and archived pages and
    their cards, `PushNotifyView` for the Web Push control) is what controllers
    hand their `AgentClient` result to. Views extend `App\Views\View`, which owns a
-   shared `League\Plates` engine rooted at `src/partials/` (`partials/v2/`,
+   shared `League\Plates` engine rooted at `src/partials/` (`partials/ui/`,
    `partials/push-notify/`).
 
 Both `App\` (→ `src/lib/`) and `HostAgent\` (→ `host-agent/lib/`) are
@@ -409,7 +409,7 @@ that only `create_agent_session()`-spawned sessions have).
 
 ## Conventions worth knowing before editing
 
-- **OpenCode server integration is v2-only.** Every call goes to the `/api`
+- **OpenCode server integration is ui-only.** Every call goes to the `/api`
   surface (`/api/session`, `/api/session/active`, `/api/permission/request`,
   `/api/model`); there is no v1 server left to fall back to. The permission and
   form lists are directory-scoped, so the headless sync queries them per live
@@ -495,21 +495,21 @@ that only `create_agent_session()`-spawned sessions have).
     that still needs Bash/Read/Write/Edit, `--allowedTools`/
     `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` are the safe options, not `--tools`.
 
-- **The UI (`/`, `/session`, `/archived-session`)** is `V2Controller`, `V2View`,
-  `src/partials/v2/`, `public/css/v2.css`, `public/css/v2-session.css` and
-  `public/js/v2*.js` plus the shared `markdown.js` and `push-notify.js`; see
-  docs/v2-ui.md. The classic UI is gone (tag `classic-ui-final` marks the last
+- **The UI (`/`, `/session`, `/archived-session`)** is `UiController`, `UiView`,
+  `src/partials/ui/`, `public/css/ui.css`, `public/css/ui-session.css` and
+  `public/js/ui*.js` plus the shared `markdown.js` and `push-notify.js`; see
+  docs/ui.md. The classic UI is gone (tag `classic-ui-final` marks the last
   state); the JSON `*.php` endpoints stay as the API the pages call, and
-  `POST /v2/action` is the JSON action endpoint. Its CSS is hand-written around
+  `POST /action` is the JSON action endpoint. Its CSS is hand-written around
   custom properties (no CSS build) and its JS is plain ES5. Keep
-  `tests/test_v2_dashboard.php`, `tests/test_v2_session.php`,
-  `tests/test_v2_session_browser.php`, `tests/test_v2_session_agent.php`,
+  `tests/test_ui_dashboard.php`, `tests/test_ui_session.php`,
+  `tests/test_ui_session_browser.php`, `tests/test_ui_session_agent.php`,
   `tests/test_session_effort_context_browser.php` and
   `tests/test_opencode_question_page_browser.php` passing.
 - **`public/js/*.js` is plain ES5** (`var`, `function`, no `const`/`let`,
   arrow functions, `Set`, or template literals) — no transpiler in this
   project, and mobile Safari compatibility has repeatedly been the reason
-  (see the iOS-specific comments throughout `v2-session.js`). Match
+  (see the iOS-specific comments throughout `ui-session.js`). Match
   this style; don't introduce ES6+ syntax.
 - Every request re-validates state fresh rather than trusting client input:
   a session name for `kill`, an option number for `answer_prompt`, etc. are
@@ -523,7 +523,7 @@ that only `create_agent_session()`-spawned sessions have).
   over-engineered, and keep new ones to that — no who, when or how-it-was-found
   narrative.
 - Every transcript block the session page draws (`renderBlock()` in
-  `v2-session.js`, the only renderer) carries `data-line="<line>"` - the block's
+  `ui-session.js`, the only renderer) carries `data-line="<line>"` - the block's
   own raw JSONL line number, used to scroll to and highlight a search result -
   and a copy button, so a new block kind needs both or it silently loses
   search-jump and copy support.

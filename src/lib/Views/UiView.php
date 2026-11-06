@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Views;
 
 /**
- * Render helpers for the /v2 UI (templates under src/partials/v2/). Cards are
- * rendered server-side and swapped in by public/js/v2.js.
+ * Render helpers for the UI (templates under src/partials/ui/). Cards are
+ * rendered server-side and swapped in by public/js/ui.js.
  */
-class V2View extends View
+class UiView extends View
 {
     private const PREVIEW_CHARS = 220;
 
@@ -49,13 +49,13 @@ class V2View extends View
     /** @param array<string, mixed> $data */
     public static function dashboard_page(array $data): string
     {
-        return self::render('v2/dashboard', $data);
+        return self::render('ui/dashboard', $data);
     }
 
     /** @param array<string, mixed> $data */
     public static function session_page(array $data): string
     {
-        return self::render('v2/session', $data);
+        return self::render('ui/session', $data);
     }
 
     /**
@@ -78,7 +78,7 @@ class V2View extends View
     public static function sessions_html(array $sessions, string $csrfToken): string
     {
         if ($sessions === []) {
-            return self::render('v2/empty', ['title' => 'No sessions yet', 'text' => 'Start one with the + button.']);
+            return self::render('ui/empty', ['title' => 'No sessions yet', 'text' => 'Start one with the + button.']);
         }
 
         $html = '';
@@ -100,7 +100,7 @@ class V2View extends View
         $rows = '';
 
         foreach ($bare as $b) {
-            $rows .= self::render('v2/bare-row', [
+            $rows .= self::render('ui/bare-row', [
                 'pid' => (int)$b['pid'],
                 'title' => (string)($b['resolved_title'] ?? $b['title'] ?? 'Claude process'),
                 'cwd' => $b['cwd'] ?? null,
@@ -109,21 +109,21 @@ class V2View extends View
             ]);
         }
 
-        return self::render('v2/bare-list', ['rowsHtml' => $rows]);
+        return self::render('ui/bare-list', ['rowsHtml' => $rows]);
     }
 
     /** @param array<int, array<string, mixed>> $archived */
     public static function archived_html(array $archived, string $csrfToken): string
     {
         if ($archived === []) {
-            return self::render('v2/empty', ['title' => 'Nothing archived', 'text' => 'Finished sessions show up here.']);
+            return self::render('ui/empty', ['title' => 'Nothing archived', 'text' => 'Finished sessions show up here.']);
         }
 
         $html = '';
 
         foreach ($archived as $a) {
             $agentId = (string)($a['agent'] ?? 'claude');
-            $html .= self::render('v2/archived-row', [
+            $html .= self::render('ui/archived-row', [
                 'agentSessionId' => (string)$a['agent_session_id'],
                 'title' => (string)($a['title'] ?? $a['agent_session_id']),
                 'cwd' => $a['cwd'] ?? null,
@@ -146,7 +146,7 @@ class V2View extends View
         $agentId = (string)($s['agent'] ?? 'claude');
         $status = self::status_of($s);
 
-        return self::render('v2/card', [
+        return self::render('ui/card', [
             'name' => $name,
             'title' => $title,
             'status' => $status,

@@ -1,4 +1,4 @@
-/* Sessioneer v2: usage meters shared by the dashboard Status tab and the session page's quota popup.
+/* Sessioneer: usage meters shared by the dashboard Status tab and the session page's quota popup.
    Plain ES5 (see CLAUDE.md). Reset times are shown in Pacific time (the accounts' own reset zone) and relative. */
 (function () {
   'use strict';
@@ -30,14 +30,14 @@
 
   function resetLine(epoch) {
     if (typeof epoch !== 'number') { return ''; }
-    return '<span class="v2-meter-reset">Resets ' + esc(pacific(epoch)) + ' · ' + esc(relative(epoch - Math.floor(Date.now() / 1000))) + '</span>';
+    return '<span class="ui-meter-reset">Resets ' + esc(pacific(epoch)) + ' · ' + esc(relative(epoch - Math.floor(Date.now() / 1000))) + '</span>';
   }
 
   function meter(label, bucket) {
     var pct = bucket.pct;
     var cls = pct >= 100 ? 'is-full' : (pct >= 80 ? 'is-high' : '');
-    return '<div class="v2-meter"><div class="v2-meter-top"><span>' + esc(label) + '</span><b>' + Math.round(pct) + '%</b></div>'
-      + '<div class="v2-meter-bar"><span class="' + cls + '" style="width:' + Math.min(100, Math.max(0, pct)) + '%"></span></div>'
+    return '<div class="ui-meter"><div class="ui-meter-top"><span>' + esc(label) + '</span><b>' + Math.round(pct) + '%</b></div>'
+      + '<div class="ui-meter-bar"><span class="' + cls + '" style="width:' + Math.min(100, Math.max(0, pct)) + '%"></span></div>'
       + resetLine(bucket.resets_at) + '</div>';
   }
 
@@ -66,15 +66,15 @@
         profiles.forEach(function (p) {
           var pr = data.claude_profiles[p];
           var body = pr && pr.ok ? rows(pr.quota) : '';
-          if (body) { groups.push('<section class="v2-quota-group v2-qg-' + esc(id) + '"><h3 class="v2-subtitle">' + esc(a.label || id) + ' · ' + esc(pr.label || p) + '</h3>' + body + '</section>'); }
+          if (body) { groups.push('<section class="ui-quota-group ui-qg-' + esc(id) + '"><h3 class="ui-subtitle">' + esc(a.label || id) + ' · ' + esc(pr.label || p) + '</h3>' + body + '</section>'); }
         });
         return;
       }
       var html = rows(a.quota);
-      if (html) { groups.push('<section class="v2-quota-group v2-qg-' + esc(id) + '"><h3 class="v2-subtitle">' + esc(a.label || id) + '</h3>' + html + '</section>'); }
+      if (html) { groups.push('<section class="ui-quota-group ui-qg-' + esc(id) + '"><h3 class="ui-subtitle">' + esc(a.label || id) + '</h3>' + html + '</section>'); }
     });
 
-    return groups.join('') || '<span class="v2-muted v2-small">No usage data available.</span>';
+    return groups.join('') || '<span class="ui-muted ui-small">No usage data available.</span>';
   }
 
   // The few-character header readout for one session's agent/account: 5-hour and weekly use, then context.
@@ -93,8 +93,8 @@
   }
 
   function line(label, pct) {
-    return '<span' + (pct >= 80 ? ' class="v2-warn"' : '') + '>' + label + ' ' + Math.round(pct) + '%</span>';
+    return '<span' + (pct >= 80 ? ' class="ui-warn"' : '') + '>' + label + ' ' + Math.round(pct) + '%</span>';
   }
 
-  window.V2Quota = { mini: mini, render: render, pacific: pacific, relative: relative };
+  window.UiQuota = { mini: mini, render: render, pacific: pacific, relative: relative };
 }());

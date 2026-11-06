@@ -254,7 +254,7 @@ whether the quota footer is current.
 - `host-agent/lib/Services/QuotaService.php` (per-account quota)
 - `host-agent/lib/Services/QuotaLiveStateWriter.php` (merges both quota writers' readings)
 - `host-agent/lib/Services/ClaudeHeadlessHealthService.php` (headless health-box checks)
-- `src/lib/Views/V2View.php` (account badge)
+- `src/lib/Views/UiView.php` (account badge)
 
 ## Antigravity implementation
 
@@ -445,7 +445,7 @@ deliberately narrow.
 ## Shared UI and platform features
 
 - UI: the mobile-first web UI (`/`, `/session`, `/archived-session`; details, coverage and what is
-  deferred in `docs/v2-ui.md`). The old classic UI is gone (its URLs answer 404); the old `/v2` page
+  deferred in `docs/ui.md`). The old classic UI is gone (its URLs answer 404); the old `/v2` page
   URLs redirect to the plain ones.
 - Starring: the star on a session card (dashboard and session page) stores a `starred` flag in the
   session's sidecar. The list orders starred sessions first, then blocked, working and idle, each

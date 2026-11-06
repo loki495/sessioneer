@@ -1,17 +1,18 @@
-/* Sessioneer v2 dashboard. Plain ES5 on purpose (see CLAUDE.md): no build
+/* Sessioneer dashboard. Plain ES5 on purpose (see CLAUDE.md): no build
    step, and mobile Safari is the browser that matters. The server renders
    every card; this file wires tabs, filters, polling and the actions. */
 (function () {
   'use strict';
 
-  var app = document.getElementById('v2-app');
+  var app = document.getElementById('ui-app');
   if (!app) { return; }
 
   var csrf = app.getAttribute('data-csrf');
-  var sessionsEl = document.getElementById('v2-sessions');
-  var bareEl = document.getElementById('v2-bare');
+  var sessionsEl = document.getElementById('ui-sessions');
+  var bareEl = document.getElementById('ui-bare');
 
   // ---- storage (a private-mode Safari throws on access) ----
+  // Keys keep their pre-rename "v2-" names so saved preferences carry over.
   function load(key, fallback) {
     try { var v = localStorage.getItem(key); return v === null ? fallback : v; } catch (e) { return fallback; }
   }
@@ -43,9 +44,9 @@
 
   var toastTimer = null;
   function toast(message, bad) {
-    var el = document.getElementById('v2-toast');
+    var el = document.getElementById('ui-toast');
     el.textContent = message;
-    el.className = 'v2-toast' + (bad ? ' is-bad' : '');
+    el.className = 'ui-toast' + (bad ? ' is-bad' : '');
     el.hidden = false;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { el.hidden = true; }, bad ? 6000 : 3000);
@@ -67,7 +68,7 @@
 
   // One path for every dashboard action: show the outcome, follow a redirect, refresh the list.
   function runAction(params, doneMessage) {
-    return postJson('/v2/action', params).then(function (res) {
+    return postJson('/action', params).then(function (res) {
       if (res.ok && res.redirect) {
         if (res.notice) { try { sessionStorage.setItem('v2-notice', res.notice); } catch (e) {} }
         window.location.href = res.redirect; return res; }
@@ -79,20 +80,20 @@
 
   // ---- tabs ----
   function showTab(name) {
-    $all('.v2-panel').forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== name; });
-    $all('.v2-tab').forEach(function (t) { t.classList.toggle('is-on', t.getAttribute('data-tab') === name); });
-    var fab = document.getElementById('v2-new');
+    $all('.ui-panel').forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== name; });
+    $all('.ui-tab').forEach(function (t) { t.classList.toggle('is-on', t.getAttribute('data-tab') === name); });
+    var fab = document.getElementById('ui-new');
     if (fab) { fab.hidden = name !== 'sessions'; }
     window.scrollTo(0, 0);
     if (name === 'archived') { loadArchived(); }
     if (name === 'status') { loadQuota(); }
-    if (name === 'search') { document.getElementById('v2-search-input').focus(); }
+    if (name === 'search') { document.getElementById('ui-search-input').focus(); }
   }
 
   // ---- filters + counts ----
   function applyFilters() {
     var visible = 0;
-    $all('.v2-card', sessionsEl).forEach(function (card) {
+    $all('.ui-card', sessionsEl).forEach(function (card) {
       var status = card.getAttribute('data-status');
       var hide = (state.filter !== 'all' && status !== state.filter)
         || (!state.showWorkers && card.getAttribute('data-kind') === 'worker')
@@ -100,23 +101,23 @@
       card.hidden = hide;
       if (!hide) { visible++; }
     });
-    var hasCards = sessionsEl.querySelector('.v2-card') !== null;
-    document.getElementById('v2-filter-empty').hidden = !hasCards || visible > 0;
-    $all('.v2-filter').forEach(function (b) { b.classList.toggle('is-on', b.getAttribute('data-filter') === state.filter); });
+    var hasCards = sessionsEl.querySelector('.ui-card') !== null;
+    document.getElementById('ui-filter-empty').hidden = !hasCards || visible > 0;
+    $all('.ui-filter').forEach(function (b) { b.classList.toggle('is-on', b.getAttribute('data-filter') === state.filter); });
   }
 
   function applyCounts(c) {
     state.counts = c;
     ['all:total', 'blocked:blocked', 'working:working', 'idle:idle'].forEach(function (pair) {
       var p = pair.split(':');
-      document.getElementById('v2-n-' + p[0]).textContent = c[p[1]];
+      document.getElementById('ui-n-' + p[0]).textContent = c[p[1]];
     });
-    var badge = document.getElementById('v2-tab-badge');
+    var badge = document.getElementById('ui-tab-badge');
     badge.hidden = c.blocked === 0;
     badge.textContent = c.blocked;
     var sub = c.total + (c.total === 1 ? ' session' : ' sessions');
     if (c.blocked) { sub += ' · ' + c.blocked + ' need' + (c.blocked === 1 ? 's' : '') + ' input'; }
-    document.getElementById('v2-subtitle').textContent = sub;
+    document.getElementById('ui-subtitle').textContent = sub;
     document.title = (c.blocked ? '(' + c.blocked + ') ' : '') + 'Sessioneer';
   }
 
@@ -128,7 +129,7 @@
   function poll() {
     if (inFlight || document.hidden) { return Promise.resolve(); }
     inFlight = true;
-    return fetch('/v2/fragment', { credentials: 'same-origin' })
+    return fetch('/fragment', { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (data) {
         inFlight = false;
@@ -136,7 +137,7 @@
         applyCounts(data.counts);
         // An open menu or a half-typed field would be destroyed by the swap.
         var key = data.sessions_html + '\u0000' + data.bare_html;
-        if (key === lastHtml || sessionsEl.querySelector('.v2-menu[open]')) { return; }
+        if (key === lastHtml || sessionsEl.querySelector('.ui-menu[open]')) { return; }
         lastHtml = key;
         sessionsEl.innerHTML = data.sessions_html;
         bareEl.innerHTML = data.bare_html;
@@ -156,7 +157,7 @@
 
   // ---- click delegation ----
   document.addEventListener('click', function (e) {
-    var open = $all('.v2-menu[open]');
+    var open = $all('.ui-menu[open]');
     open.forEach(function (m) { if (!m.contains(e.target)) { m.removeAttribute('open'); } });
 
     var el = closest(e.target, '[data-act]');
@@ -201,7 +202,7 @@
       case 'take-over':
         if (!window.confirm('Take over process ' + el.getAttribute('data-pid') + ' as a headless session? The terminal process is stopped.')) { break; }
         el.disabled = true;
-        postJson('/v2/action', { action: 'take_over', pid: el.getAttribute('data-pid') }).then(function (res) {
+        postJson('/action', { action: 'take_over', pid: el.getAttribute('data-pid') }).then(function (res) {
           el.disabled = false;
           if (res.ok && res.needs_choice) { openTakeOverPicker(res); return; }
           if (res.ok && res.redirect) { window.location.href = res.redirect; return; }
@@ -230,7 +231,7 @@
         if (window.confirm('Kill all tracked sessions inactive for more than 12h?')) { runAction({ action: 'cleanup' }); }
         break;
       case 'push-interval':
-        runAction({ action: 'set_push_timer_interval', seconds: document.getElementById('v2-push-interval').value });
+        runAction({ action: 'set_push_timer_interval', seconds: document.getElementById('ui-push-interval').value });
         break;
       case 'resume':
         var p = { action: 'resume', agent_session_id: el.getAttribute('data-id'), workdir: el.getAttribute('data-workdir') };
@@ -242,8 +243,8 @@
   });
 
   // ---- take-over picker: nothing was stopped yet; a human picks which conversation the process was running ----
-  var takeDialog = document.getElementById('v2-takeover-dialog');
-  var takeSel = document.getElementById('v2-takeover-select');
+  var takeDialog = document.getElementById('ui-takeover-dialog');
+  var takeSel = document.getElementById('ui-takeover-select');
   var takeCtx = null;
   function openTakeOverPicker(res) {
     takeCtx = res;
@@ -255,18 +256,18 @@
       if (c.agent_session_id === res.suggested_agent_session_id) { o.selected = true; }
       takeSel.appendChild(o);
     });
-    document.getElementById('v2-takeover-none').hidden = takeSel.options.length > 0;
-    document.getElementById('v2-takeover-go').disabled = takeSel.options.length === 0;
+    document.getElementById('ui-takeover-none').hidden = takeSel.options.length > 0;
+    document.getElementById('ui-takeover-go').disabled = takeSel.options.length === 0;
     takeDialog.showModal();
   }
-  document.getElementById('v2-takeover-go').addEventListener('click', function () {
+  document.getElementById('ui-takeover-go').addEventListener('click', function () {
     takeDialog.close();
     runAction({ action: 'take_over_confirm', pid: takeCtx.pid, workdir: takeCtx.workdir, agent_session_id: takeSel.value });
   });
 
   // ---- search ----
-  var searchInput = document.getElementById('v2-search-input');
-  var searchResults = document.getElementById('v2-search-results');
+  var searchInput = document.getElementById('ui-search-input');
+  var searchResults = document.getElementById('ui-search-results');
   var searchTimer = null;
   var searchAbort = null;
 
@@ -281,7 +282,7 @@
 
   function renderResults(results, query) {
     if (!results || results.length === 0) {
-      searchResults.innerHTML = '<div class="v2-empty"><p class="v2-empty-title">No matches</p></div>';
+      searchResults.innerHTML = '<div class="ui-empty"><p class="ui-empty-title">No matches</p></div>';
       return;
     }
     searchResults.innerHTML = results.map(function (r) {
@@ -290,15 +291,15 @@
         ? '/session?session=' + encodeURIComponent(r.session_name) + '&jump_line=' + encodeURIComponent(first)
         : '/archived-session?agent_session_id=' + encodeURIComponent(r.agent_session_id) + '&jump_line=' + encodeURIComponent(first);
       var snippets = r.matches.map(function (m) {
-        return '<p class="v2-result-snippet">' + highlight(String(m.snippet || ''), query) + '</p>';
+        return '<p class="ui-result-snippet">' + highlight(String(m.snippet || ''), query) + '</p>';
       }).join('');
       var action = r.session_name
-        ? '<button type="button" class="v2-btn" data-act="kill-search" data-session-name="' + esc(r.session_name) + '">Archive</button>'
-        : (r.cwd ? '<button type="button" class="v2-btn" data-act="resume" data-id="' + esc(r.agent_session_id) + '" data-workdir="' + esc(r.cwd) + '" data-profile="' + esc(r.profile || '') + '">Unarchive</button>' : '');
-      return '<article class="v2-card v2-card-flat" data-session-result><div class="v2-card-main">'
-        + '<a class="v2-title v2-link-cover" href="' + url + '">' + esc(r.title) + '</a>'
-        + (r.session_name ? '<div class="v2-chips"><span class="v2-chip v2-chip-ok">live</span></div>' : '')
-        + snippets + '</div>' + (action ? '<div class="v2-card-actions">' + action + '</div>' : '') + '</article>';
+        ? '<button type="button" class="ui-btn" data-act="kill-search" data-session-name="' + esc(r.session_name) + '">Archive</button>'
+        : (r.cwd ? '<button type="button" class="ui-btn" data-act="resume" data-id="' + esc(r.agent_session_id) + '" data-workdir="' + esc(r.cwd) + '" data-profile="' + esc(r.profile || '') + '">Unarchive</button>' : '');
+      return '<article class="ui-card ui-card-flat" data-session-result><div class="ui-card-main">'
+        + '<a class="ui-title ui-link-cover" href="' + url + '">' + esc(r.title) + '</a>'
+        + (r.session_name ? '<div class="ui-chips"><span class="ui-chip ui-chip-ok">live</span></div>' : '')
+        + snippets + '</div>' + (action ? '<div class="ui-card-actions">' + action + '</div>' : '') + '</article>';
     }).join('');
   }
 
@@ -309,14 +310,14 @@
     if (query === '') { searchResults.innerHTML = ''; return; }
     searchTimer = setTimeout(function () {
       searchAbort = typeof AbortController === 'function' ? new AbortController() : null;
-      searchResults.innerHTML = '<p class="v2-muted v2-center">Searching…</p>';
+      searchResults.innerHTML = '<p class="ui-muted ui-center">Searching…</p>';
       fetch('/search_sessions.php?q=' + encodeURIComponent(query), { credentials: 'same-origin', signal: searchAbort ? searchAbort.signal : undefined })
         .then(function (r) { return r.json(); })
         .then(function (data) {
-          if (!data || !data.ok) { searchResults.innerHTML = '<p class="v2-muted v2-center">' + esc((data && data.message) || 'Search failed') + '</p>'; return; }
+          if (!data || !data.ok) { searchResults.innerHTML = '<p class="ui-muted ui-center">' + esc((data && data.message) || 'Search failed') + '</p>'; return; }
           renderResults(data.results, query);
         })
-        .catch(function (err) { if (!err || err.name !== 'AbortError') { searchResults.innerHTML = '<p class="v2-muted v2-center">Network error</p>'; } });
+        .catch(function (err) { if (!err || err.name !== 'AbortError') { searchResults.innerHTML = '<p class="ui-muted ui-center">Network error</p>'; } });
     }, 300);
   });
 
@@ -329,9 +330,9 @@
   });
 
   // ---- archived ----
-  var archivedEl = document.getElementById('v2-archived');
-  var archivedFilter = document.getElementById('v2-archived-filter');
-  var archivedMore = document.getElementById('v2-archived-more');
+  var archivedEl = document.getElementById('ui-archived');
+  var archivedFilter = document.getElementById('ui-archived-filter');
+  var archivedMore = document.getElementById('ui-archived-more');
   var archivedLoaded = false;
   var ARCHIVED_PAGE = 50;
   var archivedLimit = ARCHIVED_PAGE;
@@ -351,14 +352,14 @@
   function loadArchived() {
     if (archivedLoaded) { return; }
     archivedLoaded = true;
-    fetch('/v2/archived', { credentials: 'same-origin' })
+    fetch('/archived', { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        if (!data || !data.ok) { archivedLoaded = false; archivedEl.innerHTML = '<p class="v2-muted v2-center">' + esc((data && data.message) || 'Failed to load') + '</p>'; return; }
+        if (!data || !data.ok) { archivedLoaded = false; archivedEl.innerHTML = '<p class="ui-muted ui-center">' + esc((data && data.message) || 'Failed to load') + '</p>'; return; }
         archivedEl.innerHTML = data.archived_html;
         renderArchivedPage();
       })
-      .catch(function () { archivedLoaded = false; archivedEl.innerHTML = '<p class="v2-muted v2-center">Network error</p>'; });
+      .catch(function () { archivedLoaded = false; archivedEl.innerHTML = '<p class="ui-muted ui-center">Network error</p>'; });
   }
 
   archivedFilter.addEventListener('input', function () { archivedLimit = ARCHIVED_PAGE; renderArchivedPage(); });
@@ -370,15 +371,15 @@
   function loadQuota() {
     if (Date.now() - quotaAt < 30000) { return; }
     quotaAt = Date.now();
-    var box = document.getElementById('v2-quota');
+    var box = document.getElementById('ui-quota');
     fetch('/quota.php', { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
-      .then(function (data) { box.innerHTML = V2Quota.render(data); })
-      .catch(function () { quotaAt = 0; box.innerHTML = '<span class="v2-muted v2-small">Could not load usage.</span>'; });
+      .then(function (data) { box.innerHTML = UiQuota.render(data); })
+      .catch(function () { quotaAt = 0; box.innerHTML = '<span class="ui-muted ui-small">Could not load usage.</span>'; });
   }
 
   // ---- settings ----
-  var settingsDialog = document.getElementById('v2-settings-dialog');
+  var settingsDialog = document.getElementById('ui-settings-dialog');
   var themeSelect = document.getElementById('v2-theme');
   var pollSelect = document.getElementById('v2-poll');
   var workersBox = document.getElementById('v2-show-workers');
@@ -403,18 +404,18 @@
   pollSelect.addEventListener('change', function () { state.pollMs = parseInt(pollSelect.value, 10); save('v2-poll', pollSelect.value); startPolling(); });
   workersBox.addEventListener('change', function () { state.showWorkers = workersBox.checked; save('v2-show-workers', workersBox.checked ? '1' : '0'); applyFilters(); });
   idleBox.addEventListener('change', function () { state.hideIdle = idleBox.checked; save('v2-hide-idle', idleBox.checked ? '1' : '0'); applyFilters(); });
-  document.getElementById('v2-open-settings').addEventListener('click', function () { settingsDialog.showModal(); });
+  document.getElementById('ui-open-settings').addEventListener('click', function () { settingsDialog.showModal(); });
 
   // ---- new session ----
-  var newDialog = document.getElementById('v2-new-dialog');
-  var newForm = document.getElementById('v2-new-form');
-  var agentSel = document.getElementById('v2-new-agent');
-  var profileSel = document.getElementById('v2-new-profile');
-  var profileWrap = document.getElementById('v2-new-profile-wrap');
-  var modelSel = document.getElementById('v2-new-model');
-  var submitBtn = document.getElementById('v2-new-submit');
-  var pathEl = document.getElementById('v2-browser-path');
-  var listEl = document.getElementById('v2-browser-list');
+  var newDialog = document.getElementById('ui-new-dialog');
+  var newForm = document.getElementById('ui-new-form');
+  var agentSel = document.getElementById('ui-new-agent');
+  var profileSel = document.getElementById('ui-new-profile');
+  var profileWrap = document.getElementById('ui-new-profile-wrap');
+  var modelSel = document.getElementById('ui-new-model');
+  var submitBtn = document.getElementById('ui-new-submit');
+  var pathEl = document.getElementById('ui-browser-path');
+  var listEl = document.getElementById('ui-browser-list');
   var workdir = '';
   var browserLoaded = false;
 
@@ -482,7 +483,7 @@
   function statusRow(text) {
     listEl.innerHTML = '';
     var li = document.createElement('li');
-    li.className = 'v2-muted';
+    li.className = 'ui-muted';
     li.textContent = text;
     listEl.appendChild(li);
   }
@@ -512,14 +513,14 @@
         listEl.innerHTML = '';
         if (data.parent !== null) { dirRow('.. (up)', 'is-up', function () { browse(data.parent); }); }
         if (data.dirs.length === 0) {
-          var li = document.createElement('li'); li.className = 'v2-muted'; li.textContent = 'No subfolders here.'; listEl.appendChild(li);
+          var li = document.createElement('li'); li.className = 'ui-muted'; li.textContent = 'No subfolders here.'; listEl.appendChild(li);
         }
         data.dirs.forEach(function (d) { dirRow(d, '', function () { browse(data.path + '/' + d); }); });
       })
       .catch(function () { pathEl.textContent = 'Unavailable'; statusRow('Network error.'); });
   }
 
-  document.getElementById('v2-new-folder').addEventListener('click', function () {
+  document.getElementById('ui-new-folder').addEventListener('click', function () {
     var name = window.prompt('New folder name:');
     if (!workdir || name === null || name.trim() === '') { return; }
     postJson('/create_folder.php', { path: workdir, name: name.trim() }).then(function (res) {
@@ -528,7 +529,7 @@
     });
   });
 
-  var newBtn = document.getElementById('v2-new');
+  var newBtn = document.getElementById('ui-new');
   if (newBtn) {
     newBtn.addEventListener('click', function () {
       newDialog.showModal();
@@ -546,11 +547,11 @@
       p.model_provider = modelSel.options[modelSel.selectedIndex].getAttribute('data-provider') || '';
     }
     if (!profileSel.disabled && profileSel.value) { p.profile = profileSel.value; }
-    var mode = document.getElementById('v2-new-mode');
+    var mode = document.getElementById('ui-new-mode');
     if (!mode.disabled && mode.value) { p.starting_mode = mode.value; }
-    var promptEl = document.getElementById('v2-new-prompt');
+    var promptEl = document.getElementById('ui-new-prompt');
     if (!promptEl.disabled && promptEl.value.trim()) { p.prompt = promptEl.value.trim(); }
-    var tools = document.getElementById('v2-new-tasktools');
+    var tools = document.getElementById('ui-new-tasktools');
     if (!tools.disabled && tools.checked) { p.enable_task_tools = '1'; }
     submitBtn.disabled = true;
     runAction(p).then(function (res) {
@@ -563,7 +564,7 @@
   // A browser-restored page (iOS PWA resume) can be hours old.
   window.addEventListener('pageshow', function (e) { if (e.persisted) { poll(); } });
   applyFilters();
-  function chipCount(id) { return parseInt(document.getElementById('v2-n-' + id).textContent, 10) || 0; }
+  function chipCount(id) { return parseInt(document.getElementById('ui-n-' + id).textContent, 10) || 0; }
   applyCounts({ total: chipCount('all'), blocked: chipCount('blocked'), working: chipCount('working'), idle: chipCount('idle') });
   showTab('sessions');
   startPolling();
