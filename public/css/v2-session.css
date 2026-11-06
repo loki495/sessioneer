@@ -142,6 +142,7 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 .v2s-composerow textarea { flex: 1; min-height: var(--tap); max-height: 9rem; resize: none; line-height: 1.35; padding-top: 10px; overscroll-behavior: contain; }
 .v2s-attach { background: var(--surface-2); border: 1px solid var(--border); }
 .v2s-send, .v2s-stop { padding: 0 12px; }
+.v2s-stop:not(:disabled) { background: #ef4444; border-color: #fca5a5; color: #fff; font-weight: 700; box-shadow: 0 0 0 1px #ef4444, 0 0 10px rgba(239, 68, 68, .55); }
 .v2s-attached { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 6px; }
 .v2s-chip-x { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 4px 6px 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); font-size: 0.8rem; }
 .v2s-chip-x span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 12rem; }
