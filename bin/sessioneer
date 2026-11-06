@@ -118,9 +118,10 @@ function usage(): string
       --peers           list the other live sessions in this session's git
                         repository: name, status, branch, directory
       --usage           print the last known usage (quota) stats as JSON: one
-                        entry per agent, with Claude's account profiles nested
-                        under it, each with its fetched_at time. Read-only; never
-                        refreshes anything.
+                        entry per agent, each a label plus profiles.<name> (Claude's
+                        accounts, or a single "default"), each profile with its
+                        quota and fetched_at time. Read-only; never refreshes
+                        anything.
       --wait            after launching, block until the session is idle and print
                         its final assistant message to stdout (the session name
                         goes to stderr). Exits 1 if the launch fails, the turn
@@ -384,8 +385,15 @@ if (isset($opts['usage'])) {
         fail((string)($reply['message'] ?? 'usage unavailable'));
     }
 
-    $agents = $reply['agents'];
-    $agents['claude']['profiles'] = $reply['claude_profiles'];
+    // One shape for every agent: label plus profiles.<name>. An agent with a single account is profiles.default;
+    // a top-level quota is never exposed because it cannot say which account it belongs to.
+    $agents = [];
+    foreach ($reply['agents'] as $key => $agent) {
+        $profiles = $key === 'claude'
+            ? $reply['claude_profiles']
+            : ['default' => array_diff_key($agent, ['label' => 1])];
+        $agents[$key] = ['label' => $agent['label'] ?? $key, 'profiles' => $profiles];
+    }
 
     echo json_encode(['agents' => $agents], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
     exit(0);
