@@ -12,7 +12,6 @@
     <h1>Sessioneer</h1>
     <p id="v2-subtitle" class="v2-muted v2-small"></p>
   </div>
-  <a class="v2-pill-link" href="/classic" data-classic-link>Classic</a>
   <button type="button" class="v2-icon-btn" id="v2-open-settings" aria-label="Settings">&#9881;</button>
 </header>
 
@@ -90,6 +89,11 @@
       <?php if ($healthChecks === []): ?><p class="v2-muted v2-small">No health data (the host agent may be unreachable).</p><?php endif ?>
     </details>
 
+    <div class="v2-card v2-card-flat v2-col">
+      <h2 class="v2-section-title">Notifications</h2>
+      <?= \App\Views\PushNotifyView::push_notify_button_html($vapidPublicKey ?? '', $csrfToken) ?>
+    </div>
+
     <?php if ($pushTimerSeconds !== null): ?>
       <div class="v2-card v2-card-flat v2-col">
         <h2 class="v2-section-title">Push-check interval</h2>
@@ -100,11 +104,9 @@
           </select>
           <button type="button" class="v2-btn" data-act="push-interval">Save</button>
         </div>
-        <p class="v2-muted v2-small">Browser push notifications are still enabled from the classic dashboard.</p>
       </div>
     <?php endif ?>
 
-    <a class="v2-btn v2-btn-quiet v2-block" href="/classic" data-classic-link>&larr; Back to classic</a>
   </section>
 </main>
 
@@ -148,7 +150,7 @@
     <label class="v2-field" data-agent-field>Starting mode
       <select id="v2-new-mode" name="starting_mode">
         <option value="" selected>Manual (default)</option>
-        <?php foreach (\App\Views\TranscriptView::MODE_OPTIONS as $modeKey => $modeLabel): ?>
+        <?php foreach (\App\Views\V2View::MODE_OPTIONS as $modeKey => $modeLabel): ?>
           <?php if ($modeKey === 'manual') { continue; } ?>
           <option value="<?= $this->e($modeKey) ?>"><?= $this->e($modeLabel) ?></option>
         <?php endforeach ?>
@@ -186,7 +188,6 @@
     <label class="v2-check"><input type="checkbox" id="v2-show-workers"> Show worker sessions</label>
     <label class="v2-check"><input type="checkbox" id="v2-hide-idle"> Hide idle unstarred</label>
     <button type="button" class="v2-btn v2-btn-warn v2-block" data-act="cleanup">Kill sessions inactive &gt; 12h</button>
-    <a class="v2-btn v2-btn-quiet v2-block" href="/classic" data-classic-link>&larr; Back to classic</a>
   </div>
 </dialog>
 

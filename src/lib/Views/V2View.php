@@ -6,12 +6,45 @@ namespace App\Views;
 
 /**
  * Render helpers for the /v2 UI (templates under src/partials/v2/). Cards are
- * rendered server-side and swapped in by public/js/v2.js, the same
- * one-source-of-markup arrangement the classic dashboard uses.
+ * rendered server-side and swapped in by public/js/v2.js.
  */
 class V2View extends View
 {
     private const PREVIEW_CHARS = 220;
+
+    public const AGENT_OPTIONS = ['claude' => 'Claude Code', 'antigravity' => 'Antigravity', 'opencode' => 'OpenCode', 'codex' => 'Codex', 'ollama' => 'Ollama (local)'];
+
+    public const MODE_OPTIONS = ['manual' => 'Manual', 'accept edits' => 'Accept Edits', 'plan' => 'Plan', 'auto' => 'Auto'];
+
+    /** The default account (null, '' or 'personal') shows as "Personal". */
+    public static function profile_label(?string $profile): string
+    {
+        return match ($profile) {
+            null, '', 'personal' => 'Personal',
+            default => ucfirst($profile),
+        };
+    }
+
+    public static function relative_time(int $timestamp): string
+    {
+        $diff = time() - $timestamp;
+
+        if ($diff < 60) {
+            return 'just now';
+        }
+
+        if ($diff < 3600) {
+            return intdiv($diff, 60) . ' min ago';
+        }
+
+        if ($diff < 86400) {
+            $h = intdiv($diff, 3600);
+            return "{$h} hr" . ($h > 1 ? 's' : '') . ' ago';
+        }
+
+        $d = intdiv($diff, 86400);
+        return "{$d} day" . ($d > 1 ? 's' : '') . ' ago';
+    }
 
     /** @param array<string, mixed> $data */
     public static function dashboard_page(array $data): string
@@ -72,7 +105,7 @@ class V2View extends View
                 'title' => (string)($b['resolved_title'] ?? $b['title'] ?? 'Claude process'),
                 'cwd' => $b['cwd'] ?? null,
                 'tmuxSession' => $b['tmux_session'] ?? null,
-                'startedAt' => ($b['started_at'] ?? null) !== null ? SessionRowView::relative_time((int)$b['started_at']) : null,
+                'startedAt' => ($b['started_at'] ?? null) !== null ? self::relative_time((int)$b['started_at']) : null,
             ]);
         }
 
@@ -94,7 +127,7 @@ class V2View extends View
                 'agentSessionId' => (string)$a['agent_session_id'],
                 'title' => (string)($a['title'] ?? $a['agent_session_id']),
                 'cwd' => $a['cwd'] ?? null,
-                'relativeTime' => SessionRowView::relative_time((int)($a['last_activity'] ?? 0)),
+                'relativeTime' => self::relative_time((int)($a['last_activity'] ?? 0)),
                 'agentId' => $agentId,
                 'agentLabel' => (string)($a['agent_label'] ?? 'Claude Code'),
                 'profile' => $a['profile'] ?? null,
@@ -119,14 +152,14 @@ class V2View extends View
             'status' => $status,
             'agentId' => $agentId,
             'agentLabel' => (string)($s['agent_label'] ?? 'Claude Code'),
-            'profile' => $agentId === 'claude' ? SessionRowView::profile_label($s['profile'] ?? null) : null,
+            'profile' => $agentId === 'claude' ? self::profile_label($s['profile'] ?? null) : null,
             'runtime' => (string)($s['runtime'] ?? 'tmux'),
             'kind' => (string)($s['kind'] ?? 'user'),
             'conversationId' => $s['agent_session_id'] ?? null,
             'parentSessionId' => $s['parent_session_id'] ?? null,
             'starred' => !empty($s['starred']),
             'workdir' => $s['workdir'] ?? null,
-            'relativeTime' => SessionRowView::relative_time((int)($s['activity'] ?? time())),
+            'relativeTime' => self::relative_time((int)($s['activity'] ?? time())),
             'contextPct' => isset($s['context_used_percentage']) ? (int)round((float)$s['context_used_percentage']) : null,
             'worktree' => $s['git_worktree'] ?? null,
             'preview' => self::preview_text($s['last_message'] ?? null),

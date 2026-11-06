@@ -1,7 +1,0 @@
-<div class="mt-2 rounded-lg px-3 py-2 text-xs bg-amber-900/40 text-amber-200 border border-amber-700/60">
-<p class="font-medium break-words">Waiting on input: <?= $this->e($blockedReason) ?></p>
-<?php if (!empty($resumeHint)): ?>
-<p class="select-none mt-1 text-amber-300/90">Attach to answer it:</p>
-<code class="block mt-0.5 font-mono text-[11px] text-amber-100 break-all select-all"><?= $this->e((string)$resumeHint) ?></code>
-<?php endif ?>
-</div>

@@ -39,7 +39,7 @@ test.describe('live Codex browser lifecycle', () => {
 
       await page.locator('#new-session-summary').click();
       await expect(page.locator('#new-session-agent')).toBeVisible();
-      const existingSessions = new Set(await page.locator('a[href^="/session.php?session="]').evaluateAll(
+      const existingSessions = new Set(await page.locator('a[href^="/session?session="]').evaluateAll(
         links => links.map(link => new URL(link.href).searchParams.get('session'))
       ));
       await page.locator('#new-session-agent').selectOption('codex');
@@ -58,7 +58,7 @@ test.describe('live Codex browser lifecycle', () => {
       ]);
 
       await expect(page.getByText('Created session', { exact: true })).toBeVisible();
-      const currentSessions = await page.locator('a[href^="/session.php?session="]').evaluateAll(
+      const currentSessions = await page.locator('a[href^="/session?session="]').evaluateAll(
         links => links.map(link => new URL(link.href).searchParams.get('session'))
       );
       createdSession = currentSessions.find(id => id && !existingSessions.has(id));
@@ -67,7 +67,7 @@ test.describe('live Codex browser lifecycle', () => {
       // Refresh the dashboard first, proving the new sidecar/session row is
       // durable and the successful creation did not leave an error flash.
       await page.reload({ waitUntil: 'domcontentloaded' });
-      const sessionLink = page.locator(`a[href="/session.php?session=${createdSession}"]`).first();
+      const sessionLink = page.locator(`a[href="/session?session=${createdSession}"]`).first();
       await expect(sessionLink).toBeVisible({ timeout: 30_000 });
       await sessionLink.click();
       await expect(page).toHaveURL(new RegExp(`session=${createdSession}$`));
@@ -104,7 +104,7 @@ test.describe('live Codex browser lifecycle', () => {
       if (createdSession) {
         await page.goto('/').catch(() => {});
         page.once('dialog', dialog => dialog.accept());
-        const rowLink = page.locator(`a[href="/session.php?session=${createdSession}"]`).first();
+        const rowLink = page.locator(`a[href="/session?session=${createdSession}"]`).first();
         const row = rowLink.locator('xpath=ancestor::li[1]');
         const kill = row.getByRole('button', { name: 'Kill' });
         if (await kill.count()) {
@@ -115,7 +115,7 @@ test.describe('live Codex browser lifecycle', () => {
           // archive endpoint discovers that durable catalog entry and the
           // browser renders a usable archived-session link for it.
           await page.locator('#show-archived-btn').click();
-          const archivedLink = page.locator(`a[href="/archived_session.php?agent_session_id=${createdSession}"]`).first();
+          const archivedLink = page.locator(`a[href="/archived-session?agent_session_id=${createdSession}"]`).first();
           await expect(archivedLink).toBeVisible({ timeout: 30_000 });
           await archivedLink.click();
           await expect(page.getByRole('heading', { name: 'History (read-only)' })).toBeVisible();

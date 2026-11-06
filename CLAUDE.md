@@ -22,10 +22,8 @@ bash tests/run.sh --live   # run ONLY the live smoke test (see below) - never pa
 ```
 
 No Composer test runner, no Pest, and nothing to build to run the app: the JS is
-plain files and `public/css/tailwind.css` is a committed, precompiled file. A
-dev-only `package.json` exists for regenerating it (`npm run build:css`, after
-editing classes in a template) and for the JSDoc type-check (`npm run
-typecheck`) - see CONTRIBUTING.md. `tests/run.sh` runs each
+plain files and the CSS is hand-written. A dev-only `package.json` exists for
+the JSDoc type-check (`npm run typecheck`) - see CONTRIBUTING.md. `tests/run.sh` runs each
 `tests/test_*.php` directly via the `php` CLI. The default suite is
 self-isolating: it points `TMUX_SOCKET`/`CLAUDE_BIN`/sidecar paths at
 fixtures (`tests/.env.testing`), so it never touches the real tmux server
@@ -137,9 +135,9 @@ Docker-spawned, makes that impossible by construction — not by convention.
    thin action: call `AuthService` (CSRF/session - via one of
    `App\Controllers\Controller`'s two shared guard helpers,
    `require_post_json()`/`start_readonly_json()`, for everything except
-   the two full-page renders and `BrowseController`, which have their own
+   the full-page renders and `BrowseController`, which have their own
    reasons not to), call `AgentClient::agent_call([...])` to talk to the
-   agent, then hand the result to a `PageView`/`App\Views\*` class to
+   agent, then hand the result to an `App\Views\*` class to
    render - no inline HTML in the controllers themselves.
 3. `AgentClient` opens the UNIX socket, writes one JSON request, reads one
    JSON response. `agent.php` (host-agent's entry point) is a per-connection
@@ -343,14 +341,11 @@ Docker-spawned, makes that impossible by construction — not by convention.
    agent socket - so a containerised app uses its host-bridge recipe instead of
    calling the socket from the container. The repo consumes it in no code path
    of its own; the package is tested through `tests/test_sessioneer_client.php`.
-5. `App\Views\*` (one render class per feature area — `TranscriptView`,
-   `SessionRowView`, `BlockedPromptView`, `QuotaFooterView`,
-   `HealthBoxView`, `PushNotifyView`, plus `PageView` for the two full-page
-   templates) is what controllers hand their `AgentClient` result to.
-   Views extend `App\Views\View`, which owns a shared `League\Plates`
-   engine rooted at `src/partials/` — templates are grouped by feature
-   (`partials/transcript/`, `partials/blocked-prompt/`,
-   `partials/session-row/`, `partials/pages/`, ...), not one flat directory.
+5. `App\Views\*` (`V2View` for the dashboard, session and archived pages and
+   their cards, `PushNotifyView` for the Web Push control) is what controllers
+   hand their `AgentClient` result to. Views extend `App\Views\View`, which owns a
+   shared `League\Plates` engine rooted at `src/partials/` (`partials/v2/`,
+   `partials/push-notify/`).
 
 Both `App\` (→ `src/lib/`) and `HostAgent\` (→ `host-agent/lib/`) are
 Composer PSR-4 autoloaded from the one root `composer.json` — `public/`,
@@ -500,18 +495,21 @@ that only `create_agent_session()`-spawned sessions have).
     that still needs Bash/Read/Write/Edit, `--allowedTools`/
     `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` are the safe options, not `--tools`.
 
-- **The v2 UI is the main one (`/`, `/session`, `/archived-session`); classic is a fallback at `/classic`** (`V2Controller`, `V2View`,
-  `src/partials/v2/`, `public/css/v2.css`, `public/css/v2-session.css`, `public/js/v2.js`,
-  `public/js/v2-session.js`, `public/js/v2-session-sheets.js`; see docs/v2-ui.md). It reads
-  the same host-agent data, reuses the classic JSON endpoints where they fit, and has its own
-  JSON `POST /v2/action` in place of the classic redirect-and-flash handler. Its CSS is
-  hand-written around custom properties (no Tailwind build) and its JS is plain ES5. Keep
-  classic files untouched when working on it (they are being retired), and keep `tests/test_v2_dashboard.php`, `tests/test_v2_session.php`,
-  `tests/test_v2_session_browser.php` and `tests/test_v2_session_agent.php` passing.
+- **The UI (`/`, `/session`, `/archived-session`)** is `V2Controller`, `V2View`,
+  `src/partials/v2/`, `public/css/v2.css`, `public/css/v2-session.css` and
+  `public/js/v2*.js` plus the shared `markdown.js` and `push-notify.js`; see
+  docs/v2-ui.md. The classic UI is gone (tag `classic-ui-final` marks the last
+  state); the JSON `*.php` endpoints stay as the API the pages call, and
+  `POST /v2/action` is the JSON action endpoint. Its CSS is hand-written around
+  custom properties (no CSS build) and its JS is plain ES5. Keep
+  `tests/test_v2_dashboard.php`, `tests/test_v2_session.php`,
+  `tests/test_v2_session_browser.php`, `tests/test_v2_session_agent.php`,
+  `tests/test_session_effort_context_browser.php` and
+  `tests/test_opencode_question_page_browser.php` passing.
 - **`public/js/*.js` is plain ES5** (`var`, `function`, no `const`/`let`,
   arrow functions, `Set`, or template literals) — no transpiler in this
   project, and mobile Safari compatibility has repeatedly been the reason
-  (see the several iOS-specific comments throughout `session.js`). Match
+  (see the iOS-specific comments throughout `v2-session.js`). Match
   this style; don't introduce ES6+ syntax.
 - Every request re-validates state fresh rather than trusting client input:
   a session name for `kill`, an option number for `answer_prompt`, etc. are
@@ -524,18 +522,11 @@ that only `create_agent_session()`-spawned sessions have).
   or specific bug it guards against. Read them before assuming something is
   over-engineered, and keep new ones to that — no who, when or how-it-was-found
   narrative.
-- Every transcript block (text/plan/tool_use/tool_result/task_notification) carries two
-  cross-cutting attributes in both its PHP render (`transcript/block.php`)
-  and its JS poll-time mirror (`renderBlock()` in `session.js`) — keep
-  both in sync when touching either:
-  - `data-line="<line>"` — the block's own raw JSONL line number, used to
-    scroll to and highlight a search result (see "Session/dashboard
-    content search" in CONTRIBUTING.md).
-  - A `.copy-btn` + `.copy-source` pair (wrapped in `.copy-block`, or the
-    block's own `<pre>` for a `<details>`-expanded collapsible block) —
-    the shared copy-to-clipboard affordance (`copyTextToClipboard()` in
-    `common.js`). A new block kind needs both attached the same way, or it
-    silently loses search-jump and copy support that every other kind has.
+- Every transcript block the session page draws (`renderBlock()` in
+  `v2-session.js`, the only renderer) carries `data-line="<line>"` - the block's
+  own raw JSONL line number, used to scroll to and highlight a search result -
+  and a copy button, so a new block kind needs both or it silently loses
+  search-jump and copy support.
 - Branch model actually used here: `master` is protected (the "Core tests
   (PHP 8.3)" check is required, the branch must be up to date, and this
   applies to admins), so every change goes through a short-lived branch and

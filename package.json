@@ -1,14 +1,11 @@
 {
   "name": "sessioneer",
   "private": true,
-  "description": "Dev-only tooling - Tailwind CSS build and the JSDoc type-check. Never required to install or run the app itself; see CONTRIBUTING.md.",
+  "description": "Dev-only tooling - the JSDoc type-check. Never required to install or run the app itself; see CONTRIBUTING.md.",
   "scripts": {
-    "build:css": "tailwindcss -i ./resources/tailwind.css -o ./public/css/tailwind.css --minify",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@tailwindcss/cli": "^4.3.3",
-    "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2"
   }
 }

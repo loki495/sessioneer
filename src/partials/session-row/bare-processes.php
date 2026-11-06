@@ -1,1 +1,0 @@
-<div class="mt-8"><h2 class="select-none text-sm font-medium text-slate-400 mb-1">Other claude processes on host</h2><p class="select-none text-xs text-slate-500 mb-2">Not managed by this tool.</p><ul class="flex flex-col gap-2"><?= $rowsHtml ?></ul></div>

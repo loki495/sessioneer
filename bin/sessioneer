@@ -136,7 +136,7 @@ function usage(): string
       -h, --help        this text
 
     Prints the session name on success (the dashboard opens it at
-    session.php?session=NAME). Exit status 0 on success, 1 otherwise.
+    /session?session=NAME). Exit status 0 on success, 1 otherwise.
 
     TXT;
 }

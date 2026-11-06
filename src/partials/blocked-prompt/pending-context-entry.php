@@ -1,1 +1,0 @@
-<div class="rounded-lg border border-amber-700/60 bg-amber-900/40 px-3 py-2 mb-2 lg:max-w-[75%] lg:self-start"><div class="select-none mb-1 flex items-center gap-2 text-xs text-slate-500"><span class="font-medium text-amber-300">Awaiting approval</span></div><div class="flex flex-col gap-1.5"><?= $contentHtml ?></div></div>
