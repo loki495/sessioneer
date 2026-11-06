@@ -426,6 +426,10 @@ needed; a headless browser (`google-chrome-stable`, `google-chrome`,
 `test_ui_smoke.php` *if* one is already installed, and skipped cleanly
 otherwise.
 
+`php tests/test_ui_dashboard_browser.php` exercises dashboard startup, saved
+settings and the New session sheet in Chrome against the canned agent. Creation
+submissions use fixtures, so this check never starts a real agent session.
+
 **Isolation, since this tool can create real tmux sessions and spawn real
 processes on the host:**
 

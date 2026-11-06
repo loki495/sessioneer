@@ -380,10 +380,10 @@
 
   // ---- settings ----
   var settingsDialog = document.getElementById('ui-settings-dialog');
-  var themeSelect = document.getElementById('v2-theme');
-  var pollSelect = document.getElementById('v2-poll');
-  var workersBox = document.getElementById('v2-show-workers');
-  var idleBox = document.getElementById('v2-hide-idle');
+  var themeSelect = document.getElementById('ui-theme');
+  var pollSelect = document.getElementById('ui-poll');
+  var workersBox = document.getElementById('ui-show-workers');
+  var idleBox = document.getElementById('ui-hide-idle');
 
   themeSelect.value = load('v2-theme', 'system');
   pollSelect.value = String(state.pollMs);
