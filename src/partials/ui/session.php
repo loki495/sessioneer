@@ -58,6 +58,11 @@ $bootstrap = json_encode([
       <div id="sess-thinking"></div>
       <div id="sess-error"></div>
       <div id="sess-prompt"></div>
+      <?php if (!$archived && ($detail['runtime'] ?? '') === 'headless' && in_array($detail['agent'] ?? 'claude', ['claude', 'codex'], true)): ?>
+      <div class="ui-advise" id="sess-advise" data-advise-host data-csrf="<?= $this->e($csrfToken) ?>" data-session="<?= $this->e($sessionName) ?>">
+        <button type="button" class="ui-btn ui-btn-quiet" data-advise-open>Continue here or start a new one?</button>
+      </div>
+      <?php endif ?>
     </div>
   </main>
 
@@ -186,6 +191,7 @@ $bootstrap = json_encode([
 <script src="<?= \App\Assets::versioned_url('/js/ui-archived.js') ?>"></script>
 <?php else: ?>
 <script src="<?= \App\Assets::versioned_url('/js/ui-quota.js') ?>"></script>
+<script src="<?= \App\Assets::versioned_url('/js/ui-advise.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/ui-session.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/ui-session-sheets.js') ?>"></script>
 <?php endif ?>

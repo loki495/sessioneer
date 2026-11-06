@@ -196,4 +196,5 @@
 
 <script src="<?= \App\Assets::versioned_url('/js/ui-sheets.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/ui-quota.js') ?>"></script>
+<script src="<?= \App\Assets::versioned_url('/js/ui-advise.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/ui.js') ?>"></script>

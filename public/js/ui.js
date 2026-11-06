@@ -135,9 +135,9 @@
         inFlight = false;
         if (!data || !data.ok) { return; }
         applyCounts(data.counts);
-        // An open menu or a half-typed field would be destroyed by the swap.
+        // An open menu, a half-typed field or an advice panel would be destroyed by the swap.
         var key = data.sessions_html + '\u0000' + data.bare_html;
-        if (key === lastHtml || sessionsEl.querySelector('.ui-menu[open]')) { return; }
+        if (key === lastHtml || sessionsEl.querySelector('.ui-menu[open], .ui-advise-panel')) { return; }
         lastHtml = key;
         sessionsEl.innerHTML = data.sessions_html;
         bareEl.innerHTML = data.bare_html;

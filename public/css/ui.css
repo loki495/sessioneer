@@ -377,3 +377,9 @@ input[type="search"], select, textarea, input[type="text"] { border-color: var(-
 .ui-qg-codex { --agent: var(--agent-codex); }
 .ui-qg-antigravity { --agent: var(--agent-antigravity); }
 .ui-qg-ollama { --agent: var(--agent-ollama); }
+
+/* Continue-here / start-a-new-one advice (cards and the session page). */
+.ui-advise { margin-top: 8px; }
+.ui-advise-btns { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.ui-advise-btn { flex-direction: column; align-items: flex-start; height: auto; padding-top: 10px; padding-bottom: 10px; text-align: left; gap: 2px; }
+.ui-advise-btn .ui-small { opacity: 0.85; overflow-wrap: anywhere; }

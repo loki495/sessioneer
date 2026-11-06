@@ -212,6 +212,8 @@ class UiController extends Controller
                 'session' => (string)($_POST['session'] ?? ''),
                 'runtime' => (string)($_POST['runtime'] ?? ''),
             ]),
+            'advise' => $this->advise(false),
+            'advise_act' => $this->advise(true),
             'kill' => $this->agent_plain(['action' => 'launch_kill', 'target' => (string)($_POST['session'] ?? ''), 'force' => true]),
             'take_over' => $this->take_over(),
             'take_over_confirm' => trim((string)($_POST['agent_session_id'] ?? '')) === ''
@@ -233,6 +235,34 @@ class UiController extends Controller
         };
 
         echo json_encode($result);
+    }
+
+    /**
+     * The resume-or-fresh advisor for one session, keyed by session name. `advise_act` carries the person's pick
+     * (choice = resume|fresh) and, for a fresh session, answers with a redirect to the new one.
+     *
+     * @return array<string, mixed>
+     */
+    private function advise(bool $act): array
+    {
+        $params = ['action' => 'advise', 'target' => (string)($_POST['session'] ?? '')];
+        if ($act) {
+            $params += ['act' => true, 'choice' => (string)($_POST['choice'] ?? '')];
+        }
+        $result = AgentClient::agent_call($params);
+        $ok = (bool)($result['ok'] ?? false);
+        $out = ['ok' => $ok, 'message' => (string)($result['message'] ?? '')];
+
+        if ($ok && !$act) {
+            $row = $result['sessions'][0] ?? [];
+            $out['status'] = (string)($row['status'] ?? '');
+            $out['advice'] = $row['advice'] ?? null;
+        }
+        if ($ok && $act && is_string($result['session'] ?? null) && $result['session'] !== '') {
+            $out['redirect'] = '/session?session=' . urlencode($result['session']);
+        }
+
+        return $out;
     }
 
     /** @return array<string, mixed> */

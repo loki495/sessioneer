@@ -95,4 +95,21 @@ $full['quota'] = static fn (): array => ['agents' => [], 'claude_profiles' => ['
 assert_equal(false, AdviseRunner::run(['target' => 'small-s', 'act' => true], $full)['ok'], 'a full quota refuses to act');
 assert_equal([], $calls, 'refusals launch nothing');
 
+// A person's explicit pick (the dashboard buttons) overrides the verdict; the guards still apply.
+$calls = [];
+$deps['launch'] = static function (array $r) use (&$calls): array {
+    $calls[] = ['launch', $r];
+    return ['ok' => true, 'name' => 'new-s', 'message' => 'ok'];
+};
+$picked = AdviseRunner::run(['target' => 'big-s', 'act' => true, 'choice' => 'resume'], $deps);
+assert_equal('resume', $picked['acted'], 'choice=resume resumes even where the verdict is fresh');
+assert_equal('22222222-2222-4222-8222-222222222222', $calls[0][1]['agent_session_id'], 'and it reuses the conversation');
+$calls = [];
+assert_equal('fresh', AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'fresh'], $deps)['acted'], 'choice=fresh starts a new one even where the verdict is resume');
+assert_equal(false, AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'bogus'], $deps)['ok'], 'an unknown choice is refused');
+$calls = [];
+assert_equal(false, AdviseRunner::run(['target' => 'busy-s', 'act' => true, 'choice' => 'fresh'], $deps)['ok'], 'a choice on a working session is still refused');
+assert_equal(false, AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'resume'], $full)['ok'], 'a choice on a full quota is still refused');
+assert_equal([], $calls, 'refused choices launch nothing');
+
 echo "ok\n";
