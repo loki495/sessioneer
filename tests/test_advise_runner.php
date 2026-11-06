@@ -38,6 +38,9 @@ function fixture(string $root, string $name, string $id, int $tokens, int $ageSe
 fixture($root, 'small-s', '11111111-1111-4111-8111-111111111111', 20000, 7200);
 fixture($root, 'big-s', '22222222-2222-4222-8222-222222222222', 200000, 7200);
 fixture($root, 'busy-s', '33333333-3333-4333-8333-333333333333', 200000, 7200, 'working');
+SidecarStore::write_sidecar('big-s', ['workdir' => '/w/big-s', 'agent_session_id' => '22222222-2222-4222-8222-222222222222', 'agent' => 'claude', 'runtime' => 'headless', 'profile' => 'work']);
+SidecarStore::set_tool_rules('big-s', null, 'Bash');
+SessionStatusStore::write_status('big-s', ['status' => 'idle', 'mode' => 'plan']);
 $ok = ['session' => ['pct' => 3], 'week_all' => ['pct' => 40]];
 $deps = [
     'quota' => static fn (): array => ['agents' => [], 'claude_profiles' => ['work' => ['quota' => $ok]]],
@@ -76,6 +79,8 @@ $fresh = AdviseRunner::run(['target' => 'big-s', 'act' => true, 'model' => 'sonn
 assert_equal(['launch', 'kill'], array_column($calls, 0), 'fresh launches first, then archives the old session');
 assert_equal(false, isset($calls[0][1]['agent_session_id']), 'the fresh launch is a new conversation');
 assert_equal('sonnet', $calls[0][1]['model'], 'the requested model carries to the fresh session');
+assert_equal('Bash', $calls[0][1]['disallowed_tools'] ?? null, 'the fresh session keeps the old one\'s denied tools');
+assert_equal('plan', $calls[0][1]['starting_mode'] ?? null, 'and its permission mode');
 assert_equal('big-s', $calls[1][1]['target'], 'the old session is the one archived');
 assert_equal('big-s', $fresh['archived'], 'the reply names the archived session');
 
