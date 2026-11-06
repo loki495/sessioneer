@@ -15,7 +15,7 @@ namespace App;
 class Assets
 {
     /**
-     * $urlPath is the public path as used in a <script src>, e.g. "/js/v2.js".
+     * $urlPath is the public path as used in a <script src>, e.g. "/js/ui.js".
      */
     public static function versioned_url(string $urlPath): string
     {

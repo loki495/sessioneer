@@ -6,17 +6,17 @@ namespace App\Controllers;
 
 use App\AgentClient;
 use App\Services\AuthService;
-use App\Views\V2View;
+use App\Views\UiView;
 
 /**
- * The /v2 UI: a redesigned shell and dashboard served beside the classic
+ * The UI: a redesigned shell and dashboard served beside the classic
  * one. It reads the same host-agent data and reuses the classic JSON
  * endpoints for per-session actions (star, rename, answer_prompt, browse,
  * search, quota); only the page, its card/list fragments and a JSON twin of
  * DashboardController::handleAction() live here, because the classic action
  * handler answers with a redirect + flash that a fetch() cannot use.
  */
-class V2Controller extends Controller
+class UiController extends Controller
 {
     /** The redesign's former page URLs (/v2, /v2/session, /v2/archived-session) now live at the plain ones. */
     public function redirectPage(): void
@@ -43,25 +43,25 @@ class V2Controller extends Controller
         $sessions = $agentReachable ? ($listResult['sessions'] ?? []) : [];
         $bare = $agentReachable ? ($listResult['bare'] ?? []) : [];
 
-        echo V2View::dashboard_page([
+        echo UiView::dashboard_page([
             'agentReachable' => $agentReachable,
             'agentMessage' => (string)($listResult['message'] ?? 'Unknown error'),
             'csrfToken' => $csrfToken,
-            'counts' => V2View::counts($sessions),
-            'sessionsHtml' => V2View::sessions_html($sessions, $csrfToken),
-            'bareHtml' => V2View::bare_html($bare, $csrfToken),
+            'counts' => UiView::counts($sessions),
+            'sessionsHtml' => UiView::sessions_html($sessions, $csrfToken),
+            'bareHtml' => UiView::bare_html($bare, $csrfToken),
             'hooksMissing' => $agentReachable && (bool)($hookResult['ok'] ?? false) && !($hookResult['installed'] ?? false),
             'healthChecks' => (bool)($healthResult['ok'] ?? false) ? ($healthResult['checks'] ?? []) : [],
             'pushTimerSeconds' => (bool)($pushTimerResult['ok'] ?? false) ? (int)($pushTimerResult['interval_seconds'] ?? 0) : null,
             'vapidPublicKey' => $agentReachable ? (string)(AgentClient::agent_call(['action' => 'push_public_key'])['public_key'] ?? '') : '',
-            'agentOptions' => array_diff_key(\App\Views\V2View::AGENT_OPTIONS, ['antigravity' => true]),
+            'agentOptions' => array_diff_key(\App\Views\UiView::AGENT_OPTIONS, ['antigravity' => true]),
         ]);
     }
 
     /**
      * The session page. Only the detail is rendered into the page (header,
-     * controls, prompt); the transcript is fetched by v2-session.js from the
-     * /v2/history, so there is one renderer for the first
+     * controls, prompt); the transcript is fetched by ui-session.js from the
+     * /history, so there is one renderer for the first
      * page, load-earlier and live polling alike.
      */
     public function session(): void
@@ -82,7 +82,7 @@ class V2Controller extends Controller
         $detail = AgentClient::agent_call(['action' => 'session_detail', 'session' => $sessionName]);
         $jumpLine = isset($_GET['jump_line']) ? (int)$_GET['jump_line'] : 0;
 
-        echo V2View::session_page([
+        echo UiView::session_page([
             'sessionName' => $sessionName,
             'csrfToken' => $csrfToken,
             'found' => (bool)($detail['ok'] ?? false),
@@ -131,7 +131,7 @@ class V2Controller extends Controller
         $detail = AgentClient::agent_call(['action' => 'archived_session_detail', 'agent_session_id' => $agentSessionId]);
         $jumpLine = isset($_GET['jump_line']) ? (int)$_GET['jump_line'] : 0;
 
-        echo V2View::session_page([
+        echo UiView::session_page([
             'sessionName' => $agentSessionId,
             'archived' => true,
             'csrfToken' => $csrfToken,
@@ -141,7 +141,7 @@ class V2Controller extends Controller
         ]);
     }
 
-    /** The classic archived_session_history call as JSON entries, the shape /v2/history returns. */
+    /** The classic archived_session_history call as JSON entries, the shape /history returns. */
     public function archivedHistory(): void
     {
         $this->start_readonly_json();
@@ -155,7 +155,7 @@ class V2Controller extends Controller
         ]));
     }
 
-    /** Polled by v2.js: the same `list` call as the classic fragment, rendered as v2 cards. */
+    /** Polled by ui.js: the same `list` call as the classic fragment, rendered as cards. */
     public function fragment(): void
     {
         $this->start_readonly_json();
@@ -173,9 +173,9 @@ class V2Controller extends Controller
 
         echo json_encode([
             'ok' => true,
-            'counts' => V2View::counts($sessions),
-            'sessions_html' => V2View::sessions_html($sessions, $csrfToken),
-            'bare_html' => V2View::bare_html($listResult['bare'] ?? [], $csrfToken),
+            'counts' => UiView::counts($sessions),
+            'sessions_html' => UiView::sessions_html($sessions, $csrfToken),
+            'bare_html' => UiView::bare_html($listResult['bare'] ?? [], $csrfToken),
         ]);
     }
 
@@ -192,11 +192,11 @@ class V2Controller extends Controller
             return;
         }
 
-        echo json_encode(['ok' => true, 'archived_html' => V2View::archived_html($result['archived'] ?? [], AuthService::csrf_token())]);
+        echo json_encode(['ok' => true, 'archived_html' => UiView::archived_html($result['archived'] ?? [], AuthService::csrf_token())]);
     }
 
     /**
-     * JSON twin of DashboardController::handleAction() for the actions the v2
+     * JSON twin of DashboardController::handleAction() for the actions the UI
      * dashboard offers. Same parameters, same host-agent calls; `redirect` is
      * set where the classic one answers with a Location header.
      */
@@ -259,7 +259,7 @@ class V2Controller extends Controller
             $params['profile'] = $profile;
         }
 
-        // v2 runs everything headless; Antigravity is tmux-only, so it cannot be created here.
+        // The UI runs everything headless; Antigravity is tmux-only, so it cannot be created here.
         if ($params['agent'] === 'antigravity') {
             return ['ok' => false, 'message' => 'Antigravity needs a terminal and is not available in this UI.'];
         }
@@ -370,7 +370,7 @@ class V2Controller extends Controller
     }
 
     /**
-     * A call that lands on a live session: the page opens it (in the v2
+     * A call that lands on a live session: the page opens it ((in the UI)
      * session page) instead of just showing a message.
      *
      * @param array<string, mixed> $params

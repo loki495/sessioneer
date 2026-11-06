@@ -1,10 +1,11 @@
-# UI v2
+# UI
 
 A mobile-first UI: `/` is the dashboard, `/session` the session page and
 `/archived-session` the archived view. The previous (classic) UI was removed;
 its URLs answer 404 (git tag `classic-ui-final` marks the last state). The old
 page URLs `/v2`, `/v2/session` and `/v2/archived-session` redirect to the plain
-ones (query kept). The JSON endpoints keep their `/v2/` prefix and the other
+ones (query kept), and the JSON endpoints (`/action`, `/history`, `/archived-history`,
+`/fragment`, `/archived`) also answer under `/v2/` for scripts cached before the rename. The other
 JSON `*.php` endpoints are the API the pages call. Push notifications and Quick
 Prompt session links open `/session`. A session card opens the session page, an
 archived row the archived page. The file views (plan, todo, uploads) live in the session page's
@@ -14,14 +15,14 @@ details sheet.
 
 | Piece | Where |
 |---|---|
-| Routes `/`, `/session`, `/archived-session`, the redirecting `/v2*` page URLs, and the JSON `/v2/history`, `/v2/archived-history`, `/v2/fragment`, `/v2/archived`, `/v2/action` | `src/routes.php` |
-| Pages, poll fragment, archived list, history, JSON action endpoint | `src/lib/Controllers/V2Controller.php` |
-| Render helpers (card, counts, archived and bare rows, session page) | `src/lib/Views/V2View.php` |
-| Templates | `src/partials/v2/` |
-| Design tokens and the dashboard's styling | `public/css/v2.css` (hand-written, no build step) |
-| Session page styling | `public/css/v2-session.css` (uses the same tokens) |
-| Dashboard behaviour (tabs, filters, polling, actions) | `public/js/v2.js` (plain ES5) |
-| Session page behaviour | `public/js/v2-session.js` (transcript, polling, prompts, footer) and `public/js/v2-session-sheets.js` (controls, details, files, search, viewers) |
+| Routes `/`, `/session`, `/archived-session`, the redirecting `/v2*` page URLs, and the JSON `/history`, `/archived-history`, `/fragment`, `/archived`, `/action` | `src/routes.php` |
+| Pages, poll fragment, archived list, history, JSON action endpoint | `src/lib/Controllers/UiController.php` |
+| Render helpers (card, counts, archived and bare rows, session page) | `src/lib/Views/UiView.php` |
+| Templates | `src/partials/ui/` |
+| Design tokens and the dashboard's styling | `public/css/ui.css` (hand-written, no build step) |
+| Session page styling | `public/css/ui-session.css` (uses the same tokens) |
+| Dashboard behaviour (tabs, filters, polling, actions) | `public/js/ui.js` (plain ES5) |
+| Session page behaviour | `public/js/ui-session.js` (transcript, polling, prompts, footer) and `public/js/ui-session-sheets.js` (controls, details, files, search, viewers) |
 
 There is no framework and no build step. Browser push is subscribed from a
 Notifications card in Settings (`push-notify.js`, which also keeps the CSRF token
@@ -30,7 +31,7 @@ the service worker needs to answer prompts from a notification).
 ## Design
 
 - **Tokens.** Every colour, radius, tap-target size and safe-area inset is a CSS
-  custom property at the top of `v2.css`. Dark mode is the same set replaced
+  custom property at the top of `ui.css`. Dark mode is the same set replaced
   under `<html data-theme="dark">`. An inline script in the layout sets it
   before first paint from the stored choice (Settings: match device / light /
   dark, kept in `localStorage`) or `prefers-color-scheme`.
@@ -48,9 +49,9 @@ the service worker needs to answer prompts from a notification).
   question, its context and one full-width button per option. The whole card
   opens the session; star and the `...` menu (Rename, Take over for a terminal
   Claude session, Kill) sit above it.
-- **Headless only.** `/v2` creates and resumes everything headless: there is no
+- **Headless only.** `/` creates and resumes everything headless: there is no
   "Runs in" picker, an archived row has one Resume (it implies headless, for Claude
-  `V2Controller` always passes `runtime=headless`), Antigravity (tmux-only) is not
+  `UiController` always passes `runtime=headless`), Antigravity (tmux-only) is not
   offered for new sessions, and nothing moves a session to a terminal. A session
   that still runs in a terminal (tmux; Claude or Antigravity) is listed and opened
   **read only**: a "Terminal, read only" chip, no composer, its prompt shown with every
@@ -62,14 +63,14 @@ the service worker needs to answer prompts from a notification).
 
 ## Data and actions
 
-The page and its poll (`/v2/fragment`, every 3s by default, paused while the tab
+The page and its poll (`/fragment`, every 3s by default, paused while the tab
 is hidden) call the host agent's `list` action. The poll
 leaves the list alone while a card menu is open. Existing endpoints are reused
 as they are: `/session_star.php`, `/session_rename.php`, `/answer_prompt.php`,
 `/browse.php`, `/create_folder.php`, `/session_list_models.php`,
 `/session_list_claude_profiles.php`, `/search_sessions.php`, `/quota.php`.
 
-`POST /v2/action` is the JSON action endpoint. It takes
+`POST /action` is the JSON action endpoint. It takes
 `action` = `new`, `resume`, `switch_runtime`, `take_over`, `take_over_confirm`, `kill`, `kill_bare`, `cleanup`,
 `install_hook` or `set_push_timer_interval`, plus `csrf_token`, and answers `{ok, message, redirect?}`. `take_over` (a
 bare process) answers with a redirect to the new headless session, or
@@ -109,7 +110,7 @@ the iOS keyboard and a pinch-zoom does not resize it.
 
 **Rendering.** The server renders only the shell and a bootstrap JSON (the
 session detail, hex-escaped so transcript text cannot close the `<script>`); the
-transcript comes from `/v2/history` (the `session_history` action plus
+transcript comes from `/history` (the `session_history` action plus
 `include_thinking`) and is drawn by one client renderer for the first page,
 "Load older", and the live tail. Each user and assistant message is a bubble or
 free text with markdown (`markdown.js`); every tool
@@ -167,16 +168,16 @@ age, and what the session waits on or its last message. A swipe right goes back 
 history (the dashboard when there is none). Swipes work anywhere except where a
 finger may be scrolling (a code block, a field), need 80px of mostly horizontal
 travel, ignore the outer 24px (left to the browser's own back/forward gestures) and
-are ignored while a popup is open. Every sheet (`public/js/v2-sheets.js`, both pages)
+are ignored while a popup is open. Every sheet (`public/js/ui-sheets.js`, both pages)
 closes on a tap outside it, a swipe down from its fixed header, or a swipe right anywhere inside it (not over a field, code block or sideways-scrolling area, nor from the screen edges).
 The session details popup header has icon-only Sessions (swaps to the sessions popup) and Star buttons plus Rename and Kill; the open session is highlighted and flagged "Current" in the sessions popup.
 The bar also carries a very small stacked readout for this session's agent and
-account: 5-hour use, weekly use and context (`V2Quota.mini`, from `/quota.php?session=`,
+account: 5-hour use, weekly use and context (`UiQuota.mini`, from `/quota.php?session=`,
 refreshed every five minutes; context follows the detail poll). It opens the same popup
 as the gauge button, which stays.
 The gauge button opens this session's context share and the usage meters (this
 session's agent first, every Claude account when several are configured), rendered
-by `public/js/v2-quota.js`, shared with the dashboard's Status tab: each agent a
+by `public/js/ui-quota.js`, shared with the dashboard's Status tab: each agent a
 tinted group, reset times in Pacific time plus a relative one. On the Status tab
 Usage and Health fold; Health starts collapsed when every check passes and each
 health group is collapsed on its own unless one of its checks fails. While a popup,
@@ -222,18 +223,18 @@ text editor for long drafts.
 
 A dormant conversation opens in the same page shell as the session page,
 booted read only (`archived: true` in the bootstrap, `jump_line` supported).
-The transcript comes from `/v2/archived-history` (the
+The transcript comes from `/archived-history` (the
 `archived_session_history` call as JSON entries, rendered by the same
-`v2-session.js` code, so bubbles, tool calls, images and attachments match the
-live page); there is no polling and no composer. `v2-archived.js` adds the
+`ui-session.js` code, so bubbles, tool calls, images and attachments match the
+live page); there is no polling and no composer. `ui-archived.js` adds the
 details sheet, search and **Resume**: a footer button and a details-sheet action
-posting `resume` (headless, with the account) to `/v2/action` and following the
+posting `resume` (headless, with the account) to `/action` and following the
 redirect into the new live session. That is also how an archived conversation is
 unarchived. Search covers this conversation (jumping to the hit) and all
 sessions (live hits open the session page, archived ones this page). Archived
 rows on the dashboard and archived search hits link here. The JSON
 endpoints it uses (`archived_session_search.php`, `archived_session_attachment.php`,
-`search_sessions.php`) are the v2 API and stay. Antigravity conversations (no
+`search_sessions.php`) are the shared API and stay. Antigravity conversations (no
 headless form) show no Resume.
 
 ## Host-agent additions for the session page

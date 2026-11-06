@@ -17,7 +17,7 @@ compatibility (this is a home-screen PWA) has repeatedly been the reason.
 
 ## CSS
 
-Hand-written around custom properties (design tokens at the top of `public/css/v2.css`); there is no build step and no CSS framework.
+Hand-written around custom properties (design tokens at the top of `public/css/ui.css`); there is no build step and no CSS framework.
 
 ## Type-checking the JS (JSDoc + tsc)
 

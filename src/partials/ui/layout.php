@@ -20,7 +20,7 @@
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
 })();
 </script>
-<link rel="stylesheet" href="<?= \App\Assets::versioned_url('/css/v2.css') ?>">
+<link rel="stylesheet" href="<?= \App\Assets::versioned_url('/css/ui.css') ?>">
 <?= $this->section('head') ?>
 </head>
 <body>

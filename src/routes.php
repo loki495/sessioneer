@@ -8,7 +8,7 @@ use App\Controllers\PushController;
 use App\Controllers\QuotaController;
 use App\Controllers\SessionController;
 use App\Controllers\UploadController;
-use App\Controllers\V2Controller;
+use App\Controllers\UiController;
 use App\Http\Router;
 
 $router = new Router();
@@ -22,23 +22,31 @@ $router->get('/api/quick-prompt', [\App\Controllers\QuickPromptController::class
 // public/index.php's 404 for a route with no match at all) for a GET to
 // one of these paths.
 
-$router->get('/', [V2Controller::class, 'index']);
+$router->get('/', [UiController::class, 'index']);
 
 
-$router->get('/session', [V2Controller::class, 'session']);
-$router->get('/archived-session', [V2Controller::class, 'archivedSession']);
+$router->get('/session', [UiController::class, 'session']);
+$router->get('/archived-session', [UiController::class, 'archivedSession']);
 
-// Old page URLs of the redesign, redirected to the plain ones. Its JSON endpoints keep the /v2 prefix.
-$router->get('/v2', [V2Controller::class, 'redirectPage']);
-$router->get('/v2/', [V2Controller::class, 'redirectPage']);
-$router->get('/v2/session', [V2Controller::class, 'redirectPage']);
-$router->get('/v2/archived-session', [V2Controller::class, 'redirectPage']);
-$router->get('/v2/history', [V2Controller::class, 'history']);
-$router->get('/v2/archived-history', [V2Controller::class, 'archivedHistory']);
-$router->get('/v2/fragment', [V2Controller::class, 'fragment']);
-$router->get('/v2/archived', [V2Controller::class, 'archived']);
-$router->get('/v2/action', [V2Controller::class, 'action']);
-$router->post('/v2/action', [V2Controller::class, 'action']);
+$router->get('/history', [UiController::class, 'history']);
+$router->get('/archived-history', [UiController::class, 'archivedHistory']);
+$router->get('/fragment', [UiController::class, 'fragment']);
+$router->get('/archived', [UiController::class, 'archived']);
+$router->get('/action', [UiController::class, 'action']);
+$router->post('/action', [UiController::class, 'action']);
+
+// Former /v2 URLs: pages redirect to the plain ones; the JSON endpoints stay as aliases because an
+// already-open page or a cached script still calls them.
+$router->get('/v2', [UiController::class, 'redirectPage']);
+$router->get('/v2/', [UiController::class, 'redirectPage']);
+$router->get('/v2/session', [UiController::class, 'redirectPage']);
+$router->get('/v2/archived-session', [UiController::class, 'redirectPage']);
+$router->get('/v2/history', [UiController::class, 'history']);
+$router->get('/v2/archived-history', [UiController::class, 'archivedHistory']);
+$router->get('/v2/fragment', [UiController::class, 'fragment']);
+$router->get('/v2/archived', [UiController::class, 'archived']);
+$router->get('/v2/action', [UiController::class, 'action']);
+$router->post('/v2/action', [UiController::class, 'action']);
 
 $router->get('/sessions_list.php', [DashboardController::class, 'list']);
 $router->get('/search_sessions.php', [DashboardController::class, 'search']);

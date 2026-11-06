@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * Host-agent pieces the v2 session page relies on: assistant reasoning text only appears in a
+ * Host-agent pieces the session page relies on: assistant reasoning text only appears in a
  * transcript page when asked for (and never when empty), a session detail carries `starred` and a
  * terminal `resume_command`, and the resume command quotes what it embeds and refuses a
  * conversation with no id.
@@ -10,7 +10,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/lib/assert.php';
 
-$statusDb = sys_get_temp_dir() . '/sessioneer-test-v2-agent-' . bin2hex(random_bytes(4)) . '.sqlite';
+$statusDb = sys_get_temp_dir() . '/sessioneer-test-ui-agent-' . bin2hex(random_bytes(4)) . '.sqlite';
 putenv("SESSIONS_SQLITE_FILE={$statusDb}");
 
 require dirname(__DIR__) . '/host-agent/lib/Sessions.php';
@@ -35,7 +35,7 @@ assert_equal(null, TranscriptService::parse_transcript_line($empty, [], true), '
 $blank = json_encode(['type' => 'assistant', 'message' => ['role' => 'assistant', 'content' => [['type' => 'thinking', 'thinking' => "  \n"]]]]);
 assert_equal(null, TranscriptService::parse_transcript_line($blank, [], true), 'reasoning: whitespace-only is treated as empty');
 
-$file = tempnam(sys_get_temp_dir(), 'v2-thinking');
+$file = tempnam(sys_get_temp_dir(), 'ui-thinking');
 file_put_contents($file, $thinking . "\n" . $empty . "\n");
 assert_equal(1, count(TranscriptService::read_transcript_page($file, null, 10)['entries'][0]['blocks']), 'page: default page has no reasoning block');
 $page = TranscriptService::read_transcript_page($file, null, 10, false, true);
@@ -45,12 +45,12 @@ assert_equal('thinking', $since['entries'][0]['blocks'][0]['kind'], 'poll page: 
 unlink($file);
 
 // --- starred + resume command on a detail ---
-SidecarStore::write_sidecar('v2a-one', ['workdir' => '/tmp/a', 'spawned_at' => 1]);
-SidecarStore::set_starred('v2a-one', true);
+SidecarStore::write_sidecar('uia-one', ['workdir' => '/tmp/a', 'spawned_at' => 1]);
+SidecarStore::set_starred('uia-one', true);
 $detail = ['ok' => true, 'agent' => 'claude', 'agent_session_id' => 'abc-123', 'workdir' => "/tmp/it's here", 'profile' => null];
-$extras = sessioneer_with_detail_extras($detail, 'v2a-one');
+$extras = sessioneer_with_detail_extras($detail, 'uia-one');
 assert_equal(true, $extras['starred'], 'detail: starred session reports starred');
-assert_equal(false, sessioneer_with_detail_extras($detail, 'v2a-other')['starred'], 'detail: an unstarred session reports false');
+assert_equal(false, sessioneer_with_detail_extras($detail, 'uia-other')['starred'], 'detail: an unstarred session reports false');
 assert_equal("cd '/tmp/it'\\''s here' && claude --resume 'abc-123'", $extras['resume_command'], 'resume: workdir is shell-quoted, default account sets no config dir');
 assert_equal(['ok' => false], sessioneer_with_detail_extras(['ok' => false], 'x'), 'detail: a failed detail passes through untouched');
 

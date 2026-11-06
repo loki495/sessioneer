@@ -132,7 +132,7 @@ try {
     assert_true(is_array($sessionsListBody) && ($sessionsListBody['ok'] ?? false), 'GET /sessions_list.php: response decodes as ok=true JSON');
     assert_equal(2, count($sessionsListBody['sessions'] ?? []), 'GET /sessions_list.php: canned sessions passed through');
 
-    // --- session_detail.php/v2/history/sessions_list.php/quota.php now join the
+    // --- session_detail.php/history/sessions_list.php/quota.php now join the
     // session (not just AgentClient.php) - a tab left open just polling (no send/answer)
     // must keep its session, and the CSRF token it holds, alive rather than letting it
     // expire via PHP's session GC out from under a still-open page. Verified by polling
@@ -144,7 +144,7 @@ try {
     $pollCsrfToken = extract_csrf_token($pollPage['body']);
     assert_true($pollCsrfToken !== null, 'GET /session: page includes a csrf_token field (poll-keepalive setup)');
 
-    foreach (['session_detail.php?session=cc-20260101-1200', 'v2/history?session=cc-20260101-1200', 'sessions_list.php', 'quota.php'] as $pollEndpoint) {
+    foreach (['session_detail.php?session=cc-20260101-1200', 'history?session=cc-20260101-1200', 'sessions_list.php', 'quota.php'] as $pollEndpoint) {
         $pollResult = curl_request('GET', "{$baseUrl}/{$pollEndpoint}", [], $pollCookieJar);
         assert_equal(200, $pollResult['status'], "GET /{$pollEndpoint} (poll, with session cookie): 200");
 
@@ -564,7 +564,7 @@ test_exit();
  */
 function extract_csrf_token(string $html): ?string
 {
-    if (preg_match('/window\.V2S = (\{.*?\});<\/script>/s', $html, $m) !== 1) {
+    if (preg_match('/window\.UiSession = (\{.*?\});<\/script>/s', $html, $m) !== 1) {
         return null;
     }
     $boot = json_decode($m[1], true);

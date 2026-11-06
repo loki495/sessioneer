@@ -92,7 +92,7 @@ See git history (`host-agent/lib/Services/QuotaService.php`,
 ## Session/dashboard content search
 
 Broader than the archived list's own client-side title/name filter
-(a plain substring match in `v2.js` against
+(a plain substring match in `ui.js` against
 each row's already-rendered text) - this searches actual message
 content, server-side, since most of it was never loaded into any page's
 DOM in the first place.
@@ -120,7 +120,7 @@ DOM in the first place.
   transcript.
 - Clicking a result is a **full page navigation**, not an in-place fetch:
   `/session`/`/archived-session?...&jump_line=<line>`
-  (`V2Controller::session()`/`archivedSession()`) reuses the *existing*
+  (`UiController::session()`/`archivedSession()`) reuses the *existing*
   `before` pagination cursor - `before = jumpLine + 1` is exactly "the
   page whose last entry is `jumpLine` itself," the same semantics
   `TranscriptService::read_transcript_page()` already had - rather than
@@ -133,14 +133,14 @@ DOM in the first place.
   session has no such follow-up, hence "Back to latest" being the only
   way forward there.
 - Every rendered transcript block carries `data-line="<line>"` (drawn by
-  `renderBlock()` in `v2-session.js`), which
+  `renderBlock()` in `ui-session.js`), which
   is how a jump target is found regardless of whether it ended up
   standalone or swept into a grouped "N tool calls" pair.
 - `Element.scrollIntoView()` silently no-op'd
   on this page in a real headless-Chrome automation context used to
   verify the jump-to-match flow end to end - confirmed by calling
   `window.scrollTo()` directly in that same context immediately
-  afterward, which worked. The jump-scroll in `v2-session.js` uses an explicit `window.scrollTo()` computed
+  afterward, which worked. The jump-scroll in `ui-session.js` uses an explicit `window.scrollTo()` computed
   from the target's own `getBoundingClientRect()` instead, sidestepping
   whatever `scrollIntoView()`-specific behavior caused this rather than
   risking the same silent no-op for a real user on some browser/context.
@@ -171,7 +171,7 @@ sessioneer/
 │       ├── Http/
 │       │   └── Router.php    # App\Http\Router - deliberately simple exact-path matcher, no groups/
 │       │                     # middleware/path params yet; match() is a pure lookup, no output of its own
-│       ├── Controllers/      # App\Controllers\* - V2Controller (pages, poll fragments, JSON action
+│       ├── Controllers/      # App\Controllers\* - UiController (pages, poll fragments, JSON action
 │       │                     # endpoint), DashboardController (sessions list, content search),
 │       │                     # SessionController, BrowseController, UploadController, PushController,
 │       │                     # QuotaController; each method a thin action: an AuthService guard (via
@@ -179,10 +179,10 @@ sessioneer/
 │       │                     # AgentClient::agent_call(), then a View or JSON
 │       ├── Services/
 │       │   └── AuthService.php  # Host allowlist + same-origin check + CSRF token + session start
-│       └── Views/           # App\Views\* - V2View (dashboard, session and archived pages, cards) and
+│       └── Views/           # App\Views\* - UiView (dashboard, session and archived pages, cards) and
 │                             # PushNotifyView; View.php owns the shared League\Plates engine.
 ├── src/partials/            # every template Plates resolves against
-│   ├── v2/                   # the dashboard, session and archived pages and their cards
+│   ├── ui/                   # the dashboard, session and archived pages and their cards
 │   └── push-notify/          # the Web Push control shown in Settings
 ├── host-agent/             # installed natively on the HOST, not in Docker
 │   ├── agent.php            # per-connection entry point (systemd socket activation)

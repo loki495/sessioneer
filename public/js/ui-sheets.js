@@ -1,4 +1,4 @@
-/* Sessioneer v2: every <dialog class="v2-sheet"> closes on a tap outside it, a swipe down from its header, or a swipe right anywhere inside it
+/* Sessioneer: every <dialog class="ui-sheet"> closes on a tap outside it, a swipe down from its header, or a swipe right anywhere inside it
    (except over a field, code block or anything that scrolls sideways, and the outer edge strips the browser keeps for its own gestures).
    Loaded by the dashboard and the session page. Plain ES5 (see CLAUDE.md). */
 (function () {
@@ -6,7 +6,7 @@
 
   document.addEventListener('click', function (e) {
     // The sheet has no padding of its own, so a click whose target is the dialog itself landed on the backdrop.
-    if (e.target && e.target.tagName === 'DIALOG' && e.target.classList.contains('v2-sheet')) { e.target.close(); }
+    if (e.target && e.target.tagName === 'DIALOG' && e.target.classList.contains('ui-sheet')) { e.target.close(); }
   });
 
   var start = null, EDGE_PX = 24, SWIPE_PX = 80;
@@ -23,9 +23,9 @@
   }
   document.addEventListener('touchstart', function (e) {
     var t = e.touches[0];
-    var dlg = e.target.closest ? e.target.closest('dialog.v2-sheet') : null;
+    var dlg = e.target.closest ? e.target.closest('dialog.ui-sheet') : null;
     start = dlg && e.touches.length === 1
-      ? { dlg: dlg, head: !!e.target.closest('.v2-sheet-head'), y: t.clientY, x: t.clientX,
+      ? { dlg: dlg, head: !!e.target.closest('.ui-sheet-head'), y: t.clientY, x: t.clientX,
           edge: t.clientX <= EDGE_PX || t.clientX >= window.innerWidth - EDGE_PX || scrollsSideways(e.target) }
       : null;
   }, { passive: true });

@@ -72,15 +72,15 @@ try {
     } else {
         cdp_set_viewport($page, 390, 844, 1.0, true);
         assert_true(cdp_navigate($page, "http://127.0.0.1:{$port}/session?session=" . OQP_SESSION), 'the synthetic OpenCode session page loads');
-        assert_true(oqp_wait($page, "document.querySelector('.v2s-qblock [data-prompt-options]') !== null"), 'the pending question renders as an actionable prompt');
-        assert_true(oqp_wait($page, "document.querySelector('.v2s-qblock').textContent.indexOf('Which fruit') !== -1"), 'it shows the question text');
+        assert_true(oqp_wait($page, "document.querySelector('.sess-qblock [data-prompt-options]') !== null"), 'the pending question renders as an actionable prompt');
+        assert_true(oqp_wait($page, "document.querySelector('.sess-qblock').textContent.indexOf('Which fruit') !== -1"), 'it shows the question text');
 
-        $typeAndSend = static fn (string $text): string => "(function () { var b = document.querySelector('.v2s-qblock'); b.querySelector('[data-act=\"reveal-free\"]').click(); var t = b.querySelector('.v2s-free textarea'); t.value = " . json_encode($text) . "; t.dispatchEvent(new Event('input', {bubbles: true})); b.querySelector('[data-act=\"send-free\"]').click(); return true; }())";
+        $typeAndSend = static fn (string $text): string => "(function () { var b = document.querySelector('.sess-qblock'); b.querySelector('[data-act=\"reveal-free\"]').click(); var t = b.querySelector('.sess-free textarea'); t.value = " . json_encode($text) . "; t.dispatchEvent(new Event('input', {bubbles: true})); b.querySelector('[data-act=\"send-free\"]').click(); return true; }())";
 
         cdp_evaluate($page, "window.alert = function () {}; true;");
         cdp_evaluate($page, $typeAndSend('reject'));
-        assert_true(oqp_wait($page, "document.getElementById('v2-toast').textContent.indexOf('Synthetic OpenCode question rejected this reply') !== -1"), 'a refused reply is reported with the agent\'s message');
-        assert_true(oqp_wait($page, "document.querySelector('.v2s-qblock [data-act=\"send-free\"]') !== null"), 'the question stays answerable after a refusal');
+        assert_true(oqp_wait($page, "document.getElementById('ui-toast').textContent.indexOf('Synthetic OpenCode question rejected this reply') !== -1"), 'a refused reply is reported with the agent\'s message');
+        assert_true(oqp_wait($page, "document.querySelector('.sess-qblock [data-act=\"send-free\"]') !== null"), 'the question stays answerable after a refusal');
 
         cdp_evaluate($page, $typeAndSend('Mango'));
         assert_true(oqp_wait($page, "document.body.textContent.indexOf('Answered: Mango') !== -1"), 'the accepted reply comes back from the poll as the answer');

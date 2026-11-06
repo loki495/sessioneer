@@ -66,7 +66,7 @@ try {
     $jar = $root . '/cookies';
     $response = curl_request('GET', $url, [], $jar);
     assert_equal(200, $response['status'], 'the session page loads');
-    preg_match('/window\.V2S = (\{.*?\});<\/script>/s', $response['body'], $m);
+    preg_match('/window\.UiSession = (\{.*?\});<\/script>/s', $response['body'], $m);
     $csrf = json_decode($m[1] ?? '{}', true)['csrfToken'] ?? '';
     assert_true(is_string($csrf) && $csrf !== '', 'the page exposes its CSRF token');
 
@@ -84,10 +84,10 @@ try {
     } else {
         cdp_set_viewport($page, 390, 844, 1.0, true);
         cdp_navigate($page, $url);
-        $select = "document.getElementById('v2s-c-effort')";
-        $summary = "document.getElementById('v2s-ctrl-summary').textContent";
+        $select = "document.getElementById('sess-c-effort')";
+        $summary = "document.getElementById('sess-ctrl-summary').textContent";
         // The controls sheet is built when it opens; the button's summary follows every poll.
-        $reopen = "(function () { var d = document.getElementById('v2s-controls'); if (d.open) { d.close(); } document.getElementById('v2s-ctrl-open').click(); return true; }())";
+        $reopen = "(function () { var d = document.getElementById('sess-controls'); if (d.open) { d.close(); } document.getElementById('sess-ctrl-open').click(); return true; }())";
         $change = static fn (string $v): string => "{$GLOBALS['select']}.value = " . json_encode($v) . "; {$GLOBALS['select']}.dispatchEvent(new Event('change', {bubbles: true}));";
         $requested = static fn (): mixed => json_decode((string)file_get_contents($GLOBALS['effortState']), true)['requested'] ?? null;
 
@@ -110,7 +110,7 @@ try {
         file_put_contents($effortState, json_encode(['effort' => 'low', 'reject' => true]));
         assert_true(sec_wait($page, "{$summary}.indexOf('Low') !== -1"), 'the rejecting backend state is polled in');
         cdp_evaluate($page, $change('medium'));
-        assert_true(sec_wait($page, "document.getElementById('v2s-ctrl-status').textContent.indexOf('Rejected') !== -1 && {$summary}.indexOf('Low') !== -1"), 'a refusal is shown and the prior level stays');
+        assert_true(sec_wait($page, "document.getElementById('sess-ctrl-status').textContent.indexOf('Rejected') !== -1 && {$summary}.indexOf('Low') !== -1"), 'a refusal is shown and the prior level stays');
 
         file_put_contents($effortState, json_encode(['effort' => null, 'available' => false]));
         sleep(4);
@@ -121,24 +121,24 @@ try {
         sleep(4);
         cdp_evaluate($page, $reopen);
         assert_true(sec_wait($page, "{$select}.value === 'high' && !{$select}.disabled"), 'the control recovers when effort becomes available');
-        cdp_evaluate($page, "document.getElementById('v2s-controls').close()");
+        cdp_evaluate($page, "document.getElementById('sess-controls').close()");
 
         unlink($effortState); // its detail overlay forces agent=claude
         foreach (['claude', 'codex'] as $agent) {
             file_put_contents($contextState, json_encode(['agent' => $agent, 'pct' => 12]));
             cdp_navigate($page, $url);
-            assert_true(sec_wait($page, "document.getElementById('v2s-sub').textContent.indexOf('ctx 12%') !== -1"), "{$agent}: the header shows the context share");
+            assert_true(sec_wait($page, "document.getElementById('sess-sub').textContent.indexOf('ctx 12%') !== -1"), "{$agent}: the header shows the context share");
 
             foreach ([81, 4, 0] as $pct) {
                 file_put_contents($contextState, json_encode(['agent' => $agent, 'pct' => $pct]));
-                assert_true(sec_wait($page, "document.getElementById('v2s-sub').textContent.indexOf('ctx {$pct}%') !== -1"), "{$agent}: the poll updates the share to {$pct}%");
+                assert_true(sec_wait($page, "document.getElementById('sess-sub').textContent.indexOf('ctx {$pct}%') !== -1"), "{$agent}: the poll updates the share to {$pct}%");
             }
 
-            assert_true(sec_wait($page, "!!document.querySelector('#v2s-sub .v2-warn') === false"), "{$agent}: a low share carries no warning style");
+            assert_true(sec_wait($page, "!!document.querySelector('#sess-sub .ui-warn') === false"), "{$agent}: a low share carries no warning style");
             file_put_contents($contextState, json_encode(['agent' => $agent, 'pct' => 85]));
-            assert_true(sec_wait($page, "!!document.querySelector('#v2s-sub .v2-warn')"), "{$agent}: 80% and over is flagged");
+            assert_true(sec_wait($page, "!!document.querySelector('#sess-sub .ui-warn')"), "{$agent}: 80% and over is flagged");
             file_put_contents($contextState, json_encode(['agent' => $agent, 'pct' => null]));
-            assert_true(sec_wait($page, "document.getElementById('v2s-sub').textContent.indexOf('ctx') === -1"), "{$agent}: an unknown share shows no reading");
+            assert_true(sec_wait($page, "document.getElementById('sess-sub').textContent.indexOf('ctx') === -1"), "{$agent}: an unknown share shows no reading");
         }
 
         assert_equal([], cdp_drain_console_errors($page), 'no browser errors');
