@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 /**
  * `bin/sessioneer --usage`: prints the host agent's last known quota state as
- * JSON (agents, Claude profiles nested under agents.claude.profiles) against the REAL agent over a real socket
+ * JSON (agents, each a label plus profiles.<name>) against the REAL agent over a real socket
  * on the isolated fixtures, and fails with a handled message when the agent
  * is unreachable or combined with another action. Never spawns claude.
  */
@@ -37,8 +37,14 @@ try {
     assert_true(is_array($json), '--usage: output is JSON');
     assert_equal(['agents'], array_keys($json), '--usage: agents only at the top level');
     assert_equal(['claude', 'antigravity', 'opencode', 'codex'], array_keys($json['agents']), '--usage: one entry per agent');
-    assert_true(array_key_exists('fetched_at', $json['agents']['claude']), '--usage: entries carry fetched_at');
+    foreach ($json['agents'] as $key => $agent) {
+        assert_equal(['label', 'profiles'], array_keys($agent), "--usage: $key has only a label and its profiles, no top-level quota");
+        foreach ($agent['profiles'] as $name => $profile) {
+            assert_true(array_key_exists('fetched_at', $profile) && array_key_exists('quota', $profile), "--usage: $key.$name carries quota and fetched_at");
+        }
+    }
     assert_true(isset($json['agents']['claude']['profiles']['personal']), '--usage: the default Claude account is keyed personal');
+    assert_true(isset($json['agents']['codex']['profiles']['default']), '--usage: a single-account agent is profiles.default');
 
     [$code, $out, $err] = run_cli([$bin, '--usage', '--list'], $socketPath);
     assert_equal(1, $code, '--usage with --list: refused');
