@@ -125,15 +125,19 @@ function usage(): string
                         anything.
       --advise          judge whether an idle Claude or Codex headless session should be
                         resumed or replaced by a fresh one, from its transcript size, cache
-                        age and the account's quota, without waking it. No SESSION: a table
+                        age and the account's quota/reset, without waking it. A blocked source
+                        favors takeover on an account with room, even with small context.
+                        No SESSION: a table
                         of every tracked session. One SESSION (name or conversation id):
-                        the verdict, with one small model call if it is a close one.
+                        the verdict, with one small model call for a close context decision
+                        or a quota reset under one hour.
       --act             with --advise and exactly one SESSION: do what the verdict says.
-                        Resume sends a short continue prompt to that session. Fresh starts
-                        a new session (--model/--effort apply) to review the complete old
+                        Resume sends a short continue prompt only if the source has quota.
+                        Fresh starts a new session on an account with room (another Claude
+                        profile, then Codex or OpenCode) to review the old
                         conversation and Dibs state. The receiver archives the old session
                         after its takeover checks. Refused when the session is not idle,
-                        there is no clear verdict, or the quota is full.
+                        waiting is recommended, or no safe receiver is known.
       --wait            after launching, block until the session is idle and print
                         its final assistant message to stdout (the session name
                         goes to stderr). Exits 1 if the launch fails, the turn

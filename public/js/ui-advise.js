@@ -40,20 +40,35 @@
     var cold = a.cache_cold;
     var cost = a.cost;
     var meta = 'Context ' + k(a.context_tokens) + ' tokens, cache ' + (cold ? 'cold' : 'warm') + ' (' + age(a.cache_age_seconds) + ')';
-    var off = res.status !== 'idle' || a.quota_blocked;
-    var note = res.status !== 'idle' ? 'The session is ' + res.status + '.' : (a.quota_blocked ? 'The account quota is nearly full.' : '');
+    var blocked = !!a.quota_blocked;
+    var receiver = a.receiver;
+    var agentName = { claude: 'Claude', codex: 'Codex', opencode: 'OpenCode', antigravity: 'Antigravity', ollama: 'Ollama' };
+    var receiverName = receiver ? (agentName[receiver.agent] || receiver.agent) + (receiver.profile ? ' (' + receiver.profile + ')' : '') : '';
+    var offResume = res.status !== 'idle' || blocked;
+    var offFresh = res.status !== 'idle' || (blocked && !receiver);
+    var resetNote = blocked ? (a.quota_reset_seconds === null || a.quota_reset_seconds === undefined
+      ? 'Source quota reset time is unknown.' : 'Source quota resets in about ' + age(a.quota_reset_seconds) + '.') : '';
+    var note = res.status !== 'idle' ? 'The session is ' + res.status + '.' : resetNote;
     html += '<p class="ui-muted ui-small">' + esc(meta) + '</p><div class="ui-advise-btns">';
     [
-      ['resume', 'Continue here', cost.resume_rewrite_tokens > 0
-        ? 'Re-writes ~' + k(cost.resume_rewrite_tokens) + ' tokens now, then re-reads ' + k(cost.resume_reread_per_turn) + ' each turn'
-        : 'Cache is warm: no re-write, re-reads ' + k(cost.resume_reread_per_turn) + ' each turn'],
-      ['fresh', 'Start a new one', 'Reviews this session and Dibs; archives it after the takeover checks']
+      ['resume', a.verdict === 'wait' ? 'Wait for quota, then continue' : 'Continue here', blocked
+        ? 'Unavailable until this account quota resets'
+        : (cost.resume_rewrite_tokens > 0
+          ? 'Re-writes ~' + k(cost.resume_rewrite_tokens) + ' tokens now, then re-reads ' + k(cost.resume_reread_per_turn) + ' each turn'
+          : 'Cache is warm: no re-write, re-reads ' + k(cost.resume_reread_per_turn) + ' each turn'), offResume],
+      ['fresh', blocked ? 'Take over in another session' : 'Start a new one', receiverName
+        ? 'Uses ' + receiverName + ' and the /takeover skill; source remains available until review finishes'
+        : 'Reviews this session and Dibs; source remains available until review finishes', offFresh]
     ].forEach(function (b) {
-      var rec = a.verdict === b[0];
-      html += '<button type="button" class="ui-btn ui-advise-btn' + (rec ? ' ui-btn-primary' : '') + '" data-advise-choice="' + b[0] + '"' + (off ? ' disabled' : '') + '>'
+      var rec = a.verdict === b[0] || (a.verdict === 'wait' && b[0] === 'resume');
+      html += '<button type="button" class="ui-btn ui-advise-btn' + (rec ? ' ui-btn-primary' : '') + '" data-advise-choice="' + b[0] + '"' + (b[3] ? ' disabled' : '') + '>'
         + '<strong>' + b[1] + (rec ? ' (recommended)' : '') + '</strong><span class="ui-small">' + esc(b[2]) + '</span></button>';
     });
     html += '</div>' + (note ? '<p class="ui-small ui-warn">' + esc(note) + '</p>' : '');
+    if (blocked && !receiver && a.prompts && a.prompts.fresh) {
+      var where = a.manual_agents && a.manual_agents.length ? 'Start a session in ' + esc(a.manual_agents.join(' or ')) + ' and give it' : 'Start a session with quota and give it';
+      html += '<p class="ui-small">' + where + ' these manual takeover instructions:</p><pre class="ui-advise-manual">' + esc(a.prompts.fresh) + '</pre>';
+    }
     panel.innerHTML = html;
   }
 
@@ -74,7 +89,7 @@
     }
 
     var choice = pick.getAttribute('data-advise-choice');
-    if (choice === 'fresh' && !window.confirm('Start a new session to review and take over this work? This session stays available until the review finishes.')) { return; }
+    if (choice === 'fresh' && !window.confirm('Start a new session to review and take over this work? The receiver will read the full source conversation and Dibs state. This session stays available until the review finishes.')) { return; }
     Array.prototype.forEach.call(host.querySelectorAll('[data-advise-choice]'), function (b) { b.disabled = true; });
     post(host, { action: 'advise_act', session: session, choice: choice }).then(function (res) {
       if (res && res.ok && res.redirect) { window.location.href = res.redirect; return; }
