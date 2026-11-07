@@ -86,7 +86,7 @@ with `runtime=headless`, so the final resume goes through the headless runtime, 
 size, cache age and the token cost of each path. `advise_act` (`session`, `choice` = `resume` or `fresh`) acts on
 the person's pick, not the verdict: resume sends the continue prompt to the same conversation, fresh starts a new
 session that writes the handoff from the old transcript and then archives the old one, only after the new one took its
-prompt. It answers with a redirect to the session that carries on. The idle and quota (90%) guards still apply. Nothing is
+prompt. It answers with a redirect to the session that carries on. The idle and quota (90%) guards still apply. The button itself is rendered only when the session's last activity is an hour or more old (`App\AdvisePolicy::CACHE_TTL_SECONDS`) or its account quota is at 90% or more (`App\AdvisePolicy::QUOTA_PARK_PCT`; `UiView::advise_visible()`, one memoised `quota` call per request and only when idle time alone does not decide). Nothing is
 sent to the old session on `advise`, and the one small model call for a close verdict happens only there, for the one
 session asked about. `/action` has the same same-origin and CSRF checks as every other mutating endpoint.
 
@@ -133,7 +133,7 @@ the iOS keyboard and a pinch-zoom does not resize it.
 session detail, hex-escaped so transcript text cannot close the `<script>`); the
 transcript comes from `/history` (the `session_history` action plus
 `include_thinking`) and is drawn by one client renderer for the first page,
-"Load older", and the live tail. Each user and assistant message is a bubble or
+"Load older", and the live tail. An archived page opened on a search hit (`jump_line`) ends at the hit and has a **Load newer** button that calls `/archived-history` with `after` set to the last line shown (50 at a time; a short page hides the button, since `after` carries no `has_more`). Archived pages never poll. Each user and assistant message is a bubble or
 free text with markdown (`markdown.js`); every tool
 call and its result is one collapsed `<details>` whose headline is the call's
 description; pretty-printed JSON results; plan, question, subagent and

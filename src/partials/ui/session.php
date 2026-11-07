@@ -54,11 +54,16 @@ $bootstrap = json_encode([
         <button type="button" class="ui-btn" id="sess-load-until-user">Back to last message</button>
       </div>
       <div id="sess-list" class="sess-list" aria-live="off"></div>
+      <?php if ($archived): ?>
+      <div id="sess-newer" class="sess-older" hidden>
+        <button type="button" class="ui-btn" id="sess-load-newer">Load newer</button>
+      </div>
+      <?php endif ?>
       <p id="sess-empty" class="ui-muted ui-center" hidden>Nothing recorded yet.</p>
       <div id="sess-thinking"></div>
       <div id="sess-error"></div>
       <div id="sess-prompt"></div>
-      <?php if (!$archived && ($detail['runtime'] ?? '') === 'headless' && in_array($detail['agent'] ?? 'claude', ['claude', 'codex'], true)): ?>
+      <?php if (!$archived && !empty($adviseShown) && ($detail['runtime'] ?? '') === 'headless' && in_array($detail['agent'] ?? 'claude', ['claude', 'codex'], true)): ?>
       <div class="ui-advise" id="sess-advise" data-advise-host data-csrf="<?= $this->e($csrfToken) ?>" data-session="<?= $this->e($sessionName) ?>">
         <button type="button" class="ui-btn ui-btn-quiet" data-advise-open>Continue here or start a new one?</button>
       </div>

@@ -49,7 +49,7 @@
       <div class="ui-thinking" aria-label="Thinking"><i></i><i></i><i></i></div>
     <?php endif ?>
 
-    <?php if ($status === 'idle' && $runtime === 'headless' && in_array($agentId, ['claude', 'codex'], true)): ?>
+    <?php if ($adviseShown && $status === 'idle' && $runtime === 'headless' && in_array($agentId, ['claude', 'codex'], true)): ?>
       <div class="ui-advise" data-advise-host data-session="<?= $this->e($name) ?>">
         <button type="button" class="ui-btn ui-btn-quiet" data-advise-open>Continue or start a new one?</button>
       </div>

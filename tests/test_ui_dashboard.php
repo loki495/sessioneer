@@ -156,7 +156,7 @@ try {
 
     // --- advice buttons on an idle headless Claude card, and only there ---
     require_once dirname(__DIR__) . '/vendor/autoload.php';
-    $cardOf = static fn (array $over): string => \App\Views\UiView::card_html($over + ['name' => 'c1', 'agent' => 'claude', 'runtime' => 'headless', 'status' => 'idle', 'activity' => time()], 'x');
+    $cardOf = static fn (array $over): string => \App\Views\UiView::card_html($over + ['name' => 'c1', 'agent' => 'claude', 'runtime' => 'headless', 'status' => 'idle', 'activity' => time() - 7200], 'x');
     assert_contains('data-advise-open', $cardOf([]), 'card: idle headless Claude offers the advice button');
     assert_contains('data-advise-open', $cardOf(['agent' => 'codex']), 'card: idle headless Codex offers it too');
     assert_true(!str_contains($cardOf(['runtime' => 'tmux']), 'data-advise'), 'card: a terminal session does not');

@@ -467,6 +467,8 @@
       showEmpty();
       showReply();
       $('sess-jump').hidden = !jumpLine;
+      // Archived pages never poll, so a search-hit page ends at the hit until the person asks for more.
+      setNewerButton(ARCH && !!jumpLine);
       if (jumpLine) {
         var target = listEl.querySelector('[data-lines~="' + jumpLine + '"]');
         if (target) { target.scrollIntoView({ block: 'center' }); flash(target, 'sess-hl-jump'); }
@@ -474,6 +476,31 @@
         toBottom();
       }
     }).catch(function () { T.loading = false; });
+  }
+
+  function setNewerButton(on) {
+    var box = $('sess-newer');
+    if (box) { box.hidden = !on; }
+  }
+
+  function loadNewer() {
+    if (T.loading || T.newest === null) { return Promise.resolve(); }
+    T.loading = true;
+    var myGen = gen;
+    var limit = 50;
+
+    return getJson(historyUrl({ after: T.newest, limit: limit })).then(function (data) {
+      if (myGen !== gen) { return; }
+      T.loading = false;
+      if (!data || !data.ok) { toast((data && data.message) || 'Could not load newer messages', true); return; }
+      var fresh = (data.entries || []).filter(function (e) { return e.line > T.newest; });
+      var frag = document.createDocumentFragment();
+      renderEntries(fresh, tail, frag);
+      fresh.forEach(function (e) { T.newest = e.line; });
+      listEl.appendChild(frag);
+      // after has no has_more: a short page means the end of the transcript.
+      if ((data.entries || []).length < limit) { setNewerButton(false); }
+    }).catch(function () { T.loading = false; toast('Network error', true); });
   }
 
   function loadOlder(untilUser) {
@@ -1143,6 +1170,7 @@
   });
 
   $('sess-load-older').addEventListener('click', function () { loadOlder(false); });
+  if ($('sess-load-newer')) { $('sess-load-newer').addEventListener('click', function () { loadNewer(); }); }
   $('sess-load-until-user').addEventListener('click', function () { loadOlder(true); });
   $('sess-prev').addEventListener('click', goPrev);
   $('sess-next').addEventListener('click', goNext);

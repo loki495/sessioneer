@@ -66,8 +66,7 @@ $server = uis_start_server($agentSocket);
 $downServer = uis_start_server(sys_get_temp_dir() . '/sessioneer-test-sess-no-such-agent.sock');
 
 if ($server === null || $downServer === null) {
-    fwrite(STDERR, "session: could not start php -S\n");
-    stop_harness($agentHarness, $agentSocket);
+        stop_harness($agentHarness, $agentSocket);
     exit(1);
 }
 
@@ -95,7 +94,12 @@ try {
         assert_contains('<dialog class="ui-sheet" id="' . $sheet . '">', $body, "page: {$sheet} is a native dialog sheet");
     }
     assert_true(!str_contains($body, 'data-classic-link'), 'page: no link to a classic page');
-    assert_contains('data-advise-host data-csrf=', $body, 'page: an idle-able headless Claude session carries the Continue/Start-new advice host');
+    assert_true(!str_contains($body, 'data-advise-host'), 'page: a freshly active session with quota left has no Continue/Start-new advice host');
+    require_once dirname(__DIR__) . '/vendor/autoload.php';
+    $adviseDetail = ['ok' => true, 'name' => 'cc-x', 'runtime' => 'headless', 'agent' => 'claude', 'status' => 'idle'];
+    $advisePage = static fn (bool $shown): string => \App\Views\UiView::session_page(['sessionName' => 'cc-x', 'csrfToken' => 'x', 'found' => true, 'detail' => $adviseDetail, 'jumpLine' => null, 'adviseShown' => $shown]);
+    assert_contains('data-advise-host data-csrf=', $advisePage(true), 'page: a cold or quota-tight headless Claude session carries the Continue/Start-new advice host');
+    assert_true(!str_contains($advisePage(false), 'data-advise-host'), 'page: adviseShown false hides it');
     assert_contains('ui-advise.js', $body, 'page: loads the advice script');
     $advJs = (string)file_get_contents(dirname(__DIR__) . '/public/js/ui-advise.js');
     assert_contains('data-advise-choice', $advJs, 'ui-advise.js: renders the two choice buttons');
@@ -173,6 +177,11 @@ try {
     $archHistory = json_decode(curl_request('GET', "{$base}/archived-history?agent_session_id=" . UIS_ARCHIVED . '&limit=30', [], $jar)['body'], true);
     assert_true(($archHistory['ok'] ?? false) === true && count($archHistory['entries'] ?? []) > 5, 'GET /archived-history: entries returned');
     assert_equal(true, $archHistory['has_more'] ?? null, 'GET /archived-history: paging flags passed through');
+    assert_contains('id="sess-load-newer"', $arch['body'], 'archived page: has the Load newer control (shown by the script on a search-hit page)');
+    assert_true(!str_contains($body, 'sess-load-newer'), 'live page: no Load newer control (the live tail polls)');
+    $sessJs = (string)file_get_contents(dirname(__DIR__) . '/public/js/ui-session.js');
+    assert_contains('function loadNewer', $sessJs, 'ui-session.js: Load newer handler');
+    assert_contains('setNewerButton(ARCH && !!jumpLine)', $sessJs, 'ui-session.js: Load newer only on an archived search-hit page');
     assert_equal(false, json_decode(curl_request('GET', "{$base}/archived-history?agent_session_id=nope", [], $jar)['body'], true)['ok'] ?? null, 'archived history for an unknown conversation: ok=false');
     $archMissing = curl_request('GET', "{$base}/archived-session?agent_session_id=nope", [], $jar);
     assert_contains('Session not found.', $archMissing['body'], 'archived page for an unknown conversation: says so');
