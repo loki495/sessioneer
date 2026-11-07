@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace HostAgent\Services;
 
+use App\AdvisePolicy;
+
 /**
  * Resume-or-fresh verdict for an idle session, computed from files and numbers
  * only: nothing here talks to the session being judged, because waking a cold
@@ -14,10 +16,10 @@ final class AdviseService
     public const RESUME_MAX_TOKENS = 60000;
     public const FRESH_MIN_TOKENS = 150000;
     // The prompt cache outlives this only on the longer-TTL plans; a miss costs a full re-write either way.
-    public const CACHE_TTL_SECONDS = 3600;
+    public const CACHE_TTL_SECONDS = AdvisePolicy::CACHE_TTL_SECONDS;
     // Typical size of a written handoff plus the context it makes the new session re-read.
     public const HANDOFF_TOKENS = 6000;
-    public const QUOTA_PARK_PCT = 90;
+    public const QUOTA_PARK_PCT = AdvisePolicy::QUOTA_PARK_PCT;
 
     private const TAIL_BYTES = 262144;
 

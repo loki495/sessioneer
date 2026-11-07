@@ -48,7 +48,7 @@ class UiController extends Controller
             'agentMessage' => (string)($listResult['message'] ?? 'Unknown error'),
             'csrfToken' => $csrfToken,
             'counts' => UiView::counts($sessions),
-            'sessionsHtml' => UiView::sessions_html($sessions, $csrfToken),
+            'sessionsHtml' => UiView::sessions_html($sessions, $csrfToken, $this->quota_reader()),
             'bareHtml' => UiView::bare_html($bare, $csrfToken),
             'hooksMissing' => $agentReachable && (bool)($hookResult['ok'] ?? false) && !($hookResult['installed'] ?? false),
             'healthChecks' => (bool)($healthResult['ok'] ?? false) ? ($healthResult['checks'] ?? []) : [],
@@ -88,7 +88,18 @@ class UiController extends Controller
             'found' => (bool)($detail['ok'] ?? false),
             'detail' => $detail,
             'jumpLine' => $jumpLine > 0 ? $jumpLine : null,
+            'adviseShown' => UiView::advise_visible($detail, $this->quota_reader()),
         ]);
+    }
+
+    /** One memoised `quota` call, made only if a caller needs it. */
+    private function quota_reader(): \Closure
+    {
+        $reply = null;
+
+        return static function () use (&$reply): array {
+            return $reply ??= AgentClient::agent_call(['action' => 'quota']);
+        };
     }
 
     /**
@@ -174,7 +185,7 @@ class UiController extends Controller
         echo json_encode([
             'ok' => true,
             'counts' => UiView::counts($sessions),
-            'sessions_html' => UiView::sessions_html($sessions, $csrfToken),
+            'sessions_html' => UiView::sessions_html($sessions, $csrfToken, $this->quota_reader()),
             'bare_html' => UiView::bare_html($listResult['bare'] ?? [], $csrfToken),
         ]);
     }

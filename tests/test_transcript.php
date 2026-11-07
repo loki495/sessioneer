@@ -597,6 +597,12 @@ assert_true($archivedHistory['ok'] ?? false, 'archived_session_history: ok=true 
 assert_equal(1, count($archivedHistory['entries'] ?? []), 'archived_session_history: the one real (non-meta) line comes back');
 assert_equal('hi', $archivedHistory['entries'][0]['blocks'][0]['text'] ?? null, 'archived_session_history: it\'s the real user message');
 
+$archivedLine = (int)($archivedHistory['entries'][0]['line'] ?? 0);
+$archivedAfterBefore = SessionDetailService::archived_session_history($uuid2, null, 10, $archivedLine - 1);
+assert_equal(1, count($archivedAfterBefore['entries'] ?? []), 'archived_session_history after=N-1: the entry on line N is newer, so it comes back (the Load newer cursor)');
+$archivedAfterEnd = SessionDetailService::archived_session_history($uuid2, null, 10, $archivedLine);
+assert_true(($archivedAfterEnd['ok'] ?? false) && ($archivedAfterEnd['entries'] ?? null) === [], 'archived_session_history after=last line: ok with no entries (end of transcript)');
+
 $missingArchivedHistory = SessionDetailService::archived_session_history('00000000-0000-4000-8000-000000000000', null, 10);
 assert_equal(false, $missingArchivedHistory['ok'] ?? null, 'archived_session_history: ok=false for a well-formed but unknown id');
 

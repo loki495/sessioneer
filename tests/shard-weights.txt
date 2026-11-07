@@ -83,3 +83,5 @@ test_ui_session_browser.php 12
 test_markdown_js_browser.php 1
 test_session_effort_context_browser.php 40
 test_opencode_question_page_browser.php 3
+test_advise_visibility.php 1
+test_ui_runtime_boundary.php 1

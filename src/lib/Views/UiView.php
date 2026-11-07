@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Views;
 
+use App\AdvisePolicy;
+
 /**
  * Render helpers for the UI (templates under src/partials/ui/). Cards are
  * rendered server-side and swapped in by public/js/ui.js.
@@ -75,7 +77,7 @@ class UiView extends View
     }
 
     /** @param array<int, array<string, mixed>> $sessions */
-    public static function sessions_html(array $sessions, string $csrfToken): string
+    public static function sessions_html(array $sessions, string $csrfToken, ?callable $quota = null): string
     {
         if ($sessions === []) {
             return self::render('ui/empty', ['title' => 'No sessions yet', 'text' => 'Start one with the + button.']);
@@ -84,7 +86,7 @@ class UiView extends View
         $html = '';
 
         foreach ($sessions as $s) {
-            $html .= self::card_html($s, $csrfToken);
+            $html .= self::card_html($s, $csrfToken, $quota);
         }
 
         return $html;
@@ -139,7 +141,7 @@ class UiView extends View
     }
 
     /** @param array<string, mixed> $s */
-    public static function card_html(array $s, string $csrfToken): string
+    public static function card_html(array $s, string $csrfToken, ?callable $quota = null): string
     {
         $name = (string)$s['name'];
         $title = (string)($s['title'] ?? $name);
@@ -170,7 +172,35 @@ class UiView extends View
             'promptIsFolderTrust' => !empty($s['prompt_is_folder_trust']),
             'promptHasQuestions' => !empty($s['prompt_questions']),
             'csrfToken' => $csrfToken,
+            'adviseShown' => self::advise_visible($s, $quota),
         ]);
+    }
+
+    /**
+     * The "continue here or start a new one?" button only matters once the prompt cache is cold or the account is
+     * nearly out of quota; before that the session just continues. $quota returns the host agent's `quota` reply and
+     * is only called when idle time alone does not decide.
+     *
+     * @param array<string, mixed> $s a session row or detail (activity, agent, profile)
+     */
+    public static function advise_visible(array $s, ?callable $quota): bool
+    {
+        if (time() - (int)($s['activity'] ?? time()) >= AdvisePolicy::CACHE_TTL_SECONDS) {
+            return true;
+        }
+
+        $reply = $quota !== null ? $quota() : null;
+        $q = ($s['agent'] ?? 'claude') === 'claude'
+            ? ($reply['claude_profiles'][(string)(($s['profile'] ?? '') ?: 'personal')]['quota'] ?? null)
+            : ($reply['agents']['codex']['quota'] ?? null);
+
+        foreach (['session', 'week_all'] as $window) {
+            if (($q[$window]['pct'] ?? 0) >= AdvisePolicy::QUOTA_PARK_PCT) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @param array<string, mixed> $s */
