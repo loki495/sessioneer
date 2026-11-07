@@ -22,6 +22,7 @@ test_codex_bridge.php 6
 test_codex_hooks.php 1
 test_codex_prompt_protocol.php 1
 test_codex_prompt_questions_wiring.php 28
+test_codex_sync_model.php 2
 test_codex_resume.php 3
 test_codex_runtime.php 1
 test_codex_turn_errors.php 20

@@ -6,8 +6,8 @@ header('Content-Type: application/json');
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 if ($path === '/api/session') {
     echo json_encode(['data' => [
-        ['id' => 'ses_waiting', 'location' => ['directory' => '/tmp/project-a'], 'time' => ['updated' => (time() - 7200) * 1000]],
-        ['id' => 'ses_idle', 'location' => ['directory' => '/tmp/project-b'], 'time' => ['updated' => time() * 1000]],
+        ['id' => 'ses_waiting', 'location' => ['directory' => '/tmp/project-a'], 'time' => ['updated' => (time() - 7200) * 1000], 'model' => ['id' => 'gpt-x', 'variant' => 'default']],
+        ['id' => 'ses_idle', 'location' => ['directory' => '/tmp/project-b'], 'time' => ['updated' => time() * 1000], 'model' => ['id' => 'kimi-k3.1', 'variant' => 'high']],
     ]]);
 } elseif ($path === '/api/session/active') {
     echo '{"data":{}}';

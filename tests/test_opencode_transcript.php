@@ -373,6 +373,27 @@ try {
 
     assert_equal(null, OpenCodeTranscriptService::read_last_entry($missingSessionId), 'read_last_entry: unknown session → null');
 
+    // --- find_latest_model: the dashboard pill's model and effort for a tmux OpenCode row ---
+    $v2Insert = $pdo->prepare('INSERT INTO session_message (id, session_id, type, seq, time_created, data) VALUES (?, ?, ?, ?, ?, ?)');
+    $v2ModelId = 'ses_v2model00001';
+    $v2Insert->execute(['mm1', $v2ModelId, 'user', 1, 1, json_encode(['model' => ['id' => 'old-model', 'variant' => 'low']])]);
+    $v2Insert->execute(['mm2', $v2ModelId, 'user', 2, 2, json_encode(['model' => ['id' => 'kimi-k3.1', 'variant' => 'high']])]);
+    $v2Insert->execute(['mm3', $v2ModelId, 'assistant', 3, 3, json_encode(['content' => []])]);
+    assert_equal(['model' => 'kimi-k3.1', 'effort' => 'high'], OpenCodeTranscriptService::find_latest_model($v2ModelId), 'find_latest_model: newest 2.x record with a model wins, skipping newer records without one');
+
+    $v2DefaultId = 'ses_v2model00002';
+    $v2Insert->execute(['md1', $v2DefaultId, 'user', 1, 1, json_encode(['model' => ['id' => 'kimi-k3.1', 'variant' => 'default']])]);
+    assert_equal(['model' => 'kimi-k3.1', 'effort' => null], OpenCodeTranscriptService::find_latest_model($v2DefaultId), 'find_latest_model: variant "default" means no effort chosen');
+
+    $legacyModelId = 'ses_legacymodel01';
+    insert_session($pdo, $legacyModelId);
+    insert_message($pdo, 'lm1', $legacyModelId, 10, ['role' => 'user', 'modelID' => 'old-legacy']);
+    insert_message($pdo, 'lm2', $legacyModelId, 20, ['role' => 'assistant', 'modelID' => 'glm-5', 'variant' => 'max']);
+    assert_equal(['model' => 'glm-5', 'effort' => 'max'], OpenCodeTranscriptService::find_latest_model($legacyModelId), 'find_latest_model: falls back to the legacy message table and reads the flat modelID/variant shape');
+
+    assert_equal(null, OpenCodeTranscriptService::find_latest_model($missingSessionId), 'find_latest_model: session with no model record → null');
+    assert_equal(null, OpenCodeTranscriptService::find_latest_model($badShapeId), 'find_latest_model: id that is not ses_* → null without touching the DB');
+
     // --- DB missing file returns error (find path returns null, but direct read also handles missing DB) ---
     putenv('OPENCODE_DB_PATH=/tmp/nonexistent-opencode-' . bin2hex(random_bytes(8)) . '.db');
     $missingDbFind = OpenCodeTranscriptService::find_transcript_path($sessionId);
