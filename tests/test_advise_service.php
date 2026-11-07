@@ -55,6 +55,26 @@ assert_equal($now + 5000, $blocked['restart_after'], 'restart waits for the bloc
 assert_equal(false, AdviseService::advise($small, null, 'c1', $now)['quota_blocked'], 'no quota data does not block');
 assert_equal([false, true], [AdviseService::advise($small, null, 'c1', $now)['quota_known'], $blocked['quota_known']], 'missing quota data is reported as unknown, not as fine');
 
+assert_equal('fresh', $blocked['verdict'], 'blocked small context recommends takeover instead of unavailable continuation');
+assert_equal(5000, $blocked['quota_reset_seconds'] ?? null, 'the effective reset exposes seconds remaining');
+foreach ([
+    'below threshold' => [['session' => ['pct' => 89, 'resets_at' => $now + 60]], false, null, false],
+    'at threshold' => [['session' => ['pct' => 90, 'resets_at' => $now + 3599]], true, $now + 3599, true],
+    'exactly one hour' => [['week_all' => ['pct' => 90, 'resets_at' => $now + 3600]], true, $now + 3600, false],
+    'latest of two blocking windows' => [['session' => ['pct' => 90, 'resets_at' => $now + 60], 'week_all' => ['pct' => 95, 'resets_at' => $now + 7200]], true, $now + 7200, false],
+    'nonblocking reset ignored' => [['session' => ['pct' => 90, 'resets_at' => $now + 60], 'week_all' => ['pct' => 89, 'resets_at' => $now + 7200]], true, $now + 60, true],
+    'missing blocking reset' => [['session' => ['pct' => 90], 'week_all' => ['pct' => 95, 'resets_at' => $now + 60]], true, null, false],
+    'stale blocking reset' => [['session' => ['pct' => 90, 'resets_at' => $now - 1], 'week_all' => ['pct' => 95, 'resets_at' => $now + 60]], true, null, false],
+    'reset exactly now' => [['session' => ['pct' => 90, 'resets_at' => $now]], true, null, false],
+] as $label => [$windows, $isBlocked, $reset, $short]) {
+    $a = AdviseService::advise($midWarm, $windows, 'quota-case', $now);
+    assert_equal($isBlocked, $a['quota_blocked'], $label . ': quota threshold');
+    assert_equal($reset, $a['restart_after'], $label . ': effective reset requires every blocking window to reset');
+    assert_equal($reset === null ? null : $reset - $now, $a['quota_reset_seconds'] ?? null, $label . ': reset interval');
+    assert_equal($short, $a['quota_short_wait'] ?? null, $label . ': short wait is strictly under one hour');
+    assert_equal($isBlocked ? 'fresh' : 'resume', $a['verdict'], $label . ': warm cache cannot override blocked quota');
+}
+
 assert_equal(null, AdviseService::claude_facts($dir . '/missing.jsonl'), 'missing transcript has no facts');
 assert_equal('unsupported', AdviseService::advise(null, null, 'c5', $now)['verdict'], 'no facts is unsupported');
 assert_equal(null, AdviseService::codex_facts(['last' => []], 'gpt', 1), 'codex without last totalTokens has no facts');
@@ -62,3 +82,4 @@ $codex = AdviseService::codex_facts(['last' => ['totalTokens' => 170000]], 'gpt-
 assert_equal('fresh', AdviseService::advise($codex, null, 'c6', $now)['verdict'], 'codex context uses the same thresholds');
 
 echo "ok\n";
+test_exit();

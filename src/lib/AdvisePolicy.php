@@ -9,4 +9,5 @@ final class AdvisePolicy
 {
     public const CACHE_TTL_SECONDS = 3600;
     public const QUOTA_PARK_PCT = 90;
+    public const QUOTA_SHORT_WAIT_SECONDS = 3600;
 }

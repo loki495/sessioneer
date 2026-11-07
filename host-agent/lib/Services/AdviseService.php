@@ -101,11 +101,26 @@ final class AdviseService
 
         $blocked = false;
         $restartAfter = 0;
+        $resetUnknown = false;
         foreach (['session', 'week_all'] as $window) {
             if (($quota[$window]['pct'] ?? 0) >= self::QUOTA_PARK_PCT) {
                 $blocked = true;
-                $restartAfter = max($restartAfter, (int) ($quota[$window]['resets_at'] ?? 0));
+                $reset = $quota[$window]['resets_at'] ?? null;
+                if (!is_int($reset) || $reset <= $now) {
+                    $resetUnknown = true;
+                } else {
+                    $restartAfter = max($restartAfter, $reset);
+                }
             }
+        }
+        $restartAfter = $blocked && !$resetUnknown ? $restartAfter : 0;
+        $resetSeconds = $restartAfter > 0 ? $restartAfter - $now : null;
+        $shortWait = $resetSeconds !== null && $resetSeconds < AdvisePolicy::QUOTA_SHORT_WAIT_SECONDS;
+        if ($blocked) {
+            $verdict = 'fresh';
+            $reason = $resetSeconds === null
+                ? 'This account is near or at quota and its reset time is unknown; take over in another session with quota.'
+                : 'This account is near or at quota for another ' . (int) ceil($resetSeconds / 60) . ' minutes; take over in another session with quota.';
         }
 
         return [
@@ -125,6 +140,8 @@ final class AdviseService
             'quota_known' => $quota !== null,
             'quota_blocked' => $blocked,
             'restart_after' => $restartAfter ?: null,
+            'quota_reset_seconds' => $resetSeconds,
+            'quota_short_wait' => $shortWait,
             'prompts' => [
                 'resume' => 'Continue where you stopped: read your last Dibs checkpoint, then carry on with the next step.',
                 'fresh' => 'Take over conversation ' . $conversationId . ': read its complete thread and Dibs state, transfer the work safely, and archive it only after the source is idle and claim-free.',

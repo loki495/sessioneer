@@ -84,12 +84,12 @@ could not be identified (nothing is stopped yet); the page then shows a picker a
 with `runtime=headless`, so the final resume goes through the headless runtime, not a pane.
 `advise` (`session`) answers `{status, advice}` from the host agent's `advise` action: the verdict, context
 size, cache age and the token cost of each path. `advise_act` (`session`, `choice` = `resume` or `fresh`) acts on
-the person's pick, not the verdict: resume sends the continue prompt to the same conversation, fresh starts a new
-session with a takeover prompt naming the source agent, profile and conversation. The receiver reads the full source
+the person's pick, not the verdict: resume sends the continue prompt to the same conversation when its account has room; fresh starts a new
+session with a global `/takeover` prompt naming the source agent, profile and conversation. If the source account is at 90% or more, fresh selects another Claude profile, then Codex, then OpenCode, each only while no metered window reports 90% or more (OpenCode reports no window at all). The receiver reads the full source
 thread and Dibs state, then archives the old session after its checks; `advise_act` leaves it available meanwhile.
-It answers with a redirect to the session that carries on. The idle and quota (90%) guards still apply. The button itself is rendered only when the session's last activity is an hour or more old (`App\AdvisePolicy::CACHE_TTL_SECONDS`) or its account quota is at 90% or more (`App\AdvisePolicy::QUOTA_PARK_PCT`; `UiView::advise_visible()`, one memoised `quota` call per request and only when idle time alone does not decide). Nothing is
+It answers with a redirect to the session that carries on. The idle guard and the source quota guard on resume still apply. The button itself is rendered only when the session's last activity is an hour or more old (`App\AdvisePolicy::CACHE_TTL_SECONDS`) or its account quota is at 90% or more (`App\AdvisePolicy::QUOTA_PARK_PCT`; `UiView::advise_visible()`, one memoised `quota` call per request and only when idle time alone does not decide). Nothing is
 sent to the old session on `advise`, and the one small model call for a close verdict happens only there, for the one
-session asked about. `/action` has the same same-origin and CSRF checks as every other mutating endpoint.
+session asked about. If its source quota resets in less than an hour, that call can instead weigh urgency, sensitivity and context transfer, and recommend waiting for the reset; a failed call defaults to takeover. `/action` has the same same-origin and CSRF checks as every other mutating endpoint.
 
 ## Continue here or start a new one
 
@@ -97,8 +97,8 @@ An idle headless Claude or Codex card has a **Continue or start a new one?** but
 same button below the transcript. Tapping it asks for advice for that one session and shows the reason, the context
 size and cache age, and two buttons: **Continue here** (resume; its line gives the tokens re-written now when the
 cache is cold, and re-read each turn) and **Start a new one** (reviews the full source thread and Dibs state;
-archives this session after takeover checks). The advised one is highlighted and marked recommended; a close call (`judgment`) highlights neither.
-Both buttons are disabled while the session is not idle or its account quota is nearly full. Starting a new one
+archives this session after takeover checks). When the source account is nearly full, **Continue here** is disabled. The panel shows when its quota resets or says the reset is unknown. The other button becomes **Take over in another session**, names the receiving account or agent, and remains usable when that receiver has known room. If no launchable receiver is available, the panel shows a manual `/takeover` prompt instead and names any agent that has room but cannot be started headless (Antigravity). A short reset can produce a distinct **Wait for quota, then continue** recommendation, while still allowing a person to choose takeover. The advised option is highlighted; a close call (`judgment`) highlights neither. Both buttons use white text on dark backgrounds in either theme.
+Both buttons are disabled while the session is not idle. Starting a takeover
 asks for confirmation. The poll leaves the list alone while an advice panel is open. The thresholds are in
 [cli.md](cli.md) under `--advise`.
 

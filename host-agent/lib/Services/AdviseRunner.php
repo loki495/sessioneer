@@ -19,9 +19,16 @@ final class AdviseRunner
     private const AGENTS = ['claude', 'codex'];
 
     /**
+     * Takeover receivers in the global balanced tier order (Claude, then Codex,
+     * then OpenCode); Antigravity is left out because Sessioneer has no headless
+     * launcher for it, so it is only named in the manual takeover prompt.
+     */
+    private const RECEIVER_ORDER = ['claude', 'codex', 'opencode'];
+
+    /**
      * Request: `target` (session name or conversation id; absent = every tracked headless session),
      * `act` (bool; needs a target), `choice` (resume|fresh: a person's explicit pick that replaces the verdict when acting, the
-     * dashboard buttons; the idle and quota guards still apply), `no_model` (skip the middle-band model call), plus `model`/`effort` for the fresh session `act` may start.
+     * dashboard buttons; the idle and quota guards still apply), `no_model` (skip the model call), plus `model`/`effort` for the fresh session `act` may start.
      * $deps replaces the collaborators in tests: quota, model_runner, launch.
      *
      * @param array<string,mixed> $request
@@ -100,11 +107,27 @@ final class AdviseRunner
 
         $quota = $session['agent'] === 'claude' ? ($usage['claude']['profiles'][$session['profile']]['quota'] ?? null) : ($usage['codex']['quota'] ?? null);
         $advice = AdviseService::advise($facts, $quota, $session['agent_session_id']);
+        $advice['receiver'] = self::receiver($session, $usage, !empty($advice['quota_blocked']), $status);
+        if (!empty($advice['quota_blocked']) && $advice['receiver'] === null) {
+            $manual = self::manual_receivers($usage);
+            $advice['verdict'] = 'manual';
+            $advice['manual_agents'] = $manual;
+            $advice['reason'] .= $manual === []
+                ? ' No other configured account has known room; use the takeover prompt manually when one is available.'
+                : ' ' . implode(', ', $manual) . ' has quota but Sessioneer cannot start it headless; run the takeover prompt in a session there.';
+        }
 
         // A model call costs quota, so only an explicitly named session gets one; a table of many shows 'judgment'.
         if ($single) {
-            $candidates = AdviseModelCall::candidates($usage, $session['profile']);
-            $advice = AdviseModelCall::resolve($advice, $path, $candidates, $deps['model_runner'] ?? [AdviseModelCall::class, 'run_process_runner']);
+            $runner = $deps['model_runner'] ?? [AdviseModelCall::class, 'run_process_runner'];
+            $judgmentModel = $advice['receiver'] !== null ? self::judgment_model((string) $advice['receiver']['agent']) : null;
+            if (!empty($advice['quota_blocked']) && $advice['receiver'] !== null && $judgmentModel !== null && !empty($advice['quota_short_wait'])) {
+                $candidate = $advice['receiver'] + ['model' => $judgmentModel];
+                $advice = AdviseModelCall::resolve_quota($advice, $path, $candidate, $runner);
+            } elseif (empty($advice['quota_blocked'])) {
+                $candidates = AdviseModelCall::candidates($usage, $session['profile']);
+                $advice = AdviseModelCall::resolve($advice, $path, $candidates, $runner);
+            }
         }
         if ($path !== null && isset($advice['prompts'])) {
             $source = $session['agent']
@@ -117,6 +140,109 @@ final class AdviseRunner
         }
 
         return $session + ['status' => $status['status'] ?? 'idle', 'advice' => $advice];
+    }
+
+    /**
+     * @param array{name:string,agent:string,agent_session_id:string,workdir:?string,profile:string} $session
+     * @param array<string,mixed> $usage
+     * @param array<string,mixed> $status
+     * @return array{agent:string,profile:?string}|null
+     */
+    private static function receiver(array $session, array $usage, bool $blocked, array $status): ?array
+    {
+        if (!$blocked) {
+            return ['agent' => $session['agent'], 'profile' => $session['agent'] === 'claude' ? $session['profile'] : null];
+        }
+
+        foreach (self::RECEIVER_ORDER as $agent) {
+            if ($agent === $session['agent'] && $agent !== 'claude') {
+                continue;
+            }
+            if ($agent !== 'claude' && !self::cross_agent_safe($session, $status)) {
+                continue;
+            }
+            if ($agent === 'claude') {
+                $profiles = $usage['claude']['profiles'] ?? [];
+                $names = array_keys($profiles);
+                sort($names);
+                foreach ($names as $name) {
+                    if ($name === $session['profile'] || !self::has_room($profiles[$name]['quota'] ?? null)) {
+                        continue;
+                    }
+                    if (Config::claude_bin($name) !== '') {
+                        return ['agent' => 'claude', 'profile' => $name];
+                    }
+                }
+                continue;
+            }
+            if ($agent === 'codex' && Config::codex_bin() !== '' && self::has_room($usage['codex']['quota'] ?? null)) {
+                return ['agent' => 'codex', 'profile' => null];
+            }
+            if ($agent === 'opencode' && Config::opencode_bin() !== ''
+                && self::has_room($usage['opencode']['profiles']['default']['quota'] ?? ($usage['opencode']['quota'] ?? null))) {
+                return ['agent' => 'opencode', 'profile' => null];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Agents with room that Sessioneer cannot start headless, so the takeover
+     * prompt has to be pasted into a session there by hand.
+     *
+     * @param array<string,mixed> $usage
+     * @return list<string>
+     */
+    private static function manual_receivers(array $usage): array
+    {
+        $quota = $usage['antigravity']['profiles']['default']['quota'] ?? ($usage['antigravity']['quota'] ?? null);
+        return self::has_room($quota) ? ['Antigravity'] : [];
+    }
+
+    /**
+     * Every metered window an account reports must be below the park threshold.
+     * An account that reports usage but no percentage windows has no limit to
+     * hit (OpenCode bills per token against no plan), so it counts as room.
+     * No reading at all is not room.
+     *
+     * @param array<string,mixed>|null $quota
+     */
+    private static function has_room(?array $quota): bool
+    {
+        if ($quota === null) {
+            return false;
+        }
+        foreach ($quota as $window) {
+            if (!is_array($window) || !array_key_exists('pct', $window)) {
+                continue;
+            }
+            if (!is_numeric($window['pct']) || $window['pct'] >= AdviseService::QUOTA_PARK_PCT) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** The small model the short-reset judgment runs on: the receiver's own cheapest account. */
+    private static function judgment_model(string $agent): ?string
+    {
+        return ['claude' => AdviseModelCall::CLAUDE_MODEL, 'codex' => AdviseModelCall::CODEX_MODEL][$agent] ?? null;
+    }
+
+    /**
+     * Agent-specific tool rules and permission modes cannot be translated safely.
+     * @param array{name:string,agent:string,agent_session_id:string,workdir:?string,profile:string} $session
+     * @param array<string,mixed> $status
+     */
+    private static function cross_agent_safe(array $session, array $status): bool
+    {
+        $old = SidecarStore::read_sidecar($session['name']) ?? [];
+        if (!empty($old['no_tools']) || !empty($old['allowed_tools']) || !empty($old['disallowed_tools'])) {
+            return false;
+        }
+        $mode = (string) ($status['mode'] ?? '');
+        return in_array($mode, ['', 'default', 'plan', 'workspace-write'], true);
     }
 
     /**
@@ -141,8 +267,13 @@ final class AdviseRunner
         if (!in_array($verdict, ['resume', 'fresh'], true)) {
             return ['ok' => false, 'message' => "No verdict to act on ({$verdict}): " . $advice['reason']];
         }
-        if (!empty($advice['quota_blocked'])) {
+        if (!empty($advice['quota_blocked']) && $verdict === 'resume') {
             return ['ok' => false, 'message' => 'The ' . $row['profile'] . ' quota is at its limit; earliest restart ' . ($advice['restart_after'] !== null ? gmdate('c', (int) $advice['restart_after']) : 'unknown')];
+        }
+
+        $receiver = $advice['receiver'] ?? null;
+        if ($verdict === 'fresh' && $receiver === null) {
+            return ['ok' => false, 'message' => 'No other configured account has known room for a takeover; use the manual /takeover prompt when one is available'];
         }
 
         $base = ['agent' => $row['agent'], 'workdir' => $row['workdir']];
@@ -155,13 +286,23 @@ final class AdviseRunner
             return ['ok' => ($sent['ok'] ?? false) === true, 'acted' => 'resume', 'session' => $sent['name'] ?? $row['name'], 'message' => (string) ($sent['message'] ?? '')];
         }
 
+        if ($receiver['agent'] !== $row['agent'] && (isset($request['model']) || isset($request['effort']))) {
+            return ['ok' => false, 'message' => 'A cross-agent takeover cannot reuse the source model or effort; omit --model and --effort'];
+        }
+        $base['agent'] = $receiver['agent'];
+        if ($receiver['agent'] === 'claude') {
+            $base['profile'] = $receiver['profile'];
+        } else {
+            unset($base['profile']);
+        }
+
         // A replacement never gets wider permissions than the session it replaces; a mode the launcher cannot reproduce fails the launch, which leaves the old session alone.
         $old = SidecarStore::read_sidecar($row['name']) ?? [];
         $mode = (string) (SessionStatusStore::read_status($row['name'])['mode'] ?? '');
         $restrict = array_filter([
             'no_tools' => !empty($old['no_tools']),
-            'allowed_tools' => $old['allowed_tools'] ?? null,
-            'disallowed_tools' => $old['disallowed_tools'] ?? null,
+            'allowed_tools' => $receiver['agent'] === $row['agent'] ? ($old['allowed_tools'] ?? null) : null,
+            'disallowed_tools' => $receiver['agent'] === $row['agent'] ? ($old['disallowed_tools'] ?? null) : null,
             'starting_mode' => $mode !== '' && $mode !== 'default' && $mode !== 'workspace-write' ? $mode : null,
         ]);
         if (!empty($restrict['no_tools'])) {

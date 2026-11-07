@@ -130,10 +130,147 @@ assert_equal(false, AdviseRunner::run(['target' => 'busy-s', 'act' => true, 'cho
 assert_equal(false, AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'resume'], $full)['ok'], 'a choice on a full quota is still refused');
 assert_equal([], $calls, 'refused choices launch nothing');
 
+putenv('CLAUDE_BIN=/fixture/claude');
+putenv('CODEX_BIN=/fixture/codex');
+$blockedQuota = ['session' => ['pct' => 90, 'resets_at' => time() + 7200], 'week_all' => ['pct' => 40]];
+$quotaFixture = ['agents' => ['codex' => ['quota' => $ok]], 'claude_profiles' => ['work' => ['quota' => $blockedQuota], 'personal' => ['quota' => $ok]]];
+$modelCalls = [];
+$modelAnswer = 'WAIT: Sensitive debugging state is costly to transfer and this work can wait.';
+$quotaDeps = [
+    'quota' => static function () use (&$quotaFixture): array { return $quotaFixture; },
+    'model_runner' => static function (array $candidate, string $prompt) use (&$modelCalls, &$modelAnswer): ?string {
+        $modelCalls[] = [$candidate, $prompt];
+        return $modelAnswer;
+    },
+    'launch' => $deps['launch'],
+    'kill' => $deps['kill'],
+];
+$quotaTable = AdviseRunner::run([], $quotaDeps);
+$quotaRows = array_column($quotaTable['sessions'], null, 'name');
+assert_equal('fresh', $quotaRows['small-s']['advice']['verdict'], 'table: blocked small source defaults to takeover');
+assert_equal(['agent' => 'claude', 'profile' => 'personal'], $quotaRows['small-s']['advice']['receiver'] ?? null, 'table: another available Claude account is preferred over Codex');
+assert_equal([], $modelCalls, 'table: quota recommendations make no model call');
+
+$calls = [];
+$takeover = AdviseRunner::run(['target' => 'small-s', 'act' => true], $quotaDeps);
+assert_equal(true, $takeover['ok'], 'a blocked source can start a takeover on another account');
+assert_equal('fresh', $takeover['acted'] ?? null, 'blocked default act starts fresh');
+assert_equal(['launch'], array_column($calls, 0), 'a blocked takeover neither resumes nor archives its source');
+assert_equal('personal', $calls[0][1]['profile'] ?? null, 'the fresh launch uses the available receiving account');
+assert_equal(false, isset($calls[0][1]['agent_session_id']), 'the blocked source conversation is never resumed');
+$takeoverPrompt = $calls[0][1]['prompt'] ?? '';
+assert_contains('/takeover', $takeoverPrompt, 'blocked launch invokes the global takeover skill');
+assert_contains('claude work 11111111-1111-4111-8111-111111111111', $takeoverPrompt, 'blocked launch identifies source agent, profile and conversation');
+assert_contains('old session remains available', $takeover['message'], 'takeover leaves the source available for review');
+$calls = [];
+assert_equal(false, AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'resume'], $quotaDeps)['ok'], 'explicit Continue is refused even when a receiver exists');
+assert_equal([], $calls, 'blocked Continue never sends to the source');
+
+$quotaFixture['claude_profiles']['work']['quota']['session']['resets_at'] = time() + 1800;
+$modelCalls = [];
+$shortTable = array_column(AdviseRunner::run([], $quotaDeps)['sessions'], null, 'name');
+assert_equal('fresh', $shortTable['small-s']['advice']['verdict'], 'a many-session short-reset table still defaults to takeover');
+assert_equal([], $modelCalls, 'a many-session short-reset table never makes a model call');
+$wait = AdviseRunner::run(['target' => 'small-s'], $quotaDeps)['sessions'][0]['advice'];
+assert_equal('wait', $wait['verdict'], 'short reset WAIT is a distinct wait-then-continue recommendation');
+assert_equal(1, count($modelCalls), 'one named short-reset source gets one small judgment');
+$judgmentPrompt = strtolower($modelCalls[0][1] ?? '');
+assert_true((bool) preg_match('/urgenc|severity|urgent/', $judgmentPrompt), 'short-reset judgment considers task urgency or severity');
+assert_contains('sensitiv', $judgmentPrompt, 'short-reset judgment considers sensitive context');
+assert_true((bool) preg_match('/transfer|recover|context|state/', $judgmentPrompt), 'short-reset judgment considers how much source state the receiver needs');
+$calls = [];
+assert_equal(false, AdviseRunner::run(['target' => 'small-s', 'act' => true], $quotaDeps)['ok'], 'WAIT does not launch an immediate continuation');
+assert_equal([], $calls, 'WAIT leaves all sessions untouched');
+assert_equal(true, AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'fresh'], $quotaDeps)['ok'], 'explicit fresh may override a WAIT recommendation');
+assert_equal('personal', $calls[0][1]['profile'] ?? null, 'explicit takeover from WAIT still uses the receiver');
+
+foreach (['TAKEOVER: Urgent incident, the Dibs checkpoint is enough.', 'RESUME: small context', 'unparseable answer', null] as $answer) {
+    $modelAnswer = $answer;
+    $modelCalls = [];
+    $a = AdviseRunner::run(['target' => 'small-s'], $quotaDeps)['sessions'][0]['advice'];
+    assert_equal('fresh', $a['verdict'], 'short-reset takeover or failed assessment keeps a safe takeover verdict: ' . ($answer ?? 'null'));
+    assert_equal(1, count($modelCalls), 'short-reset assessment is bounded to one model call: ' . ($answer ?? 'null'));
+}
+$modelCalls = [];
+assert_equal('fresh', AdviseRunner::run(['target' => 'small-s', 'no_model' => true], $quotaDeps)['sessions'][0]['advice']['verdict'], 'no_model retains the blocked takeover default');
+assert_equal([], $modelCalls, 'no_model disables the short-reset assessment');
+
+$quotaFixture['claude_profiles']['personal']['quota'] = ['week_all' => ['pct' => 90]];
+$fallback = AdviseRunner::run(['target' => 'small-s', 'no_model' => true], $quotaDeps)['sessions'][0]['advice'];
+assert_equal(['agent' => 'codex', 'profile' => null], $fallback['receiver'] ?? null, 'a receiving account at 90% is excluded and a configured alternate agent is offered');
+$calls = [];
+$crossAgent = AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'fresh', 'no_model' => true], $quotaDeps);
+assert_equal(true, $crossAgent['ok'], 'compatible default permissions allow cross-agent takeover');
+assert_equal('codex', $calls[0][1]['agent'] ?? null, 'cross-agent fresh action launches the chosen alternate agent');
+assert_equal(false, isset($calls[0][1]['profile']), 'alternate agent launch does not carry a Claude profile');
+$calls = [];
+$incompatible = AdviseRunner::run(['target' => 'big-s', 'act' => true, 'choice' => 'fresh', 'no_model' => true], $quotaDeps);
+assert_equal(false, $incompatible['ok'], 'Claude plan mode and denied tools cannot be dropped for an alternate agent');
+assert_equal([], $calls, 'incompatible permissions launch no receiver');
+
+unset($quotaFixture['agents']['codex']['quota']);
+$calls = [];
+$modelCalls = [];
+$manual = AdviseRunner::run(['target' => 'small-s'], $quotaDeps)['sessions'][0]['advice'];
+assert_equal(null, $manual['receiver'] ?? null, 'unknown receiver quota offers no automatic launch');
+assert_contains('/takeover', $manual['prompts']['fresh'], 'no automatic receiver retains a manual takeover prompt');
+assert_equal([], $modelCalls, 'no safe receiver makes no short-reset model call');
+assert_equal(false, AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'fresh'], $quotaDeps)['ok'], 'fresh is refused without a receiver with known quota');
+assert_equal([], $calls, 'no receiver never launches or archives the blocked source');
+
+$quotaFixture['claude_profiles']['personal']['quota'] = $ok;
+$failedReceiverDeps = $quotaDeps;
+$failedReceiverDeps['launch'] = static function (array $r) use (&$calls): array {
+    $calls[] = ['launch', $r];
+    return ['ok' => false, 'message' => 'fixture receiver prompt refused'];
+};
+$failedReceiver = AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'fresh', 'no_model' => true], $failedReceiverDeps);
+assert_equal(false, $failedReceiver['ok'], 'a failed receiving-account launch reports failure');
+assert_equal(['launch'], array_column($calls, 0), 'a failed receiving-account launch never archives the source');
+
+// Every launchable agent is a candidate; a source blocked on both Claude profiles and Codex reaches OpenCode.
+putenv('CLAUDE_BIN=/fixture/claude');
+putenv('CODEX_BIN=/fixture/codex');
+putenv('OPENCODE_BIN=/fixture/opencode');
+$bothBlocked = ['session' => ['pct' => 100, 'resets_at' => time() + 7200], 'week_all' => ['pct' => 55]];
+$quotaFixture = [
+    'agents' => [
+        'codex' => ['quota' => ['session' => ['pct' => 100, 'resets_at' => time() + 7200], 'week_all' => ['pct' => 60]]],
+        'opencode' => ['quota' => ['cost' => 16.3, 'tokens_input' => 40000000, 'captured_at' => '2026-11-07T19:00:00+00:00']],
+        'antigravity' => ['quota' => ['gemini-weekly' => ['pct' => 0, 'resets_at' => time() + 7200]]],
+    ],
+    'claude_profiles' => ['work' => ['quota' => $bothBlocked], 'personal' => ['quota' => $bothBlocked]],
+];
+$modelCalls = [];
+$openAdvice = AdviseRunner::run(['target' => 'small-s'], $quotaDeps)['sessions'][0]['advice'];
+assert_equal(['agent' => 'opencode', 'profile' => null], $openAdvice['receiver'] ?? null, 'OpenCode with usage but no metered windows is a receiver');
+assert_equal([], $modelCalls, 'an OpenCode receiver gets no Claude or Codex judgment call');
+$calls = [];
+assert_equal(true, AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'fresh', 'no_model' => true], $quotaDeps)['ok'], 'a blocked source can take over in OpenCode');
+assert_equal('opencode', $calls[0][1]['agent'] ?? null, 'the launch uses the OpenCode receiver');
+assert_equal(false, isset($calls[0][1]['profile']), 'the OpenCode launch carries no Claude profile');
+
+// An agent with room that Sessioneer has no launcher for is named in the manual prompt instead.
+unset($quotaFixture['agents']['opencode']);
+$calls = [];
+$manualOnly = AdviseRunner::run(['target' => 'small-s', 'no_model' => true], $quotaDeps)['sessions'][0]['advice'];
+assert_equal('manual', $manualOnly['verdict'], 'a non-launchable agent leaves a manual verdict');
+assert_equal(['Antigravity'], $manualOnly['manual_agents'] ?? null, 'the manual advice names the agent with room');
+assert_contains('Antigravity', $manualOnly['reason'], 'the reason says which agent has quota');
+assert_equal(null, $manualOnly['receiver'] ?? null, 'a non-launchable agent is no automatic receiver');
+assert_equal(false, AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'fresh', 'no_model' => true], $quotaDeps)['ok'], 'fresh is refused for a manual-only receiver');
+assert_equal([], $calls, 'a manual-only receiver launches nothing');
+
+putenv('CLAUDE_BIN=');
+putenv('CODEX_BIN=');
 SidecarStore::set_no_tools('small-s');
 $calls = [];
 $toolLess = AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'fresh'], $deps);
 assert_equal(false, $toolLess['ok'], 'a tool-less replacement cannot perform the takeover');
 assert_equal([], $calls, 'the tool-less refusal starts no session');
+$calls = [];
+assert_equal(false, AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'fresh', 'no_model' => true], $quotaDeps)['ok'], 'a blocked tool-less source cannot be replaced with a tool-less takeover receiver');
+assert_equal([], $calls, 'a blocked tool-less refusal starts no receiver');
 
 echo "ok\n";
+test_exit();
