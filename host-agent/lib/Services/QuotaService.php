@@ -101,9 +101,8 @@ class QuotaService
      * duration text like "1h 53m" - the exact source of the
      * jitter bug documented in PushDeliveryService::check_and_send_quota_pushes().
      *
-     * The shell side already merges each write against whatever it last
-     * saw (see the jq filter in StatuslineMarkerService) so a bucket only
-     * ever moves DOWN when its resets_at also moved forward - a genuine
+     * QuotaLiveStateWriter merges each write against whatever it last
+     * saw, so a bucket only ever moves DOWN when its resets_at also moved forward - a genuine
      * window rollover - rather than whichever session's script happened
      * to fire most recently. This method just reads the result; no merge
      * logic lives here.
