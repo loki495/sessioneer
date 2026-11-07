@@ -24,10 +24,7 @@ class QuotaController extends Controller
         // Cache-Control: no-store, overriding the private, max-age=60 that
         // start_app_session() itself sets (fine for session.php's own HTML,
         // wrong here) - a browser could otherwise serve a stale response to
-        // this exact fetch() URL for up to 60s. Doesn't hurt this endpoint's
-        // own separate cached-reading logic (QuotaService::get_quota()) -
-        // that's a server-side cache keyed by file mtime/TTL, unrelated to
-        // this HTTP response header.
+        // this exact fetch() URL for up to 60s.
         $this->start_readonly_json();
 
         // Optional - only session.php's footer sends this, to additionally

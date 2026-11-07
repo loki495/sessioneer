@@ -20,7 +20,7 @@ declare(strict_types=1);
  * quota_from_statusline_state() reads GlobalStateStore's `global_state`
  * table (Config::push_sqlite_path()), not a plain file -
  * see write_quota_live_state()/delete_quota_live_state() below for the
- * fixture-side equivalent of a real write_quota_live_state.php run.
+ * fixture-side equivalent of a real quota_live_state_write.php run.
  */
 
 require __DIR__ . '/lib/assert.php';
