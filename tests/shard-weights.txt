@@ -1,3 +1,4 @@
+test_advise_browser.php 3
 test_advise_model_call.php 1
 test_advise_runner.php 1
 test_advise_service.php 1
