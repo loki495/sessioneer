@@ -208,6 +208,16 @@ $incompatible = AdviseRunner::run(['target' => 'big-s', 'act' => true, 'choice' 
 assert_equal(false, $incompatible['ok'], 'Claude plan mode and denied tools cannot be dropped for an alternate agent');
 assert_equal([], $calls, 'incompatible permissions launch no receiver');
 
+// A Codex source has no Claude profile of its own, so the preferred account still qualifies.
+$codexSource = [
+    'agents' => ['codex' => ['quota' => ['session' => ['pct' => 95, 'resets_at' => time() + 7200], 'week_all' => ['pct' => 10]]]],
+    'claude_profiles' => ['personal' => ['quota' => $ok]],
+];
+$codexDeps = $quotaDeps;
+$codexDeps['quota'] = static function () use (&$codexSource): array { return $codexSource; };
+$codexAdvice = AdviseRunner::run(['target' => '44444444-4444-4444-8444-444444444444', 'no_model' => true], $codexDeps)['sessions'][0]['advice'];
+assert_equal(['agent' => 'claude', 'profile' => 'personal'], $codexAdvice['receiver'] ?? null, 'a blocked Codex source uses the personal Claude account although it carries no profile');
+
 unset($quotaFixture['agents']['codex']['quota']);
 $calls = [];
 $modelCalls = [];
@@ -232,7 +242,7 @@ assert_equal(['launch'], array_column($calls, 0), 'a failed receiving-account la
 putenv('CLAUDE_BIN=/fixture/claude');
 putenv('CODEX_BIN=/fixture/codex');
 putenv('OPENCODE_BIN=/fixture/opencode');
-$bothBlocked = ['session' => ['pct' => 100, 'resets_at' => time() + 7200], 'week_all' => ['pct' => 55]];
+$bothBlocked = ['session' => ['pct' => 100, 'resets_at' => time() + 1800], 'week_all' => ['pct' => 55]];
 $quotaFixture = [
     'agents' => [
         'codex' => ['quota' => ['session' => ['pct' => 100, 'resets_at' => time() + 7200], 'week_all' => ['pct' => 60]]],
@@ -260,6 +270,27 @@ assert_contains('Antigravity', $manualOnly['reason'], 'the reason says which age
 assert_equal(null, $manualOnly['receiver'] ?? null, 'a non-launchable agent is no automatic receiver');
 assert_equal(false, AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'fresh', 'no_model' => true], $quotaDeps)['ok'], 'fresh is refused for a manual-only receiver');
 assert_equal([], $calls, 'a manual-only receiver launches nothing');
+
+// A permission mode the receiver cannot reproduce rules that receiver out: OpenCode has no modes.
+$quotaFixture['agents']['opencode'] = ['quota' => ['cost' => 1.0, 'captured_at' => '2026-11-07T19:00:00+00:00']];
+SessionStatusStore::write_status('small-s', ['status' => 'idle', 'mode' => 'plan']);
+$calls = [];
+$planAdvice = AdviseRunner::run(['target' => 'small-s', 'no_model' => true], $quotaDeps)['sessions'][0]['advice'];
+assert_equal(null, $planAdvice['receiver'] ?? null, 'a plan-mode source is not sent to OpenCode, which has no permission modes');
+assert_equal('manual', $planAdvice['verdict'], 'no reproducible receiver leaves the manual prompt');
+assert_equal(false, AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'fresh', 'no_model' => true], $quotaDeps)['ok'], 'a plan-mode source launches no OpenCode receiver');
+assert_equal([], $calls, 'the plan-mode refusal launches nothing');
+SessionStatusStore::write_status('small-s', ['status' => 'idle']);
+
+// A tool-less source cannot read itself, so no receiver can transfer its work.
+SidecarStore::set_no_tools('small-s');
+$quotaFixture['claude_profiles']['personal']['quota'] = $ok;
+$calls = [];
+$toolLessBlocked = AdviseRunner::run(['target' => 'small-s', 'no_model' => true], $quotaDeps)['sessions'][0]['advice'];
+assert_equal(null, $toolLessBlocked['receiver'] ?? null, 'a blocked tool-less source has no automatic receiver');
+assert_equal('manual', $toolLessBlocked['verdict'], 'a blocked tool-less source keeps the manual prompt');
+assert_equal(false, AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'fresh', 'no_model' => true], $quotaDeps)['ok'], 'a blocked tool-less source cannot start a receiver');
+assert_equal([], $calls, 'a blocked tool-less source launches nothing');
 
 putenv('CLAUDE_BIN=');
 putenv('CODEX_BIN=');

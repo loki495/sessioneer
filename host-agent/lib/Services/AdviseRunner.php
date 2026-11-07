@@ -154,11 +154,22 @@ final class AdviseRunner
             return ['agent' => $session['agent'], 'profile' => $session['agent'] === 'claude' ? $session['profile'] : null];
         }
 
+        $old = SidecarStore::read_sidecar($session['name']) ?? [];
+        // A tool-less source cannot read itself, so no replacement could transfer its work.
+        if (!empty($old['no_tools'])) {
+            return null;
+        }
+
+        $mode = (string) ($status['mode'] ?? '');
         foreach (self::RECEIVER_ORDER as $agent) {
             if ($agent === $session['agent'] && $agent !== 'claude') {
                 continue;
             }
-            if ($agent !== 'claude' && !self::cross_agent_safe($session, $status)) {
+            if ($agent !== $session['agent'] && !self::cross_agent_safe($old, $status)) {
+                continue;
+            }
+            // OpenCode has no permission modes, so a source restriction cannot travel with it.
+            if ($agent === 'opencode' && $mode !== '') {
                 continue;
             }
             if ($agent === 'claude') {
@@ -166,7 +177,9 @@ final class AdviseRunner
                 $names = array_keys($profiles);
                 sort($names);
                 foreach ($names as $name) {
-                    if ($name === $session['profile'] || !self::has_room($profiles[$name]['quota'] ?? null)) {
+                    // Only a Claude source has a profile of its own to skip; Codex carries none.
+                    if (($session['agent'] === 'claude' && $name === $session['profile'])
+                        || !self::has_room($profiles[$name]['quota'] ?? null)) {
                         continue;
                     }
                     if (Config::claude_bin($name) !== '') {
@@ -232,12 +245,11 @@ final class AdviseRunner
 
     /**
      * Agent-specific tool rules and permission modes cannot be translated safely.
-     * @param array{name:string,agent:string,agent_session_id:string,workdir:?string,profile:string} $session
+     * @param array<string,mixed> $old the source session's sidecar
      * @param array<string,mixed> $status
      */
-    private static function cross_agent_safe(array $session, array $status): bool
+    private static function cross_agent_safe(array $old, array $status): bool
     {
-        $old = SidecarStore::read_sidecar($session['name']) ?? [];
         if (!empty($old['no_tools']) || !empty($old['allowed_tools']) || !empty($old['disallowed_tools'])) {
             return false;
         }
