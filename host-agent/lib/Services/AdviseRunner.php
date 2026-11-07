@@ -22,7 +22,7 @@ final class AdviseRunner
      * Request: `target` (session name or conversation id; absent = every tracked headless session),
      * `act` (bool; needs a target), `choice` (resume|fresh: a person's explicit pick that replaces the verdict when acting, the
      * dashboard buttons; the idle and quota guards still apply), `no_model` (skip the middle-band model call), plus `model`/`effort` for the fresh session `act` may start.
-     * $deps replaces the collaborators in tests: quota, model_runner, launch, kill.
+     * $deps replaces the collaborators in tests: quota, model_runner, launch.
      *
      * @param array<string,mixed> $request
      * @param array<string,callable> $deps
@@ -107,7 +107,13 @@ final class AdviseRunner
             $advice = AdviseModelCall::resolve($advice, $path, $candidates, $deps['model_runner'] ?? [AdviseModelCall::class, 'run_process_runner']);
         }
         if ($path !== null && isset($advice['prompts'])) {
-            $advice['prompts']['fresh'] .= ' Its transcript is ' . $path . ': write the handoff from the tail of it plus the Dibs records first, without waking the old session.';
+            $source = $session['agent']
+                . ($session['agent'] === 'claude' && $session['profile'] !== 'personal' ? ' ' . $session['profile'] : '')
+                . ' ' . $session['agent_session_id'];
+            $advice['prompts']['fresh'] = 'Use the global /takeover skill for source ' . $source . '. Read the entire source conversation and Dibs state, transfer its work and claims safely, then archive the old session only when it is idle, claim-free, and a cold session can continue from Dibs. Continue its work.';
+            if ($session['agent'] === 'claude') {
+                $advice['prompts']['fresh'] .= ' Source transcript: ' . $path . '.';
+            }
         }
 
         return $session + ['status' => $status['status'] ?? 'idle', 'advice' => $advice];
@@ -139,7 +145,10 @@ final class AdviseRunner
             return ['ok' => false, 'message' => 'The ' . $row['profile'] . ' quota is at its limit; earliest restart ' . ($advice['restart_after'] !== null ? gmdate('c', (int) $advice['restart_after']) : 'unknown')];
         }
 
-        $base = ['agent' => $row['agent'], 'workdir' => $row['workdir'], 'profile' => $row['profile']];
+        $base = ['agent' => $row['agent'], 'workdir' => $row['workdir']];
+        if ($row['agent'] === 'claude') {
+            $base['profile'] = $row['profile'];
+        }
 
         if ($verdict === 'resume') {
             $sent = $launch($base + ['agent_session_id' => $row['agent_session_id'], 'prompt' => $advice['prompts']['resume']]);
@@ -153,22 +162,21 @@ final class AdviseRunner
             'no_tools' => !empty($old['no_tools']),
             'allowed_tools' => $old['allowed_tools'] ?? null,
             'disallowed_tools' => $old['disallowed_tools'] ?? null,
-            'starting_mode' => $mode !== '' && $mode !== 'default' ? $mode : null,
+            'starting_mode' => $mode !== '' && $mode !== 'default' && $mode !== 'workspace-write' ? $mode : null,
         ]);
+        if (!empty($restrict['no_tools'])) {
+            return ['ok' => false, 'message' => 'A tool-less replacement cannot read the source conversation or transfer its Dibs claims'];
+        }
         $new = $launch($base + $restrict + array_filter(['prompt' => $advice['prompts']['fresh'], 'model' => $request['model'] ?? null, 'effort' => $request['effort'] ?? null]));
-        // The old session is only stopped once the new one exists AND took its prompt.
         if (($new['ok'] ?? false) !== true) {
             return ['ok' => false, 'acted' => 'fresh', 'session' => $new['name'] ?? null, 'message' => 'Fresh session not started cleanly; the old session was left as it is: ' . (string) ($new['message'] ?? '')];
         }
-        $kill = $deps['kill'] ?? [LaunchService::class, 'kill'];
-        $old = $kill(['agent' => $row['agent'], 'target' => $row['name']]);
 
         return [
             'ok' => true,
             'acted' => 'fresh',
             'session' => $new['name'] ?? null,
-            'archived' => ($old['ok'] ?? false) === true ? $row['name'] : null,
-            'message' => ($old['ok'] ?? false) === true ? 'Fresh session started; the old one was archived' : 'Fresh session started, but the old one could not be archived: ' . (string) ($old['message'] ?? ''),
+            'message' => 'Fresh takeover session started; the old session remains available until the receiver verifies and archives it',
         ];
     }
 }

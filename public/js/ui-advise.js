@@ -47,7 +47,7 @@
       ['resume', 'Continue here', cost.resume_rewrite_tokens > 0
         ? 'Re-writes ~' + k(cost.resume_rewrite_tokens) + ' tokens now, then re-reads ' + k(cost.resume_reread_per_turn) + ' each turn'
         : 'Cache is warm: no re-write, re-reads ' + k(cost.resume_reread_per_turn) + ' each turn'],
-      ['fresh', 'Start a new one', 'Writes a ~' + k(cost.fresh_handoff_tokens) + ' handoff, re-reads ' + k(cost.fresh_reread_per_turn) + ' each turn; archives this one']
+      ['fresh', 'Start a new one', 'Reviews this session and Dibs; archives it after the takeover checks']
     ].forEach(function (b) {
       var rec = a.verdict === b[0];
       html += '<button type="button" class="ui-btn ui-advise-btn' + (rec ? ' ui-btn-primary' : '') + '" data-advise-choice="' + b[0] + '"' + (off ? ' disabled' : '') + '>'
@@ -74,7 +74,7 @@
     }
 
     var choice = pick.getAttribute('data-advise-choice');
-    if (choice === 'fresh' && !window.confirm('Start a new session from a handoff and archive this one?')) { return; }
+    if (choice === 'fresh' && !window.confirm('Start a new session to review and take over this work? This session stays available until the review finishes.')) { return; }
     Array.prototype.forEach.call(host.querySelectorAll('[data-advise-choice]'), function (b) { b.disabled = true; });
     post(host, { action: 'advise_act', session: session, choice: choice }).then(function (res) {
       if (res && res.ok && res.redirect) { window.location.href = res.redirect; return; }
