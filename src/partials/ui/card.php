@@ -26,7 +26,7 @@
     </div>
 
     <div class="ui-chips">
-      <span class="ui-chip ui-agent-<?= $this->e($agentId) ?>"><?= $this->e($agentLabel) ?></span>
+      <span class="ui-chip ui-agent-<?= $this->e($agentId) ?>"><?= $this->e($agentPill ?? $agentLabel) ?></span>
       <?php if ($profile !== null): ?><span class="ui-chip<?= $profile !== 'Personal' ? ' ui-chip-accent' : '' ?>"><?= $this->e($profile) ?></span><?php endif ?>
       <?php if ($readOnly): ?><span class="ui-chip ui-chip-warn">Terminal, read only</span><?php endif ?>
       <?php if ($isWorker): ?><span class="ui-chip ui-chip-accent">Worker</span><?php endif ?>

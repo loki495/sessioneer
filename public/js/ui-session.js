@@ -643,14 +643,67 @@
     return html;
   }
 
+  function pendingQuestionText(block) {
+    var first = block.questions && block.questions[0];
+    return block.question || (first && first.question) || '';
+  }
+
+  function pendingStaticHtml(isMulti, questions) {
+    var html = '';
+
+    if (isMulti) {
+      html += '<ul class="sess-answered">' + questions.map(function (q) { return '<li>' + esc(q.question || '') + '</li>'; }).join('') + '</ul>';
+    }
+
+    return html + '<p class="sess-answered sess-qwait-note">Waiting for your answer below.</p>';
+  }
+
+  // One answer surface only: the prompt panel at the bottom of the page
+  // (#sess-prompt) already shows these questions with their options and
+  // typed answers. Drawing an actionable copy here too showed the same
+  // prompt twice - buttons in the transcript, radios in the panel below.
+  // Matched on the first question text (what blocked_reason carries), and
+  // only when a live prompt is actually showing, so a stale "running" tool
+  // part from an already-answered question keeps its history rendering.
+  function pendingPromptMatches(block) {
+    return !ARCH && !!detail && !!detail.blocked_reason && pendingQuestionText(block) === detail.blocked_reason;
+  }
+
+  function settlePendingQuestions(d) {
+    if (ARCH || !d || !d.blocked_reason) { return; }
+
+    var cards = listEl.querySelectorAll('.sess-qblock[data-pending="1"]');
+
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+
+      if (card.getAttribute('data-question') !== d.blocked_reason) { continue; }
+
+      var controls = card.querySelectorAll('[data-prompt-options], [data-multi], .sess-free');
+
+      for (var j = 0; j < controls.length; j++) {
+        if (controls[j].parentNode) { controls[j].parentNode.removeChild(controls[j]); }
+      }
+
+      if (!card.querySelector('.sess-qwait-note')) {
+        var note = document.createElement('p');
+        note.className = 'sess-answered sess-qwait-note';
+        note.textContent = 'Waiting for your answer below.';
+        card.appendChild(note);
+      }
+    }
+  }
+
   function questionBlock(block, line) {
     var questions = Array.isArray(block.questions) ? block.questions : [];
     var isMulti = questions.length > 1 || (questions[0] && (questions[0].multiSelect === true || questions[0].multiple === true));
     var title = block.question || block.text || 'Waiting on input';
-    var html = '<div class="sess-qblock" data-line="' + line + '">';
+    var live = block.pending && !ARCH;
+    var html = '<div class="sess-qblock" data-line="' + line + '"' + (live ? ' data-pending="1" data-question="' + esc(pendingQuestionText(block)) + '"' : '') + '>';
     if (block.header) { html += '<span class="sess-label">' + esc(block.header) + '</span>'; }
     if (!isMulti) { html += '<p class="sess-desc">' + esc(title) + '</p>'; }
-    if (block.pending && isMulti) { html += multiForm(questions); }
+    if (live && pendingPromptMatches(block)) { html += pendingStaticHtml(isMulti, questions); }
+    else if (block.pending && isMulti) { html += multiForm(questions); }
     else if (block.pending && block.options && block.options.length) { html += optionButtons(block.options); }
     else if (block.options && block.options.length) {
       html += '<ul class="sess-answered">' + block.options.map(function (o) { return '<li>' + o.number + '. ' + esc(o.label) + '</li>'; }).join('') + '</ul>';
@@ -733,6 +786,7 @@
     answerPending = false;
     if (!d.blocked_reason) { promptEl.innerHTML = ''; return true; }
     promptEl.innerHTML = '<div class="sess-prompt" id="sess-prompt-card">' + promptHtml(d) + '</div>';
+    settlePendingQuestions(d);
     showReply();
     // A terminal session's prompt is shown, not answerable.
     if (d.runtime !== 'headless') {

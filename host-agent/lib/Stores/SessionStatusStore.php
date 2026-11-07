@@ -45,6 +45,10 @@ class SessionStatusStore
         SqliteDb::add_column_if_missing($pdo, 'session_status', 'last_turn_error', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'session_status', 'token_usage_json', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'session_status', 'model', 'TEXT');
+        // Codex and OpenCode report their reasoning level outside their
+        // transcript (bridge thread metadata, serve session), so the syncs
+        // persist it here for the dashboard's agent pill.
+        SqliteDb::add_column_if_missing($pdo, 'session_status', 'effort', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'session_status', 'context_usage_json', 'TEXT');
 
         return $pdo;
@@ -68,11 +72,15 @@ class SessionStatusStore
      * this never permanently shadows a model change made outside this
      * app's own dropdown (e.g. typing `/model` by hand).
      *
-     * @return array{mode:?string, status:?string, blocked:?array, last_message:?string, last_turn_error:?string, token_usage:?array<string,mixed>, context_usage:?array<string,mixed>, model:?string, updated_at:?int}|null
+     * For a Codex or OpenCode session the same column carries the model its
+     * own sync read from the agent (bridge thread metadata, serve session),
+     * because those agents have no transcript-side model to derive.
+     *
+     * @return array{mode:?string, status:?string, blocked:?array, last_message:?string, last_turn_error:?string, token_usage:?array<string,mixed>, context_usage:?array<string,mixed>, model:?string, effort:?string, updated_at:?int}|null
      */
     public static function read_status(string $sessionName): ?array
     {
-        $stmt = self::db()->prepare('SELECT status, blocked_json, mode, last_message, last_turn_error, token_usage_json, context_usage_json, model, updated_at FROM session_status WHERE session_name = ?');
+        $stmt = self::db()->prepare('SELECT status, blocked_json, mode, last_message, last_turn_error, token_usage_json, context_usage_json, model, effort, updated_at FROM session_status WHERE session_name = ?');
         $stmt->execute([$sessionName]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
 
@@ -86,6 +94,7 @@ class SessionStatusStore
                 'token_usage' => $row['token_usage_json'] !== null ? json_decode($row['token_usage_json'], true) : null,
                 'context_usage' => $row['context_usage_json'] !== null ? json_decode($row['context_usage_json'], true) : null,
                 'model' => $row['model'],
+                'effort' => $row['effort'],
                 'updated_at' => $row['updated_at'] !== null ? (int)$row['updated_at'] : null,
             ];
         }
@@ -124,7 +133,7 @@ class SessionStatusStore
         $sets = [];
         $params = [':session_name' => $sessionName];
 
-        foreach (['status', 'mode', 'last_message', 'last_turn_error', 'model'] as $column) {
+        foreach (['status', 'mode', 'last_message', 'last_turn_error', 'model', 'effort'] as $column) {
             if (array_key_exists($column, $fields)) {
                 $sets[] = "{$column} = :{$column}";
                 $params[":{$column}"] = $fields[$column];

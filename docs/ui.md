@@ -49,7 +49,9 @@ the service worker needs to answer prompts from a notification).
   (`--agent-*`) used for its usage group tint. Starred sessions get a faint amber tint.
 - **Cards.** One card per session: status dot and left accent (needs input,
   working, idle), title, agent/account/runtime/worker chips, folder, age,
-  context %, worktree, a one-line message preview. A blocked prompt renders its
+  context %, worktree, a one-line message preview. The agent chip also names the
+  model and reasoning level the session is on ("Claude Code · Sonnet · high")
+  when the agent reports them. A blocked prompt renders its
   question, its context and one full-width button per option. The whole card
   opens the session; star and the `...` menu (Rename, Take over for a terminal
   Claude session, Kill) sit above it.
@@ -160,9 +162,12 @@ setting as the dashboard, paused while the tab is hidden, and a rotated transcri
   (tmux) key driver cannot combine a checkbox and typed text, and OpenCode
   questions have their own answer shape.
 - Permission prompts, free-text replies, multi-question forms and a pending
-  OpenCode `question` block inside the transcript all use the same builders, an
+  OpenCode `question` block all use the same builders, an
   answer shows an optimistic reply and is rolled back with the reason when the
   agent refuses it, and "Confirm before sending prompt answers" is a view option.
+  A pending OpenCode `question` block in the transcript is read-only: the prompt
+  panel below is the one answer surface, so the same question is not offered
+  twice (numbered buttons above, radio form below).
 
 **Footer.** Send (reads Queue while the agent is working), Stop (interrupt, after a confirmation; solid red while usable),
 attach files (uploaded to the project, removed again when the chip is removed),
@@ -185,7 +190,10 @@ recognizable answer text in its transcript, so its answers stay as they are.
 **Sessions and usage popups.** The bar's list button (or a swipe left) opens a
 popup of every session: needs-input first, then working, then idle, starred first
 within each (starred rows are faintly amber), a filter box, a star toggle per row,
-tap to switch. Each row shows agent, account, runtime and context chips, folder and
+tap to switch. The Sessions and Usage popups open at full height and do not
+resize once their content arrives. Each row shows agent (with its model and
+reasoning level when known),
+account, runtime and context chips, folder and
 age, and what the session waits on or its last message. A swipe right goes back in
 history (the dashboard when there is none). Swipes work anywhere except where a
 finger may be scrolling (a code block, a field), need 80px of mostly horizontal

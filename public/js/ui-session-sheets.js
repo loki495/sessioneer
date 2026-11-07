@@ -454,9 +454,26 @@
 
   var sessionRows = [];
   function statusOfRow(x) { return x.blocked_reason ? 'blocked' : (x.working ? 'working' : 'idle'); }
+  // Mirrors UiView::agent_pill() - the session list's agent pill names the
+  // model and reasoning level too, when the agent reports them.
+  function rowModel(x) {
+    var model = x.current_model || x.current_antigravity_model || '';
+    if (!model) { return ''; }
+    if ((x.agent || 'claude') === 'claude') {
+      var labels = x.model_labels || {};
+      return labels[model] || model.charAt(0).toUpperCase() + model.slice(1);
+    }
+    return model;
+  }
   function rowChips(x) {
     var bits = [];
-    if (x.agent_label || x.agent) { bits.push('<span class="ui-chip ui-agent-' + esc(x.agent || 'claude') + '">' + esc(x.agent_label || x.agent) + '</span>'); }
+    if (x.agent_label || x.agent) {
+      var pill = [x.agent_label || x.agent];
+      var model = rowModel(x);
+      if (model) { pill.push(model); }
+      if (x.current_effort) { pill.push(x.current_effort); }
+      bits.push('<span class="ui-chip ui-agent-' + esc(x.agent || 'claude') + '">' + esc(pill.join(' · ')) + '</span>');
+    }
     if ((x.agent || 'claude') === 'claude' && x.profile) { bits.push('<span class="ui-chip ui-chip-accent">' + esc(x.profile) + '</span>'); }
     if (x.runtime !== 'headless') { bits.push('<span class="ui-chip ui-chip-warn">Terminal, read only</span>'); }
     if (typeof x.context_used_percentage === 'number') { bits.push('<span class="ui-chip">ctx ' + Math.round(x.context_used_percentage) + '%</span>'); }

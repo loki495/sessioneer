@@ -61,6 +61,89 @@ class OpenCodeTranscriptService
     }
 
     /**
+     * The newest model a session ran with, for the dashboard's agent pill.
+     * 2.x records it on `model-switched` and `assistant` rows
+     * (`data.model.id`); the legacy generation records it on user messages
+     * (`data.model.modelID`) and assistant rows (`data.modelID`). Model
+     * variants are OpenCode's reasoning level - `default` means none was
+     * chosen, so it is reported as no effort rather than as a level.
+     * Best-effort: null when the database or the model record is missing.
+     *
+     * @return array{model:string, effort:?string}|null
+     */
+    public static function find_latest_model(string $sessionId): ?array
+    {
+        if (preg_match(self::SESSION_ID_PATTERN, $sessionId) !== 1) {
+            return null;
+        }
+
+        $pdo = self::open_db_readonly();
+
+        if ($pdo === null) {
+            return null;
+        }
+
+        if (self::table_exists($pdo, 'session_message')) {
+            $stmt = $pdo->prepare(
+                "SELECT data FROM session_message
+                 WHERE session_id = ?
+                   AND (json_extract(data, '$.model.id') IS NOT NULL OR json_extract(data, '$.modelID') IS NOT NULL)
+                 ORDER BY seq DESC LIMIT 5"
+            );
+            $stmt->execute([$sessionId]);
+
+            foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) ?: [] as $raw) {
+                $state = self::model_from_record($raw);
+
+                if ($state !== null) {
+                    return $state;
+                }
+            }
+        }
+
+        if (!self::table_exists($pdo, 'message')) {
+            return null;
+        }
+
+        $stmt = $pdo->prepare('SELECT data FROM message WHERE session_id = ? ORDER BY time_created DESC LIMIT 20');
+        $stmt->execute([$sessionId]);
+
+        foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) ?: [] as $raw) {
+            $state = self::model_from_record($raw);
+
+            if ($state !== null) {
+                return $state;
+            }
+        }
+
+        return null;
+    }
+
+    /** @return array{model:string, effort:?string}|null */
+    private static function model_from_record(mixed $raw): ?array
+    {
+        $data = is_string($raw) ? json_decode($raw, true) : null;
+
+        if (!is_array($data)) {
+            return null;
+        }
+
+        $model = is_array($data['model'] ?? null) ? $data['model'] : [];
+        $id = is_string($model['id'] ?? null) ? $model['id'] : (is_string($model['modelID'] ?? null) ? $model['modelID'] : (is_string($data['modelID'] ?? null) ? $data['modelID'] : null));
+
+        if ($id === null || $id === '') {
+            return null;
+        }
+
+        $variant = is_string($model['variant'] ?? null) ? $model['variant'] : (is_string($data['variant'] ?? null) ? $data['variant'] : null);
+
+        return [
+            'model' => $id,
+            'effort' => $variant !== null && $variant !== '' && $variant !== 'default' ? $variant : null,
+        ];
+    }
+
+    /**
      * True if opencode.db has a session row for this id, in either storage
      * generation: the legacy `session` table, or 2.x's `session_v2` (new
      * sessions are written only there; the legacy tables are left as they

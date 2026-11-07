@@ -234,10 +234,12 @@ try {
         // --- sessions popup: needs-input first, filter, star toggle, tap switches ---
         cdp_evaluate($page, "document.querySelector('[data-open=\"sess-sessions\"]').click()");
         assert_true(uib_wait($page, "document.querySelectorAll('#sess-sessions-list .sess-srow').length === 2"), 'sessions popup: lists every session');
+        assert_true((float)cdp_evaluate($page, "document.getElementById('sess-sessions').getBoundingClientRect().height") >= 844 * 0.85, 'sessions popup: opens at full height instead of the loading height');
         assert_equal(UIB_BLOCKED, cdp_evaluate($page, "decodeURIComponent(document.querySelector('#sess-sessions-list .sess-srow-main').getAttribute('href').split('session=')[1])"), 'sessions popup: the session needing input is first');
         assert_equal(1, cdp_evaluate($page, "document.querySelectorAll('#sess-sessions-list .is-current').length"), 'sessions popup: the open session is marked');
         assert_contains('Needs input: Do you want to proceed?', (string)cdp_evaluate($page, "document.getElementById('sess-sessions-list').textContent"), 'sessions popup: a blocked session shows what it waits on');
         assert_true((int)cdp_evaluate($page, "document.querySelectorAll('#sess-sessions-list .ui-chip').length") >= 2, 'sessions popup: rows carry agent and runtime chips');
+        assert_contains('Claude Code · Sonnet 5.5 · high', (string)cdp_evaluate($page, "document.getElementById('sess-sessions-list').textContent"), 'sessions popup: the agent pill names the model and reasoning level');
         cdp_evaluate($page, "(function () { var i = document.getElementById('sess-sessions-filter'); i.value = 'zzz-nothing'; i.dispatchEvent(new Event('input')); }())");
         assert_contains('No sessions', (string)cdp_evaluate($page, "document.getElementById('sess-sessions-list').textContent"), 'sessions popup: a filter with no match says so');
         cdp_evaluate($page, "(function () { var i = document.getElementById('sess-sessions-filter'); i.value = ''; i.dispatchEvent(new Event('input')); }())");
@@ -258,6 +260,7 @@ try {
         // --- usage popup: this agent first, Pacific reset time plus relative, a divider between agents ---
         cdp_evaluate($page, "document.querySelector('[data-open=\"sess-quota\"]').click()");
         assert_true(uib_wait($page, "document.querySelectorAll('#sess-quota-body .ui-quota-group').length >= 2"), 'usage popup: one group per agent');
+        assert_true((float)cdp_evaluate($page, "document.getElementById('sess-quota').getBoundingClientRect().height") >= 844 * 0.85, 'usage popup: opens at full height instead of the loading height');
         $q = (string)cdp_evaluate($page, "document.getElementById('sess-quota-body').textContent");
         assert_contains('Claude Code', $q, 'usage popup: this session\'s agent');
         assert_true(preg_match('/Resets .* P[SD]T · in /', $q) === 1, 'usage popup: reset time is in Pacific time with a relative part');

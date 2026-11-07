@@ -799,7 +799,9 @@ function sessioneer_merge_headless_sessions(array $sessions): array
                 ? (is_array($blocked['tool_input']['questions'] ?? null) ? $blocked['tool_input']['questions'] : null)
                 : null,
             'current_mode' => null,
-            'current_model' => null,
+            'current_model' => is_string($h['model'] ?? null) ? $h['model'] : null,
+            'model_labels' => [],
+            'current_effort' => is_string($h['effort'] ?? null) ? $h['effort'] : null,
             'current_antigravity_model' => null,
             'last_turn_error' => null,
             'agent_session_id' => $h['id'],
@@ -881,6 +883,11 @@ function sessioneer_headless_sessions(): array
             'runtime' => RuntimeType::HEADLESS,
             'status' => is_string($status['status'] ?? null) ? $status['status'] : 'idle',
             'blocked' => is_array($status['blocked'] ?? null) ? $status['blocked'] : null,
+            // Written by the agent's own sync (sessioneer_codex_sync() /
+            // sessioneer_headless_sync()); the per-poll listing reads them
+            // here instead of asking the agent again.
+            'model' => is_string($status['model'] ?? null) ? $status['model'] : null,
+            'effort' => is_string($status['effort'] ?? null) ? $status['effort'] : null,
             'activity' => $status['updated_at'] ?? $sidecar['spawned_at'] ?? null,
         ];
     }
@@ -926,6 +933,7 @@ function sessioneer_headless_sync(): void
 
     $liveIds = [];
     $dirById = [];
+    $modelById = [];
     $sessions = $list['sessions'] ?? [];
 
     // A session is "active" (show it, adopt a sidecar) only if it's had
@@ -972,6 +980,17 @@ function sessioneer_headless_sync(): void
             $dirById[$id] = $workdir;
         }
 
+        // The dashboard pill's model and effort, kept on the status row so
+        // the per-poll listing never asks serve per session. OpenCode's
+        // reasoning level is the model variant; `default` means none chosen.
+        $model = is_array($s['model'] ?? null) ? $s['model'] : [];
+        $modelId = is_string($model['id'] ?? null) ? $model['id'] : (is_string($model['modelID'] ?? null) ? $model['modelID'] : null);
+        $variant = is_string($model['variant'] ?? null) ? $model['variant'] : null;
+        $modelById[$id] = [
+            'model' => $modelId,
+            'effort' => $variant !== null && $variant !== '' && $variant !== 'default' ? $variant : null,
+        ];
+
         SidecarStore::write_sidecar($id, [
             'workdir' => $workdir,
             'spawned_at' => $createdMs > 0 ? (int)round($createdMs / 1000) : time(),
@@ -1005,7 +1024,12 @@ function sessioneer_headless_sync(): void
     $statuses = $client->status_map()['statuses'] ?? [];
 
     foreach ($liveIds as $id => $_) {
-        SessionStatusStore::update_status($id, ['status' => $statuses[$id] ?? 'idle', 'blocked' => null], true);
+        SessionStatusStore::update_status($id, [
+            'status' => $statuses[$id] ?? 'idle',
+            'blocked' => null,
+            'model' => $modelById[$id]['model'] ?? null,
+            'effort' => $modelById[$id]['effort'] ?? null,
+        ], true);
     }
 
     // Blocked-prompt detection: one permission list read per live session
@@ -1115,7 +1139,11 @@ function sessioneer_codex_sync(): void
         ]);
         $existing = SessionStatusStore::read_status($id);
         if (($existing['status'] ?? null) !== 'blocked') {
-            SessionStatusStore::update_status($id, ['status' => $statusType === 'active' ? 'working' : 'idle']);
+            SessionStatusStore::update_status($id, [
+                'status' => $statusType === 'active' ? 'working' : 'idle',
+                'model' => is_string($thread['model'] ?? null) ? $thread['model'] : null,
+                'effort' => is_string($thread['reasoningEffort'] ?? null) ? $thread['reasoningEffort'] : null,
+            ]);
         }
     }
 

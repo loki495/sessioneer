@@ -154,6 +154,7 @@ class UiView extends View
             'status' => $status,
             'agentId' => $agentId,
             'agentLabel' => (string)($s['agent_label'] ?? 'Claude Code'),
+            'agentPill' => self::agent_pill($s),
             'profile' => $agentId === 'claude' ? self::profile_label($s['profile'] ?? null) : null,
             'runtime' => (string)($s['runtime'] ?? 'tmux'),
             'kind' => (string)($s['kind'] ?? 'user'),
@@ -174,6 +175,54 @@ class UiView extends View
             'csrfToken' => $csrfToken,
             'adviseShown' => self::advise_visible($s, $quota),
         ]);
+    }
+
+    /**
+     * The agent pill also names the model and reasoning level the session is
+     * actually on ("Claude Code · Sonnet · high") when the agent reports
+     * them; a card otherwise only showed the agent and account.
+     *
+     * @param array<string, mixed> $s a session row or detail
+     */
+    public static function agent_pill(array $s): string
+    {
+        $parts = [(string)($s['agent_label'] ?? 'Claude Code')];
+        $model = self::pill_model($s);
+
+        if ($model !== null) {
+            $parts[] = $model;
+        }
+
+        $effort = is_string($s['current_effort'] ?? null) ? trim($s['current_effort']) : '';
+
+        if ($effort !== '') {
+            $parts[] = $effort;
+        }
+
+        return implode(' · ', $parts);
+    }
+
+    /** @param array<string, mixed> $s */
+    private static function pill_model(array $s): ?string
+    {
+        $model = is_string($s['current_model'] ?? null) ? $s['current_model'] : '';
+
+        if ($model === '') {
+            $model = is_string($s['current_antigravity_model'] ?? null) ? $s['current_antigravity_model'] : '';
+        }
+
+        if ($model === '') {
+            return null;
+        }
+
+        if ((string)($s['agent'] ?? 'claude') === 'claude') {
+            $labels = is_array($s['model_labels'] ?? null) ? $s['model_labels'] : [];
+            $label = $labels[$model] ?? null;
+
+            return is_string($label) && $label !== '' ? $label : ucfirst($model);
+        }
+
+        return $model;
     }
 
     /**

@@ -64,6 +64,9 @@ if ($action === 'answer_prompt' || $action === 'answer_multi_question') {
         $response = ['ok' => true, 'message' => 'Synthetic answer accepted'];
     }
 } elseif ($action === 'session_detail' && ($request['session'] ?? null) === OPENCODE_QUESTION_BROWSER_SESSION) {
+    // The pending question is answered from the prompt panel, not from the
+    // transcript block (which is read-only while the panel is offered), so
+    // the detail has to carry the blocked prompt.
     $response = [
         'ok' => true,
         'name' => OPENCODE_QUESTION_BROWSER_SESSION,
@@ -75,8 +78,18 @@ if ($action === 'answer_prompt' || $action === 'answer_multi_question') {
         'workdir' => '/synthetic/opencode-question',
         'spawned_by_app' => true,
         'title' => 'Synthetic OpenCode question',
+        'runtime' => 'headless',
         'working' => false,
-        'blocked_reason' => null,
+        'blocked_reason' => !empty($state['answered']) ? null : 'Which fruit should the synthetic OpenCode agent use?',
+        'prompt_context' => '',
+        'prompt_options' => !empty($state['answered']) ? [] : [
+            ['number' => 1, 'label' => 'Apple'],
+            ['number' => 2, 'label' => 'Pear'],
+            ['number' => 3, 'label' => 'Type something.'],
+        ],
+        'prompt_multi_question' => false,
+        'prompt_is_folder_trust' => false,
+        'prompt_tool_name' => 'question',
         'current_mode' => null,
         'agent_session_id' => 'ses_synthetic_question',
         'has_transcript' => true,
