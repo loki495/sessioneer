@@ -119,6 +119,9 @@ sessioneer --take-over <pid>
 sessioneer --peers
 sessioneer --send <session> "The migration on my branch is ready to review"
 
+# judge whether an idle headless session should be resumed or replaced
+sessioneer --advise <session>
+
 # stop a session, or print the last known usage for every agent as JSON
 sessioneer --kill <session>
 sessioneer --usage
