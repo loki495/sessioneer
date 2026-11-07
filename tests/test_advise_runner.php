@@ -133,7 +133,7 @@ assert_equal([], $calls, 'refused choices launch nothing');
 putenv('CLAUDE_BIN=/fixture/claude');
 putenv('CODEX_BIN=/fixture/codex');
 $blockedQuota = ['session' => ['pct' => 90, 'resets_at' => time() + 7200], 'week_all' => ['pct' => 40]];
-$quotaFixture = ['agents' => ['codex' => ['quota' => $ok]], 'claude_profiles' => ['work' => ['quota' => $blockedQuota], 'personal' => ['quota' => $ok]]];
+$quotaFixture = ['agents' => ['codex' => ['quota' => $blockedQuota]], 'claude_profiles' => ['work' => ['quota' => $blockedQuota], 'personal' => ['quota' => $ok]]];
 $modelCalls = [];
 $modelAnswer = 'WAIT: Sensitive debugging state is costly to transfer and this work can wait.';
 $quotaDeps = [
@@ -148,7 +148,7 @@ $quotaDeps = [
 $quotaTable = AdviseRunner::run([], $quotaDeps);
 $quotaRows = array_column($quotaTable['sessions'], null, 'name');
 assert_equal('fresh', $quotaRows['small-s']['advice']['verdict'], 'table: blocked small source defaults to takeover');
-assert_equal(['agent' => 'claude', 'profile' => 'personal'], $quotaRows['small-s']['advice']['receiver'] ?? null, 'table: another available Claude account is preferred over Codex');
+assert_equal(['agent' => 'claude', 'profile' => 'personal'], $quotaRows['small-s']['advice']['receiver'] ?? null, 'table: another Claude account is the last resort when Codex is limited');
 assert_equal([], $modelCalls, 'table: quota recommendations make no model call');
 
 $calls = [];
@@ -196,6 +196,7 @@ assert_equal('fresh', AdviseRunner::run(['target' => 'small-s', 'no_model' => tr
 assert_equal([], $modelCalls, 'no_model disables the short-reset assessment');
 
 $quotaFixture['claude_profiles']['personal']['quota'] = ['week_all' => ['pct' => 90]];
+$quotaFixture['agents']['codex']['quota'] = $ok;
 $fallback = AdviseRunner::run(['target' => 'small-s', 'no_model' => true], $quotaDeps)['sessions'][0]['advice'];
 assert_equal(['agent' => 'codex', 'profile' => null], $fallback['receiver'] ?? null, 'a receiving account at 90% is excluded and a configured alternate agent is offered');
 $calls = [];
@@ -281,6 +282,46 @@ assert_equal('manual', $planAdvice['verdict'], 'no reproducible receiver leaves 
 assert_equal(false, AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'fresh', 'no_model' => true], $quotaDeps)['ok'], 'a plan-mode source launches no OpenCode receiver');
 assert_equal([], $calls, 'the plan-mode refusal launches nothing');
 SessionStatusStore::write_status('small-s', ['status' => 'idle']);
+
+$preferenceQuota = [
+    'agents' => [
+        'codex' => ['quota' => $ok],
+        'opencode' => ['profiles' => ['default' => ['quota' => $ok]]],
+        'antigravity' => ['profiles' => ['default' => ['quota' => $ok]]],
+    ],
+    'claude_profiles' => ['work' => ['quota' => $blockedQuota], 'personal' => ['quota' => $ok]],
+];
+$preferenceDeps = $quotaDeps;
+$preferenceDeps['quota'] = static function () use (&$preferenceQuota): array { return $preferenceQuota; };
+$preferred = static fn (): array => AdviseRunner::run(['target' => 'small-s', 'no_model' => true], $preferenceDeps)['sessions'][0]['advice'];
+assert_equal(['agent' => 'codex', 'profile' => null], $preferred()['receiver'], 'Codex with quota comes before the other Claude profile');
+$calls = [];
+assert_equal(true, AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'fresh', 'no_model' => true], $preferenceDeps)['ok'], 'preferred Codex takeover can act');
+assert_equal('codex', $calls[0][1]['agent'] ?? null, 'act follows the non-Claude preference even with room on another Claude profile');
+assert_equal(false, isset($calls[0][1]['profile']), 'preferred Codex launch carries no Claude profile');
+
+$preferenceQuota['agents']['codex']['quota'] = $blockedQuota;
+assert_equal(['agent' => 'opencode', 'profile' => null], $preferred()['receiver'], 'OpenCode with quota comes before the other Claude profile when Codex is limited');
+$preferenceQuota['agents']['opencode']['profiles']['default']['quota'] = $blockedQuota;
+$manualPreferred = $preferred();
+assert_equal('manual', $manualPreferred['verdict'], 'manual agy takeover comes before the other Claude profile');
+assert_equal(['Antigravity'], $manualPreferred['manual_agents'] ?? null, 'the preferred manual takeover names agy');
+assert_equal(null, $manualPreferred['receiver'], 'manual agy preference does not become an automatic Claude launch');
+$calls = [];
+assert_equal(false, AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'fresh', 'no_model' => true], $preferenceDeps)['ok'], 'manual agy takeover cannot silently spend the other Claude profile');
+assert_equal([], $calls, 'manual agy preference launches nothing automatically');
+
+foreach ([$blockedQuota, ['session' => ['pct' => 'unknown']], null] as $limitedQuota) {
+    $preferenceQuota['agents']['antigravity']['profiles']['default']['quota'] = $limitedQuota;
+    assert_equal(['agent' => 'claude', 'profile' => 'personal'], $preferred()['receiver'], 'the other Claude profile is last resort when alternatives have limited or unknown quota');
+}
+$preferenceQuota['agents']['codex']['quota'] = $ok;
+$preferenceQuota['agents']['opencode']['profiles']['default']['quota'] = $ok;
+$preferenceQuota['agents']['antigravity']['profiles']['default']['quota'] = $ok;
+$restricted = AdviseRunner::run(['target' => 'big-s', 'no_model' => true], $preferenceDeps)['sessions'][0]['advice'];
+assert_equal(['agent' => 'claude', 'profile' => 'personal'], $restricted['receiver'], 'the other Claude profile remains available when cross-agent tool restrictions cannot be preserved');
+$preferenceQuota['claude_profiles']['work']['quota'] = $ok;
+assert_equal(['agent' => 'claude', 'profile' => 'work'], $preferred()['receiver'], 'a source with room keeps its own Claude profile');
 
 // A tool-less source cannot read itself, so no receiver can transfer its work.
 SidecarStore::set_no_tools('small-s');

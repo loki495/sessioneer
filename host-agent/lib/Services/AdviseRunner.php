@@ -19,11 +19,11 @@ final class AdviseRunner
     private const AGENTS = ['claude', 'codex'];
 
     /**
-     * Takeover receivers in the global balanced tier order (Claude, then Codex,
-     * then OpenCode); Antigravity is left out because Sessioneer has no headless
-     * launcher for it, so it is only named in the manual takeover prompt.
+     * Antigravity has no headless launcher, so its takeover stays manual.
+     * A blocked Claude source reserves other Claude profiles for last resort.
      */
     private const RECEIVER_ORDER = ['claude', 'codex', 'opencode'];
+    private const CLAUDE_RECEIVER_ORDER = ['codex', 'opencode', 'claude'];
 
     /**
      * Request: `target` (session name or conversation id; absent = every tracked headless session),
@@ -161,7 +161,8 @@ final class AdviseRunner
         }
 
         $mode = (string) ($status['mode'] ?? '');
-        foreach (self::RECEIVER_ORDER as $agent) {
+        $order = $session['agent'] === 'claude' ? self::CLAUDE_RECEIVER_ORDER : self::RECEIVER_ORDER;
+        foreach ($order as $agent) {
             if ($agent === $session['agent'] && $agent !== 'claude') {
                 continue;
             }
@@ -173,6 +174,10 @@ final class AdviseRunner
                 continue;
             }
             if ($agent === 'claude') {
+                // Prefer a manual agy takeover over spending another Claude profile.
+                if ($session['agent'] === 'claude' && self::cross_agent_safe($old, $status) && self::manual_receivers($usage) !== []) {
+                    return null;
+                }
                 $profiles = $usage['claude']['profiles'] ?? [];
                 $names = array_keys($profiles);
                 sort($names);
