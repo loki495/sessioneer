@@ -2,11 +2,11 @@
 declare(strict_types=1);
 
 /**
- * A pending OpenCode question inside the transcript on the session page, in a real headless Chrome: it renders
- * as an actionable prompt, a typed reply the agent refuses is reported in the page (the question stays
- * answerable), and an accepted typed reply reaches the host agent as the real /answer_prompt.php request and
- * comes back from the poll as "Answered: ...". Only the host agent is synthetic
- * (tests/fixtures/opencode_question_browser_agent.php). Skips (exit 0) when no Chrome is installed.
+ * A pending OpenCode question on the session page, in a real headless Chrome: the transcript block stays
+ * read-only and the prompt panel is the one answer surface, a typed reply the agent refuses is reported in
+ * the page (the question stays answerable), and an accepted typed reply reaches the host agent as the real
+ * /answer_prompt.php request and comes back from the poll as "Answered: ...". Only the host agent is
+ * synthetic (tests/fixtures/opencode_question_browser_agent.php). Skips (exit 0) when no Chrome is installed.
  */
 
 require __DIR__ . '/lib/assert.php';
@@ -72,15 +72,17 @@ try {
     } else {
         cdp_set_viewport($page, 390, 844, 1.0, true);
         assert_true(cdp_navigate($page, "http://127.0.0.1:{$port}/session?session=" . OQP_SESSION), 'the synthetic OpenCode session page loads');
-        assert_true(oqp_wait($page, "document.querySelector('.sess-qblock [data-prompt-options]') !== null"), 'the pending question renders as an actionable prompt');
-        assert_true(oqp_wait($page, "document.querySelector('.sess-qblock').textContent.indexOf('Which fruit') !== -1"), 'it shows the question text');
+        assert_true(oqp_wait($page, "document.querySelector('#sess-prompt [data-prompt-options]') !== null"), 'the pending question renders as an actionable prompt');
+        assert_true(oqp_wait($page, "document.getElementById('sess-prompt').textContent.indexOf('Which fruit') !== -1"), 'it shows the question text');
+        assert_true(oqp_wait($page, "document.querySelector('.sess-qblock') !== null"), 'the transcript still records the question');
+        assert_equal(0, cdp_evaluate($page, "document.querySelectorAll('.sess-qblock [data-act=\"answer\"], .sess-qblock [data-act=\"reveal-free\"]').length"), 'the transcript block is read-only, so only one answer surface is offered');
 
-        $typeAndSend = static fn (string $text): string => "(function () { var b = document.querySelector('.sess-qblock'); b.querySelector('[data-act=\"reveal-free\"]').click(); var t = b.querySelector('.sess-free textarea'); t.value = " . json_encode($text) . "; t.dispatchEvent(new Event('input', {bubbles: true})); b.querySelector('[data-act=\"send-free\"]').click(); return true; }())";
+        $typeAndSend = static fn (string $text): string => "(function () { var b = document.getElementById('sess-prompt'); b.querySelector('[data-act=\"reveal-free\"]').click(); var t = b.querySelector('.sess-free textarea'); t.value = " . json_encode($text) . "; t.dispatchEvent(new Event('input', {bubbles: true})); b.querySelector('[data-act=\"send-free\"]').click(); return true; }())";
 
         cdp_evaluate($page, "window.alert = function () {}; true;");
         cdp_evaluate($page, $typeAndSend('reject'));
         assert_true(oqp_wait($page, "document.getElementById('ui-toast').textContent.indexOf('Synthetic OpenCode question rejected this reply') !== -1"), 'a refused reply is reported with the agent\'s message');
-        assert_true(oqp_wait($page, "document.querySelector('.sess-qblock [data-act=\"send-free\"]') !== null"), 'the question stays answerable after a refusal');
+        assert_true(oqp_wait($page, "document.querySelector('#sess-prompt [data-act=\"send-free\"]') !== null"), 'the question stays answerable after a refusal');
 
         cdp_evaluate($page, $typeAndSend('Mango'));
         assert_true(oqp_wait($page, "document.body.textContent.indexOf('Answered: Mango') !== -1"), 'the accepted reply comes back from the poll as the answer');

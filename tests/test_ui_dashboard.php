@@ -112,6 +112,7 @@ try {
     assert_equal(1, substr_count($body, 'ui-preview'), 'GET /: the blocked card shows its prompt instead of a preview');
     assert_contains('data-status="blocked"', $body, 'GET /: blocked card marked');
     assert_contains('ui-chip-id" title="Conversation ', $body, 'GET /: a live card shows its conversation id tail');
+    assert_contains('Claude Code · Sonnet 5.5 · high', $body, 'GET /: the agent pill names the model and reasoning level');
     assert_contains('Do you want to proceed?', $body, 'GET /: blocked prompt question shown');
     assert_contains('rm -rf /tmp/dashboard-example', $body, 'GET /: blocked prompt context shown');
     assert_equal(2, substr_count($body, 'data-act="answer"'), 'GET /: both prompt options are one-tap buttons');

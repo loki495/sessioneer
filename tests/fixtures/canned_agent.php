@@ -144,6 +144,8 @@ $response = match ($action) {
         'ok' => true,
         'sessions' => [[
             'name' => CANNED_SESSION_NAME,
+            'agent' => 'claude',
+            'agent_label' => 'Claude Code',
             'activity' => time() - 120,
             'attached' => false,
             'pid' => 12345,
@@ -154,6 +156,9 @@ $response = match ($action) {
             'blocked_reason' => null,
             'resume_hint' => null,
             'current_mode' => 'manual',
+            'current_model' => 'sonnet',
+            'current_effort' => 'high',
+            'model_labels' => ['sonnet' => 'Sonnet 5.5'],
             'last_message' => CANNED_LAST_MESSAGE,
         ], [
             'name' => CANNED_BLOCKED_SESSION_NAME,

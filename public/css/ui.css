@@ -310,6 +310,9 @@ select { background-image: linear-gradient(45deg, transparent 50%, var(--text-mu
 }
 .ui-sheet::backdrop { background: rgb(0 0 0 / 0.5); }
 .ui-sheet-body { display: flex; flex-direction: column; gap: 14px; padding: 16px 16px calc(20px + var(--safe-bottom)); max-height: 92dvh; overflow-y: auto; overscroll-behavior: contain; }
+/* The Sessions and Usage popups fetch their content after opening; a fixed
+   height stops them from starting at their loading height and growing. */
+#sess-sessions, #sess-quota { height: 92dvh; }
 
 .ui-sheet-head { position: sticky; top: -16px; z-index: 2; display: flex; align-items: center; justify-content: space-between; margin: -16px -16px 0; padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--accent-line); border-radius: 20px 20px 0 0; }
 .ui-sheet-body > .ui-btn-primary { margin-top: 6px; }

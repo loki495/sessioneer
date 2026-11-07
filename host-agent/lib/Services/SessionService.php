@@ -134,7 +134,7 @@ class SessionService
      * @param array{name:string, activity:int, attached:bool} $tmuxSession
      * @param array<int, array{pid:int, cwd:?string, started_at:?int}> $claudeProcs
      * @param array<int, int> $ppidMap
-     * @return array{name:string, activity:int, attached:bool, pid:?int, workdir:?string, spawned_by_app:bool, kind:string, parent_session_id:?string, agent:string, agent_label:string, title:string, working:bool, blocked_reason:?string, resume_hint:?string, prompt_context:?string, prompt_options:array<int, array{number:int, label:string}>, prompt_multi_question:bool, prompt_is_folder_trust:bool, prompt_tool_name:?string, prompt_tool_input:?array, prompt_questions:?array, current_mode:?string, current_model:?string, current_antigravity_model:?string, last_turn_error:?string, agent_session_id:?string, last_message:?array, profile:?string, context_used_percentage:?float, git_worktree:?string}
+     * @return array{name:string, activity:int, attached:bool, pid:?int, workdir:?string, spawned_by_app:bool, kind:string, parent_session_id:?string, agent:string, agent_label:string, title:string, working:bool, blocked_reason:?string, resume_hint:?string, prompt_context:?string, prompt_options:array<int, array{number:int, label:string}>, prompt_multi_question:bool, prompt_is_folder_trust:bool, prompt_tool_name:?string, prompt_tool_input:?array, prompt_questions:?array, current_mode:?string, current_model:?string, current_effort:?string, current_antigravity_model:?string, last_turn_error:?string, agent_session_id:?string, last_message:?array, profile:?string, context_used_percentage:?float, git_worktree:?string}
      */
     public static function build_session_entry(array $tmuxSession, array $claudeProcs, array $ppidMap): array
     {
@@ -350,6 +350,19 @@ class SessionService
         $rawModel = $transcriptPathForModel !== null ? TranscriptService::find_latest_model($transcriptPathForModel) : null;
         $modelOverride = is_string($hookStatus['model'] ?? null) ? $hookStatus['model'] : null;
         $currentModel = $modelOverride ?? ($rawModel !== null ? SelectableModel::family_from_raw_model($rawModel) : null);
+        $currentEffort = null;
+
+        // OpenCode keeps its model in its own database rather than a JSONL
+        // transcript, so the Claude transcript read above never fills it in.
+        // tmux row only: a headless OpenCode row carries the sync's model.
+        if ($agentId === 'opencode' && $currentModel === null && $agentSessionId !== null) {
+            $ocModel = OpenCodeTranscriptService::find_latest_model($agentSessionId);
+
+            if ($ocModel !== null) {
+                $currentModel = $ocModel['model'];
+                $currentEffort = $ocModel['effort'];
+            }
+        }
 
         if ($rawModel !== null) {
             ClaudeModelCatalog::record($rawModel);
@@ -407,6 +420,7 @@ class SessionService
             'current_mode' => $currentMode,
             'current_model' => $currentModel,
             'model_labels' => ClaudeModelCatalog::labels(),
+            'current_effort' => $currentEffort,
             'current_antigravity_model' => $currentAntigravityModel,
             'last_turn_error' => $lastTurnError,
             'agent_session_id' => $agentSessionId,
