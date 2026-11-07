@@ -47,6 +47,12 @@ try {
     assert_true(SidecarStore::read_sidecar('ses_waiting') !== null, 'question older than activity window remains tracked');
     assert_equal(null, SessionStatusStore::read_status('ses_idle')['blocked'], 'ordinary stale polled prompts still clear');
     assert_equal('idle', SessionStatusStore::read_status('ses_idle')['status'], 'idle sessions still receive polled status');
+    assert_equal(['kimi-k3.1', 'high'], [SessionStatusStore::read_status('ses_idle')['model'], SessionStatusStore::read_status('ses_idle')['effort']], 'sync persists the serve session model and its variant as effort on the status row');
+    $merged = sessioneer_merge_headless_sessions([]);
+    $idleRow = array_values(array_filter($merged, static fn (array $s): bool => ($s['name'] ?? null) === 'ses_idle'))[0] ?? [];
+    assert_equal(['kimi-k3.1', 'high'], [$idleRow['current_model'] ?? null, $idleRow['current_effort'] ?? null], 'merged headless row carries current_model and current_effort from the status row');
+    SessionStatusStore::update_status('ses_idle', ['effort' => null]);
+    assert_equal(null, SessionStatusStore::read_status('ses_idle')['effort'], 'effort column can be cleared (update_status accepts effort)');
 
     assert_equal(false, SessionStatusStore::resolve_opencode_question('ses_waiting', 'que_old'), 'late reply cannot clear a newer request');
     assert_equal(false, SessionStatusStore::resolve_opencode_question('ses_waiting', ''), 'empty request ID does not resolve');
