@@ -127,7 +127,7 @@ final class AdviseService
             'restart_after' => $restartAfter ?: null,
             'prompts' => [
                 'resume' => 'Continue where you stopped: read your last Dibs checkpoint, then carry on with the next step.',
-                'fresh' => 'Continue the work of conversation ' . $conversationId . ': read its handoff and Dibs records, claim the step, and carry on.',
+                'fresh' => 'Take over conversation ' . $conversationId . ': read its complete thread and Dibs state, transfer the work safely, and archive it only after the source is idle and claim-free.',
             ],
         ];
     }

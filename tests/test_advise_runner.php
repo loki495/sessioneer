@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-// AdviseRunner against isolated fixtures: sidecar rows, fixture transcripts, and injected quota/model/launch/kill.
+// AdviseRunner against isolated fixtures: sidecar rows, fixture transcripts, and injected quota/model/launch.
 // No tmux, no host transcripts, no real agent process, no model call.
 require __DIR__ . '/../vendor/autoload.php';
 require __DIR__ . '/lib/assert.php';
@@ -38,6 +38,9 @@ function fixture(string $root, string $name, string $id, int $tokens, int $ageSe
 fixture($root, 'small-s', '11111111-1111-4111-8111-111111111111', 20000, 7200);
 fixture($root, 'big-s', '22222222-2222-4222-8222-222222222222', 200000, 7200);
 fixture($root, 'busy-s', '33333333-3333-4333-8333-333333333333', 200000, 7200, 'working');
+SidecarStore::write_sidecar('44444444-4444-4444-8444-444444444444', ['workdir' => '/w/codex-s', 'agent_session_id' => '44444444-4444-4444-8444-444444444444', 'agent' => 'codex', 'runtime' => 'headless']);
+SessionStatusStore::write_status('44444444-4444-4444-8444-444444444444', ['status' => 'idle', 'mode' => 'workspace-write']);
+SessionStatusStore::update_status('44444444-4444-4444-8444-444444444444', ['model' => 'gpt-6', 'token_usage' => ['last' => ['totalTokens' => 200000]]]);
 SidecarStore::write_sidecar('big-s', ['workdir' => '/w/big-s', 'agent_session_id' => '22222222-2222-4222-8222-222222222222', 'agent' => 'claude', 'runtime' => 'headless', 'profile' => 'work']);
 SidecarStore::set_tool_rules('big-s', null, 'Bash');
 SessionStatusStore::write_status('big-s', ['status' => 'idle', 'mode' => 'plan']);
@@ -51,10 +54,13 @@ $deps = [
 
 $table = AdviseRunner::run([], $deps);
 $byName = array_column($table['sessions'], null, 'name');
-assert_equal(3, count($table['sessions']), 'the table lists every tracked headless Claude session');
+assert_equal(4, count($table['sessions']), 'the table lists tracked headless Claude and Codex sessions');
 assert_equal('resume', $byName['small-s']['advice']['verdict'], 'a small session resumes');
 assert_equal('fresh', $byName['big-s']['advice']['verdict'], 'a big session goes fresh');
-assert_equal(true, str_contains($byName['big-s']['advice']['prompts']['fresh'], '22222222-2222-4222-8222-222222222222.jsonl'), 'the fresh prompt points the new session at the old transcript');
+assert_equal(true, str_contains($byName['big-s']['advice']['prompts']['fresh'], 'claude work 22222222-2222-4222-8222-222222222222'), 'the takeover prompt identifies the source agent, profile and conversation');
+assert_equal(true, str_contains($byName['big-s']['advice']['prompts']['fresh'], '22222222-2222-4222-8222-222222222222.jsonl'), 'the takeover prompt points at the source transcript');
+assert_equal(true, str_contains($byName['big-s']['advice']['prompts']['fresh'], 'entire source conversation'), 'the takeover prompt requires a full-thread review');
+assert_equal(true, str_contains($byName['44444444-4444-4444-8444-444444444444']['advice']['prompts']['fresh'], 'codex 44444444-4444-4444-8444-444444444444'), 'the Codex prompt names its agent and conversation without a Claude profile');
 
 assert_equal(false, AdviseRunner::run(['target' => 'nope'], $deps)['ok'], 'an unknown target is refused');
 assert_equal(false, AdviseRunner::run(['act' => true], $deps)['ok'], '--act without a target is refused');
@@ -76,13 +82,20 @@ assert_equal([['launch', ['agent' => 'claude', 'workdir' => '/w/small-s', 'profi
 
 $calls = [];
 $fresh = AdviseRunner::run(['target' => 'big-s', 'act' => true, 'model' => 'sonnet'], $deps);
-assert_equal(['launch', 'kill'], array_column($calls, 0), 'fresh launches first, then archives the old session');
+assert_equal(['launch'], array_column($calls, 0), 'fresh launches a receiver and leaves archival to its takeover checks');
 assert_equal(false, isset($calls[0][1]['agent_session_id']), 'the fresh launch is a new conversation');
 assert_equal('sonnet', $calls[0][1]['model'], 'the requested model carries to the fresh session');
 assert_equal('Bash', $calls[0][1]['disallowed_tools'] ?? null, 'the fresh session keeps the old one\'s denied tools');
 assert_equal('plan', $calls[0][1]['starting_mode'] ?? null, 'and its permission mode');
-assert_equal('big-s', $calls[1][1]['target'], 'the old session is the one archived');
-assert_equal('big-s', $fresh['archived'], 'the reply names the archived session');
+assert_equal(false, isset($fresh['archived']), 'the response does not claim the old session was archived');
+assert_equal(true, str_contains($fresh['message'], 'old session remains available'), 'the response says the source remains available');
+
+$calls = [];
+$codexFresh = AdviseRunner::run(['target' => '44444444-4444-4444-8444-444444444444', 'act' => true], $deps);
+assert_equal(true, $codexFresh['ok'], 'Codex fresh takeover launches');
+assert_equal(['launch'], array_column($calls, 0), 'Codex source remains available for the receiver checks');
+assert_equal(false, isset($calls[0][1]['profile']), 'Codex launch has no Claude profile');
+assert_equal(false, isset($calls[0][1]['starting_mode']), 'the default Codex workspace-write mode is omitted');
 
 $calls = [];
 $deps['launch'] = static function (array $r) use (&$calls): array {
@@ -116,5 +129,11 @@ $calls = [];
 assert_equal(false, AdviseRunner::run(['target' => 'busy-s', 'act' => true, 'choice' => 'fresh'], $deps)['ok'], 'a choice on a working session is still refused');
 assert_equal(false, AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'resume'], $full)['ok'], 'a choice on a full quota is still refused');
 assert_equal([], $calls, 'refused choices launch nothing');
+
+SidecarStore::set_no_tools('small-s');
+$calls = [];
+$toolLess = AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'fresh'], $deps);
+assert_equal(false, $toolLess['ok'], 'a tool-less replacement cannot perform the takeover');
+assert_equal([], $calls, 'the tool-less refusal starts no session');
 
 echo "ok\n";

@@ -85,8 +85,9 @@ with `runtime=headless`, so the final resume goes through the headless runtime, 
 `advise` (`session`) answers `{status, advice}` from the host agent's `advise` action: the verdict, context
 size, cache age and the token cost of each path. `advise_act` (`session`, `choice` = `resume` or `fresh`) acts on
 the person's pick, not the verdict: resume sends the continue prompt to the same conversation, fresh starts a new
-session that writes the handoff from the old transcript and then archives the old one, only after the new one took its
-prompt. It answers with a redirect to the session that carries on. The idle and quota (90%) guards still apply. The button itself is rendered only when the session's last activity is an hour or more old (`App\AdvisePolicy::CACHE_TTL_SECONDS`) or its account quota is at 90% or more (`App\AdvisePolicy::QUOTA_PARK_PCT`; `UiView::advise_visible()`, one memoised `quota` call per request and only when idle time alone does not decide). Nothing is
+session with a takeover prompt naming the source agent, profile and conversation. The receiver reads the full source
+thread and Dibs state, then archives the old session after its checks; `advise_act` leaves it available meanwhile.
+It answers with a redirect to the session that carries on. The idle and quota (90%) guards still apply. The button itself is rendered only when the session's last activity is an hour or more old (`App\AdvisePolicy::CACHE_TTL_SECONDS`) or its account quota is at 90% or more (`App\AdvisePolicy::QUOTA_PARK_PCT`; `UiView::advise_visible()`, one memoised `quota` call per request and only when idle time alone does not decide). Nothing is
 sent to the old session on `advise`, and the one small model call for a close verdict happens only there, for the one
 session asked about. `/action` has the same same-origin and CSRF checks as every other mutating endpoint.
 
@@ -95,8 +96,8 @@ session asked about. `/action` has the same same-origin and CSRF checks as every
 An idle headless Claude or Codex card has a **Continue or start a new one?** button, and the session page has the
 same button below the transcript. Tapping it asks for advice for that one session and shows the reason, the context
 size and cache age, and two buttons: **Continue here** (resume; its line gives the tokens re-written now when the
-cache is cold, and re-read each turn) and **Start a new one** (a handoff of about 6k tokens, re-read each turn; archives this
-session). The advised one is highlighted and marked recommended; a close call (`judgment`) highlights neither.
+cache is cold, and re-read each turn) and **Start a new one** (reviews the full source thread and Dibs state;
+archives this session after takeover checks). The advised one is highlighted and marked recommended; a close call (`judgment`) highlights neither.
 Both buttons are disabled while the session is not idle or its account quota is nearly full. Starting a new one
 asks for confirmation. The poll leaves the list alone while an advice panel is open. The thresholds are in
 [cli.md](cli.md) under `--advise`.

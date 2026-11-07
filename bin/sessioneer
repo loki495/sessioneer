@@ -130,9 +130,10 @@ function usage(): string
                         the verdict, with one small model call if it is a close one.
       --act             with --advise and exactly one SESSION: do what the verdict says.
                         Resume sends a short continue prompt to that session. Fresh starts
-                        a new session (--model/--effort apply) that writes the handoff from
-                        the old transcript, then archives the old one. Refused when the
-                        session is not idle, there is no clear verdict, or the quota is full.
+                        a new session (--model/--effort apply) to review the complete old
+                        conversation and Dibs state. The receiver archives the old session
+                        after its takeover checks. Refused when the session is not idle,
+                        there is no clear verdict, or the quota is full.
       --wait            after launching, block until the session is idle and print
                         its final assistant message to stdout (the session name
                         goes to stderr). Exits 1 if the launch fails, the turn
