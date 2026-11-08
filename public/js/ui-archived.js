@@ -86,15 +86,18 @@
       return;
     }
     var rowsOut = data.results || [];
-    results.innerHTML = rowsOut.length ? rowsOut.map(function (r) {
-      var first = r.matches[0].line;
-      var url = r.session_name
-        ? '/session?session=' + encodeURIComponent(r.session_name) + '&jump_line=' + encodeURIComponent(first)
-        : '/archived-session?agent_session_id=' + encodeURIComponent(r.agent_session_id) + '&jump_line=' + encodeURIComponent(first);
-
-      return '<a class="sess-hit" href="' + url + '"><b>' + esc(r.title) + (r.session_name ? ' · live' : '') + '</b>'
-        + r.matches.map(function (m) { return '<span class="ui-result-snippet">' + highlight(String(m.snippet || ''), query) + '</span>'; }).join('') + '</a>';
-    }).join('') : '<p class="ui-muted ui-center">No matches</p>';
+    // One link per match: each snippet opens the transcript at its own line, not the session's first hit.
+    var linksOut = [];
+    rowsOut.forEach(function (r) {
+      r.matches.forEach(function (m) {
+        var url = r.session_name
+          ? '/session?session=' + encodeURIComponent(r.session_name) + '&jump_line=' + encodeURIComponent(m.line)
+          : '/archived-session?agent_session_id=' + encodeURIComponent(r.agent_session_id) + '&jump_line=' + encodeURIComponent(m.line);
+        linksOut.push('<a class="sess-hit" href="' + url + '"><b>' + esc(r.title) + (r.session_name ? ' · live' : '') + '</b>'
+          + '<span class="ui-result-snippet">' + highlight(String(m.snippet || ''), query) + '</span></a>');
+      });
+    });
+    results.innerHTML = linksOut.length ? linksOut.join('') : '<p class="ui-muted ui-center">No matches</p>';
   }
 
   function run() {

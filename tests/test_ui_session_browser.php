@@ -235,13 +235,19 @@ try {
         cdp_evaluate($page, "document.querySelector('[data-open=\"sess-sessions\"]').click()");
         assert_true(uib_wait($page, "document.querySelectorAll('#sess-sessions-list .sess-srow').length === 2"), 'sessions popup: lists every session');
         assert_true((float)cdp_evaluate($page, "document.getElementById('sess-sessions').getBoundingClientRect().height") >= 844 * 0.85, 'sessions popup: opens at full height instead of the loading height');
-        assert_equal(UIB_BLOCKED, cdp_evaluate($page, "decodeURIComponent(document.querySelector('#sess-sessions-list .sess-srow-main').getAttribute('href').split('session=')[1])"), 'sessions popup: the session needing input is first');
+        assert_equal(UIB_SESSION, cdp_evaluate($page, "decodeURIComponent(document.querySelector('#sess-sessions-list .sess-srow-main').getAttribute('href').split('session=')[1])"), 'sessions popup: the open session is pinned on top');
+        assert_equal(UIB_BLOCKED, cdp_evaluate($page, "decodeURIComponent(document.querySelector('#sess-sessions-list .sess-srow:not(.is-current) .sess-srow-main').getAttribute('href').split('session=')[1])"), 'sessions popup: below the divider, the session needing input is first');
+        assert_equal('Other sessions', cdp_evaluate($page, "document.querySelector('#sess-sessions-list .sess-srow-divider').textContent"), 'sessions popup: a divider separates the open session from the rest');
         assert_equal(1, cdp_evaluate($page, "document.querySelectorAll('#sess-sessions-list .is-current').length"), 'sessions popup: the open session is marked');
         assert_contains('Needs input: Do you want to proceed?', (string)cdp_evaluate($page, "document.getElementById('sess-sessions-list').textContent"), 'sessions popup: a blocked session shows what it waits on');
         assert_true((int)cdp_evaluate($page, "document.querySelectorAll('#sess-sessions-list .ui-chip').length") >= 2, 'sessions popup: rows carry agent and runtime chips');
         assert_contains('Claude Code · Sonnet 5.5 · high', (string)cdp_evaluate($page, "document.getElementById('sess-sessions-list').textContent"), 'sessions popup: the agent pill names the model and reasoning level');
+        assert_equal(1, cdp_evaluate($page, "document.querySelectorAll('#sess-sessions-list .ui-thinking').length"), 'sessions popup: only the working, unblocked session gets the thinking dots');
+        assert_equal('Conversation aaaaaaaa-1111-4111-8111-111111111111', cdp_evaluate($page, "document.querySelector('#sess-sessions-list .ui-chip-id').title"), 'sessions popup: a row shows its conversation id on hover');
+        assert_true(substr((string)cdp_evaluate($page, "document.querySelector('#sess-sessions-list .ui-chip-id').textContent"), -8) === '11111111', 'sessions popup: and its last 8 characters inline');
         cdp_evaluate($page, "(function () { var i = document.getElementById('sess-sessions-filter'); i.value = 'zzz-nothing'; i.dispatchEvent(new Event('input')); }())");
-        assert_contains('No sessions', (string)cdp_evaluate($page, "document.getElementById('sess-sessions-list').textContent"), 'sessions popup: a filter with no match says so');
+        assert_contains('No other sessions', (string)cdp_evaluate($page, "document.getElementById('sess-sessions-list').textContent"), 'sessions popup: a filter with no match says so');
+        assert_equal(1, cdp_evaluate($page, "document.querySelectorAll('#sess-sessions-list .is-current').length"), 'sessions popup: the open session stays shown while the filter matches nothing else');
         cdp_evaluate($page, "(function () { var i = document.getElementById('sess-sessions-filter'); i.value = ''; i.dispatchEvent(new Event('input')); }())");
         cdp_evaluate($page, "window.__posted = []; document.querySelector('#sess-sessions-list [data-star]').click()");
         assert_true(uib_wait($page, "document.querySelectorAll('#sess-sessions-list [aria-pressed=\"true\"]').length === 1"), 'sessions popup: the star toggle marks the row');
@@ -367,6 +373,13 @@ try {
         cdp_evaluate($page, "document.querySelector('#sess-search-results button.sess-hit').click()");
         assert_equal(false, cdp_evaluate($page, "document.getElementById('sess-search').open"), 'archived: choosing a hit closes the search');
         assert_true(uib_wait($page, "document.getElementById('sess-jump').hidden === false"), 'archived: jumping shows the "Showing a search result" notice');
+
+        // All-sessions search with two matches in one session: each snippet must open its own line.
+        cdp_evaluate($page, "document.querySelector('[data-open=\"sess-search\"]').click()");
+        cdp_evaluate($page, "(function () { var prev = window.fetch; window.fetch = function (u, o) { if (String(u).indexOf('/search_sessions.php') === 0) { return Promise.resolve(new Response(JSON.stringify({ ok: true, results: [{ agent_session_id: 'ffff1111-2222-4333-8444-555555555555', session_name: null, title: 'Sourdough notes', cwd: null, last_activity: 0, matches: [{ line: 40, snippet: 'sourdough starter', role: 'user', kind: 'text' }, { line: 12, snippet: 'sourdough bread', role: 'assistant', kind: 'text' }] }] }), { status: 200 })); } return prev(u, o); }; var s = document.querySelector('input[name=\"sess-scope\"][value=\"global\"]'); s.checked = true; s.dispatchEvent(new Event('change')); var i = document.getElementById('sess-search-input'); i.value = 'sourdough'; i.dispatchEvent(new Event('input')); }())");
+        assert_true(uib_wait($page, "document.querySelectorAll('#sess-search-results a.sess-hit').length === 2"), 'archived search: every match gets its own link');
+        assert_equal('40,12', cdp_evaluate($page, "Array.prototype.map.call(document.querySelectorAll('#sess-search-results a.sess-hit'), function (a) { return a.getAttribute('href').split('jump_line=')[1]; }).join(',')"), 'archived search: each link jumps to its own line, not the first hit');
+        cdp_evaluate($page, "document.getElementById('sess-search').close()");
 
         cdp_evaluate($page, "window.__posted = []; var of = window.fetch; window.fetch = function (u, o) { if (o && o.body) { window.__posted.push({ url: String(u), body: decodeURIComponent(o.body) }); } return of(u, o); }; true");
         cdp_evaluate($page, "document.getElementById('sess-resume').click()");
