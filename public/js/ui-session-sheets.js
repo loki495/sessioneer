@@ -477,6 +477,11 @@
     if ((x.agent || 'claude') === 'claude' && x.profile) { bits.push('<span class="ui-chip ui-chip-accent">' + esc(x.profile) + '</span>'); }
     if (x.runtime !== 'headless') { bits.push('<span class="ui-chip ui-chip-warn">Terminal, read only</span>'); }
     if (typeof x.context_used_percentage === 'number') { bits.push('<span class="ui-chip">ctx ' + Math.round(x.context_used_percentage) + '%</span>'); }
+    // Same tail the dashboard card shows (UiView card chip): the agent's own conversation id.
+    if (x.agent_session_id) {
+      var cid = String(x.agent_session_id);
+      bits.push('<span class="ui-chip ui-chip-id" title="Conversation ' + esc(cid) + '">&hellip;' + esc(cid.slice(-8)) + '</span>');
+    }
     return bits.join('');
   }
   // What the session is waiting on, else the last message.
@@ -490,12 +495,14 @@
   function renderSessionRows() {
     var q = $('sess-sessions-filter').value.trim().toLowerCase();
     var order = { blocked: 0, working: 1, idle: 2 };
+    // The open session is always pinned on top, outside the filter; the filter applies to the rest.
+    var current = sessionRows.filter(function (x) { return x.name === session; });
     var rows = sessionRows.filter(function (x) {
-      return !q || (String(x.title || '') + ' ' + x.name + ' ' + String(x.workdir || '')).toLowerCase().indexOf(q) !== -1;
+      return x.name !== session && (!q || (String(x.title || '') + ' ' + x.name + ' ' + String(x.workdir || '')).toLowerCase().indexOf(q) !== -1);
     }).sort(function (a, b) {
       return (order[statusOfRow(a)] - order[statusOfRow(b)]) || ((b.starred ? 1 : 0) - (a.starred ? 1 : 0)) || ((b.activity || 0) - (a.activity || 0));
     });
-    $('sess-sessions-list').innerHTML = rows.length ? rows.map(function (x) {
+    var rowHtml = function (x) {
       var st = statusOfRow(x);
       var folder = String(x.workdir || '').replace(/\/+$/, '').split('/').pop();
       return '<div class="sess-srow' + (x.name === session ? ' is-current' : '') + (x.starred ? ' is-starred' : '') + '">'
@@ -503,9 +510,14 @@
         + '<span class="sess-srow-text"><b>' + esc(x.title || x.name) + '</b>'
         + '<span class="sess-srow-chips">' + (x.name === session ? '<span class="sess-current-pill">Current</span>' : '') + rowChips(x) + '</span>'
         + '<small>' + esc(folder) + ' · ' + esc(api.relTime(x.activity ? new Date(x.activity * 1000).toISOString() : '')) + '</small>'
-        + (rowPreview(x) ? '<small class="sess-srow-preview">' + esc(rowPreview(x)) + '</small>' : '') + '</span></a>'
+        + (rowPreview(x) ? '<small class="sess-srow-preview">' + esc(rowPreview(x)) + '</small>' : '')
+        + (st === 'working' ? '<span class="ui-thinking" aria-label="Thinking"><i></i><i></i><i></i></span>' : '') + '</span></a>'
         + '<button type="button" class="ui-icon-btn" data-star="' + esc(x.name) + '" aria-pressed="' + (x.starred ? 'true' : 'false') + '" aria-label="' + (x.starred ? 'Unstar' : 'Star') + '">' + (x.starred ? '&#9733;' : '&#9734;') + '</button></div>';
-    }).join('') : '<p class="ui-muted ui-center">No sessions</p>';
+    };
+    var html = current.map(rowHtml).join('');
+    if (current.length && rows.length) { html += '<p class="sess-srow-divider">Other sessions</p>'; }
+    html += rows.length ? rows.map(rowHtml).join('') : '<p class="ui-muted ui-center">' + (current.length ? 'No other sessions' : 'No sessions') + '</p>';
+    $('sess-sessions-list').innerHTML = html;
   }
   function loadSessions() {
     $('sess-sessions-list').innerHTML = '<p class="ui-muted ui-center">Loading…</p>';
