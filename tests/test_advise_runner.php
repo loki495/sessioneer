@@ -323,6 +323,41 @@ assert_equal(['agent' => 'claude', 'profile' => 'personal'], $restricted['receiv
 $preferenceQuota['claude_profiles']['work']['quota'] = $ok;
 assert_equal(['agent' => 'claude', 'profile' => 'work'], $preferred()['receiver'], 'a source with room keeps its own Claude profile');
 
+// A recorded permission mode is not a restriction by itself: only a read-only
+// source rules OpenCode out, because OpenCode has no modes to reproduce it with.
+$preferenceQuota['claude_profiles']['work']['quota'] = $blockedQuota;
+$preferenceQuota['agents']['codex']['quota'] = $blockedQuota;
+$modeAdvice = static function (string $mode) use ($preferenceDeps): array {
+    SessionStatusStore::write_status('small-s', ['status' => 'idle', 'mode' => $mode]);
+    return AdviseRunner::run(['target' => 'small-s', 'no_model' => true], $preferenceDeps)['sessions'][0]['advice'];
+};
+foreach (['', 'manual', 'accept edits', 'auto'] as $mode) {
+    assert_equal(['agent' => 'opencode', 'profile' => null], $modeAdvice($mode)['receiver'] ?? null, "a source in '" . ($mode === '' ? 'no' : $mode) . "' mode reaches OpenCode");
+}
+$readOnly = $modeAdvice('plan');
+assert_equal(null, $readOnly['receiver'] ?? null, 'a read-only source is not offered OpenCode, which has no permission modes');
+assert_equal('manual', $readOnly['verdict'], 'a read-only source with no reproducible receiver keeps the manual prompt');
+
+// Cross-agent launches send a mode only where the receiver can start in it.
+$calls = [];
+SessionStatusStore::write_status('small-s', ['status' => 'idle', 'mode' => 'auto']);
+assert_equal(true, AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'fresh', 'no_model' => true], $preferenceDeps)['ok'], 'an auto-mode source takes over in OpenCode');
+assert_equal('opencode', $calls[0][1]['agent'] ?? null, 'the OpenCode receiver is launched');
+assert_equal(false, isset($calls[0][1]['starting_mode']), 'OpenCode is launched without a permission mode it cannot reproduce');
+$calls = [];
+$preferenceQuota['agents']['opencode']['profiles']['default']['quota'] = $blockedQuota;
+$preferenceQuota['agents']['codex']['quota'] = $ok;
+assert_equal(true, AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'fresh', 'no_model' => true], $preferenceDeps)['ok'], 'an auto-mode source takes over in Codex when OpenCode is limited');
+assert_equal('codex', $calls[0][1]['agent'] ?? null, 'Codex receives the takeover');
+assert_equal(false, isset($calls[0][1]['starting_mode']), 'Codex is not handed a Claude permission mode it refuses');
+$calls = [];
+SessionStatusStore::write_status('small-s', ['status' => 'idle', 'mode' => 'plan']);
+assert_equal(true, AdviseRunner::run(['target' => 'small-s', 'act' => true, 'choice' => 'fresh', 'no_model' => true], $preferenceDeps)['ok'], 'a read-only source takes over in Codex, which can start read-only');
+assert_equal('plan', $calls[0][1]['starting_mode'] ?? null, 'the read-only mode travels to Codex as its read-only sandbox');
+SessionStatusStore::write_status('small-s', ['status' => 'idle']);
+$preferenceQuota['agents']['opencode']['profiles']['default']['quota'] = $ok;
+$preferenceQuota['agents']['codex']['quota'] = $ok;
+
 // A tool-less source cannot read itself, so no receiver can transfer its work.
 SidecarStore::set_no_tools('small-s');
 $quotaFixture['claude_profiles']['personal']['quota'] = $ok;

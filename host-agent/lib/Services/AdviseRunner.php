@@ -26,6 +26,20 @@ final class AdviseRunner
     private const CLAUDE_RECEIVER_ORDER = ['codex', 'opencode', 'claude'];
 
     /**
+     * Permission modes in this app's own vocabulary (see PermissionMode), plus
+     * the two Codex sandboxes a session can record. dontAsk is left out: a
+     * fresh session that denied every unapproved tool call could not read the
+     * source conversation.
+     */
+    private const CROSS_AGENT_MODES = ['', 'manual', 'accept edits', 'plan', 'auto', 'workspace-write', 'full'];
+
+    /** OpenCode has no permission modes at all, so only a read-only source cannot travel to it. */
+    private const OPENCODE_MODES = ['', 'manual', 'accept edits', 'auto', 'workspace-write', 'full'];
+
+    /** The modes a Claude session records, in this app's vocabulary (not Codex's sandbox names). */
+    private const CLAUDE_MODES = ['manual', 'accept edits', 'plan', 'auto', 'dontAsk'];
+
+    /**
      * Request: `target` (session name or conversation id; absent = every tracked headless session),
      * `act` (bool; needs a target), `choice` (resume|fresh: a person's explicit pick that replaces the verdict when acting, the
      * dashboard buttons; the idle and quota guards still apply), `no_model` (skip the model call), plus `model`/`effort` for the fresh session `act` may start.
@@ -169,8 +183,8 @@ final class AdviseRunner
             if ($agent !== $session['agent'] && !self::cross_agent_safe($old, $status)) {
                 continue;
             }
-            // OpenCode has no permission modes, so a source restriction cannot travel with it.
-            if ($agent === 'opencode' && $mode !== '') {
+            // OpenCode has no permission modes, so a read-only source restriction cannot travel with it.
+            if ($agent === 'opencode' && !in_array($mode, self::OPENCODE_MODES, true)) {
                 continue;
             }
             if ($agent === 'claude') {
@@ -249,7 +263,9 @@ final class AdviseRunner
     }
 
     /**
-     * Agent-specific tool rules and permission modes cannot be translated safely.
+     * Tool rules cannot be translated across agents at all, and a mode outside
+     * this app's own vocabulary (or the launch-only dontAsk) is not offered to
+     * a different agent. Which mode the receiver starts in is starting_mode().
      * @param array<string,mixed> $old the source session's sidecar
      * @param array<string,mixed> $status
      */
@@ -258,8 +274,23 @@ final class AdviseRunner
         if (!empty($old['no_tools']) || !empty($old['allowed_tools']) || !empty($old['disallowed_tools'])) {
             return false;
         }
-        $mode = (string) ($status['mode'] ?? '');
-        return in_array($mode, ['', 'default', 'plan', 'workspace-write'], true);
+        return in_array((string) ($status['mode'] ?? ''), self::CROSS_AGENT_MODES, true);
+    }
+
+    /**
+     * The mode a fresh receiver starts in: its own when it can reproduce the
+     * source's, nothing when it cannot. Claude takes this app's own modes,
+     * Codex only its read-only sandbox ('plan'), OpenCode has no modes.
+     */
+    private static function starting_mode(string $receiverAgent, string $mode): ?string
+    {
+        if ($receiverAgent === 'claude') {
+            return in_array($mode, self::CLAUDE_MODES, true) ? $mode : null;
+        }
+        if ($receiverAgent === 'codex') {
+            return in_array($mode, ['plan', 'full'], true) ? $mode : null;
+        }
+        return null;
     }
 
     /**
@@ -320,7 +351,7 @@ final class AdviseRunner
             'no_tools' => !empty($old['no_tools']),
             'allowed_tools' => $receiver['agent'] === $row['agent'] ? ($old['allowed_tools'] ?? null) : null,
             'disallowed_tools' => $receiver['agent'] === $row['agent'] ? ($old['disallowed_tools'] ?? null) : null,
-            'starting_mode' => $mode !== '' && $mode !== 'default' && $mode !== 'workspace-write' ? $mode : null,
+            'starting_mode' => self::starting_mode($receiver['agent'], $mode),
         ]);
         if (!empty($restrict['no_tools'])) {
             return ['ok' => false, 'message' => 'A tool-less replacement cannot read the source conversation or transfer its Dibs claims'];
