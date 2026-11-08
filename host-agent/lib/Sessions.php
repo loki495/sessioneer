@@ -480,6 +480,9 @@ function sessioneer_dispatch_action(array $request): array
         case 'launch_take_over':
             return SessionControl::take_over($request);
 
+        case 'launch_set_name':
+            return \HostAgent\Launch\LaunchService::set_name($request);
+
         case 'advise':
             return \HostAgent\Services\AdviseRunner::run($request);
 

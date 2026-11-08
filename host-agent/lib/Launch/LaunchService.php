@@ -33,7 +33,66 @@ class LaunchService
     {
         $launcher = self::launcher_for($request);
 
-        return $launcher instanceof SessionLauncher ? $launcher->launch($request) : $launcher;
+        if (!$launcher instanceof SessionLauncher) {
+            return $launcher;
+        }
+
+        $reply = $launcher->launch($request);
+        $title = is_string($request['set_name'] ?? null) ? trim($request['set_name']) : '';
+
+        if ($title === '' || ($reply['ok'] ?? false) !== true || !is_string($reply['name'] ?? null)) {
+            return $reply;
+        }
+
+        // Applied after the launch, so a created, reused or resumed session all get the name.
+        $named = self::set_name_of($reply['name'], $title);
+
+        if (($named['ok'] ?? false) !== true) {
+            return ['ok' => false, 'name' => $reply['name'], 'message' => "Session {$reply['name']} started, but naming it failed: " . (string)($named['message'] ?? 'unknown error')];
+        }
+
+        $reply['title'] = $named['title'];
+        $reply['message'] = trim((string)($reply['message'] ?? '') . ' ' . $named['message']);
+
+        return $reply;
+    }
+
+    /**
+     * Renames an existing tracked session, by name or conversation id.
+     *
+     * @param array<string, mixed> $request
+     * @return array<string, mixed>
+     */
+    public static function set_name(array $request): array
+    {
+        $target = trim((string)($request['target'] ?? ''));
+        $name = SessionControl::resolve($target);
+
+        if ($name === null) {
+            return ['ok' => false, 'message' => "No tracked session found for '{$target}'"];
+        }
+
+        $title = is_string($request['set_name'] ?? null) ? trim($request['set_name']) : '';
+
+        if ($title === '') {
+            return ['ok' => false, 'name' => $name, 'message' => 'Needs a name'];
+        }
+
+        return self::set_name_of($name, $title);
+    }
+
+    /** @return array<string, mixed> */
+    private static function set_name_of(string $name, string $title): array
+    {
+        $renamed = \sessioneer_rename_session($name, $title);
+
+        if ($renamed['ok'] !== true) {
+            return ['ok' => false, 'name' => $name, 'message' => $renamed['message'] ?? 'Could not rename the session'];
+        }
+
+        $shown = (string)($renamed['title'] ?? $title);
+
+        return ['ok' => true, 'name' => $name, 'title' => $shown, 'message' => "Session {$name} is named \"{$shown}\"."];
     }
 
     /**
