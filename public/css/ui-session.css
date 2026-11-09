@@ -225,6 +225,7 @@ body:has(dialog[open], .sess-viewer:not([hidden]), .sess-fullscreen:not([hidden]
 .sess-srow-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0; }
 .sess-srow-chips .ui-chip { padding: 0 7px; font-size: 0.66rem; }
 .sess-srow-text small { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sess-srow-text small.ui-path { display: block; -webkit-line-clamp: unset; white-space: nowrap; text-overflow: ellipsis; font-family: var(--mono); }
 .sess-srow-preview { color: var(--text); opacity: 0.8; }
 .sess-head-actions { display: flex; align-items: center; gap: 6px; }
 .sess-head-actions .ui-btn { min-height: 0; padding: 4px 10px; font-size: 0.85rem; }

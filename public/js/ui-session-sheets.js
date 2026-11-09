@@ -504,12 +504,13 @@
     });
     var rowHtml = function (x) {
       var st = statusOfRow(x);
-      var folder = String(x.workdir || '').replace(/\/+$/, '').split('/').pop();
+      var dir = String(x.workdir || '').replace(/\/+$/, '').replace(/^\/home\/[^\/]+(?=\/|$)/, '~');
       return '<div class="sess-srow' + (x.name === session ? ' is-current' : '') + (x.starred ? ' is-starred' : '') + '">'
         + '<a class="sess-srow-main"' + (x.name === session ? ' data-current' : '') + ' href="/session?session=' + encodeURIComponent(x.name) + '"><i class="ui-dot ui-dot-' + st + '" role="img" aria-label="' + (st === 'blocked' ? 'needs input' : st) + '"></i>'
         + '<span class="sess-srow-text"><b>' + esc(x.title || x.name) + '</b>'
         + '<span class="sess-srow-chips">' + (x.name === session ? '<span class="sess-current-pill">Current</span>' : '') + rowChips(x) + '</span>'
-        + '<small>' + esc(folder) + ' · ' + esc(api.relTime(x.activity ? new Date(x.activity * 1000).toISOString() : '')) + '</small>'
+        + (dir ? '<small class="ui-path" title="' + esc(String(x.workdir)) + '">' + esc(dir) + '</small>' : '')
+        + '<small>' + esc(api.relTime(x.activity ? new Date(x.activity * 1000).toISOString() : '')) + '</small>'
         + (rowPreview(x) ? '<small class="sess-srow-preview">' + esc(rowPreview(x)) + '</small>' : '')
         + (st === 'working' ? '<span class="ui-thinking" aria-label="Thinking"><i></i><i></i><i></i></span>' : '') + '</span></a>'
         + '<button type="button" class="ui-icon-btn" data-star="' + esc(x.name) + '" aria-pressed="' + (x.starred ? 'true' : 'false') + '" aria-label="' + (x.starred ? 'Unstar' : 'Star') + '">' + (x.starred ? '&#9733;' : '&#9734;') + '</button></div>';
