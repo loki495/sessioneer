@@ -551,6 +551,16 @@ if (isset($opts['wait'])) {
     if ($timeout !== null && (!ctype_digit($timeout) || (int)$timeout < 1)) {
         fail('--timeout must be a positive number of seconds');
     }
+
+    // --wait only follows a launch. A session name given as the prompt would start a new
+    // session whose whole prompt is that name, so refuse it before anything is launched.
+    if ($prompt !== '' && $resume === null) {
+        $named = AgentClient::agent_call(['action' => 'launch_show', 'target' => $prompt]);
+
+        if (($named['ok'] ?? false) === true) {
+            fail("'{$prompt}' is an existing session, not a prompt. --wait starts a new session; read it with --show {$prompt}");
+        }
+    }
 }
 
 $action = match (true) {

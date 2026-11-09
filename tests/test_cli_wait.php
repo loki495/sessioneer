@@ -101,6 +101,14 @@ try {
     assert_equal(1, $code, '--wait with --list: refused');
     assert_contains('only applies to launching', $err, '--wait with --list: handled message');
 
+    // An existing session's name as the prompt would start a new session named by that prompt.
+    $before = launch_count($statePath);
+    [$code, $out, $err] = run_cli([$bin, '--wait', '--workdir', '/tmp', 'live-session'], $socketPath);
+    assert_equal(1, $code, '--wait with an existing session name: refused');
+    assert_contains('is an existing session, not a prompt', $err, '--wait with an existing session name: handled message');
+    assert_equal('', $out, '--wait with an existing session name: nothing on stdout');
+    assert_equal($before, launch_count($statePath), '--wait with an existing session name: no new session launched');
+
     // --json: one object on stdout a program can trust, everything human on stderr.
     [$code, $out, $err] = run_cli([$bin, '--wait', '--json', '--model', 'sonnet', '--workdir', '/tmp', 'ok'], $socketPath);
     assert_equal(0, $code, '--json: exit 0 on success');
