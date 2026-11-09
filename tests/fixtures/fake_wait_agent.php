@@ -25,6 +25,13 @@ switch ($request['action'] ?? '') {
         echo json_encode(['ok' => true, 'name' => $request['prompt'], 'message' => 'started']);
         break;
 
+    case 'launch_show':
+        // Only the name "live-session" is an existing session; any other prompt is not one.
+        echo json_encode(($request['target'] ?? '') === 'live-session'
+            ? ['ok' => true, 'name' => 'live-session']
+            : ['ok' => false, 'message' => 'no such session']);
+        break;
+
     case 'session_detail':
         $polls = (int)@file_get_contents($state) + 1;
         file_put_contents($state, (string)$polls);
