@@ -45,6 +45,9 @@ putenv("SESSIONS_SQLITE_FILE={$sessionsSqliteFixture}");
 putenv("OPENCODE_DB_PATH={$opencodeDbFixture}");
 putenv("OPENCODE_AUTH_PATH={$opencodeAuthFixture}");
 putenv('OPENCODE_GO_API_KEY=');
+// Run by hand (not via tests/run.sh) there is no .env.testing, so without this codex_quota_state() reads the host's real Codex bridge and get_quota() never reports "no data".
+putenv('CODEX_BRIDGE_SOCKET=' . sys_get_temp_dir() . '/sessioneer-test-codex-bridge-does-not-exist.sock');
+putenv('SOCKET_CLIENT_FAIL_FAST_IF_ABSENT=1');
 
 if (Config::push_sqlite_path() === $realPushSqliteFile || Config::sessions_sqlite_path() === $realSessionsSqliteFile) {
     fwrite(STDERR, "REFUSING TO RUN: PUSH_SQLITE_FILE or SESSIONS_SQLITE_FILE resolves to real host state file. Check tests/.env.testing.\n");
@@ -259,3 +262,5 @@ try {
     @unlink($opencodeAuthFixture);
     @rmdir(dirname($opencodeAuthFixture));
 }
+
+test_exit();
