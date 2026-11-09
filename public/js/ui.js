@@ -437,6 +437,7 @@
     });
     // Such an agent has no default model; the first catalog row stands in.
     if (HEADLESS_ONLY[agent] && modelSel.options.length > 1) { modelSel.selectedIndex = 1; }
+    if (pendingPrefill && pendingPrefill.model && agentSel.value === pendingPrefill.agent) { applyPrefillSelect(modelSel, pendingPrefill.model); }
   }
 
   function onAgentChange() {
@@ -470,6 +471,7 @@
     if (!show) { profileSel.value = ''; return; }
     while (profileSel.options.length > 1) { profileSel.remove(1); }
     profiles.forEach(function (p) { var o = document.createElement('option'); o.value = p; o.textContent = p; profileSel.appendChild(o); });
+    if (pendingPrefill && pendingPrefill.profile) { applyPrefillSelect(profileSel, pendingPrefill.profile); }
   }
 
   function loadProfiles() {
@@ -529,12 +531,45 @@
     });
   });
 
+  // Values a session page's "Take over in new session" link prefilled (see readNewPrefill); each is applied
+  // once its option list has loaded, then dropped.
+  var pendingPrefill = null;
+
+  function applyPrefillSelect(select, value) {
+    if (!value) { return; }
+    var wanted = String(value).toLowerCase();
+    for (var i = 0; i < select.options.length; i++) {
+      if (select.options[i].value.toLowerCase() === wanted) { select.selectedIndex = i; return; }
+    }
+  }
+
+  function openNewDialog(prefill) {
+    pendingPrefill = prefill || null;
+    newDialog.showModal();
+    var first = !browserLoaded;
+    if (first) { browserLoaded = true; }
+    if (prefill && prefill.agent) { applyPrefillSelect(agentSel, prefill.agent); }
+    if (first) { browse(prefill && prefill.workdir ? prefill.workdir : ''); loadProfiles(); }
+    onAgentChange();
+    if (prefill && prefill.prompt) { document.getElementById('ui-new-prompt').value = prefill.prompt; }
+    if (prefill && prefill.workdir && !first) { browse(prefill.workdir); }
+  }
+
   var newBtn = document.getElementById('ui-new');
   if (newBtn) {
-    newBtn.addEventListener('click', function () {
-      newDialog.showModal();
-      if (!browserLoaded) { browserLoaded = true; browse(''); onAgentChange(); loadProfiles(); }
-    });
+    newBtn.addEventListener('click', function () { openNewDialog(null); });
+  }
+
+  // A session page's "Take over in new session" leaves the prefill in sessionStorage (same-origin only, unlike a
+  // URL another site could craft) and sends the browser here; it is read once and removed.
+  function readNewPrefill() {
+    var raw = null;
+    try { raw = window.sessionStorage.getItem('ui-new-prefill'); window.sessionStorage.removeItem('ui-new-prefill'); } catch (e) { return null; }
+    if (!raw) { return null; }
+    var q;
+    try { q = JSON.parse(raw); } catch (e2) { return null; }
+    if (!q || typeof q !== 'object') { return null; }
+    return { agent: String(q.agent || ''), profile: String(q.profile || ''), model: String(q.model || ''), workdir: String(q.workdir || ''), prompt: String(q.prompt || '') };
   }
   agentSel.addEventListener('change', onAgentChange);
 
@@ -561,6 +596,8 @@
   });
 
   // ---- boot ----
+  var bootPrefill = readNewPrefill();
+  if (bootPrefill) { openNewDialog(bootPrefill); }
   // A browser-restored page (iOS PWA resume) can be hours old.
   window.addEventListener('pageshow', function (e) { if (e.persisted) { poll(); } });
   applyFilters();
