@@ -127,12 +127,17 @@ class QuotaService
         }
 
         $quota = [];
+        $now = time();
 
         foreach (['session', 'week_all'] as $key) {
             $bucket = $decoded[$key] ?? null;
 
             if (is_array($bucket) && isset($bucket['pct'], $bucket['resets_at']) && is_int($bucket['pct']) && is_int($bucket['resets_at'])) {
-                $quota[$key] = ['pct' => $bucket['pct'], 'resets_at' => $bucket['resets_at']];
+                // A window that has ended since the last capture restarts at zero. Any Claude
+                // turn in it would have rewritten this state, so the stored pct is the old window's.
+                // resets_at stays as stored: the push reset notification keys off it.
+                $pct = $bucket['resets_at'] <= $now ? 0 : $bucket['pct'];
+                $quota[$key] = ['pct' => $pct, 'resets_at' => $bucket['resets_at']];
             }
         }
 

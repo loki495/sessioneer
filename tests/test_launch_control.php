@@ -319,4 +319,35 @@ assert_equal('headless', SidecarStore::read_sidecar((string)$resumed['name'])['r
 assert_equal('Missing agent_session_id', act(['action' => 'resume', 'workdir' => $workdir, 'agent_session_id' => ''])['message'] ?? null, 'a resume with no conversation id is refused');
 assert_true(!array_key_exists('name', act(['action' => 'take_over_bare', 'pid' => 1])), 'the dashboard\'s old take-over actions are gone: the CLI action is the only one');
 
+echo "Set name: a new launch, then renaming by name and by conversation id\n";
+$namedLaunch = act(['action' => 'launch', 'prompt' => 'hello', 'workdir' => $workdir, 'set_name' => 'Launched name']);
+assert_true(($namedLaunch['ok'] ?? false) === true, 'a launch with a name starts' . (($namedLaunch['ok'] ?? false) === true ? '' : ' - got ' . json_encode($namedLaunch)));
+$namedName = (string)($namedLaunch['name'] ?? '');
+$made[] = $namedName;
+assert_equal('Launched name', SidecarStore::custom_titles()[$namedName] ?? null, 'the launched session carries the name');
+assert_equal('Launched name', $namedLaunch['title'] ?? null, 'and the reply says so');
+
+$byName = act(['action' => 'launch_set_name', 'target' => $namedName, 'set_name' => 'Renamed by name']);
+assert_equal(true, $byName['ok'] ?? null, 'an existing session is renamed by its name');
+assert_equal('Renamed by name', SidecarStore::custom_titles()[$namedName] ?? null, 'and the new name is stored');
+assert_equal('Renamed by name', act(['action' => 'session_detail', 'session' => $namedName])['title'] ?? null, 'and the detail shows it');
+
+$namedConversation = (string)(SidecarStore::read_sidecar($namedName)['agent_session_id'] ?? '');
+if ($namedConversation !== '') {
+    $byId = act(['action' => 'launch_set_name', 'target' => $namedConversation, 'set_name' => 'Renamed by id']);
+    assert_equal(true, $byId['ok'] ?? null, 'the same session is renamed by its conversation id');
+    assert_equal('Renamed by id', SidecarStore::custom_titles()[$namedName] ?? null, 'and by id the name is stored too');
+}
+
+echo "Set name: refusals\n";
+$unknownRename = act(['action' => 'launch_set_name', 'target' => 'cc-no-such-session', 'set_name' => 'X']);
+assert_equal(false, $unknownRename['ok'] ?? null, 'an unknown target is refused');
+assert_contains('No tracked session found', (string)($unknownRename['message'] ?? ''), 'and the message says why');
+$blankRename = act(['action' => 'launch_set_name', 'target' => $namedName, 'set_name' => '   ']);
+assert_equal(false, $blankRename['ok'] ?? null, 'a blank name is refused');
+assert_equal('Renamed by id', SidecarStore::custom_titles()[$namedName] ?? null, 'and the existing name is kept');
+$longRename = act(['action' => 'launch_set_name', 'target' => $namedName, 'set_name' => str_repeat('x', 121)]);
+assert_equal(false, $longRename['ok'] ?? null, 'a name over the length limit is refused');
+assert_equal('Renamed by id', SidecarStore::custom_titles()[$namedName] ?? null, 'and it is not stored');
+
 test_exit();

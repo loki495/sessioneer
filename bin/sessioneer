@@ -46,6 +46,8 @@ function usage(): string
       Usage stats:       sessioneer --usage
       Resume or fresh:   sessioneer --advise [SESSION...] [--act] [--json]
       Run to the end:    sessioneer --wait [--timeout N] --workdir DIR "do the thing"
+      Name a session:    sessioneer --session NAME_OR_CONVERSATION_ID --set-name "Name"
+      New, named:        sessioneer --workdir DIR --set-name "Name" "do the thing"
 
     PROMPT is the message to deliver; "-" reads it from stdin. A new session
     requires one; a resume does not.
@@ -76,6 +78,11 @@ function usage(): string
       --disallowed-tools LIST
                         Claude only, new session: comma separated tool rules that
                         are always denied
+      --set-name NAME   the dashboard name for a session (an empty name is refused).
+                        With a launch or resume it names the session that call
+                        starts or reuses; with --session it renames that one.
+      --session TARGET  with --set-name and no prompt, rename this tracked session
+                        (name or conversation id) without sending it anything
       --kill TARGET     stop a session by name or conversation id (headless or a
                         tmux pane, any agent); its conversation stays resumable
                         (archived). Refuses a working or blocked session unless
@@ -267,7 +274,7 @@ function emit_envelope(array $envelope): void
     echo json_encode($envelope, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
 }
 
-$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'advise', 'act', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'bare', 'take-over:', 'as-user'], $restIndex);
+$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'advise', 'act', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'bare', 'take-over:', 'as-user', 'set-name:', 'session:'], $restIndex);
 
 if ($opts === false) {
     fail("bad options\n\n" . usage());
@@ -331,9 +338,23 @@ $answer = $opt('answer');
 $interrupt = $opt('interrupt');
 $bare = isset($opts['bare']);
 $takeOver = $opt('take-over');
+$setName = $opt('set-name');
+$sessionTarget = $opt('session');
+
+if (isset($opts['set-name']) && $setName === null) {
+    fail('--set-name needs a name');
+}
 
 // Every action that is not a launch or a resume.
-$nonLaunch = $kill !== null || $list || $send !== null || $peers || $show !== null || $answer !== null || $interrupt !== null || $bare || $takeOver !== null;
+$nonLaunch = $kill !== null || $list || $send !== null || $peers || $show !== null || $answer !== null || $interrupt !== null || $bare || $takeOver !== null || $sessionTarget !== null;
+
+if ($sessionTarget !== null && ($setName === null || $prompt !== '' || $resume !== null || $kill !== null || $list || $send !== null || $peers || $show !== null || $answer !== null || $interrupt !== null || $bare || $takeOver !== null || $advise || isset($opts['usage']) || isset($opts['wait']))) {
+    fail('--session needs --set-name, and renames that session only: no prompt and no other action');
+}
+
+if ($setName !== null && $sessionTarget === null && $nonLaunch) {
+    fail('--set-name names the session a launch or resume starts; use --session TARGET to rename an existing one');
+}
 
 if (count(array_filter([$kill !== null, $list, $send !== null, $peers, isset($opts['usage']), $advise, $show !== null, $answer !== null, $interrupt !== null, $bare, $takeOver !== null])) > 1) {
     fail('--kill, --list, --show, --answer, --interrupt, --bare, --take-over, --send, --peers, --usage and --advise cannot be combined');
@@ -533,6 +554,7 @@ if (isset($opts['wait'])) {
 }
 
 $action = match (true) {
+    $sessionTarget !== null => 'launch_set_name',
     $kill !== null => 'launch_kill',
     $list => 'launch_list',
     $send !== null => 'launch_send',
@@ -550,7 +572,7 @@ $reply = AgentClient::agent_call(array_filter([
     'agent' => $opt('agent'),
     'prompt' => $prompt,
     'agent_session_id' => $resume,
-    'workdir' => $takeOver !== null ? null : $workdir,
+    'workdir' => $takeOver !== null || $sessionTarget !== null ? null : $workdir,
     'model' => $opt('model'),
     'effort' => $opt('effort'),
     'starting_mode' => $opt('mode'),
@@ -560,7 +582,8 @@ $reply = AgentClient::agent_call(array_filter([
     'no_tools' => isset($opts['no-tools']) ? true : null,
     'allowed_tools' => $opt('allowed-tools'),
     'disallowed_tools' => $opt('disallowed-tools'),
-    'target' => $kill ?? $send ?? $show ?? $answer ?? $interrupt ?? $takeOver,
+    'target' => $kill ?? $send ?? $show ?? $answer ?? $interrupt ?? $takeOver ?? $sessionTarget,
+    'set_name' => $setName,
     'message' => $send !== null ? $prompt : null,
     'from' => $send !== null || $peers || $answer !== null ? $self : null,
     'force' => isset($opts['force']) ? true : null,

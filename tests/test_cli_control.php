@@ -60,6 +60,11 @@ try {
         'resume with show' => [['--show', 'a', '--resume', 'b'], '--resume only applies to launching'],
         'wait with show' => [['--show', 'a', '--wait'], 'only applies to launching'],
         'no-tools with take-over' => [['--take-over', '1', '--no-tools'], '--no-tools only applies to starting a new session'],
+        'an empty --set-name' => [['--set-name', '', '--workdir', '/tmp', 'hi'], '--set-name needs a name'],
+        'a --set-name with --list' => [['--set-name', 'N', '--list'], 'use --session TARGET to rename an existing one'],
+        '--session without --set-name' => [['--session', 'a'], '--session needs --set-name'],
+        '--session with a prompt' => [['--session', 'a', '--set-name', 'N', 'hello'], 'renames that session only'],
+        '--session with --kill' => [['--session', 'a', '--set-name', 'N', '--kill', 'b'], 'renames that session only'],
     ] as $label => [$args, $needle]) {
         [$code, $out, $err] = $cli($args);
         assert_equal(1, $code, "{$label}: exit 1");
@@ -176,6 +181,22 @@ try {
     [$code, $out] = $cli(['--kill', 'cc-123', '--force']);
     assert_equal(0, $code, '--kill: exit 0');
     assert_equal("cc-123\n", $out, '--kill: prints the target it stopped');
+
+    echo "--session and --set-name\n";
+    @unlink($logPath);
+    $cli(['--session', 'cc-123', '--set-name', 'My name']);
+    $rename = requests($logPath)[0];
+    assert_equal(['launch_set_name', 'cc-123', 'My name'], [$rename['action'], $rename['target'], $rename['set_name']], '--session --set-name: renames the target with the name');
+    assert_true(!array_key_exists('workdir', $rename), '--session --set-name: sends no working directory');
+
+    echo "--set-name on a new or resumed session\n";
+    @unlink($logPath);
+    $cli(['--workdir', '/tmp/p', '--set-name', 'Fresh name', 'do the thing']);
+    $fresh = requests($logPath)[0];
+    assert_equal(['launch', 'Fresh name', 'do the thing'], [$fresh['action'], $fresh['set_name'], $fresh['prompt']], 'a new session carries the name in its launch request');
+    $cli(['--resume', 'conv-9', '--set-name', 'Resumed name']);
+    $resumed = requests($logPath)[1];
+    assert_equal(['launch', 'conv-9', 'Resumed name'], [$resumed['action'], $resumed['agent_session_id'], $resumed['set_name']], 'a resume carries the name in its launch request');
 } finally {
     stop_harness($harness, $socketPath);
     @unlink($logPath);
