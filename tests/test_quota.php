@@ -140,6 +140,13 @@ try {
     assert_equal(60, $both['quota']['week_all']['pct'] ?? null, 'quota_from_statusline_state: week_all pct');
     assert_equal($fetchedAt, $both['fetched_at'] ?? null, 'quota_from_statusline_state: fetched_at is captured_at from the row');
 
+    // A window that ended after the last capture reads as 0%, not the old window's 100%; its resets_at stays so push still sees the reset.
+    write_quota_live_state(['captured_at' => $fetchedAt, 'session' => ['pct' => 100, 'resets_at' => time() - 60], 'week_all' => ['pct' => 40, 'resets_at' => time() + 3600]]);
+    $rolled = QuotaService::quota_from_statusline_state();
+    assert_equal(0, $rolled['quota']['session']['pct'] ?? null, 'quota_from_statusline_state: an ended 5-hour window reads as 0% after its reset');
+    assert_equal(time() - 60, $rolled['quota']['session']['resets_at'] ?? null, 'quota_from_statusline_state: and keeps its stored resets_at');
+    assert_equal(40, $rolled['quota']['week_all']['pct'] ?? null, 'quota_from_statusline_state: a window still running keeps its pct');
+
     // --- QuotaService::antigravity_quota_state(): Antigravity quota reading ---
 
     assert_equal(null, QuotaService::antigravity_quota_state(), 'antigravity_quota_state: null when no row exists');
