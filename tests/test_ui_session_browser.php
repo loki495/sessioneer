@@ -317,6 +317,11 @@ try {
         cdp_evaluate($page, "document.getElementById('sess-sessions').close(); document.querySelector('[data-open=\"sess-info\"]').click()");
         assert_true((int)cdp_evaluate($page, "document.querySelectorAll('#sess-info .sess-sec').length") >= 4, 'details: one panel per topic');
         assert_true(!str_contains((string)cdp_evaluate($page, "document.getElementById('sess-info').textContent"), 'Move to terminal'), 'details: moving to a terminal is no longer offered');
+        assert_equal(true, cdp_evaluate($page, "!!document.querySelector('#sess-info-actions [data-info=\"takeover-new\"]')"), 'details: Actions offers Take over in new session');
+        $sessionUrl = (string)cdp_evaluate($page, 'location.href');
+        cdp_evaluate($page, "document.querySelector('#sess-info-actions [data-info=\"takeover-new\"]').click()");
+        assert_true(uib_wait($page, "location.pathname === '/' && !!document.getElementById('ui-new-dialog') && document.getElementById('ui-new-dialog').open && document.getElementById('ui-new-prompt').value.indexOf('/takeover claude') === 0"), 'take over: the button opens the New Session form with the takeover command prefilled');
+        assert_true(cdp_navigate($page, $sessionUrl), 'take over: back to the session page');
         cdp_evaluate($page, "document.getElementById('sess-info').close()");
         assert_equal('auto', cdp_evaluate($page, "getComputedStyle(document.getElementById('sess-scroll')).overflowY"), 'scroll lock: released when the popup closes');
 

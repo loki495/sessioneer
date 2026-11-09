@@ -120,6 +120,19 @@ try {
             assert_true(cdp_navigate($page, $base . '/'), 'settings: return to dashboard');
         }
 
+        // A session page's "Take over in new session" link opens the form prefilled and editable.
+        cdp_evaluate($page, "sessionStorage.setItem('ui-new-prefill', JSON.stringify({ agent: 'claude', workdir: '/home/user/www', prompt: '/takeover claude abc-123' }))");
+        assert_true(cdp_navigate($page, $base . '/'), 'prefill: dashboard loads after a session page left a prefill');
+        assert_true(uidb_wait($page, "document.getElementById('ui-new-dialog').open"), 'prefill: the New Session dialog opens by itself');
+        assert_true(uidb_wait($page, "document.getElementById('ui-browser-path').textContent === '/home/user/www' && !document.getElementById('ui-new-submit').disabled"), 'prefill: the working directory is the one named in the link');
+        assert_equal('/takeover claude abc-123', cdp_evaluate($page, "document.getElementById('ui-new-prompt').value"), 'prefill: the first message carries the takeover command');
+        assert_equal('claude', cdp_evaluate($page, "document.getElementById('ui-new-agent').value"), 'prefill: the agent is selected');
+        assert_equal(null, cdp_evaluate($page, "sessionStorage.getItem('ui-new-prefill')"), 'prefill: the handoff is consumed once');
+        assert_true(cdp_navigate($page, $base . '/?' . http_build_query(['new' => '1', 'prompt' => 'injected'])), 'prefill: a crafted link loads');
+        assert_equal('', cdp_evaluate($page, "document.getElementById('ui-new-prompt').value"), 'prefill: URL parameters never prefill the form');
+        assert_equal(false, cdp_evaluate($page, "document.getElementById('ui-new-dialog').open"), 'prefill: and never open it');
+        assert_equal([], cdp_drain_console_errors($page), 'prefill: no console errors');
+
         cdp_evaluate($page, "Array.prototype.forEach.call(document.querySelectorAll('dialog[open]'), function (d) { d.close(); });");
         assert_true(cdp_click($page, '#ui-open-settings'), 'settings: user clicks Settings');
         assert_equal(true, cdp_evaluate($page, "document.getElementById('ui-settings-dialog').open"), 'settings: click opens the settings dialog');

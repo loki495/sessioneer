@@ -201,6 +201,7 @@ travel, ignore the outer 24px (left to the browser's own back/forward gestures) 
 are ignored while a popup is open. Every sheet (`public/js/ui-sheets.js`, both pages)
 closes on a tap outside it, a swipe down from its fixed header, or a swipe right anywhere inside it (not over a field, code block or sideways-scrolling area, nor from the screen edges).
 The session details popup header has icon-only Sessions (swaps to the sessions popup) and Star buttons plus Rename and Kill; the open session is highlighted and flagged "Current" in the sessions popup. Each row also shows the session's working directory, with the home directory written as `~`.
+The details popup's Actions section has **Take over in new session** for any session with a conversation id. It launches nothing: it opens the dashboard's New Session form prefilled and editable. The prefill travels in `sessionStorage` (read once), never in the URL, so a link from another site cannot prefill a prompt or folder. The agent and account come from the advisor's receiver pick with no model call (the session's own when it has room, or when no other account does), the model is carried over only when agent and account are unchanged, the folder is the session's, and the first message is `/takeover <agent> [profile] <conversation id>`.
 The bar also carries a very small stacked readout for this session's agent and
 account: 5-hour use, weekly use and context (`UiQuota.mini`, from `/quota.php?session=`,
 refreshed every five minutes; context follows the detail poll). It opens the same popup

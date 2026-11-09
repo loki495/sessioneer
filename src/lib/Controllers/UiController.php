@@ -257,6 +257,9 @@ class UiController extends Controller
     private function advise(bool $act): array
     {
         $params = ['action' => 'advise', 'target' => (string)($_POST['session'] ?? '')];
+        if (($_POST['no_model'] ?? '') === '1') {
+            $params['no_model'] = true;
+        }
         if ($act) {
             $params += ['act' => true, 'choice' => (string)($_POST['choice'] ?? '')];
         }

@@ -199,6 +199,9 @@
       + '<button type="button" class="ui-btn ui-btn-danger" data-info="kill">Kill</button>';
 
     var actions = '';
+    if (d.agent_session_id) {
+      actions += '<button type="button" class="ui-btn" data-info="takeover-new">Take over in new session</button>';
+    }
     if ((d.agent || 'claude') === 'claude' && d.runtime !== 'headless') {
       actions += '<button type="button" class="ui-btn" data-info="switch" data-runtime="headless">Take over (headless)</button>';
     }
@@ -235,6 +238,8 @@
         api.toast(res.ok ? 'Renamed' : (res.message || 'Rename failed'), !res.ok);
         if (res.ok) { api.pollNow(); }
       });
+    } else if (what === 'takeover-new') {
+      takeOverInNewSession(d, b);
     } else if (what === 'switch') {
       if (!window.confirm('Take this session over as a headless one? The conversation continues; the terminal process is stopped.')) { return; }
       action({ action: 'switch_runtime', session: session, runtime: 'headless' });
@@ -242,6 +247,31 @@
       if (window.confirm('Kill session ' + session + '?')) { action({ action: 'kill', session: session }, '/'); }
     }
   });
+
+  // Opens the dashboard's New Session form prefilled to continue this conversation. Nothing is launched here:
+  // the advisor (no model call) only picks which agent and account have room, else the session's own are used.
+  function takeOverInNewSession(d, btn) {
+    var agent = d.agent || 'claude';
+    var profile = agent === 'claude' && d.profile ? String(d.profile) : '';
+    var source = agent + (profile && profile.toLowerCase() !== 'personal' ? ' ' + profile : '') + ' ' + d.agent_session_id;
+    btn.disabled = true;
+    function go(receiver) {
+      var target = receiver && receiver.agent ? receiver.agent : agent;
+      var params = { agent: target, workdir: d.workdir || '' };
+      var targetProfile = receiver && receiver.agent ? (receiver.profile || '') : profile;
+      if (target === 'claude' && targetProfile) { params.profile = targetProfile; }
+      // Same agent and account (it has room, or nothing else does): keep the session's own model too.
+      var model = d.current_model || d.current_antigravity_model || '';
+      if (model && target === agent && String(targetProfile).toLowerCase() === profile.toLowerCase()) { params.model = model; }
+      params.prompt = target === 'claude' ? '/takeover ' + source : 'Use the global takeover skill for source ' + source + '.';
+      try { window.sessionStorage.setItem('ui-new-prefill', JSON.stringify(params)); } catch (e) { api.toast('Could not open the form', true); btn.disabled = false; return; }
+      window.location.href = '/';
+    }
+    api.post('/action', { action: 'advise', session: session, no_model: '1' }).then(function (res) {
+      var a = res && res.ok && res.advice ? res.advice : null;
+      go(a && a.receiver ? a.receiver : null);
+    }).catch(function () { go(null); });
+  }
 
   // The JSON twin of the classic dashboard action; a redirect from the server wins over `fallback`.
   function action(params, fallback) {
