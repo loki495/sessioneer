@@ -236,3 +236,4 @@ body:has(dialog[open], .sess-viewer:not([hidden]), .sess-fullscreen:not([hidden]
   /* the usage and context readout at the top right is the smallest text on the page */
   .sess-mini { font-size: 0.85rem; }
 }
+.sess-sessions-selects select { flex: 1; min-width: 0; }
