@@ -522,12 +522,41 @@
     if (m && Array.isArray(m.blocks)) { m.blocks.forEach(function (b) { if (!text && b.text) { text = String(b.text); } }); }
     return text.replace(/\s+/g, ' ').slice(0, 140);
   }
+  // The agent/profile choice lives in localStorage so it survives reopening the popup and page loads;
+  // the options come from the rows themselves, so a new agent or profile needs no list here.
+  var AGENT_KEY = 'sessioneer-sessions-agent-filter';
+  var PROFILE_KEY = 'sessioneer-sessions-profile-filter';
+  function readChoice(key) { try { return window.localStorage.getItem(key) || ''; } catch (e) { return ''; } }
+  function saveChoice(key, v) { try { window.localStorage.setItem(key, v); } catch (e) {} }
+  function rowAgent(x) { return x.agent || 'claude'; }
+  function rowProfile(x) { return rowAgent(x) === 'claude' ? String(x.profile || '') : ''; }
+  function syncFilterSelect(select, key, label, valueOf, labelOf) {
+    var chosen = readChoice(key);
+    var values = {};
+    sessionRows.forEach(function (x) { var v = valueOf(x); if (v) { values[v] = labelOf(x); } });
+    // A saved choice stays selectable even when no row has it right now.
+    if (chosen && !values[chosen]) { values[chosen] = chosen; }
+    var keys = Object.keys(values).sort();
+    var sig = keys.join('|');
+    if (select.getAttribute('data-options') !== sig) {
+      select.innerHTML = '';
+      select.appendChild(new Option(label, ''));
+      keys.forEach(function (k) { select.appendChild(new Option(values[k], k)); });
+      select.setAttribute('data-options', sig);
+    }
+    select.value = chosen;
+    return chosen;
+  }
   function renderSessionRows() {
     var q = $('sess-sessions-filter').value.trim().toLowerCase();
+    var agentChoice = syncFilterSelect($('sess-sessions-agent'), AGENT_KEY, 'All agents', rowAgent, function (x) { return x.agent_label || rowAgent(x); });
+    var profileChoice = syncFilterSelect($('sess-sessions-profile'), PROFILE_KEY, 'All profiles', rowProfile, rowProfile);
     var order = { blocked: 0, working: 1, idle: 2 };
     // The open session is always pinned on top, outside the filter; the filter applies to the rest.
     var current = sessionRows.filter(function (x) { return x.name === session; });
     var rows = sessionRows.filter(function (x) {
+      if (agentChoice && rowAgent(x) !== agentChoice) { return false; }
+      if (profileChoice && rowProfile(x) !== profileChoice) { return false; }
       return x.name !== session && (!q || (String(x.title || '') + ' ' + x.name + ' ' + String(x.workdir || '')).toLowerCase().indexOf(q) !== -1);
     }).sort(function (a, b) {
       return (order[statusOfRow(a)] - order[statusOfRow(b)]) || ((b.starred ? 1 : 0) - (a.starred ? 1 : 0)) || ((b.activity || 0) - (a.activity || 0));
@@ -559,6 +588,8 @@
     }).catch(function () { $('sess-sessions-list').innerHTML = '<p class="ui-muted ui-center">Network error</p>'; });
   }
   $('sess-sessions-filter').addEventListener('input', renderSessionRows);
+  $('sess-sessions-agent').addEventListener('change', function () { saveChoice(AGENT_KEY, this.value); renderSessionRows(); });
+  $('sess-sessions-profile').addEventListener('change', function () { saveChoice(PROFILE_KEY, this.value); renderSessionRows(); });
   $('sess-sessions-list').addEventListener('click', function (e) {
     if (closest(e.target, '[data-current]')) {
       e.preventDefault();

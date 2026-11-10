@@ -124,6 +124,10 @@ $bootstrap = json_encode([
 <dialog class="ui-sheet" id="sess-sessions"><div class="ui-sheet-body">
   <div class="ui-sheet-head"><h2>Sessions</h2><button type="button" class="ui-icon-btn" data-close aria-label="Close">&times;</button></div>
   <input type="search" id="sess-sessions-filter" placeholder="Filter sessions" autocomplete="off">
+  <div class="ui-row sess-sessions-selects">
+    <select id="sess-sessions-agent" aria-label="Filter by agent"><option value="">All agents</option></select>
+    <select id="sess-sessions-profile" aria-label="Filter by profile"><option value="">All profiles</option></select>
+  </div>
   <div id="sess-sessions-list" class="ui-col"></div>
   <a class="ui-btn" href="/">All sessions dashboard</a>
 </div></dialog>

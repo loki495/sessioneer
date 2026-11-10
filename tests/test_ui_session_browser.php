@@ -249,6 +249,14 @@ try {
         assert_contains('No other sessions', (string)cdp_evaluate($page, "document.getElementById('sess-sessions-list').textContent"), 'sessions popup: a filter with no match says so');
         assert_equal(1, cdp_evaluate($page, "document.querySelectorAll('#sess-sessions-list .is-current').length"), 'sessions popup: the open session stays shown while the filter matches nothing else');
         cdp_evaluate($page, "(function () { var i = document.getElementById('sess-sessions-filter'); i.value = ''; i.dispatchEvent(new Event('input')); }())");
+        assert_equal('|claude', cdp_evaluate($page, "'|' + Array.prototype.map.call(document.getElementById('sess-sessions-agent').options, function (o) { return o.value; }).filter(Boolean).join('|')"), 'sessions popup: the agent dropdown lists the agents the rows have');
+        cdp_evaluate($page, "(function () { var s = document.getElementById('sess-sessions-agent'); s.value = 'claude'; s.dispatchEvent(new Event('change')); }())");
+        assert_equal(2, cdp_evaluate($page, "document.querySelectorAll('#sess-sessions-list .sess-srow').length"), 'sessions popup: filtering by a present agent keeps its rows');
+        cdp_evaluate($page, "(function () { var s = document.getElementById('sess-sessions-profile'); var o = new Option('nobody', 'nobody'); s.appendChild(o); s.value = 'nobody'; s.dispatchEvent(new Event('change')); }())");
+        assert_contains('No other sessions', (string)cdp_evaluate($page, "document.getElementById('sess-sessions-list').textContent"), 'sessions popup: a profile no row has hides the other sessions');
+        assert_equal('claude', cdp_evaluate($page, "window.localStorage.getItem('sessioneer-sessions-agent-filter')"), 'sessions popup: the agent choice is saved');
+        cdp_evaluate($page, "(function () { window.localStorage.removeItem('sessioneer-sessions-agent-filter'); window.localStorage.removeItem('sessioneer-sessions-profile-filter'); var a = document.getElementById('sess-sessions-agent'); a.value = ''; a.dispatchEvent(new Event('change')); var p = document.getElementById('sess-sessions-profile'); p.value = ''; p.dispatchEvent(new Event('change')); }())");
+        assert_equal(2, cdp_evaluate($page, "document.querySelectorAll('#sess-sessions-list .sess-srow').length"), 'sessions popup: clearing both dropdowns shows every row again');
         cdp_evaluate($page, "window.__posted = []; document.querySelector('#sess-sessions-list [data-star]').click()");
         assert_true(uib_wait($page, "document.querySelectorAll('#sess-sessions-list [aria-pressed=\"true\"]').length === 1"), 'sessions popup: the star toggle marks the row');
         assert_equal(true, cdp_evaluate($page, "document.getElementById('sess-sessions').open"), 'sessions popup: stays open after starring');
