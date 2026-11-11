@@ -8,9 +8,10 @@ $handoff = is_string($offer['handoff_id'] ?? null) ? $offer['handoff_id'] : '';
 $prompt = is_string($offer['prompt'] ?? null) ? $offer['prompt'] : '';
 $receiver = is_array($decision['receiver'] ?? null) ? $decision['receiver'] : [];
 $session = (string)($row['name'] ?? '');
-// The host refuses a judge outside a close quota call with a known reset, so the band does not offer it there.
+// The host refuses a judge outside a close quota call with a known reset, and can only run a Claude
+// or Codex receiver, so the band offers it only there.
 $judge = $state === 'ROTATE' && !empty($decision['close_call']) && ($decision['trigger'] ?? '') === 'quota'
-    && ($decision['reset_at'] ?? null) !== null && $receiver !== [];
+    && ($decision['reset_at'] ?? null) !== null && in_array($receiver['agent'] ?? null, ['claude', 'codex'], true);
 $labels = [
     'start' => 'Start receiver',
     'handoff' => 'Hand off and start',

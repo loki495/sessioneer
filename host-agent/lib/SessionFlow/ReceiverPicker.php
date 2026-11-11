@@ -15,12 +15,6 @@ use HostAgent\Stores\SidecarStore;
 final class ReceiverPicker
 {
     /**
-     * A metered window at or above this percentage is spent: the account is parked, not a receiver.
-     * The same threshold the flow decider uses (Thresholds::QUOTA_PARK).
-     */
-    private const QUOTA_PARK_PCT = 90;
-
-    /**
      * Antigravity has no headless launcher, so its takeover stays manual.
      * A blocked Claude source reserves other Claude profiles for last resort.
      */
@@ -47,7 +41,7 @@ final class ReceiverPicker
      * @param array<string,mixed> $status
      * @return array{agent:string,profile:?string}|null
      */
-    public static function pick(array $session, array $usage, bool $blocked, array $status): ?array
+    public static function pick(array $session, array $usage, bool $blocked, array $status, ?Thresholds $thresholds = null): ?array
     {
         if (!$blocked) {
             return ['agent' => $session['agent'], 'profile' => $session['agent'] === 'claude' ? $session['profile'] : null];
@@ -74,7 +68,7 @@ final class ReceiverPicker
             }
             if ($agent === 'claude') {
                 // Prefer a manual agy takeover over spending another Claude profile.
-                if ($session['agent'] === 'claude' && self::crossAgentSafe($old, $status) && self::manualReceivers($usage) !== []) {
+                if ($session['agent'] === 'claude' && self::crossAgentSafe($old, $status) && self::manualReceivers($usage, $thresholds) !== []) {
                     return null;
                 }
                 $profiles = $usage['claude']['profiles'] ?? [];
@@ -83,7 +77,7 @@ final class ReceiverPicker
                 foreach ($names as $name) {
                     // Only a Claude source has a profile of its own to skip; Codex carries none.
                     if (($session['agent'] === 'claude' && $name === $session['profile'])
-                        || !self::hasRoom($profiles[$name]['quota'] ?? null)) {
+                        || !self::hasRoom($profiles[$name]['quota'] ?? null, $thresholds)) {
                         continue;
                     }
                     if (Config::claude_bin($name) !== '') {
@@ -92,11 +86,11 @@ final class ReceiverPicker
                 }
                 continue;
             }
-            if ($agent === 'codex' && Config::codex_bin() !== '' && self::hasRoom($usage['codex']['quota'] ?? null)) {
+            if ($agent === 'codex' && Config::codex_bin() !== '' && self::hasRoom($usage['codex']['quota'] ?? null, $thresholds)) {
                 return ['agent' => 'codex', 'profile' => null];
             }
             if ($agent === 'opencode' && Config::opencode_bin() !== ''
-                && self::hasRoom($usage['opencode']['profiles']['default']['quota'] ?? ($usage['opencode']['quota'] ?? null))) {
+                && self::hasRoom($usage['opencode']['profiles']['default']['quota'] ?? ($usage['opencode']['quota'] ?? null), $thresholds)) {
                 return ['agent' => 'opencode', 'profile' => null];
             }
         }
@@ -111,30 +105,31 @@ final class ReceiverPicker
      * @param array<string,mixed> $usage
      * @return list<string>
      */
-    public static function manualReceivers(array $usage): array
+    public static function manualReceivers(array $usage, ?Thresholds $thresholds = null): array
     {
         $quota = $usage['antigravity']['profiles']['default']['quota'] ?? ($usage['antigravity']['quota'] ?? null);
-        return self::hasRoom($quota) ? ['Antigravity'] : [];
+        return self::hasRoom($quota, $thresholds) ? ['Antigravity'] : [];
     }
 
     /**
-     * Every metered window an account reports must be below the park threshold.
-     * An account that reports usage but no percentage windows has no limit to
-     * hit (OpenCode bills per token against no plan), so it counts as room.
-     * No reading at all is not room.
+     * Every metered window an account reports must be below the park line the passed
+     * Thresholds carries (QUOTA_PARK), or the built-in 90 with none. An account that
+     * reports usage but no percentage windows has no limit to hit (OpenCode bills per
+     * token against no plan), so it counts as room. No reading at all is not room.
      *
      * @param array<string,mixed>|null $quota
      */
-    public static function hasRoom(?array $quota): bool
+    public static function hasRoom(?array $quota, ?Thresholds $thresholds = null): bool
     {
         if ($quota === null) {
             return false;
         }
+        $park = $thresholds?->get('QUOTA_PARK') ?? Thresholds::DEFAULT_QUOTA_PARK;
         foreach ($quota as $window) {
             if (!is_array($window) || !array_key_exists('pct', $window)) {
                 continue;
             }
-            if (!is_numeric($window['pct']) || $window['pct'] >= self::QUOTA_PARK_PCT) {
+            if (!is_numeric($window['pct']) || $window['pct'] >= $park) {
                 return false;
             }
         }

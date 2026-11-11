@@ -16,7 +16,6 @@ final class CloseCallJudge
 {
     public const CLAUDE_MODEL = 'haiku';
     public const CODEX_MODEL = 'gpt-6-luna';
-    private const QUOTA_PARK_PCT = 90;
     private const TAIL_CHARS = 8000;
     private const TIMEOUT_SECONDS = 120;
     private const REASON_CHARS = 200;
@@ -24,23 +23,24 @@ final class CloseCallJudge
     /**
      * Candidates in order: Claude on the session's own profile, Claude on every
      * other profile, then Codex. OpenCode is left out: it has no flag that guarantees a tool-less run, and the transcript it would read is untrusted. A target is usable when it is
-     * configured and neither of its windows is full.
+     * configured and neither of its windows reaches the park line the passed Thresholds carries
+     * (QUOTA_PARK), or the built-in 90 with none.
      *
      * @param array<string,mixed> $usage the `agents` map from `sessioneer --usage`
      * @return list<array{agent:string,profile:?string,model:string}>
      */
-    public static function candidates(array $usage, ?string $homeProfile): array
+    public static function candidates(array $usage, ?string $homeProfile, ?Thresholds $thresholds = null): array
     {
         $out = [];
         $profiles = $usage['claude']['profiles'] ?? [];
         $names = array_keys($profiles);
         usort($names, static fn (string $a, string $b): int => [$a === $homeProfile ? 0 : 1, $a] <=> [$b === $homeProfile ? 0 : 1, $b]);
         foreach ($names as $name) {
-            if (self::has_room($profiles[$name]['quota'] ?? null) && Config::claude_bin($name) !== '') {
+            if (self::has_room($profiles[$name]['quota'] ?? null, $thresholds) && Config::claude_bin($name) !== '') {
                 $out[] = ['agent' => 'claude', 'profile' => $name, 'model' => self::CLAUDE_MODEL];
             }
         }
-        if (self::has_room($usage['codex']['quota'] ?? null) && Config::codex_bin() !== '') {
+        if (self::has_room($usage['codex']['quota'] ?? null, $thresholds) && Config::codex_bin() !== '') {
             $out[] = ['agent' => 'codex', 'profile' => null, 'model' => self::CODEX_MODEL];
         }
         return $out;
@@ -162,13 +162,14 @@ final class CloseCallJudge
     }
 
     /** @param array<string,mixed>|null $quota */
-    private static function has_room(?array $quota): bool
+    private static function has_room(?array $quota, ?Thresholds $thresholds = null): bool
     {
         if ($quota === null) {
             return false;
         }
+        $park = $thresholds?->get('QUOTA_PARK') ?? Thresholds::DEFAULT_QUOTA_PARK;
         foreach (['session', 'week_all'] as $window) {
-            if (!is_numeric($quota[$window]['pct'] ?? null) || $quota[$window]['pct'] >= self::QUOTA_PARK_PCT) {
+            if (!is_numeric($quota[$window]['pct'] ?? null) || $quota[$window]['pct'] >= $park) {
                 return false;
             }
         }

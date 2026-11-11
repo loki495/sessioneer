@@ -109,6 +109,10 @@ assert_true($none($html, ['judge']), 'card: a quota rotate that is not a close c
 $close = $decision('ROTATE', ['trigger' => 'quota', 'close_call' => true, 'reset_at' => time() + 600, 'receiver' => ['key' => 'codex/main', 'agent' => 'codex', 'profile' => 'main']]);
 assert_true($has($card(['flow' => $close]), ['judge']), 'card: a close quota call offers Ask a small model');
 assert_equal('Ask a small model', $labelOf($card(['flow' => $close]), 'judge'), 'card: with that label');
+$openCodeClose = $decision('ROTATE', ['trigger' => 'quota', 'close_call' => true, 'reset_at' => time() + 600, 'receiver' => ['key' => 'opencode/default', 'agent' => 'opencode', 'profile' => 'default']]);
+$html = $card(['flow' => $openCodeClose]);
+assert_contains('data-receiver-agent="opencode"', $html, 'card: the OpenCode receiver is still named on the host');
+assert_true($none($html, ['judge']), 'card: an OpenCode receiver has no judge model, so the close call offers no Ask a small model button');
 assert_equal('Start receiver', $labelOf($card(['flow' => $decision('ROTATE'), 'offer' => $offer(['handoff_id' => '9'])]), 'start'), 'card: the start button reads Start receiver');
 $parkClose = $decision('PARK', ['trigger' => 'quota', 'close_call' => true, 'reset_at' => time() + 600]);
 assert_true($none($card(['flow' => $parkClose]), ['judge']), 'card: PARK is never judged, even as a close call with a reset time (no receiver: the host refuses it)');
