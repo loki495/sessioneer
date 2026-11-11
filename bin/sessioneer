@@ -44,7 +44,9 @@ function usage(): string
       Who am I:          sessioneer --whoami
       Peer sessions:     sessioneer --peers [--json]
       Usage stats:       sessioneer --usage
-      Resume or fresh:   sessioneer --advise [SESSION...] [--act] [--json]
+      Context state:     sessioneer --next [TARGET | --all] [--intent step-end|wait|done] [--handoff ID | --plan ID] [--post] [--json]
+      Rotate to fresh:   sessioneer --rotate [TARGET] (--handoff ID | --plan ID | --prompt TEXT) [--dry-run] [--json]
+      Offer a rotation:  sessioneer --offer (--handoff ID | --plan ID | TEXT) | --offer --clear
       Run to the end:    sessioneer --wait [--timeout N] --workdir DIR "do the thing"
       Name a session:    sessioneer --session NAME_OR_CONVERSATION_ID --set-name "Name"
       New, named:        sessioneer --workdir DIR --set-name "Name" "do the thing"
@@ -130,21 +132,28 @@ function usage(): string
                         accounts, or a single "default"), each profile with its
                         quota and fetched_at time. Read-only; never refreshes
                         anything.
-      --advise          judge whether an idle Claude or Codex headless session should be
-                        resumed or replaced by a fresh one, from its transcript size, cache
-                        age and the account's quota/reset, without waking it. A blocked source
-                        favors takeover on an account with room, even with small context.
-                        No SESSION: a table
-                        of every tracked session. One SESSION (name or conversation id):
-                        the verdict, with one small model call for a close context decision
-                        or a quota reset under one hour.
-      --act             with --advise and exactly one SESSION: do what the verdict says.
-                        Resume sends a short continue prompt only if the source has quota.
-                        Fresh starts a new session on an account with room (another Claude
-                        profile, then Codex or OpenCode) to review the old
-                        conversation and Dibs state. The receiver archives the old session
-                        after its takeover checks. Refused when the session is not idle,
-                        waiting is recommended, or no safe receiver is known.
+      --next [TARGET]   decide what a session should do about its context and quota:
+                        GO, WARM_TIGHT, CHECKPOINT, ROTATE, PARK, WAIT, DONE or UNKNOWN,
+                        with the reason, the receiver and the kind of prompt for a
+                        fresh session. TARGET defaults to the calling session. Always
+                        exits 0 when it can decide; it never acts.
+      --all             with --next and no TARGET, one line per tracked session
+      --intent STEP     with --next, what the caller is about to do: step-end, wait or done
+      --post            with --next, post (or clear) the offer the decision calls for
+      --handoff ID      with --next, --rotate or --offer, the Dibs handoff id (digits) the
+                        fresh session takes over from
+      --plan ID         with --next, --rotate or --offer, the Dibs plan id (digits) the
+                        fresh session continues
+      --rotate [TARGET] start a fresh receiver session for TARGET (default: the calling
+                        session) from exactly one of --handoff, --plan or --prompt, and
+                        print its name. The old session is never archived or stopped here;
+                        the receiver does that after its takeover checks. --agent,
+                        --model, --effort, --profile, --workdir and --set-name shape it.
+      --prompt TEXT     with --rotate, a self-contained prompt (at most 8000 characters)
+      --dry-run         with --rotate, print the prompt and receiver without starting it
+      --offer           post an offer to rotate the calling session, for the dashboard,
+                        from --handoff, --plan or a PROMPT of at most 8000 characters
+      --clear           with --offer, dismiss the calling session's live offer
       --wait            after launching, block until the session is idle and print
                         its final assistant message to stdout (the session name
                         goes to stderr). Exits 1 if the launch fails, the turn
@@ -274,7 +283,47 @@ function emit_envelope(array $envelope): void
     echo json_encode($envelope, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
 }
 
-$opts = getopt('h', ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'advise', 'act', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'bare', 'take-over:', 'as-user', 'set-name:', 'session:'], $restIndex);
+$longOptions = ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'bare', 'take-over:', 'as-user', 'set-name:', 'session:', 'next', 'rotate', 'offer', 'all', 'intent:', 'post', 'handoff:', 'plan:', 'prompt:', 'dry-run', 'clear'];
+
+// getopt ignores an unknown option, which would start a launch; these two were removed.
+foreach ($argv as $arg) {
+    foreach (['--advise', '--act'] as $removed) {
+        if ($arg === $removed || str_starts_with($arg, $removed . '=')) {
+            fail("{$removed} was removed; use --next to read the state and --rotate to start a fresh session");
+        }
+    }
+}
+
+// getopt stops at the first operand, but a flow command takes its TARGET before its options.
+if (array_intersect(['--next', '--rotate', '--offer'], $argv) !== []) {
+    $valued = array_map(static fn (string $o): string => '--' . rtrim($o, ':'), array_filter($longOptions, static fn (string $o): bool => str_ends_with($o, ':')));
+    $options = [];
+    $operands = [];
+
+    for ($i = 1; $i < count($argv); $i++) {
+        $arg = $argv[$i];
+
+        if ($arg !== '-' && str_starts_with($arg, '-')) {
+            $options[] = $arg;
+
+            if (in_array($arg, $valued, true) && $i + 1 < count($argv)) {
+                $options[] = $argv[++$i];
+            }
+        } else {
+            $operands[] = $arg;
+        }
+    }
+
+    $ordered = [$argv[0], ...$options, ...$operands];
+
+    // getopt reads the real argv, so run again with the operands last.
+    if ($ordered !== $argv) {
+        $proc = proc_open([PHP_BINARY, ...$ordered], [STDIN, STDOUT, STDERR], $pipes);
+        exit(proc_close($proc));
+    }
+}
+
+$opts = getopt('h', $longOptions, $restIndex);
 
 if ($opts === false) {
     fail("bad options\n\n" . usage());
@@ -328,11 +377,143 @@ if (isset($opts['whoami'])) {
     exit(0);
 }
 
+/** Digits-only Dibs id given to a flow option, or null when the option is absent. */
+$flowId = static function (string $name) use ($opts): ?string {
+    if (!isset($opts[$name])) {
+        return null;
+    }
+
+    if (!is_string($opts[$name]) || !ctype_digit($opts[$name])) {
+        fail("--{$name} must be a Dibs id, digits only");
+    }
+
+    return $opts[$name];
+};
+
+$flowCommands = array_values(array_filter(['next', 'rotate', 'offer'], static fn (string $c): bool => isset($opts[$c])));
+$flowModifiers = [
+    'intent' => ['next'], 'post' => ['next'], 'all' => ['next'], 'prompt' => ['rotate'], 'dry-run' => ['rotate'], 'clear' => ['offer'],
+    'plan' => ['next', 'rotate', 'offer'], 'handoff' => ['next', 'rotate', 'offer'],
+];
+
+if (count($flowCommands) > 1) {
+    fail('--next, --rotate and --offer cannot be combined');
+}
+
+foreach ($flowModifiers as $modifier => $commands) {
+    if (isset($opts[$modifier]) && ($flowCommands === [] || !in_array($flowCommands[0], $commands, true))) {
+        fail("--{$modifier} only applies to --" . implode(', --', $commands));
+    }
+}
+
+if ($flowCommands !== []) {
+    $command = $flowCommands[0];
+
+    foreach (['kill', 'list', 'send', 'peers', 'usage', 'show', 'answer', 'interrupt', 'bare', 'take-over', 'session', 'resume', 'wait'] as $other) {
+        if (isset($opts[$other])) {
+            fail("--{$command} cannot be combined with --{$other}");
+        }
+    }
+
+    if ($command !== 'rotate') {
+        foreach (['agent', 'model', 'effort', 'profile', 'workdir', 'set-name'] as $launchOption) {
+            if (isset($opts[$launchOption])) {
+                fail("--{$launchOption} only applies to --rotate");
+            }
+        }
+    }
+
+    $handoff = $flowId('handoff');
+    $plan = $flowId('plan');
+    $text = $command === 'offer' ? ($prompt === '' ? null : $prompt) : (isset($opts['prompt']) ? (string)$opts['prompt'] : null);
+
+    if ($text !== null && (trim($text) === '' || strlen($text) > 8000)) {
+        fail($command === 'offer' ? 'the offer PROMPT must be 1 to 8000 characters' : '--prompt must be 1 to 8000 characters');
+    }
+
+    if ($command !== 'offer' && count($positional) > 1) {
+        fail("--{$command} takes one TARGET at most");
+    }
+
+    $target = $command === 'offer' ? null : ($positional[0] ?? null);
+    $sources = count(array_filter([$handoff, $plan, $text], static fn (?string $v): bool => $v !== null));
+
+    if ($command === 'next' && $handoff !== null && $plan !== null) {
+        fail('--handoff and --plan cannot be combined');
+    }
+
+    if ($command === 'next' && isset($opts['all']) && $target !== null) {
+        fail('--all cannot be combined with a TARGET');
+    }
+
+    if ($command === 'next' && isset($opts['intent']) && !in_array($opts['intent'], ['step-end', 'wait', 'done'], true)) {
+        fail('--intent must be step-end, wait or done');
+    }
+
+    if ($command === 'rotate' && $sources !== 1) {
+        fail('--rotate needs exactly one of --handoff, --plan or --prompt');
+    }
+
+    if ($command === 'offer' && isset($opts['clear']) && $sources > 0) {
+        fail('--clear cannot be combined with --handoff, --plan or a PROMPT');
+    }
+
+    if ($command === 'offer' && !isset($opts['clear']) && $sources !== 1) {
+        fail('--offer needs exactly one of --handoff, --plan or a PROMPT, or --clear');
+    }
+
+    if (($command === 'offer' || $target === null && !isset($opts['all'])) && $self === null) {
+        fail('not running inside a Sessioneer session (neither SESSIONEER_SELF nor CODEX_THREAD_ID is set); name a TARGET');
+    }
+
+    $reply = AgentClient::agent_call(array_filter(match ($command) {
+        'next' => [
+            'action' => 'flow_next', 'session' => isset($opts['all']) ? null : ($target ?? $self), 'all' => isset($opts['all']) ? true : null,
+            'intent' => $opts['intent'] ?? null, 'plan_id' => $plan, 'handoff_id' => $handoff, 'post' => isset($opts['post']) ? true : null,
+        ],
+        'rotate' => [
+            'action' => 'flow_rotate', 'session' => $target ?? $self, 'plan_id' => $plan, 'handoff_id' => $handoff, 'prompt' => $text,
+            'agent' => $opt('agent'), 'model' => $opt('model'), 'effort' => $opt('effort'), 'profile' => $opt('profile'),
+            'workdir' => $opt('workdir'), 'set_name' => $opt('set-name'), 'dry_run' => isset($opts['dry-run']) ? true : null,
+        ],
+        default => ['action' => isset($opts['clear']) ? 'flow_offer_dismiss' : 'flow_offer', 'self' => $self, 'plan_id' => $plan, 'handoff_id' => $handoff, 'prompt' => $text],
+    }, static fn ($v): bool => $v !== null));
+
+    if (($reply['ok'] ?? false) !== true) {
+        fail((string)($reply['message'] ?? "{$command} failed"));
+    }
+
+    foreach ($reply['warnings'] ?? [] as $warning) {
+        fwrite(STDERR, "sessioneer: {$warning}\n");
+    }
+
+    if (isset($opts['json'])) {
+        echo json_encode($reply, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
+    } elseif ($command === 'next') {
+        foreach ($reply['sessions'] ?? [$reply + ['name' => null]] as $row) {
+            echo implode("\t", array_filter([$row['name'], $row['state'], $row['why'], is_array($row['receiver'] ?? null) ? $row['receiver']['key'] : ($row['receiver'] ?? null), $row['prompt_kind'] ?? null], static fn ($v): bool => $v !== null)), "\n";
+        }
+
+        if (!empty($reply['offer'])) {
+            echo "offer posted: {$reply['offer']['source']}\n";
+        }
+    } elseif ($command === 'rotate') {
+        if (!empty($reply['dry_run'])) {
+            echo 'Receiver: ', implode('/', array_filter([$reply['launch']['agent'] ?? null, $reply['launch']['profile'] ?? null])), "\n", (string)($reply['prompt'] ?? ''), "\n";
+        } else {
+            echo (string)$reply['session'], "\n";
+        }
+    } else {
+        echo isset($opts['clear']) ? "offer dismissed\n" : "offer posted\n";
+    }
+
+    exit(0);
+}
+
 $kill = $opt('kill');
 $list = isset($opts['list']);
 $send = $opt('send');
 $peers = isset($opts['peers']);
-$advise = isset($opts['advise']);
 $show = $opt('show');
 $answer = $opt('answer');
 $interrupt = $opt('interrupt');
@@ -348,7 +529,7 @@ if (isset($opts['set-name']) && $setName === null) {
 // Every action that is not a launch or a resume.
 $nonLaunch = $kill !== null || $list || $send !== null || $peers || $show !== null || $answer !== null || $interrupt !== null || $bare || $takeOver !== null || $sessionTarget !== null;
 
-if ($sessionTarget !== null && ($setName === null || $prompt !== '' || $resume !== null || $kill !== null || $list || $send !== null || $peers || $show !== null || $answer !== null || $interrupt !== null || $bare || $takeOver !== null || $advise || isset($opts['usage']) || isset($opts['wait']))) {
+if ($sessionTarget !== null && ($setName === null || $prompt !== '' || $resume !== null || $kill !== null || $list || $send !== null || $peers || $show !== null || $answer !== null || $interrupt !== null || $bare || $takeOver !== null || isset($opts['usage']) || isset($opts['wait']))) {
     fail('--session needs --set-name, and renames that session only: no prompt and no other action');
 }
 
@@ -356,8 +537,8 @@ if ($setName !== null && $sessionTarget === null && $nonLaunch) {
     fail('--set-name names the session a launch or resume starts; use --session TARGET to rename an existing one');
 }
 
-if (count(array_filter([$kill !== null, $list, $send !== null, $peers, isset($opts['usage']), $advise, $show !== null, $answer !== null, $interrupt !== null, $bare, $takeOver !== null])) > 1) {
-    fail('--kill, --list, --show, --answer, --interrupt, --bare, --take-over, --send, --peers, --usage and --advise cannot be combined');
+if (count(array_filter([$kill !== null, $list, $send !== null, $peers, isset($opts['usage']), $show !== null, $answer !== null, $interrupt !== null, $bare, $takeOver !== null])) > 1) {
+    fail('--kill, --list, --show, --answer, --interrupt, --bare, --take-over, --send, --peers and --usage cannot be combined');
 }
 
 // Modifiers belong to one action each; a stray one would otherwise be ignored.
@@ -414,42 +595,6 @@ if ($answer !== null) {
     } else {
         $answerPayload = ['option' => (int)$optionNumber, 'text' => $opt('text'), 'expected_label' => $opt('expect'), 'expected_request_id' => $opt('expect-request')];
     }
-}
-
-if (isset($opts['act']) && !$advise) {
-    fail('--act only applies to --advise');
-}
-
-if ($advise) {
-    if (isset($opts['act']) && count($positional) !== 1) {
-        fail('--advise --act needs exactly one session name or conversation id');
-    }
-
-    $reply = AgentClient::agent_call(array_filter([
-        'action' => 'advise',
-        'target' => $positional[0] ?? null,
-        'act' => isset($opts['act']) ? true : null,
-        'model' => $opt('model'),
-        'effort' => $opt('effort'),
-    ], static fn ($v): bool => $v !== null && $v !== ''));
-
-    if (isset($opts['json'])) {
-        echo json_encode($reply, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
-    } elseif (($reply['ok'] ?? false) === true && !isset($opts['act'])) {
-        foreach ($reply['sessions'] as $s) {
-            $a = $s['advice'];
-            echo implode("\t", [
-                $s['name'], $s['status'], strtoupper((string)$a['verdict']),
-                isset($a['context_tokens']) ? round($a['context_tokens'] / 1000) . 'k' : '-',
-                isset($a['cache_age_seconds']) ? ($a['cache_cold'] ? 'cold ' : 'warm ') . round($a['cache_age_seconds'] / 60) . 'm' : '-',
-                $a['reason'],
-            ]), "\n";
-        }
-    } else {
-        fwrite(STDERR, 'sessioneer: ' . (string)($reply['message'] ?? 'done') . "\n");
-    }
-
-    exit(($reply['ok'] ?? false) === true ? 0 : 1);
 }
 
 if (isset($opts['usage'])) {

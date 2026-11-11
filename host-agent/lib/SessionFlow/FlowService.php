@@ -17,7 +17,7 @@ use HostAgent\Stores\SidecarStore;
  * The flow_next, flow_offer, flow_offer_dismiss, flow_rotate, flow_rotate_request and flow_judge
  * host actions and the list overlay.
  * $deps: clock (): int, facts (session, row): ?array, quota (key): ?array, receivers
- * (list of "agent/profile"), thresholds (Thresholds); rotate and rotate_request also launch
+ * (list of "agent/profile"), thresholds (Thresholds), sessions (): list<string> for next in all mode; rotate and rotate_request also launch
  * (request): array, rotate runner (command, conversation id): array{exit, stdout}; judge also
  * judge_runner (candidate, prompt): ?string and an optional transcript (session): ?string.
  * live() builds the real ones.
@@ -25,12 +25,27 @@ use HostAgent\Stores\SidecarStore;
 final class FlowService
 {
     /**
-     * @param array<string, mixed> $request session, optional intent, handoff_id, plan_id, post
+     * All mode ({all: true}, no session) decides every tracked session (deps 'sessions') and posts nothing.
+     *
+     * @param array<string, mixed> $request session, optional intent, handoff_id, plan_id, post; or all
      * @param array<string, mixed> $deps
      * @return array<string, mixed>
      */
     public static function next(array $request, array $deps): array
     {
+        if (!empty($request['all'])) {
+            if (isset($request['session'])) {
+                return ['ok' => false, 'message' => '--all cannot be combined with a session'];
+            }
+            $rows = [];
+            foreach ($deps['sessions']() as $name) {
+                $d = self::next(['session' => $name, 'intent' => $request['intent'] ?? null], $deps);
+                $rows[] = ['name' => $name, 'state' => $d['state'], 'why' => $d['why'], 'receiver' => $d['receiver'] ?? null, 'prompt_kind' => $d['prompt_kind'] ?? null];
+            }
+
+            return ['ok' => true, 'sessions' => $rows];
+        }
+
         $session = is_string($request['session'] ?? null) ? $request['session'] : '';
         $now = $deps['clock']();
         try {
@@ -312,6 +327,7 @@ final class FlowService
             'quota' => static fn (string $key): ?array => self::quotaReading($usage(), $key),
             'receivers' => self::receivers(),
             'thresholds' => Thresholds::fromFile(Config::session_flow_thresholds_path()),
+            'sessions' => static fn (): array => array_column(SidecarStore::list_runtime_sidecars('headless'), 'session_name'),
             'launch' => [LaunchService::class, 'launch'],
             'runner' => static fn (string $command, string $conversationId): array => ProcessRunner::run_process(['sh', '-c', $command . ' "$1"', 'sh', $conversationId]),
             'judge_runner' => [CloseCallJudge::class, 'run_process_runner'],
