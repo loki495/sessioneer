@@ -65,11 +65,12 @@ function dispatch_action(array $request): array
     $result = sessioneer_dispatch_action($request);
 
     if ($action === 'list') {
-        $result = sessioneer_with_stars($result);
+        $result = sessioneer_with_flow(sessioneer_with_stars($result));
     }
 
     if ($action === 'session_detail') {
         $result = sessioneer_with_detail_extras($result, (string)($request['session'] ?? ''));
+        $result = sessioneer_with_flow($result);
     }
 
     return in_array($action, ['list', 'session_detail'], true) ? sessioneer_with_custom_titles($result, (string)($request['session'] ?? '')) : $result;
@@ -100,6 +101,28 @@ function sessioneer_with_stars(array $result): array
         <=> [(int)!$b['starred'], $rank[$b['status'] ?? ''] ?? 2, -(int)($b['activity'] ?? 0)]);
 
     return $result;
+}
+
+/**
+ * Adds the live offer and, for a long-idle session, the flow decision (see FlowService::overlay)
+ * to every list row, or to the detail itself.
+ *
+ * @param array<string, mixed> $result
+ * @return array<string, mixed>
+ */
+function sessioneer_with_flow(array $result): array
+{
+    if (($result['ok'] ?? false) !== true) {
+        return $result;
+    }
+    $deps = \HostAgent\SessionFlow\FlowService::live();
+    if (is_array($result['sessions'] ?? null)) {
+        $result['sessions'] = \HostAgent\SessionFlow\FlowService::overlay($result['sessions'], $deps);
+
+        return $result;
+    }
+
+    return \HostAgent\SessionFlow\FlowService::overlay([$result], $deps)[0];
 }
 
 /**
@@ -485,6 +508,15 @@ function sessioneer_dispatch_action(array $request): array
 
         case 'advise':
             return \HostAgent\Services\AdviseRunner::run($request);
+
+        case 'flow_next':
+            return \HostAgent\SessionFlow\FlowService::next($request, \HostAgent\SessionFlow\FlowService::live());
+
+        case 'flow_offer':
+            return \HostAgent\SessionFlow\FlowService::offer($request, \HostAgent\SessionFlow\FlowService::live());
+
+        case 'flow_offer_dismiss':
+            return \HostAgent\SessionFlow\FlowService::offer_dismiss($request, \HostAgent\SessionFlow\FlowService::live());
 
         case 'resume':
             $resumeWorkdir = (string)($request['workdir'] ?? '');

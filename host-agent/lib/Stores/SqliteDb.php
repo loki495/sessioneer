@@ -136,6 +136,18 @@ class SqliteDb
                 tool_input_json TEXT,
                 written_at INTEGER
             );
+            CREATE TABLE IF NOT EXISTS session_offers (
+                session_name TEXT PRIMARY KEY,
+                origin TEXT NOT NULL,
+                decision_json TEXT NOT NULL,
+                handoff_id TEXT,
+                plan_id TEXT,
+                prompt TEXT,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                dismissed_at INTEGER,
+                launched_at INTEGER
+            );
             SQL;
     }
 

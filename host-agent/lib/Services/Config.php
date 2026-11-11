@@ -512,6 +512,12 @@ class Config
         return self::sessioneer_config('SESSIONS_SQLITE_FILE', self::sidecar_dir() . '/sessions.sqlite');
     }
 
+    /** Thresholds for the session-flow decision (see skill session-flow); the dotfiles copy unless overridden. */
+    public static function session_flow_thresholds_path(): string
+    {
+        return self::sessioneer_config('SESSION_FLOW_THRESHOLDS', self::home_root() . '/dotfiles/ai/skills/session-flow/thresholds.conf');
+    }
+
     /**
      * PushSubscriptionStore/PushSessionStateStore/PushQuotaStateStore/
      * GlobalStateStore's shared SQLite DB - persistent (host-agent/state/,
