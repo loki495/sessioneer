@@ -135,9 +135,10 @@
         inFlight = false;
         if (!data || !data.ok) { return; }
         applyCounts(data.counts);
-        // An open menu, a half-typed field or an advice panel would be destroyed by the swap.
+        // An open menu, a band with a request in flight, or a band error still being read would be
+        // destroyed by the swap (ui-flow.js removes its error after a few seconds, so the list resumes).
         var key = data.sessions_html + '\u0000' + data.bare_html;
-        if (key === lastHtml || sessionsEl.querySelector('.ui-menu[open], .ui-advise-panel')) { return; }
+        if (key === lastHtml || sessionsEl.querySelector('.ui-menu[open], .ui-flow-error, [data-flow-host][data-busy]')) { return; }
         lastHtml = key;
         sessionsEl.innerHTML = data.sessions_html;
         bareEl.innerHTML = data.bare_html;

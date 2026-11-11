@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace HostAgent\SessionFlow;
 
-use App\AdvisePolicy;
 use HostAgent\Services\Config;
 use HostAgent\Stores\SidecarStore;
 
@@ -15,6 +14,12 @@ use HostAgent\Stores\SidecarStore;
  */
 final class ReceiverPicker
 {
+    /**
+     * A metered window at or above this percentage is spent: the account is parked, not a receiver.
+     * The same threshold the flow decider uses (Thresholds::QUOTA_PARK).
+     */
+    private const QUOTA_PARK_PCT = 90;
+
     /**
      * Antigravity has no headless launcher, so its takeover stays manual.
      * A blocked Claude source reserves other Claude profiles for last resort.
@@ -129,7 +134,7 @@ final class ReceiverPicker
             if (!is_array($window) || !array_key_exists('pct', $window)) {
                 continue;
             }
-            if (!is_numeric($window['pct']) || $window['pct'] >= AdvisePolicy::QUOTA_PARK_PCT) {
+            if (!is_numeric($window['pct']) || $window['pct'] >= self::QUOTA_PARK_PCT) {
                 return false;
             }
         }

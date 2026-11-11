@@ -249,7 +249,7 @@
   });
 
   // Opens the dashboard's New Session form prefilled to continue this conversation. Nothing is launched here:
-  // the advisor (no model call) only picks which agent and account have room, else the session's own are used.
+  // the source's stored flow decision picks the receiver when it names one, else the session's own agent and account.
   function takeOverInNewSession(d, btn) {
     var agent = d.agent || 'claude';
     var profile = agent === 'claude' && d.profile ? String(d.profile) : '';
@@ -267,10 +267,7 @@
       try { window.sessionStorage.setItem('ui-new-prefill', JSON.stringify(params)); } catch (e) { api.toast('Could not open the form', true); btn.disabled = false; return; }
       window.location.href = '/';
     }
-    api.post('/action', { action: 'advise', session: session, no_model: '1' }).then(function (res) {
-      var a = res && res.ok && res.advice ? res.advice : null;
-      go(a && a.receiver ? a.receiver : null);
-    }).catch(function () { go(null); });
+    go(d.flow && d.flow.receiver ? d.flow.receiver : null);
   }
 
   // The JSON twin of the classic dashboard action; a redirect from the server wins over `fallback`.

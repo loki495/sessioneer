@@ -48,7 +48,7 @@ class UiController extends Controller
             'agentMessage' => (string)($listResult['message'] ?? 'Unknown error'),
             'csrfToken' => $csrfToken,
             'counts' => UiView::counts($sessions),
-            'sessionsHtml' => UiView::sessions_html($sessions, $csrfToken, $this->quota_reader()),
+            'sessionsHtml' => UiView::sessions_html($sessions, $csrfToken),
             'bareHtml' => UiView::bare_html($bare, $csrfToken),
             'hooksMissing' => $agentReachable && (bool)($hookResult['ok'] ?? false) && !($hookResult['installed'] ?? false),
             'healthChecks' => (bool)($healthResult['ok'] ?? false) ? ($healthResult['checks'] ?? []) : [],
@@ -88,18 +88,7 @@ class UiController extends Controller
             'found' => (bool)($detail['ok'] ?? false),
             'detail' => $detail,
             'jumpLine' => $jumpLine > 0 ? $jumpLine : null,
-            'adviseShown' => UiView::advise_visible($detail, $this->quota_reader()),
         ]);
-    }
-
-    /** One memoised `quota` call, made only if a caller needs it. */
-    private function quota_reader(): \Closure
-    {
-        $reply = null;
-
-        return static function () use (&$reply): array {
-            return $reply ??= AgentClient::agent_call(['action' => 'quota']);
-        };
     }
 
     /**
@@ -185,7 +174,7 @@ class UiController extends Controller
         echo json_encode([
             'ok' => true,
             'counts' => UiView::counts($sessions),
-            'sessions_html' => UiView::sessions_html($sessions, $csrfToken, $this->quota_reader()),
+            'sessions_html' => UiView::sessions_html($sessions, $csrfToken),
             'bare_html' => UiView::bare_html($listResult['bare'] ?? [], $csrfToken),
         ]);
     }
@@ -223,8 +212,10 @@ class UiController extends Controller
                 'session' => (string)($_POST['session'] ?? ''),
                 'runtime' => (string)($_POST['runtime'] ?? ''),
             ]),
-            'advise' => $this->advise(false),
-            'advise_act' => $this->advise(true),
+            'flow_rotate' => $this->flow_rotate(),
+            'flow_rotate_request' => $this->flow_rotate_request(),
+            'flow_offer_dismiss' => $this->flow_offer_dismiss(),
+            'flow_judge' => $this->flow_judge(),
             'kill' => $this->agent_plain(['action' => 'launch_kill', 'target' => (string)($_POST['session'] ?? ''), 'force' => true]),
             'take_over' => $this->take_over(),
             'take_over_confirm' => trim((string)($_POST['agent_session_id'] ?? '')) === ''
@@ -249,34 +240,86 @@ class UiController extends Controller
     }
 
     /**
-     * The resume-or-fresh advisor for one session, keyed by session name. `advise_act` carries the person's pick
-     * (choice = resume|fresh) and, for a fresh session, answers with a redirect to the new one.
+     * The source asks for its own handoff and rotates itself; the page stays on the source, which is the
+     * one running that turn.
      *
      * @return array<string, mixed>
      */
-    private function advise(bool $act): array
+    private function flow_rotate_request(): array
     {
-        $params = ['action' => 'advise', 'target' => (string)($_POST['session'] ?? '')];
-        if (($_POST['no_model'] ?? '') === '1') {
-            $params['no_model'] = true;
+        return $this->agent_plain(['action' => 'flow_rotate_request', 'session' => (string)($_POST['session'] ?? '')]);
+    }
+
+    /**
+     * Start the receiver of the offer's handoff. The host reports the new session in its `session` key,
+     * so the page opens that session rather than staying on the source.
+     *
+     * @return array<string, mixed>
+     */
+    private function flow_rotate(): array
+    {
+        $handoff = trim((string)($_POST['handoff_id'] ?? ''));
+
+        if (preg_match('/^[0-9]+$/D', $handoff) !== 1) {
+            return ['ok' => false, 'message' => 'A handoff id of digits is required to start the receiver'];
         }
-        if ($act) {
-            $params += ['act' => true, 'choice' => (string)($_POST['choice'] ?? '')];
+
+        $params = [
+            'action' => 'flow_rotate',
+            'session' => (string)($_POST['session'] ?? ''),
+            'handoff_id' => $handoff,
+        ];
+
+        foreach (['agent', 'profile'] as $key) {
+            $value = trim((string)($_POST[$key] ?? ''));
+
+            if ($value !== '') {
+                $params[$key] = $value;
+            }
         }
+
         $result = AgentClient::agent_call($params);
         $ok = (bool)($result['ok'] ?? false);
-        $out = ['ok' => $ok, 'message' => (string)($result['message'] ?? '')];
+        $out = ['ok' => $ok, 'message' => (string)($result['message'] ?? ($ok ? 'Receiver started' : 'Unknown error'))];
 
-        if ($ok && !$act) {
-            $row = $result['sessions'][0] ?? [];
-            $out['status'] = (string)($row['status'] ?? '');
-            $out['advice'] = $row['advice'] ?? null;
-        }
-        if ($ok && $act && is_string($result['session'] ?? null) && $result['session'] !== '') {
+        if ($ok && is_string($result['session'] ?? null) && $result['session'] !== '') {
             $out['redirect'] = '/session?session=' . urlencode($result['session']);
         }
 
         return $out;
+    }
+
+    /**
+     * Dismiss the source's live offer, so the band stops asking (Continue here, Wait for reset).
+     *
+     * @return array<string, mixed>
+     */
+    private function flow_offer_dismiss(): array
+    {
+        $result = AgentClient::agent_call([
+            'action' => 'flow_offer_dismiss',
+            'self' => (string)($_POST['session'] ?? ''),
+        ]);
+
+        return ['ok' => (bool)($result['ok'] ?? false), 'message' => (string)($result['message'] ?? '')];
+    }
+
+    /**
+     * The one small model call for a close call; its decision comes back under its own `flow` key.
+     *
+     * @return array<string, mixed>
+     */
+    private function flow_judge(): array
+    {
+        $result = AgentClient::agent_call(['action' => 'flow_judge', 'session' => (string)($_POST['session'] ?? '')]);
+
+        if (!($result['ok'] ?? false)) {
+            return ['ok' => false, 'message' => (string)($result['message'] ?? 'Unknown error')];
+        }
+
+        unset($result['ok']);
+
+        return ['ok' => true, 'flow' => $result];
     }
 
     /** @return array<string, mixed> */

@@ -10,16 +10,15 @@ $loader->setPsr4('HostAgent\\', []);
 
 use App\Views\UiView;
 
-assert_true(!class_exists(HostAgent\Services\AdviseService::class), 'web runtime has no host-agent service');
+assert_true(!class_exists(HostAgent\SessionFlow\FlowService::class), 'web runtime has no host-agent flow service');
 
+// The band renders from the overlay stored on the row: no host-agent class, no quota reader, no model turn.
 $session = ['name' => 'claude-headless-test', 'agent' => 'claude', 'runtime' => 'headless', 'status' => 'idle', 'activity' => time() - 7200];
-$html = UiView::sessions_html([$session], 'test-token');
-assert_contains('data-advise-open', $html, 'cold session card renders without host-agent classes');
-
-$session['activity'] = time();
-$failedQuota = static fn (): array => ['ok' => false];
-assert_true(!UiView::advise_visible($session, $failedQuota), 'unavailable quota leaves fresh session advice hidden');
-assert_true(!str_contains(UiView::sessions_html([$session], 'test-token', $failedQuota), 'data-advise-open'), 'quota failure still renders a fresh session card');
-assert_true(UiView::advise_visible($session, static fn (): array => ['claude_profiles' => ['personal' => ['quota' => ['session' => ['pct' => 90]]]]]), 'quota threshold works without host-agent classes');
+$flow = ['state' => 'ROTATE', 'why' => 'cache is cold', 'trigger' => 'cold_cache', 'close_call' => false, 'receiver' => null, 'reset_at' => null, 'needs_approval' => false, 'warnings' => []];
+$html = UiView::sessions_html([$session + ['flow' => $flow]], 'test-token');
+assert_contains('data-flow-host', $html, 'cold session card with an overlay renders the band without host-agent classes');
+assert_true(!str_contains(UiView::sessions_html([$session], 'test-token'), 'data-flow-host'), 'a row without an overlay renders a plain card');
+assert_true(!method_exists(UiView::class, 'advise_visible'), 'UiView no longer decides advice visibility');
+assert_true(!class_exists('App\\AdvisePolicy'), 'the web runtime no longer ships AdvisePolicy');
 
 test_exit();

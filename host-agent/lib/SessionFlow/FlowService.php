@@ -310,7 +310,7 @@ final class FlowService
     }
 
     /**
-     * The real dependencies: stored readings, the advise action's quota reader, thresholds from config.
+     * The real dependencies: stored readings, the shared quota reader, thresholds from config.
      *
      * @return array<string, mixed>
      */
@@ -372,7 +372,7 @@ final class FlowService
     }
 
     /**
-     * The launch request for the receiver, with the permission limits AdviseRunner applies to a replacement.
+     * The launch request for the receiver, with the permission limits a replacement inherits from the source.
      *
      * @param array<string, mixed> $request
      * @param array<string, mixed> $old the source sidecar
