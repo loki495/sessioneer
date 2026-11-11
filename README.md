@@ -119,8 +119,11 @@ sessioneer --take-over <pid>
 sessioneer --peers
 sessioneer --send <session> "The migration on my branch is ready to review"
 
-# judge whether an idle headless session should be resumed or replaced
-sessioneer --advise <session>
+# decide whether to continue, checkpoint, rotate or wait (reads state, never acts)
+sessioneer --next
+
+# start a fresh session from a Dibs handoff; the old one keeps running
+sessioneer --rotate --handoff <dibs-task-id>
 
 # stop a session, or print the last known usage for every agent as JSON
 sessioneer --kill <session>
