@@ -119,6 +119,18 @@ try {
         $acts = static function (string $scope) use (&$page): mixed {
             return cdp_evaluate($page, 'Array.prototype.map.call(document.querySelectorAll(' . json_encode($scope . ' [data-flow-act]') . '), function (b) { return b.getAttribute("data-flow-act"); }).sort()');
         };
+        // A reload can still show the previous state's band for a moment (a stale response or a navigation
+        // that has not committed yet), so a state change must wait for the new state's own actions, not for
+        // any band. The expression builds and sorts the card's actions in the page and compares that JSON to
+        // the expected sorted set, so only a band carrying exactly $want satisfies it.
+        $awaitActs = static function (array $want) use (&$page): bool {
+            sort($want);
+
+            return fbb_wait(
+                $page,
+                'JSON.stringify(Array.prototype.map.call(document.querySelectorAll("[data-flow-where=card] [data-flow-act]"), function (b) { return b.getAttribute("data-flow-act"); }).sort()) === ' . json_encode(json_encode($want))
+            );
+        };
 
         echo "stored offer: the band shows with no model turn (phone)\n";
         cdp_set_viewport($page, 390, 844, 1.0, true);
@@ -139,7 +151,7 @@ try {
 
         echo "continue and wait dismiss the offer\n";
         $load('/');
-        fbb_wait($page, 'document.querySelectorAll("[data-flow-where=card] [data-flow-act]").length > 0');
+        assert_true(fbb_wait($page, '(function () { var host = document.querySelector("[data-flow-where=card]"); return host !== null && host.getAttribute("data-csrf") !== "wrong"; }())'), 'the reload restores the real CSRF token');
         assert_true((bool)cdp_evaluate($page, $click($card('continue'))), 'Continue here is tappable');
         $entries = fbb_logged($log);
         assert_equal('flow_offer_dismiss', $entries[0]['action'] ?? null, 'continue posts flow_offer_dismiss');
@@ -169,7 +181,7 @@ try {
         foreach (['handoff', 'takeover'] as $act) {
             $setState($decision('ROTATE'), null);
             $load('/');
-            fbb_wait($page, 'document.querySelectorAll("[data-flow-where=card] [data-flow-act]").length > 0');
+            assert_true($awaitActs(['continue', 'edit', 'handoff', 'takeover']), "$act: the card band shows the state just written");
             assert_equal(['continue', 'edit', 'handoff', 'takeover'], $acts('[data-flow-where="card"]'), "$act: no offer, so Hand off and start rather than Start receiver");
             cdp_evaluate($page, $click($card($act)));
             $entries = fbb_logged($log);
@@ -182,7 +194,7 @@ try {
         $close = $decision('ROTATE', ['trigger' => 'quota', 'close_call' => true, 'reset_at' => time() + 600, 'receiver' => ['key' => 'codex/main', 'agent' => 'codex', 'profile' => 'main']]);
         $setState($close, null);
         $load('/');
-        fbb_wait($page, 'document.querySelectorAll("[data-flow-where=card] [data-flow-act]").length > 0');
+        assert_true($awaitActs(['continue', 'edit', 'handoff', 'judge', 'takeover']), 'judge: the card band shows the state just written');
         assert_true(in_array('judge', $acts('[data-flow-where="card"]'), true), 'a close quota call offers the model button');
         cdp_evaluate($page, $click($card('judge')));
         $entries = fbb_logged($log);
@@ -193,7 +205,7 @@ try {
         echo "PARK waits, WARM_TIGHT is a chip\n";
         $setState($decision('PARK', ['trigger' => 'quota', 'reset_at' => time() + 7200]), null);
         $load('/');
-        fbb_wait($page, 'document.querySelectorAll("[data-flow-where=card] [data-flow-act]").length > 0');
+        assert_true($awaitActs(['wait']), 'PARK: the card band shows the state just written');
         assert_true(in_array('wait', $acts('[data-flow-where="card"]'), true) && !in_array('start', $acts('[data-flow-where="card"]'), true), 'PARK offers Wait for reset and no rotate');
         cdp_evaluate($page, $click($card('wait')));
         $entries = fbb_logged($log);
