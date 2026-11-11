@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace HostAgent\Services;
 
 use App\AdvisePolicy;
+use HostAgent\SessionFlow\FlowFacts;
 
 /**
  * Resume-or-fresh verdict for an idle session, computed from files and numbers
@@ -21,52 +22,19 @@ final class AdviseService
     public const HANDOFF_TOKENS = 6000;
     public const QUOTA_PARK_PCT = AdvisePolicy::QUOTA_PARK_PCT;
 
-    private const TAIL_BYTES = 262144;
-
-    /**
-     * Context size and last activity of a Claude transcript, from the last
-     * main-thread assistant usage (same sum as ContextUsage::claude_assistant()).
-     *
-     * @return array{agent:string,context_tokens:int,model:string,last_activity:int}|null
-     */
+    /** @return array{agent:string,context_tokens:int,model:string,last_activity:int}|null */
     public static function claude_facts(string $transcriptPath): ?array
     {
-        $mtime = @filemtime($transcriptPath);
-        $size = @filesize($transcriptPath);
-        $fh = @fopen($transcriptPath, 'rb');
-        if ($mtime === false || $size === false || $fh === false) {
-            return null;
-        }
-        fseek($fh, max(0, $size - self::TAIL_BYTES));
-        $tail = (string) stream_get_contents($fh);
-        fclose($fh);
-
-        $snapshot = null;
-        foreach (explode("\n", $tail) as $line) {
-            $event = json_decode($line, true);
-            if (is_array($event) && ($event['type'] ?? null) === 'assistant' && empty($event['isSidechain'])) {
-                $snapshot = ContextUsage::claude_assistant($event, $snapshot) ?? $snapshot;
-            }
-        }
-
-        return $snapshot === null ? null : [
-            'agent' => 'claude',
-            'context_tokens' => (int) $snapshot['input_tokens'],
-            'model' => (string) $snapshot['model'],
-            'last_activity' => $mtime,
-        ];
+        return FlowFacts::claude($transcriptPath);
     }
 
     /**
-     * @param array<string,mixed>|null $tokenUsage the bridge's stored tokenUsage
+     * @param array<string,mixed>|null $tokenUsage
      * @return array{agent:string,context_tokens:int,model:string,last_activity:int}|null
      */
     public static function codex_facts(?array $tokenUsage, string $model, int $lastActivity): ?array
     {
-        $tokens = $tokenUsage['last']['totalTokens'] ?? null;
-        return is_int($tokens) && $tokens >= 0
-            ? ['agent' => 'codex', 'context_tokens' => $tokens, 'model' => $model, 'last_activity' => $lastActivity]
-            : null;
+        return FlowFacts::codex($tokenUsage, $model, $lastActivity);
     }
 
     /**
