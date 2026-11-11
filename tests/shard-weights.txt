@@ -92,5 +92,8 @@ test_session_flow_facts.php 1
 test_session_flow_offer_store.php 1
 test_session_flow_prompt.php 1
 test_session_flow_receiver.php 1
+test_session_flow_judge.php 1
+test_session_flow_rotate.php 1
+test_session_flow_rotate_request.php 1
 test_session_flow_service.php 1
 test_session_flow_wiring.php 1

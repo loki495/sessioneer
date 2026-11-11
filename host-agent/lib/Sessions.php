@@ -515,6 +515,15 @@ function sessioneer_dispatch_action(array $request): array
         case 'flow_offer':
             return \HostAgent\SessionFlow\FlowService::offer($request, \HostAgent\SessionFlow\FlowService::live());
 
+        case 'flow_rotate':
+            return \HostAgent\SessionFlow\FlowService::rotate($request, \HostAgent\SessionFlow\FlowService::live());
+
+        case 'flow_rotate_request':
+            return \HostAgent\SessionFlow\FlowService::rotate_request($request, \HostAgent\SessionFlow\FlowService::live());
+
+        case 'flow_judge':
+            return \HostAgent\SessionFlow\FlowService::judge($request, \HostAgent\SessionFlow\FlowService::live());
+
         case 'flow_offer_dismiss':
             return \HostAgent\SessionFlow\FlowService::offer_dismiss($request, \HostAgent\SessionFlow\FlowService::live());
 
