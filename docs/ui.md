@@ -22,7 +22,7 @@ details sheet.
 | Design tokens and the dashboard's styling | `public/css/ui.css` (hand-written, no build step) |
 | Session page styling | `public/css/ui-session.css` (uses the same tokens) |
 | Dashboard behaviour (tabs, filters, polling, actions) | `public/js/ui.js` (plain ES5) |
-| Continue-here / start-a-new-one buttons | `public/js/ui-advise.js` (plain ES5, mounts on `[data-advise-host]`) |
+| Session-flow band (rotation and wait decisions) | `public/js/ui-flow.js` (plain ES5, mounts on `[data-flow-host]`) |
 | Session page behaviour | `public/js/ui-session.js` (transcript, polling, prompts, footer) and `public/js/ui-session-sheets.js` (controls, details, files, search, viewers) |
 
 There is no framework and no build step. Browser push is subscribed from a
@@ -78,31 +78,53 @@ as they are: `/session_star.php`, `/session_rename.php`, `/answer_prompt.php`,
 
 `POST /action` is the JSON action endpoint. It takes
 `action` = `new`, `resume`, `switch_runtime`, `take_over`, `take_over_confirm`, `kill`, `kill_bare`, `cleanup`,
-`install_hook`, `set_push_timer_interval`, `advise` or `advise_act`, plus `csrf_token`, and answers `{ok, message, redirect?}`. `take_over` (a
+`install_hook`, `set_push_timer_interval`, `flow_rotate`, `flow_rotate_request`, `flow_judge` or `flow_offer_dismiss`, plus `csrf_token`, and answers `{ok, message, redirect?}`. `take_over` (a
 bare process) answers with a redirect to the new headless session, or
 `{needs_choice, pid, workdir, candidates, suggested_agent_session_id}` when the process
 could not be identified (nothing is stopped yet); the page then shows a picker and posts
 `take_over_confirm`. Both reach the host agent's `take_over_bare` / `take_over_bare_with_id`
 with `runtime=headless`, so the final resume goes through the headless runtime, not a pane.
-`advise` (`session`) answers `{status, advice}` from the host agent's `advise` action: the verdict, context
-size, cache age and the token cost of each path. `advise_act` (`session`, `choice` = `resume` or `fresh`) acts on
-the person's pick, not the verdict: resume sends the continue prompt to the same conversation when its account has room; fresh starts a new
-session with a global `/takeover` prompt naming the source agent, profile and conversation. If a Claude source account is at 90% or more, fresh prefers Codex, then OpenCode, then manual Antigravity takeover, each with known quota below 90% in every metered window (OpenCode reports no window at all). The other Claude profile is the last resort when these alternatives are limited, unknown or incompatible. A blocked Codex source still prefers an available Claude profile. The receiver reads the full source
-thread and Dibs state, then archives the old session after its checks; `advise_act` leaves it available meanwhile.
-It answers with a redirect to the session that carries on. The idle guard and the source quota guard on resume still apply. The button itself is rendered only when the session's last activity is an hour or more old (`App\AdvisePolicy::CACHE_TTL_SECONDS`) or its account quota is at 90% or more (`App\AdvisePolicy::QUOTA_PARK_PCT`; `UiView::advise_visible()`, one memoised `quota` call per request and only when idle time alone does not decide). Nothing is
-sent to the old session on `advise`, and the one small model call for a close verdict happens only there, for the one
-session asked about. If its source quota resets in less than an hour, that call can instead weigh urgency, sensitivity and context transfer, and recommend waiting for the reset; a failed call defaults to takeover. `/action` has the same same-origin and CSRF checks as every other mutating endpoint.
+The four flow actions forward to the host agent's same-named action. `flow_rotate`
+(`session`, `handoff_id`, optional `agent` and `profile`) starts the offer's receiver and
+answers with a redirect to the new session; it refuses a handoff id that is not digits,
+because a receiver is only started from a stored handoff. `flow_rotate_request` (`session`)
+sends the `/rotate` turn to the idle source, so the source writes its own handoff and
+starts the receiver; it refuses unless the source is idle and has a conversation id.
+`flow_judge` (`session`) makes the one small model call for a close quota call and answers
+`{flow}` with the decision. `flow_offer_dismiss` (`session`) dismisses the session's live
+offer. `/action` has the same same-origin and CSRF checks as every other mutating endpoint.
 
-## Continue here or start a new one
+## The session-flow band
 
-An idle headless Claude or Codex card has a **Continue or start a new one?** button, and the session page has the
-same button below the transcript. Tapping it asks for advice for that one session and shows the reason, the context
-size and cache age, and two buttons: **Continue here** (resume; its line gives the tokens re-written now when the
-cache is cold, and re-read each turn) and **Start a new one** (reviews the full source thread and Dibs state;
-archives this session after takeover checks). When the source account is nearly full, **Continue here** is disabled. The panel shows when its quota resets or says the reset is unknown. The other button becomes **Take over in another session**, names the receiving account or agent, and remains usable when that receiver has known room. If no launchable receiver is available, or manual Antigravity takeover is preferred over another Claude profile, the panel shows a manual `/takeover` prompt and names any manual agent with known room. A short reset can produce a distinct **Wait for quota, then continue** recommendation, while still allowing a person to choose takeover. The advised option is highlighted; a close call (`judgment`) highlights neither. Both buttons use white text on dark backgrounds in either theme.
-Both buttons are disabled while the session is not idle. Starting a takeover
-asks for confirmation. The poll leaves the list alone while an advice panel is open. The thresholds are in
-[cli.md](cli.md) under `--advise`.
+A session with a context or quota decision shows a band: on its dashboard card, under the conversation on the
+session page, and in the session details sheet. That is one band per place, two on the session page, and both act
+the same. The band draws a decision the host agent has already stored: the `flow` the `list` overlay attaches to
+an idle row whose cache is cold or whose context is at `CTX_GO_MAX` tokens or more, or the decision a live offer
+carries when the row has none. Nothing is sent to the host and no model runs until someone taps a button.
+
+A `ROTATE` decision offers:
+
+- **Start receiver**, only when the offer carries a handoff id, starts a fresh session from that handoff and
+  opens it.
+- **Hand off and start**, when there is no handoff id yet, and **Take over from transcript** both send one
+  `/rotate` turn to the idle source, which writes its own handoff and starts the receiver. The page stays on the
+  source, which is the session running that turn.
+- **Continue here** keeps the session where it is.
+- **Ask a small model**, only for a close call (a quota rotation whose reset is less than an hour away, with a
+  receiver that has room), asks that receiver's model whether to wait for the reset or rotate now. It is the only
+  button that calls a model, and it launches nothing by itself.
+- **Edit in form** opens the dashboard with its New Session sheet prefilled in `sessionStorage`: the receiver's
+  agent and account when the decision names one, otherwise the session's own, the session's folder, and the
+  offer's prompt when it has one. It starts nothing.
+
+`PARK` and `WAIT` offer **Wait for reset** only. `WARM_TIGHT` is one chip carrying the reason, with no button.
+`GO`, `CHECKPOINT`, `DONE` and `UNKNOWN` draw nothing. **Continue here** and **Wait for reset** dismiss the
+offer, which removes every band of that session.
+
+A tap disables that band's buttons and marks it busy, so the dashboard's poll does not replace the band under the
+tap. A failed action shows its message inside the band and removes the message after ten seconds, so the poll
+resumes; a started receiver opens its new session, and a dismissed offer takes its band away. The thresholds are
+in [cli.md](cli.md#context-quotas-and-rotation).
 
 ## Dashboard coverage
 
@@ -201,7 +223,7 @@ travel, ignore the outer 24px (left to the browser's own back/forward gestures) 
 are ignored while a popup is open. Every sheet (`public/js/ui-sheets.js`, both pages)
 closes on a tap outside it, a swipe down from its fixed header, or a swipe right anywhere inside it (not over a field, code block or sideways-scrolling area, nor from the screen edges).
 The session details popup header has icon-only Sessions (swaps to the sessions popup) and Star buttons plus Rename and Kill; the open session is highlighted and flagged "Current" in the sessions popup. Each row also shows the session's working directory, with the home directory written as `~`. Two dropdowns under the filter box narrow the other sessions by agent and by profile (Claude accounts); their options come from the rows, and the choice is kept in `localStorage` so it survives reopening the popup and reloading the page. The open session stays pinned whatever the dropdowns say.
-The details popup's Actions section has **Take over in new session** for any session with a conversation id. It launches nothing: it opens the dashboard's New Session form prefilled and editable. The prefill travels in `sessionStorage` (read once), never in the URL, so a link from another site cannot prefill a prompt or folder. The agent and account come from the advisor's receiver pick with no model call (the session's own when it has room, or when no other account does), the model is carried over only when agent and account are unchanged, the folder is the session's, and the first message is `/takeover <agent> [profile] <conversation id>`.
+The details popup's Actions section has **Take over in new session** for any session with a conversation id. It launches nothing: it opens the dashboard's New Session form prefilled and editable. The prefill travels in `sessionStorage` (read once), never in the URL, so a link from another site cannot prefill a prompt or folder. The agent and account come from the stored flow decision's receiver, with no model call (the session's own when that decision names none), the model is carried over only when agent and account are unchanged, the folder is the session's, and the first message is `/takeover <agent> [profile] <conversation id>`.
 The bar also carries a very small stacked readout for this session's agent and
 account: 5-hour use, weekly use and context (`UiQuota.mini`, from `/quota.php?session=`,
 refreshed every five minutes; context follows the detail poll). It opens the same popup

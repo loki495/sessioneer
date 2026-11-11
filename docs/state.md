@@ -6,7 +6,7 @@ Conversations live in each agent's own transcript files. Sessioneer itself keeps
 
 | File | Default location | Lifetime | Tables |
 | --- | --- | --- | --- |
-| `sessions.sqlite` | `$SIDECAR_DIR/sessions.sqlite` (`SESSIONS_SQLITE_FILE` overrides; `SIDECAR_DIR` defaults to `/run/user/<uid>/sessioneer-sessions`) | tmpfs, cleared on reboot (the tracked processes died with the reboot anyway) | `sidecars`, `session_status`, `pending_tools` |
+| `sessions.sqlite` | `$SIDECAR_DIR/sessions.sqlite` (`SESSIONS_SQLITE_FILE` overrides; `SIDECAR_DIR` defaults to `/run/user/<uid>/sessioneer-sessions`) | tmpfs, cleared on reboot (the tracked processes died with the reboot anyway) | `sidecars`, `session_status`, `pending_tools`, `session_offers` |
 | `push.sqlite` | `host-agent/state/push.sqlite` (`PUSH_SQLITE_FILE` overrides) | persistent (a phone's push subscription must survive a reboot) | `push_subscriptions`, `push_session_state`, `push_quota_state`, `global_state` |
 
 These stores used to be JSON files written read-merge-write, which lost updates when two hooks fired close together (`PreToolUse` and `PermissionRequest` for the same tool call), and quota notifications could fire twice the same way. SQLite serialises writers, so each update is one atomic `UPDATE` or `INSERT ... ON CONFLICT DO UPDATE`: the race is closed structurally, not with a lock around the old read-modify-write.
@@ -26,10 +26,13 @@ Both are opened with WAL mode by one connection per request; the schemas live in
 | `runtime` | `headless`, or empty for tmux |
 | `profile` | the Claude account (a `host-agent/config/agents.php` profile) the session runs under; empty is the default account |
 | `title` | a title the agent or a sync supplied |
+| `rotated_from`, `rotated_to` | set when a session started as another's receiver, and on the source that rotated to it; both stay empty for a session that never rotated |
 
 **`session_status`** - one row per tracked session, its live state: `status` (`idle`, `working`, `blocked`), `blocked_json` (the pending prompt), `mode`, `model`, `last_message`, `last_turn_error`, `token_usage_json`, `updated_at`.
 
 **`pending_tools`** - the exact, untruncated tool call a tmux session is about to run, written by the `PreToolUse` hook so a permission prompt can show it in full.
+
+**`session_offers`** - at most one live offer per session: the decision it was posted with (`origin` says whether a hook or the agent posted it), the handoff or plan id, the prompt, and `created_at`, `expires_at` (24 hours), `dismissed_at` and `launched_at`. The dashboard's list and session detail read it to draw the flow band, and `--next --post` and `--offer` write it; a dismissed or expired offer is ignored and cleared on the next write. A live agent-posted offer is not replaced by a hook-posted one.
 
 ## `push.sqlite`
 
