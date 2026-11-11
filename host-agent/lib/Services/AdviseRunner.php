@@ -7,6 +7,7 @@ namespace HostAgent\Services;
 use HostAgent\Launch\LaunchService;
 use HostAgent\Runtimes\RuntimeType;
 use HostAgent\SessionFlow\FlowFacts;
+use HostAgent\SessionFlow\PromptBuilder;
 use HostAgent\SessionFlow\ReceiverPicker;
 use HostAgent\Stores\SessionStatusStore;
 use HostAgent\Stores\SidecarStore;
@@ -125,12 +126,15 @@ final class AdviseRunner
             }
         }
         if ($path !== null && isset($advice['prompts'])) {
-            $source = $session['agent']
-                . ($session['agent'] === 'claude' && $session['profile'] !== 'personal' ? ' ' . $session['profile'] : '')
-                . ' ' . $session['agent_session_id'];
-            $advice['prompts']['fresh'] = 'Use the global /takeover skill for source ' . $source . '. Read the entire source conversation and Dibs state, transfer its work and claims safely, then archive the old session only when it is idle, claim-free, and a cold session can continue from Dibs. Continue its work.';
-            if ($session['agent'] === 'claude') {
-                $advice['prompts']['fresh'] .= ' Source transcript: ' . $path . '.';
+            try {
+                $advice['prompts']['fresh'] = PromptBuilder::takeover(
+                    $session['agent_session_id'],
+                    $session['agent'] === 'claude' ? $path : null,
+                    $session['agent'] === 'claude' && $session['profile'] !== 'personal' ? $session['profile'] : null,
+                    $session['agent'],
+                );
+            } catch (\InvalidArgumentException) {
+                unset($advice['prompts']);
             }
         }
 
