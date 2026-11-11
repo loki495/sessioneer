@@ -75,6 +75,15 @@ final class SessionOfferStore
         return $row;
     }
 
+    /** True when the session has an offer row in any state, live or not. */
+    public static function has(string $session): bool
+    {
+        $stmt = self::db()->prepare('SELECT 1 FROM session_offers WHERE session_name = :s');
+        $stmt->execute([':s' => $session]);
+
+        return $stmt->fetchColumn() !== false;
+    }
+
     public static function dismiss(string $session, int $now): bool
     {
         return self::markLive('dismissed_at', $session, $now);

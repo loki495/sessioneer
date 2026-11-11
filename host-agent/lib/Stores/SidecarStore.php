@@ -48,6 +48,8 @@ class SidecarStore
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'allowed_tools', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'disallowed_tools', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'starred', 'INTEGER');
+        SqliteDb::add_column_if_missing($pdo, 'sidecars', 'rotated_from', 'TEXT');
+        SqliteDb::add_column_if_missing($pdo, 'sidecars', 'rotated_to', 'TEXT');
 
         return $pdo;
     }
@@ -65,11 +67,11 @@ class SidecarStore
     }
 
     /**
-     * @return array{workdir:?string, spawned_at:?int, agent_session_id?:?string, spawned_by_app?:bool, agent?:?string, runtime?:?string, title?:?string, profile?:?string, no_tools?:bool, effort?:?string, allowed_tools?:?string, disallowed_tools?:?string}|null
+     * @return array{workdir:?string, spawned_at:?int, agent_session_id?:?string, spawned_by_app?:bool, agent?:?string, runtime?:?string, title?:?string, profile?:?string, no_tools?:bool, effort?:?string, allowed_tools?:?string, disallowed_tools?:?string, rotated_from?:?string, rotated_to?:?string}|null
      */
     public static function read_sidecar(string $sessionName): ?array
     {
-        $stmt = self::db()->prepare('SELECT workdir, spawned_at, agent_session_id, spawned_by_app, agent, runtime, title, profile, no_tools, effort, allowed_tools, disallowed_tools FROM sidecars WHERE session_name = ?');
+        $stmt = self::db()->prepare('SELECT workdir, spawned_at, agent_session_id, spawned_by_app, agent, runtime, title, profile, no_tools, effort, allowed_tools, disallowed_tools, rotated_from, rotated_to FROM sidecars WHERE session_name = ?');
         $stmt->execute([$sessionName]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
 
@@ -114,6 +116,8 @@ class SidecarStore
                 'effort' => $row['effort'],
                 'allowed_tools' => $row['allowed_tools'],
                 'disallowed_tools' => $row['disallowed_tools'],
+                'rotated_from' => $row['rotated_from'],
+                'rotated_to' => $row['rotated_to'],
             ];
         }
 
@@ -197,6 +201,12 @@ class SidecarStore
     public static function set_effort(string $sessionName, ?string $effort): void
     {
         self::db()->prepare('UPDATE sidecars SET effort = ? WHERE session_name = ?')->execute([$effort, $sessionName]);
+    }
+
+    /** Own columns for the same reason as no_tools: the headless sync that rewrites a sidecar keeps the rotation link. */
+    public static function set_rotation(string $sessionName, ?string $from, ?string $to): void
+    {
+        self::db()->prepare('UPDATE sidecars SET rotated_from = COALESCE(?, rotated_from), rotated_to = COALESCE(?, rotated_to) WHERE session_name = ?')->execute([$from, $to, $sessionName]);
     }
 
     /** Null or empty clears the name. False when no such session is tracked. */
