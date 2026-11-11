@@ -26,6 +26,7 @@ require __DIR__ . '/lib/assert.php';
 require __DIR__ . '/../host-agent/lib/Sessions.php';
 
 use HostAgent\SessionFlow\ReceiverPicker;
+use HostAgent\SessionFlow\Thresholds;
 use HostAgent\Stores\SidecarStore;
 use HostAgent\Stores\SqliteDb;
 
@@ -44,6 +45,11 @@ register_shutdown_function(static function () use ($root): void {
 
 $ok = ['session' => ['pct' => 3], 'week_all' => ['pct' => 40]];
 $limited = ['session' => ['pct' => 90, 'resets_at' => 2_000_000_000], 'week_all' => ['pct' => 40]];
+// A second park line from a thresholds file: the file value is authoritative wherever the check runs.
+// The file lives inside $root, which the shutdown function above removes.
+$parkFile = $root . '/thresholds95.conf';
+file_put_contents($parkFile, "QUOTA_PARK=95\n");
+$t95 = Thresholds::fromFile($parkFile);
 
 echo "hasRoom()\n";
 assert_equal(false, ReceiverPicker::hasRoom(null), 'no quota reading at all is not room');
@@ -59,6 +65,15 @@ assert_equal(true, ReceiverPicker::hasRoom(['cost' => 16.3, 'tokens_input' => 40
 assert_equal(true, ReceiverPicker::hasRoom(['session' => ['resets_at' => 5], 'note' => 'x']), 'windows without pct and non-array entries are skipped');
 assert_equal(true, ReceiverPicker::hasRoom(['numeric-string' => ['pct' => '50']]), 'a numeric string percentage is compared as a number');
 
+echo "hasRoom() with the file's park line\n";
+$const = Thresholds::class . '::DEFAULT_QUOTA_PARK';
+assert_true(defined($const), 'Thresholds exposes the built-in park line as DEFAULT_QUOTA_PARK');
+assert_equal(90, defined($const) ? constant($const) : null, 'the built-in park default stays 90');
+assert_equal(95, $t95->get('QUOTA_PARK'), 'the thresholds file sets the park line to 95');
+assert_equal(true, ReceiverPicker::hasRoom(['session' => ['pct' => 94]], $t95), 'QUOTA_PARK=95: a 94% account is room');
+assert_equal(false, ReceiverPicker::hasRoom(['session' => ['pct' => 95]], $t95), 'QUOTA_PARK=95: a 95% account is parked');
+assert_equal(false, ReceiverPicker::hasRoom(['session' => ['pct' => 94]]), 'without a Thresholds the built-in 90% line still parks a 94% account');
+
 echo "manualReceivers()\n";
 assert_equal(['Antigravity'], ReceiverPicker::manualReceivers(['antigravity' => ['profiles' => ['default' => ['quota' => $ok]]]]), 'Antigravity default profile with room');
 assert_equal(['Antigravity'], ReceiverPicker::manualReceivers(['antigravity' => ['quota' => ['gemini-weekly' => ['pct' => 0]]]]), 'Antigravity top-level quota with room');
@@ -68,6 +83,8 @@ assert_equal([], ReceiverPicker::manualReceivers(['antigravity' => ['quota' => [
 assert_equal([], ReceiverPicker::manualReceivers(['antigravity' => []]), 'Antigravity without a quota reading is not offered');
 assert_equal([], ReceiverPicker::manualReceivers([]), 'no usage at all: no manual receiver');
 assert_equal([], ReceiverPicker::manualReceivers(['codex' => ['quota' => $ok]]), 'other agents are launchable, never manual');
+assert_equal([], ReceiverPicker::manualReceivers(['antigravity' => ['quota' => ['session' => ['pct' => 94]]]]), 'default park line: a 94% Antigravity is not offered');
+assert_equal(['Antigravity'], ReceiverPicker::manualReceivers(['antigravity' => ['quota' => ['session' => ['pct' => 94]]]], $t95), 'QUOTA_PARK=95: a 94% Antigravity is offered');
 
 echo "crossAgentSafe()\n";
 foreach (['', 'manual', 'accept edits', 'plan', 'auto', 'workspace-write', 'full'] as $mode) {
@@ -178,6 +195,14 @@ assert_equal(['agent' => 'claude', 'profile' => 'personal'], ReceiverPicker::pic
 assert_equal(null, ReceiverPicker::pick($source('claude'), $usage(['codex' => ['quota' => $limited], 'claude' => $claude('limited', 'limited')]), true, ['mode' => 'plan']), 'read-only source with nothing else reproducible: no receiver');
 assert_equal(['agent' => 'opencode', 'profile' => null], ReceiverPicker::pick($source('codex'), $usage(['codex' => ['quota' => $limited], 'claude' => $claude('limited', 'limited')]), true, ['mode' => 'workspace-write']), 'a codex workspace-write source reaches OpenCode');
 assert_equal(null, ReceiverPicker::pick($source('codex'), $usage(['codex' => ['quota' => $limited], 'claude' => $claude('limited', 'limited')]), true, ['mode' => 'plan']), 'a read-only codex source is not offered OpenCode');
+
+// pick() reads the park line from the passed Thresholds too.
+$codex94 = ['claude' => ['profiles' => ['work' => ['quota' => $limited], 'personal' => ['quota' => $limited]]],
+    'codex' => ['quota' => ['session' => ['pct' => 94], 'week_all' => ['pct' => 40]]],
+    'opencode' => ['profiles' => ['default' => ['quota' => $limited]]],
+    'antigravity' => ['profiles' => ['default' => ['quota' => $limited]]]];
+assert_equal(null, ReceiverPicker::pick($source('claude', 'work'), $codex94, true, []), 'default park line: a 94% Codex is not a receiver');
+assert_equal(['agent' => 'codex', 'profile' => null], ReceiverPicker::pick($source('claude', 'work'), $codex94, true, [], $t95), 'QUOTA_PARK=95: a 94% Codex is a receiver');
 
 echo "ok\n";
 test_exit();

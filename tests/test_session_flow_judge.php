@@ -166,5 +166,13 @@ foreach (['API_KEY="hunter2hunter2"', 'Authorization: Bearer abc.def-ghi', 'http
 assert_equal('plain words stay', CloseCallJudge::redact('plain words stay'), 'redact leaves ordinary text');
 assert_true(is_callable([CloseCallJudge::class, 'run_process_runner']), 'run_process_runner is still the default runner');
 
+// The park line comes from the thresholds file here too.
+$parkFile95 = $dir . '/thresholds95.conf';
+file_put_contents($parkFile95, "QUOTA_PARK=95\n");
+$t95 = Thresholds::fromFile($parkFile95);
+$at92 = ['claude' => ['profiles' => ['personal' => ['quota' => ['session' => ['pct' => 92], 'week_all' => ['pct' => 40]]]]]];
+assert_equal([], $names(CloseCallJudge::candidates($at92, 'personal')), 'default park line: a Claude account at 92% is not a candidate');
+assert_equal(['claude:personal'], $names(CloseCallJudge::candidates($at92, 'personal', $t95)), 'QUOTA_PARK=95: a Claude account at 92% is a candidate');
+
 echo "ok\n";
 test_exit();

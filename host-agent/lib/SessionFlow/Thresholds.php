@@ -6,11 +6,14 @@ namespace HostAgent\SessionFlow;
 
 final class Thresholds
 {
+    /** The built-in park line, for the code that checks room without a configured Thresholds. */
+    public const DEFAULT_QUOTA_PARK = 90;
+
     private const DEFAULTS = [
         'CTX_GO_MAX' => 150000,
         'QUOTA_GO_MAX' => 80,
         'CTX_ROTATE' => 250000,
-        'QUOTA_PARK' => 90,
+        'QUOTA_PARK' => self::DEFAULT_QUOTA_PARK,
         'QUOTA_CARRY' => 95,
         'IDLE_MIN' => 60,
         'IDLE_FLOOR' => 100000,
