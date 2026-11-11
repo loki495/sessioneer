@@ -506,9 +506,6 @@ function sessioneer_dispatch_action(array $request): array
         case 'launch_set_name':
             return \HostAgent\Launch\LaunchService::set_name($request);
 
-        case 'advise':
-            return \HostAgent\Services\AdviseRunner::run($request);
-
         case 'flow_next':
             return \HostAgent\SessionFlow\FlowService::next($request, \HostAgent\SessionFlow\FlowService::live());
 

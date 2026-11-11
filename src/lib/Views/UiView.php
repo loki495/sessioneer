@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace App\Views;
 
-use App\AdvisePolicy;
-
 /**
  * Render helpers for the UI (templates under src/partials/ui/). Cards are
  * rendered server-side and swapped in by public/js/ui.js.
@@ -57,7 +55,39 @@ class UiView extends View
     /** @param array<string, mixed> $data */
     public static function session_page(array $data): string
     {
+        $detail = is_array($data['detail'] ?? null) ? $data['detail'] : [];
+        $row = $detail + ['name' => (string)($data['sessionName'] ?? '')];
+        $csrfToken = (string)($data['csrfToken'] ?? '');
+        $data['flowSessionHtml'] = empty($data['archived']) ? self::flow_band_html($row, $csrfToken, 'session') : '';
+        $data['flowPopupHtml'] = empty($data['archived']) ? self::flow_band_html($row, $csrfToken, 'popup') : '';
+
         return self::render('ui/session', $data);
+    }
+
+    /**
+     * The session-flow band for one row, or '' when the stored overlay asks for nothing.
+     * The band never decides by itself: it renders the row's stored `flow` decision, or a live
+     * offer's own decision when the row carries no `flow`, and a GO or UNKNOWN state draws nothing.
+     *
+     * @param array<string, mixed> $s a session row or detail
+     */
+    public static function flow_band_html(array $s, string $csrfToken, string $where): string
+    {
+        $flow = is_array($s['flow'] ?? null) ? $s['flow'] : null;
+        $offer = is_array($s['offer'] ?? null) ? $s['offer'] : null;
+        $decision = $flow ?? (is_array($offer['decision'] ?? null) ? $offer['decision'] : null);
+
+        if ($decision === null || !in_array((string)($decision['state'] ?? ''), ['ROTATE', 'PARK', 'WAIT', 'WARM_TIGHT'], true)) {
+            return '';
+        }
+
+        return self::render('ui/flow-band', [
+            'where' => $where,
+            'decision' => $decision,
+            'offer' => $offer,
+            'row' => $s,
+            'csrfToken' => $csrfToken,
+        ]);
     }
 
     /**
@@ -77,7 +107,7 @@ class UiView extends View
     }
 
     /** @param array<int, array<string, mixed>> $sessions */
-    public static function sessions_html(array $sessions, string $csrfToken, ?callable $quota = null): string
+    public static function sessions_html(array $sessions, string $csrfToken): string
     {
         if ($sessions === []) {
             return self::render('ui/empty', ['title' => 'No sessions yet', 'text' => 'Start one with the + button.']);
@@ -86,7 +116,7 @@ class UiView extends View
         $html = '';
 
         foreach ($sessions as $s) {
-            $html .= self::card_html($s, $csrfToken, $quota);
+            $html .= self::card_html($s, $csrfToken);
         }
 
         return $html;
@@ -141,7 +171,7 @@ class UiView extends View
     }
 
     /** @param array<string, mixed> $s */
-    public static function card_html(array $s, string $csrfToken, ?callable $quota = null): string
+    public static function card_html(array $s, string $csrfToken): string
     {
         $name = (string)$s['name'];
         $title = (string)($s['title'] ?? $name);
@@ -173,7 +203,7 @@ class UiView extends View
             'promptIsFolderTrust' => !empty($s['prompt_is_folder_trust']),
             'promptHasQuestions' => !empty($s['prompt_questions']),
             'csrfToken' => $csrfToken,
-            'adviseShown' => self::advise_visible($s, $quota),
+            'flowHtml' => self::flow_band_html($s, $csrfToken, 'card'),
         ]);
     }
 
@@ -223,33 +253,6 @@ class UiView extends View
         }
 
         return $model;
-    }
-
-    /**
-     * The "continue here or start a new one?" button only matters once the prompt cache is cold or the account is
-     * nearly out of quota; before that the session just continues. $quota returns the host agent's `quota` reply and
-     * is only called when idle time alone does not decide.
-     *
-     * @param array<string, mixed> $s a session row or detail (activity, agent, profile)
-     */
-    public static function advise_visible(array $s, ?callable $quota): bool
-    {
-        if (time() - (int)($s['activity'] ?? time()) >= AdvisePolicy::CACHE_TTL_SECONDS) {
-            return true;
-        }
-
-        $reply = $quota !== null ? $quota() : null;
-        $q = ($s['agent'] ?? 'claude') === 'claude'
-            ? ($reply['claude_profiles'][(string)(($s['profile'] ?? '') ?: 'personal')]['quota'] ?? null)
-            : ($reply['agents']['codex']['quota'] ?? null);
-
-        foreach (['session', 'week_all'] as $window) {
-            if (($q[$window]['pct'] ?? 0) >= AdvisePolicy::QUOTA_PARK_PCT) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /** @param array<string, mixed> $s */

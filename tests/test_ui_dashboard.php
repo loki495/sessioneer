@@ -17,7 +17,7 @@ require_once __DIR__ . '/lib/free_port.php';
 
 const UI_CANNED_SESSION = 'cc-20260101-1200';
 const UI_CANNED_BLOCKED_SESSION = 'cc-20260101-1300';
-const UI_ADVISE_SESSION = 'claude-headless-20260101-1700';
+const UI_FLOW_SESSION = 'claude-headless-20260101-1700';
 
 /** @return array{process: resource, port: int}|null */
 function ui_start_server(string $agentSocket): ?array
@@ -155,15 +155,14 @@ try {
     assert_contains('data-act="resume"', (string)($archived['archived_html'] ?? ''), 'GET /archived: row can be resumed');
     assert_true(!str_contains((string)($archived['archived_html'] ?? ''), 'data-runtime'), 'GET /archived: one Resume per row (it implies headless), no second Headless button');
 
-    // --- advice buttons on an idle headless Claude card, and only there ---
+    // --- the flow band on a card, from the stored overlay; the full contract is in test_flow_band.php ---
     require_once dirname(__DIR__) . '/vendor/autoload.php';
-    $cardOf = static fn (array $over): string => \App\Views\UiView::card_html($over + ['name' => 'c1', 'agent' => 'claude', 'runtime' => 'headless', 'status' => 'idle', 'activity' => time() - 7200], 'x');
-    assert_contains('data-advise-open', $cardOf([]), 'card: idle headless Claude offers the advice button');
-    assert_contains('data-advise-open', $cardOf(['agent' => 'codex']), 'card: idle headless Codex offers it too');
-    assert_true(!str_contains($cardOf(['runtime' => 'tmux']), 'data-advise'), 'card: a terminal session does not');
-    assert_true(!str_contains($cardOf(['agent' => 'opencode']), 'data-advise'), 'card: an unsupported agent does not');
-    assert_true(!str_contains($cardOf(['status' => 'working']), 'data-advise'), 'card: a working session does not');
-    assert_contains('ui-advise.js', $body, 'GET /: loads the advice script');
+    $flowRow = ['name' => 'c1', 'agent' => 'claude', 'runtime' => 'headless', 'status' => 'idle', 'activity' => time() - 7200, 'flow' => ['state' => 'ROTATE', 'why' => 'cache is cold', 'trigger' => 'cold_cache', 'close_call' => false, 'receiver' => null, 'reset_at' => null, 'needs_approval' => false, 'warnings' => []]];
+    assert_contains('data-flow-host', \App\Views\UiView::card_html($flowRow, 'x'), 'card: a ROTATE overlay renders the flow band');
+    assert_true(!str_contains(\App\Views\UiView::card_html(array_diff_key($flowRow, ['flow' => 1]), 'x'), 'data-flow-host'), 'card: no overlay, no band (the card never decides by itself)');
+    assert_true(!str_contains($body, 'data-advise'), 'GET /: no advice markup any more');
+    assert_contains('ui-flow.js', $body, 'GET /: loads the flow script');
+    assert_true(!str_contains($body, 'ui-advise.js'), 'GET /: the advice script is not loaded');
 
     // --- action endpoint ---
     $csrf = ui_csrf($body);
@@ -208,16 +207,31 @@ try {
     $killBare = json_decode($post('action=kill_bare&pid=54321')['body'], true);
     assert_true(($killBare['ok'] ?? false) === true, 'POST /action kill_bare: ok');
 
-    $advice = json_decode($post('action=advise&session=' . UI_ADVISE_SESSION)['body'], true);
-    assert_equal('fresh', $advice['advice']['verdict'] ?? null, 'POST /action advise: returns the verdict');
-    assert_equal(200000, $advice['advice']['cost']['resume_rewrite_tokens'] ?? null, 'POST /action advise: returns the cost numbers');
-    assert_equal('idle', $advice['status'] ?? null, 'POST /action advise: returns the session status');
-    assert_true(($json = json_decode($post('action=advise&session=nope')['body'], true)) && ($json['ok'] ?? null) === false, 'POST /action advise of an unknown session: refused');
-    $adviseFresh = json_decode($post('action=advise_act&choice=fresh&session=' . UI_ADVISE_SESSION)['body'], true);
-    assert_equal('/session?session=cc-fake-headless', $adviseFresh['redirect'] ?? null, 'POST /action advise_act fresh: redirects to the new session');
-    $adviseResume = json_decode($post('action=advise_act&choice=resume&session=' . UI_ADVISE_SESSION)['body'], true);
-    assert_equal('/session?session=' . UI_ADVISE_SESSION, $adviseResume['redirect'] ?? null, 'POST /action advise_act resume: stays on the session');
-    assert_true(($adviseBad = json_decode($post('action=advise_act&choice=x&session=' . UI_ADVISE_SESSION)['body'], true)) && ($adviseBad['ok'] ?? null) === false, 'POST /action advise_act with a bad choice: refused');
+    // flow actions: the web action names equal the host action names; the host reply is reshaped as {ok, message, redirect?}
+    $rotated = json_decode($post('action=flow_rotate&handoff_id=42&session=' . UI_FLOW_SESSION)['body'], true);
+    assert_true(($rotated['ok'] ?? null) === true && str_contains((string)($rotated['message'] ?? ''), 'rotate handoff 42'), 'POST /action flow_rotate: forwards session and handoff_id to the host');
+    assert_equal('/session?session=cc-fake-headless', $rotated['redirect'] ?? null, 'POST /action flow_rotate: redirects to the receiver the host reports in its session key');
+    $rotatedTo = json_decode($post('action=flow_rotate&handoff_id=42&agent=codex&profile=work&session=' . UI_FLOW_SESSION)['body'], true);
+    assert_true(str_contains((string)($rotatedTo['message'] ?? ''), 'agent codex profile work'), 'POST /action flow_rotate: optional agent and profile are forwarded');
+    $badHandoff = json_decode($post('action=flow_rotate&handoff_id=4x&session=' . UI_FLOW_SESSION)['body'], true);
+    assert_true(($badHandoff['ok'] ?? null) === false && !isset($badHandoff['redirect']), 'POST /action flow_rotate with a non-digit handoff id: refused, no redirect');
+    $noHandoff = json_decode($post('action=flow_rotate&session=' . UI_FLOW_SESSION)['body'], true);
+    assert_true(($noHandoff['ok'] ?? null) === false && !isset($noHandoff['redirect']), 'POST /action flow_rotate without a handoff id: refused');
+    $ghost = json_decode($post('action=flow_rotate&handoff_id=42&session=nope')['body'], true);
+    assert_true(($ghost['ok'] ?? null) === false && str_contains((string)($ghost['message'] ?? ''), 'nope'), 'POST /action flow_rotate of an unknown session: refused with the host message');
+    $request = json_decode($post('action=flow_rotate_request&session=' . UI_FLOW_SESSION)['body'], true);
+    assert_true(($request['ok'] ?? null) === true && !isset($request['redirect']), 'POST /action flow_rotate_request: ok, the page stays on the source (it is the one that rotates)');
+    assert_true(($json = json_decode($post('action=flow_rotate_request&session=nope')['body'], true)) && ($json['ok'] ?? null) === false, 'POST /action flow_rotate_request of an unknown session: refused');
+    $dismissed = json_decode($post('action=flow_offer_dismiss&session=' . UI_FLOW_SESSION)['body'], true);
+    assert_equal(true, $dismissed['ok'] ?? null, 'POST /action flow_offer_dismiss: the web key session reaches the host as self');
+    assert_true(($json = json_decode($post('action=flow_offer_dismiss&session=nope')['body'], true)) && ($json['ok'] ?? null) === false, 'POST /action flow_offer_dismiss with no live offer: refused');
+    $judged = json_decode($post('action=flow_judge&session=' . UI_FLOW_SESSION)['body'], true);
+    assert_equal('ROTATE', $judged['flow']['state'] ?? null, 'POST /action flow_judge: the model decision comes back under the flow key');
+    assert_equal('the model says rotate now', $judged['flow']['why'] ?? null, 'POST /action flow_judge: with its reason');
+    assert_true(($json = json_decode($post('action=flow_judge&session=nope')['body'], true)) && ($json['ok'] ?? null) === false, 'POST /action flow_judge outside a close call: refused');
+    foreach (['advise', 'advise_act'] as $gone) {
+        assert_equal(['ok' => false, 'message' => 'Unknown action'], json_decode($post('action=' . $gone . '&session=' . UI_FLOW_SESSION)['body'], true), "POST /action {$gone}: gone, answered as an unknown action");
+    }
 
     $unknown = json_decode($post('action=rm_rf')['body'], true);
     assert_equal(['ok' => false, 'message' => 'Unknown action'], $unknown, 'POST /action with an unknown action: refused');
@@ -233,6 +247,14 @@ try {
     assert_equal(403, $wrongCsrf['status'], 'POST /action with a wrong CSRF token: 403');
     $crossOrigin = curl_request('POST', "{$base}/action", ['-H', 'Origin: http://attacker.example', '-d', 'csrf_token=' . urlencode($csrf) . '&action=cleanup'], $jar);
     assert_equal(403, $crossOrigin['status'], 'POST /action from another origin: 403');
+    foreach (['flow_rotate&handoff_id=42', 'flow_rotate_request', 'flow_judge', 'flow_offer_dismiss'] as $flowAction) {
+        $flowName = explode('&', $flowAction)[0];
+        $fields = 'action=' . $flowAction . '&session=' . UI_FLOW_SESSION;
+        assert_equal(403, curl_request('POST', "{$base}/action", ['-d', $fields], $jar)['status'], "POST /action {$flowName} without a CSRF token: 403, never reaches the host");
+        assert_equal(403, curl_request('POST', "{$base}/action", ['-d', 'csrf_token=nope&' . $fields], $jar)['status'], "POST /action {$flowName} with a wrong CSRF token: 403");
+        assert_equal(403, curl_request('POST', "{$base}/action", ['-H', 'Origin: http://attacker.example', '-d', 'csrf_token=' . urlencode($csrf) . '&' . $fields], $jar)['status'], "POST /action {$flowName} from another origin: 403");
+        assert_equal(405, curl_request('GET', "{$base}/action?" . $fields, [], $jar)['status'], "GET /action?action={$flowName}: 405, a band action is never a link");
+    }
     assert_equal(405, curl_request('GET', "{$base}/action", [], $jar)['status'], 'GET /action: 405');
     assert_equal(421, curl_request('GET', "{$base}/", ['-H', 'Host: attacker.example'])['status'], 'GET / with an unlisted Host: 421');
     assert_equal(404, curl_request('GET', "{$base}/v2/nope")['status'], 'GET //nope: 404');

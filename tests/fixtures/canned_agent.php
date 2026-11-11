@@ -346,18 +346,24 @@ $response = match ($action) {
     'switch_runtime' => ($request['session'] ?? null) === CANNED_SESSION_NAME && ($request['runtime'] ?? null) === 'headless'
         ? ['ok' => true, 'message' => 'Now running headless (no terminal)', 'name' => CANNED_HEADLESS_RESUMED_SESSION_NAME]
         : ['ok' => false, 'message' => 'Rejected: the session is busy or already running that way'],
-    // Advice for the canned headless session; a pick (choice) acts and answers with the session it landed on.
-    'advise' => ($request['target'] ?? null) === CANNED_HEADLESS_RESUMED_SESSION_NAME
-        ? (!empty($request['act'])
-            ? (in_array($request['choice'] ?? null, ['resume', 'fresh'], true)
-                ? ['ok' => true, 'acted' => $request['choice'], 'session' => $request['choice'] === 'fresh' ? 'cc-fake-headless' : CANNED_HEADLESS_RESUMED_SESSION_NAME, 'message' => 'done']
-                : ['ok' => false, 'message' => 'Nothing to act on'])
-            : ['ok' => true, 'sessions' => [['name' => CANNED_HEADLESS_RESUMED_SESSION_NAME, 'status' => 'idle', 'advice' => [
-                'verdict' => 'fresh', 'reason' => 'Large context: every later turn re-reads it, a handoff is far smaller.', 'context_tokens' => 200000,
-                'cache_age_seconds' => 7200, 'cache_cold' => true, 'quota_blocked' => false,
-                'cost' => ['resume_rewrite_tokens' => 200000, 'resume_reread_per_turn' => 200000, 'fresh_handoff_tokens' => 6000, 'fresh_reread_per_turn' => 6000],
-            ]]]])
-        : ['ok' => false, 'message' => "No tracked Claude or Codex headless session matches '" . ($request['target'] ?? '') . "'"],
+    // The flow actions the web band posts (step 7). Keys pinned: flow_rotate {session, handoff_id, optional agent/profile},
+    // flow_rotate_request {session}, flow_offer_dismiss {self} (the host's key), flow_judge {session}.
+    // Two sessions are known: the headless one a rotate resumes from and the canned list session (the flow browser test).
+    'flow_rotate' => in_array($request['session'] ?? null, [CANNED_HEADLESS_RESUMED_SESSION_NAME, CANNED_SESSION_NAME], true)
+        ? (preg_match('/^[0-9]+$/D', (string)($request['handoff_id'] ?? '')) === 1
+            ? ['ok' => true, 'session' => 'cc-fake-headless', 'source' => $request['session'], 'warnings' => [], 'prompt' => 'p',
+                'message' => 'rotate handoff ' . $request['handoff_id'] . (isset($request['agent']) ? ' agent ' . $request['agent'] : '') . (isset($request['profile']) ? ' profile ' . $request['profile'] : '')]
+            : ['ok' => false, 'message' => 'Rejected: handoff id must be digits'])
+        : ['ok' => false, 'message' => 'Unknown session ' . ($request['session'] ?? '')],
+    'flow_rotate_request' => in_array($request['session'] ?? null, [CANNED_HEADLESS_RESUMED_SESSION_NAME, CANNED_SESSION_NAME], true)
+        ? ['ok' => true, 'session' => $request['session'], 'prompt' => '/rotate', 'message' => 'rotate request sent']
+        : ['ok' => false, 'message' => 'Unknown session ' . ($request['session'] ?? '')],
+    'flow_offer_dismiss' => in_array($request['self'] ?? null, [CANNED_HEADLESS_RESUMED_SESSION_NAME, CANNED_SESSION_NAME], true)
+        ? ['ok' => true]
+        : ['ok' => false, 'message' => 'No live offer to dismiss'],
+    'flow_judge' => in_array($request['session'] ?? null, [CANNED_HEADLESS_RESUMED_SESSION_NAME, CANNED_SESSION_NAME], true)
+        ? ['ok' => true, 'state' => 'ROTATE', 'why' => 'the model says rotate now', 'trigger' => 'quota', 'close_call' => false, 'receiver' => null, 'reset_at' => null, 'needs_approval' => true, 'warnings' => []]
+        : ['ok' => false, 'message' => 'Not a close call: only a quota reset less than an hour away is judged by a model'],
     'launch_kill' => ($request['target'] ?? null) === CANNED_SESSION_NAME && ($request['force'] ?? null) === true
         ? ['ok' => true, 'name' => CANNED_SESSION_NAME, 'message' => 'Killed ' . CANNED_SESSION_NAME]
         : ['ok' => false, 'message' => 'Rejected: not a currently active managed session'],
@@ -574,6 +580,24 @@ if (is_string($effortStatePath) && is_file($effortStatePath)) {
             file_put_contents($effortStatePath, json_encode($effortState));
             $response = ['ok' => true];
         }
+    }
+}
+
+// Flow band browser fixture (CANNED_FLOW_STATE = a JSON file {flow, offer, log}); unset for ordinary tests. It puts the
+// stored overlay on the canned list session and its detail (made idle, as the overlay only covers idle rows) and appends
+// every flow_* request that reaches the host to `log`, one JSON object per line: what the web UI really sent.
+$flowStatePath = getenv('CANNED_FLOW_STATE');
+if (is_string($flowStatePath) && is_file($flowStatePath)) {
+    $flowState = json_decode((string)file_get_contents($flowStatePath), true);
+    $idle = ['working' => false, 'blocked_reason' => null, 'prompt_context' => null, 'prompt_options' => [], 'agent' => 'claude', 'runtime' => 'headless', 'status' => 'idle', 'activity' => time() - 7200, 'agent_session_id' => CANNED_CLAUDE_SESSION_ID];
+    $overlay = ['flow' => $flowState['flow'] ?? null, 'offer' => $flowState['offer'] ?? null];
+    if ($action === 'list') {
+        $response['sessions'][0] = $overlay + $idle + $response['sessions'][0];
+    } elseif ($action === 'session_detail' && ($request['session'] ?? null) === CANNED_SESSION_NAME) {
+        $response = $overlay + $idle + $response;
+    }
+    if (is_string($action) && str_starts_with($action, 'flow_') && is_string($flowState['log'] ?? null)) {
+        file_put_contents($flowState['log'], json_encode($request) . "\n", FILE_APPEND | LOCK_EX);
     }
 }
 

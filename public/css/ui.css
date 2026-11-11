@@ -381,15 +381,14 @@ input[type="search"], select, textarea, input[type="text"] { border-color: var(-
 .ui-qg-antigravity { --agent: var(--agent-antigravity); }
 .ui-qg-ollama { --agent: var(--agent-ollama); }
 
-/* Continue-here / start-a-new-one advice (cards and the session page). */
-.ui-advise { margin-top: 8px; }
-.ui-advise-btns { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
-.ui-advise-btn { flex-direction: column; align-items: flex-start; height: auto; padding-top: 10px; padding-bottom: 10px; text-align: left; gap: 2px; background: #334155; border-color: #334155; color: #fff; }
-.ui-advise-btn.ui-btn-primary { background: #4338ca; border-color: #4338ca; color: #fff; }
-.ui-advise-btn:disabled { opacity: 1; background: #475569; border-color: #475569; cursor: not-allowed; }
-.ui-advise-btn .ui-small, .ui-advise-btn strong { color: #fff; }
-.ui-advise-btn .ui-small { opacity: 0.85; overflow-wrap: anywhere; }
-.ui-advise-manual { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.8rem; }
+/* Session-flow band (dashboard cards, the session page and its details sheet): the stored decision's
+   own actions, one column so a long label never widens the card past a phone screen. */
+.ui-flow { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; overflow-wrap: anywhere; }
+.ui-flow-why { font-size: 0.8rem; color: var(--text-muted); }
+.ui-flow-actions { display: flex; flex-direction: column; gap: 6px; }
+.ui-flow-btn { width: 100%; min-height: var(--tap); padding: 6px 12px; white-space: normal; text-align: center; }
+.ui-flow-chip { white-space: normal; overflow-wrap: anywhere; }
+.ui-flow-error { overflow-wrap: anywhere; }
 
 /* Desktop: a larger root so every rem-based size scales together. Widths are in the larger rem
    (50rem = 900px column, 39rem = 702px popup) so they grow by pixels, not by the font factor. */

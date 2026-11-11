@@ -63,11 +63,7 @@ $bootstrap = json_encode([
       <div id="sess-thinking"></div>
       <div id="sess-error"></div>
       <div id="sess-prompt"></div>
-      <?php if (!$archived && !empty($adviseShown) && ($detail['runtime'] ?? '') === 'headless' && in_array($detail['agent'] ?? 'claude', ['claude', 'codex'], true)): ?>
-      <div class="ui-advise" id="sess-advise" data-advise-host data-csrf="<?= $this->e($csrfToken) ?>" data-session="<?= $this->e($sessionName) ?>">
-        <button type="button" class="ui-btn ui-btn-quiet" data-advise-open>Continue here or start a new one?</button>
-      </div>
-      <?php endif ?>
+      <?php if (!$archived && ($flowSessionHtml ?? '') !== ''): ?><?= $flowSessionHtml ?><?php endif ?>
     </div>
   </main>
 
@@ -149,6 +145,7 @@ $bootstrap = json_encode([
 
 <dialog class="ui-sheet" id="sess-info"><div class="ui-sheet-body">
   <div class="ui-sheet-head"><h2>Session</h2><div class="sess-head-actions"><span id="sess-info-head-actions" class="sess-head-actions"></span><button type="button" class="ui-icon-btn" data-close aria-label="Close">&times;</button></div></div>
+  <?php if (($flowPopupHtml ?? '') !== ''): ?><section class="sess-sec"><?= $flowPopupHtml ?></section><?php endif ?>
   <section class="sess-sec"><h3 class="ui-subtitle">Details</h3><div id="sess-info-body" class="ui-col"></div></section>
   <section class="sess-sec"><h3 class="ui-subtitle">Actions</h3>
     <div id="sess-info-actions" class="sess-row-actions"></div>
@@ -200,7 +197,7 @@ $bootstrap = json_encode([
 <script src="<?= \App\Assets::versioned_url('/js/ui-archived.js') ?>"></script>
 <?php else: ?>
 <script src="<?= \App\Assets::versioned_url('/js/ui-quota.js') ?>"></script>
-<script src="<?= \App\Assets::versioned_url('/js/ui-advise.js') ?>"></script>
+<script src="<?= \App\Assets::versioned_url('/js/ui-flow.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/ui-session.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/ui-session-sheets.js') ?>"></script>
 <?php endif ?>
