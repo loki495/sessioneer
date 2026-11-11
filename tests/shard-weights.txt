@@ -87,3 +87,10 @@ test_session_effort_context_browser.php 40
 test_opencode_question_page_browser.php 3
 test_advise_visibility.php 1
 test_ui_runtime_boundary.php 1
+test_session_flow_decider.php 1
+test_session_flow_facts.php 1
+test_session_flow_offer_store.php 1
+test_session_flow_prompt.php 1
+test_session_flow_receiver.php 1
+test_session_flow_service.php 1
+test_session_flow_wiring.php 1
