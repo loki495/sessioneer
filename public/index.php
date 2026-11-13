@@ -36,7 +36,7 @@ require __DIR__ . '/../vendor/autoload.php';
 
 if (!App\Services\AuthService::request_host_allowed()) {
     http_response_code(421);
-    if ($path === '/api/quick-prompt') {
+    if ($path === '/api/quick-prompt' || str_starts_with($path, '/api/shortcuts/')) {
         header('Content-Type: application/json; charset=utf-8');
         header('Cache-Control: no-store');
         echo json_encode(['type' => 'error', 'code' => 'host_not_allowed', 'message' => 'Host not allowed']);

@@ -46,6 +46,8 @@ services:
       QUICK_PROMPT_WAIT_SECONDS: ${QUICK_PROMPT_WAIT_SECONDS:-6}
       QUICK_PROMPT_MAX_ANSWER_BYTES: ${QUICK_PROMPT_MAX_ANSWER_BYTES:-2000}
       QUICK_PROMPT_RATE_LIMIT: ${QUICK_PROMPT_RATE_LIMIT:-10}
+      SHORTCUTS_API_TOKEN: ${SHORTCUTS_API_TOKEN:-}
+      SHORTCUTS_RATE_LIMIT: ${SHORTCUTS_RATE_LIMIT:-60}
       QUICK_PROMPT_STATE_DIR: /var/www/quick-prompt-state
     volumes:
       # Code is mounted, not copied into the image, so edits show up on the
