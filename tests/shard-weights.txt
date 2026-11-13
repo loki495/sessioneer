@@ -98,3 +98,4 @@ test_session_flow_wiring.php 1
 test_flow_band.php 1
 test_flow_band_browser.php 6
 test_session_flow_removed.php 1
+test_shortcuts_api.php 1

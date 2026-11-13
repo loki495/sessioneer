@@ -16,6 +16,17 @@ $router = new Router();
 $router->post('/api/quick-prompt', [\App\Controllers\QuickPromptController::class, 'submit']);
 $router->get('/api/quick-prompt', [\App\Controllers\QuickPromptController::class, 'submit']);
 
+// Shortcuts API: ids travel in the query string or JSON body because the router matches exact paths only.
+// Each path registers both verbs so a wrong verb gets the controller's JSON 405, not a bare 404.
+// Closure scope: this file is included into public/index.php, whose own $path must not be overwritten.
+(static function (Router $router): void {
+    foreach (['sessions' => 'sessions', 'session' => 'session', 'messages' => 'message', 'answers' => 'answer'] as $segment => $action) {
+        foreach (['get', 'post'] as $verb) {
+            $router->$verb('/api/shortcuts/v1/' . $segment, [\App\Controllers\ShortcutsController::class, $action]);
+        }
+    }
+})($router);
+
 // Every endpoint that's POST-only in behavior also registers a GET route
 // to the same method - the method's own require_post_json() call is what
 // actually produces the 405, not the router. Keeps that 405 (rather than
