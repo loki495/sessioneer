@@ -78,6 +78,8 @@ stable session reference (never rely on names being unique). Only live sessions 
 }
 ```
 
+- `recent_text`: the last 3 text messages (`YOU:` / `AGENT:`, each cut to 350 characters) when no prompt is pending, otherwise empty. Use it as the **Ask for Input** prompt in the message branch.
+- An idle session's `display_name` carries how long it has been quiet, for example `Docs — IDLE 25m` (`just now`, minutes, hours or days).
 - `prompt_kind`: `none`, `single` (exactly one question, whether a permission prompt or a one-question form) or `multi` (several questions answered together).
 - `prompt_id` identifies this exact prompt. Send it back with the answer.
 - `choices` entries begin with their number. Splitting a chosen label at `.` and taking the first
@@ -170,7 +172,7 @@ same order. The number you picked is the position in `ids`, so labels never need
 ### D. No prompt: send a message
 
 12. **If** `Kind` **is** `none`:
-    1. **Ask for Input** (Text, Prompt `Message`) → **Set Variable** `Msg`.
+    1. **Get Dictionary Value** `recent_text` from `Detail` → **Ask for Input** (Text, Prompt = that value) → **Set Variable** `Msg`.
     2. **Get Contents of URL**: URL `Base/api/shortcuts/v1/messages`, Method **POST**, Headers
        `Authorization` as above, Request Body **JSON** with `session` (Text) = `SessionID`,
        `text` (Text) = `Msg`. **Set Variable** `Result`.

@@ -55,19 +55,29 @@ foreach (['sessions', 'session', 'messages', 'answers'] as $path) {
 $calls = [];
 $details = [];
 $reply = ['ok' => true, 'message' => 'done'];
-$agent = static function (array $request) use (&$calls, &$details, &$reply): array {
+$history = ['ok' => true, 'entries' => [
+    ['role' => 'user', 'blocks' => [['kind' => 'text', 'text' => 'first']]],
+    ['role' => 'assistant', 'blocks' => [['kind' => 'tool_use', 'text' => 'tool: x']]],
+    ['role' => 'assistant', 'blocks' => [['kind' => 'text', 'text' => "second\n\nline"]]],
+    ['role' => 'user', 'blocks' => [['kind' => 'tool_result', 'text' => '{}']]],
+    ['role' => 'user', 'blocks' => [['kind' => 'text', 'text' => 'third']]],
+    ['role' => 'assistant', 'blocks' => [['kind' => 'text', 'text' => str_repeat('z', 500)]]],
+]];
+$agent = static function (array $request) use (&$calls, &$details, &$reply, &$history): array {
     $calls[] = $request;
     switch ($request['action']) {
         case 'list':
             return ['ok' => true, 'sessions' => [
-                ['name' => 'cc-idle', 'title' => 'Idle one', 'activity' => 500, 'working' => false, 'blocked_reason' => null, 'prompt_options' => []],
+                ['name' => 'cc-idle', 'title' => 'Idle one', 'activity' => time() - 1500, 'working' => false, 'blocked_reason' => null, 'prompt_options' => []],
                 ['name' => 'cc-block', 'title' => 'Blocked one', 'activity' => 100, 'working' => false, 'blocked_reason' => 'Run tests?', 'prompt_options' => [['number' => 1, 'label' => 'Yes']]],
                 ['name' => 'cc-work', 'title' => 'Working one', 'activity' => 900, 'working' => true, 'blocked_reason' => null, 'prompt_options' => []],
-                ['name' => 'cc-dupe', 'title' => 'Idle one', 'activity' => 400, 'working' => false, 'blocked_reason' => null, 'prompt_options' => []],
+                ['name' => 'cc-dupe', 'title' => 'Idle one', 'activity' => time() - 2400, 'working' => false, 'blocked_reason' => null, 'prompt_options' => []],
                 ['name' => '../evil', 'title' => 'Bad id', 'activity' => 1],
             ]];
         case 'session_detail':
             return $details[$request['session']] ?? ['ok' => false, 'message' => 'Session not found: /home/secret/path'];
+        case 'session_history':
+            return $history;
         default:
             return $reply;
     }
@@ -82,11 +92,12 @@ $multi = ['ok' => true, 'title' => 'Asking', 'working' => false, 'blocked_reason
     ['question' => 'Which extras?', 'multiSelect' => true, 'options' => [['label' => 'Redis'], ['label' => 'Queue'], ['label' => 'Cache']]],
 ]];
 $permission = ['ok' => true, 'title' => 'Perm', 'working' => false, 'blocked_reason' => 'Allow Bash?', 'prompt_options' => [['number' => 1, 'label' => 'Yes'], ['number' => 2, 'label' => 'No']], 'prompt_questions' => null];
-$idle = ['ok' => true, 'title' => 'Idle one', 'working' => false, 'blocked_reason' => null, 'prompt_options' => [], 'prompt_questions' => null];
+$idle = ['ok' => true, 'activity' => time() - 7200, 'title' => 'Idle one', 'working' => false, 'blocked_reason' => null, 'prompt_options' => [], 'prompt_questions' => null];
 $details = ['cc-block' => $single, 'cc-multi' => $multi, 'cc-perm' => $permission, 'cc-idle' => $idle];
 
 // ---- listing --------------------------------------------------------------------------------
 $list = $api->sessions();
+assert_equal(['1. Blocked one — NEEDS REPLY', '2. Working one — WORKING', '3. Idle one — IDLE 25m', '4. Idle one — IDLE 40m'], $list['menu'], 'idle sessions show how long they have been idle; others show no age');
 assert_equal(['cc-block', 'cc-work', 'cc-idle', 'cc-dupe'], $list['ids'], 'attention first, then working, then idle by recency; invalid ids dropped');
 assert_equal(4, $list['count'], 'count matches');
 assert_equal('1. Blocked one — NEEDS REPLY', $list['menu'][0], 'menu label is numbered and shows status');
@@ -116,7 +127,15 @@ assert_equal(['many', 'one'], [$m['questions'][1]['select_mode'], $m['questions'
 assert_equal(true, $m['questions'][1]['multi_select'], 'multi-select flagged');
 assert_equal(false, $m['questions'][1]['allows_text'], 'multi-select has no free text');
 $i = $api->session('cc-idle');
+assert_equal('Idle one — IDLE 2h', $i['display_name'], 'detail display name carries the idle age');
 assert_equal(['none', '', 0, true], [$i['prompt_kind'], $i['prompt_id'], $i['question_count'], $i['can_message']], 'idle detail has no prompt and allows messages');
+$recent = $i['recent_text'];
+assert_equal(['AGENT: second line', 3], [explode("\n\n", $recent)[0], count(explode("\n\n", $recent))], 'recent_text keeps the last 3 text messages, skipping tool entries');
+assert_true(str_contains($recent, 'AGENT: ' . str_repeat('z', 349) . '…'), 'long messages are truncated');
+assert_equal('', $api->session('cc-block')['recent_text'], 'no recent text while a prompt is pending');
+$history = ['ok' => false];
+assert_equal('', $api->session('cc-idle')['recent_text'], 'history failure gives an empty string, not an error');
+$history = ['ok' => true, 'entries' => [['role' => 'user', 'blocks' => [['kind' => 'text', 'text' => 'first']]], ['role' => 'assistant', 'blocks' => [['kind' => 'tool_use', 'text' => 'tool: x']]], ['role' => 'assistant', 'blocks' => [['kind' => 'text', 'text' => 'second']]], ['role' => 'user', 'blocks' => [['kind' => 'text', 'text' => 'third']]]]];
 assert_equal(404, $api->session('cc-gone')['_http'], 'unknown session is 404');
 assert_true(!str_contains(json_encode($api->session('cc-gone')), 'secret'), '404 never leaks agent text');
 assert_equal(422, $api->session('../etc')['_http'], 'malformed id is 422');
