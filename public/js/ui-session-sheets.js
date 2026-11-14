@@ -205,6 +205,9 @@
     if ((d.agent || 'claude') === 'claude' && d.runtime !== 'headless') {
       actions += '<button type="button" class="ui-btn" data-info="switch" data-runtime="headless">Take over (headless)</button>';
     }
+    if (d.agent_session_id) {
+      actions += '<button type="button" class="ui-btn" data-info="wake">Wake up session at&hellip;</button>';
+    }
     $('sess-info-actions').innerHTML = actions;
 
     var todos = d.todos || [];
@@ -243,9 +246,34 @@
     } else if (what === 'switch') {
       if (!window.confirm('Take this session over as a headless one? The conversation continues; the terminal process is stopped.')) { return; }
       action({ action: 'switch_runtime', session: session, runtime: 'headless' });
+    } else if (what === 'wake') {
+      openWakeForm();
     } else if (what === 'kill') {
       if (window.confirm('Kill session ' + session + '?')) { action({ action: 'kill', session: session }, '/'); }
     }
+  });
+
+  // The page picks the time in the browser's zone and sends it as a unix time, so the host's zone never matters.
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+  function openWakeForm() {
+    var t = new Date(Date.now() + 3600000);
+    t.setMinutes(0, 0, 0);
+    $('sess-wake-at').value = t.getFullYear() + '-' + pad2(t.getMonth() + 1) + '-' + pad2(t.getDate()) + 'T' + pad2(t.getHours()) + ':00';
+    $('sess-wake-form').hidden = false;
+    $('sess-wake-at').focus();
+  }
+
+  $('sess-wake-cancel').addEventListener('click', function () { $('sess-wake-form').hidden = true; });
+
+  $('sess-wake-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var when = new Date($('sess-wake-at').value).getTime();
+    if (!isFinite(when)) { api.toast('Pick a time', true); return; }
+    api.post('/action', { action: 'wake', session: session, at: String(Math.floor(when / 1000)), text: $('sess-wake-text').value }).then(function (res) {
+      api.toast(res.message || (res.ok ? 'Scheduled' : 'Failed'), !res.ok);
+      if (res.ok) { $('sess-wake-form').hidden = true; }
+    }).catch(function () { api.toast('Network error', true); });
   });
 
   // Opens the dashboard's New Session form prefilled to continue this conversation. Nothing is launched here:

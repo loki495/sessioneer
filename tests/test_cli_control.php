@@ -50,6 +50,10 @@ try {
         'a stray --expect-request' => [['--expect-request', 'r', '--show', 'a'], '--expect-request only applies to --answer'],
         'a stray --expect' => [['--expect', 'Yes', '--show', 'a'], '--expect only applies to --answer'],
         'a stray --as-user' => [['--as-user', '--kill', 'a'], '--as-user only applies to --send'],
+        'a stray --at' => [['--at', '+1 hour', '--kill', 'a'], '--at only applies to --wake'],
+        'wake without --at' => [['--wake', 'a'], '--wake needs --at TIME'],
+        'wake with an unreadable time' => [['--wake', 'a', '--at', 'whenever'], 'is not a time I can read'],
+        'wake with kill' => [['--wake', 'a', '--at', '+1 hour', '--kill', 'b'], 'cannot be combined'],
         'an answer with nothing to answer' => [['--answer', 'a'], 'exactly one of --option N or --answers JSON'],
         'an answer with both' => [['--answer', 'a', '--option', '1', '--answers', '[1]'], 'exactly one of --option N or --answers JSON'],
         'option 0' => [['--answer', 'a', '--option', '0'], '--option must be a positive option number'],
@@ -137,6 +141,18 @@ try {
     [$code, , $err] = $cli(['--interrupt', 'missing']);
     assert_equal(1, $code, '--interrupt: an unknown session exits 1');
     assert_contains('No tracked session found', $err, '--interrupt: with the reason');
+
+    echo "--wake\n";
+    @unlink($logPath);
+    $before = time();
+    [$code, $out] = $cli(['--wake', 'blocked', '--at', '+2 hours']);
+    assert_equal(0, $code, '--wake: exit 0');
+    assert_equal("claude-headless-1\n", $out, '--wake: prints the session name');
+    $sent = requests($logPath)[0];
+    assert_equal(['launch_wake', 'blocked', 'continue'], [$sent['action'], $sent['target'], $sent['message']], '--wake: the prompt defaults to "continue"');
+    assert_true($sent['at'] >= $before + 7200 && $sent['at'] <= time() + 7200, '--wake: --at is sent as a unix time');
+    $cli(['--wake', 'blocked', '--at', '+2 hours', 'check the build']);
+    assert_equal('check the build', requests($logPath)[1]['message'], '--wake: a given prompt is sent as is');
 
     echo "--bare\n";
     [$code, $out] = $cli(['--bare']);

@@ -49,6 +49,10 @@ switch ($request['action'] ?? '') {
         echo json_encode(['ok' => true, 'name' => 'claude-headless-1', 'message' => 'Interrupted']);
         break;
 
+    case 'launch_wake':
+        echo json_encode(['ok' => true, 'name' => 'claude-headless-1', 'job' => 7, 'message' => 'Wake-up scheduled (at job 7)']);
+        break;
+
     case 'launch_bare':
         echo json_encode(['ok' => true, 'bare' => [
             ['pid' => 4242, 'cwd' => '/tmp/p', 'resolved_agent_session_id' => 'conv-1', 'resolved_title' => 'Fix the thing'],

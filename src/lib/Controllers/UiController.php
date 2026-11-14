@@ -212,6 +212,12 @@ class UiController extends Controller
                 'session' => (string)($_POST['session'] ?? ''),
                 'runtime' => (string)($_POST['runtime'] ?? ''),
             ]),
+            'wake' => $this->agent_plain([
+                'action' => 'launch_wake',
+                'target' => (string)($_POST['session'] ?? ''),
+                'at' => (int)($_POST['at'] ?? 0),
+                'message' => (string)($_POST['text'] ?? ''),
+            ]),
             'flow_rotate' => $this->flow_rotate(),
             'flow_rotate_request' => $this->flow_rotate_request(),
             'flow_offer_dismiss' => $this->flow_offer_dismiss(),

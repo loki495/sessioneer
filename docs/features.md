@@ -147,7 +147,7 @@ shows up in the dashboard. `--agent ollama` launches a local chat model.
 `--list` shows headless sessions and `--kill` stops
 one (refusing a working or blocked session without `--force`). `--show` prints a
 session with the prompt it is blocked on and `--answer` answers it, `--interrupt`
-stops its turn, `--bare` lists Claude processes running in a terminal Sessioneer
+stops its turn, `--wake TARGET --at TIME [prompt]` schedules an `at` job that sends the prompt (default `continue`) to the session later, `--bare` lists Claude processes running in a terminal Sessioneer
 did not start and `--take-over` continues one as a headless session. `--usage` prints
 the last known usage stats for every agent and Claude account as JSON. `--wait [--timeout N]` blocks until the launched session is idle and
 prints its final assistant message, exiting 1 on an error or timeout. `--effort LEVEL` sets the reasoning level of a new or resumed session (agent + model + effort in one launch). Claude and Codex; see

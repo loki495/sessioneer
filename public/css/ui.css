@@ -173,7 +173,7 @@ code, pre { font-family: var(--mono); }
 .ui-inline-link { color: var(--accent); }
 
 /* iOS zooms into any field under 16px, so inputs stay at 1rem. */
-input[type="search"], select, textarea, input[type="text"] {
+input[type="search"], select, textarea, input[type="text"], input[type="datetime-local"] {
   width: 100%; min-height: var(--tap); padding: 8px 12px;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
   font-size: 1rem; appearance: none; -webkit-appearance: none;
@@ -360,7 +360,7 @@ body:has(dialog[open]) { overflow: hidden; }
 .ui-chip { background: var(--accent-soft); border-color: var(--accent-line); }
 .ui-chip-ok { background: var(--working-bg); border-color: transparent; }
 .ui-chip-warn { background: var(--blocked-bg); border-color: transparent; }
-input[type="search"], select, textarea, input[type="text"] { border-color: var(--accent-line); }
+input[type="search"], select, textarea, input[type="text"], input[type="datetime-local"] { border-color: var(--accent-line); }
 .ui-browser { border-color: var(--accent-line); }
 .ui-meter-bar { background: color-mix(in srgb, var(--accent) 14%, var(--surface-2)); }
 .ui-meter-bar span { background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 70%, var(--working)), var(--working)); }
