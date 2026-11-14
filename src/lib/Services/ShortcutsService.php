@@ -19,6 +19,9 @@ final class ShortcutsService
 {
     public const MAX_BODY_BYTES = 16384;
     public const MAX_TEXT_BYTES = 8000;
+    private const HISTORY_ENTRIES = 30;
+    private const RECENT_MESSAGES = 3;
+    private const RECENT_CHARS = 350;
 
     private const ID_PATTERN = '/^[a-zA-Z0-9_.:-]{1,128}$/D';
 
@@ -99,7 +102,7 @@ final class ShortcutsService
         $ids = [];
         foreach ($rows as $i => $entry) {
             $status = self::status($entry);
-            $display = ($i + 1) . '. ' . self::title($entry) . ' — ' . self::STATUS_LABELS[$status];
+            $display = ($i + 1) . '. ' . self::title($entry) . ' — ' . self::status_label($status, $entry);
             $sessions[] = [
                 'id' => $entry['name'],
                 'display_name' => $display,
@@ -125,7 +128,7 @@ final class ShortcutsService
         $out = [
             'ok' => true,
             'id' => $id,
-            'display_name' => self::title($detail) . ' — ' . self::STATUS_LABELS[$status],
+            'display_name' => self::title($detail) . ' — ' . self::status_label($status, $detail),
             'status' => $status,
             'can_message' => $status !== 'needs_reply',
             'has_prompt' => $prompt !== null,
@@ -133,6 +136,7 @@ final class ShortcutsService
             'prompt_kind' => $prompt === null ? 'none' : (count($prompt['questions']) === 1 ? 'single' : 'multi'),
             'question_count' => $prompt !== null ? count($prompt['questions']) : 0,
             'questions' => [],
+            'recent_text' => $prompt === null ? $this->recent_text($id) : '',
         ];
         if ($prompt !== null) {
             foreach ($prompt['questions'] as $q) {
@@ -245,6 +249,19 @@ final class ShortcutsService
         return $blocked ? 'needs_reply' : (!empty($entry['working']) ? 'working' : 'idle');
     }
 
+    /** "IDLE 25m": an idle session also says how long it has been quiet.
+     * @param array<string, mixed> $entry
+     */
+    private static function status_label(string $status, array $entry): string
+    {
+        $label = self::STATUS_LABELS[$status];
+        $activity = (int)($entry['activity'] ?? 0);
+        if ($status !== 'idle' || $activity <= 0) return $label;
+        $seconds = max(0, time() - $activity);
+        $age = $seconds < 60 ? 'just now' : ($seconds < 3600 ? intdiv($seconds, 60) . 'm' : ($seconds < 86400 ? intdiv($seconds, 3600) . 'h' : intdiv($seconds, 86400) . 'd'));
+        return $label . ' ' . $age;
+    }
+
     /** @param array<string, mixed> $entry */
     private static function title(array $entry): string
     {
@@ -252,6 +269,28 @@ final class ShortcutsService
         $title = preg_replace('/[\x00-\x1f]+/u', ' ', $title) ?? '';
         if ($title === '') $title = (string)($entry['name'] ?? 'Session');
         return mb_strlen($title) > 60 ? mb_substr($title, 0, 59) . '…' : $title;
+    }
+
+    /** The last few user/assistant text messages as one block for the Shortcut's message prompt.
+     * Read failures give an empty string: this is context for the person, never needed to send.
+     */
+    private function recent_text(string $id): string
+    {
+        $history = ($this->call)(['action' => 'session_history', 'session' => $id, 'limit' => self::HISTORY_ENTRIES]);
+        if (($history['ok'] ?? false) !== true || !is_array($history['entries'] ?? null)) return '';
+        $lines = [];
+        foreach ($history['entries'] as $entry) {
+            if (!is_array($entry) || !in_array($entry['role'] ?? null, ['user', 'assistant'], true) || !is_array($entry['blocks'] ?? null)) continue;
+            $text = '';
+            foreach ($entry['blocks'] as $block) {
+                if (is_array($block) && ($block['kind'] ?? null) === 'text' && is_string($block['text'] ?? null)) $text .= ' ' . $block['text'];
+            }
+            $text = trim(preg_replace('/\s+/u', ' ', $text) ?? '');
+            if ($text === '') continue;
+            if (mb_strlen($text) > self::RECENT_CHARS) $text = mb_substr($text, 0, self::RECENT_CHARS - 1) . '…';
+            $lines[] = ($entry['role'] === 'user' ? 'YOU: ' : 'AGENT: ') . $text;
+        }
+        return implode("\n\n", array_slice($lines, -self::RECENT_MESSAGES));
     }
 
     /** @return array<string, mixed>|null null when the host agent does not know this session */
