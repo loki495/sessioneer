@@ -26,7 +26,7 @@ async function run(scenario) {
   }
   class UITableRow {
     constructor() { this.texts = []; this.dismissOnSelect = true; }
-    addText(title, subtitle) { this.texts.push(title); if (subtitle) this.texts.push(subtitle); }
+    addText(title, subtitle) { this.texts.push(title); if (subtitle) this.texts.push(subtitle); this.cell = {}; return this.cell; }
   }
   class UITable {
     constructor() { this.rows = []; }
@@ -50,9 +50,12 @@ async function run(scenario) {
     async evaluateJavaScript() { return (scenario.editor || [''])[0]; }
   }
   class Request {
-    constructor(url) { this.url = url; this.headers = {}; }
+    constructor(url) { this.url = url; this._headers = {}; }
+    // Like the real class: a read returns a copy, so mutating it changes nothing.
+    get headers() { return { ...this._headers }; }
+    set headers(value) { this._headers = { ...value }; }
     async loadJSON() {
-      log.requests.push({ method: this.method, url: this.url, headers: this.headers, body: this.body ? JSON.parse(this.body) : null });
+      log.requests.push({ method: this.method, url: this.url, headers: this._headers, body: this.body ? JSON.parse(this.body) : null });
       const reply = scenario.api(this.method, this.url.replace(/^https:\/\/s\.example/, ''));
       if (reply instanceof Error) throw reply;
       return reply;
@@ -136,13 +139,23 @@ const configured = { 'sessioneer.base': 'https://s.example', 'sessioneer.token':
   });
   check(r.log.requests.length === 1, 'no answer is posted');
 
+  console.log('rename posts the new name');
+  r = await run({
+    keychain: configured, args: { shortcutParameter: 'cc-b' },
+    tables: [{ select: ['Rename session'] }], alerts: [{ button: 0, text: 'Better name' }],
+    api: (m, u) => u.includes('/session?id=') ? { ok: true, id: 'cc-b', title: 'Docs', display_name: 'Docs — IDLE 5m', prompt_kind: 'none', recent_text: '' } : { ok: true, message: 'Renamed' },
+  });
+  check(r.log.requests[1].url.endsWith('/rename') && JSON.stringify(r.log.requests[1].body) === JSON.stringify({ session: 'cc-b', title: 'Better name' }), 'posts session and title to /rename');
+  check(r.log.output === 'Renamed', 'reports Renamed');
+
   console.log('message flow shows recent messages and sends the text');
   r = await run({
     keychain: configured, args: { shortcutParameter: 'cc-b' },
     tables: [{ select: ['Write a message'] }], editor: ['hello there\nsecond line'], alerts: [{ button: 0 }],
     api: (m, u) => u.includes('/session?id=') ? { ok: true, id: 'cc-b', display_name: 'Docs — IDLE 5m', prompt_kind: 'none', recent_text: 'YOU: hi\n\nAGENT: done' } : { ok: true, message: 'Message sent' },
   });
-  check(r.log.tables[0].length === 4 && r.log.tables[0][2] === 'YOU: hi' && r.log.tables[0][3] === 'AGENT: done', 'header, write row, then each recent message as its own row');
+  check(r.log.tables[0].length === 5 && r.log.tables[0][1].includes('Rename') && r.log.tables[0][2].includes('Write') && r.log.tables[0][3] === 'YOU: hi' && r.log.tables[0][4] === 'AGENT: done', 'header, rename row, write row, then each recent message as its own row');
+  check(r.log.requests[1].headers['Content-Type'] === 'application/json', 'a POST carries the JSON Content-Type header');
   check(JSON.stringify(r.log.requests[1].body) === JSON.stringify({ session: 'cc-b', text: 'hello there\nsecond line' }), 'posts the multi-line message');
   check(r.log.html.includes('<textarea'), 'the message box is a multi-line textarea');
   check(r.log.alerts.includes('Message'), 'a Send/Discard confirmation follows');

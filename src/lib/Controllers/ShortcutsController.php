@@ -24,6 +24,11 @@ final class ShortcutsController extends Controller
         $this->run('POST', static fn(ShortcutsService $s): array => $s->message(self::body()));
     }
 
+    public function rename(): void
+    {
+        $this->run('POST', static fn(ShortcutsService $s): array => $s->rename(self::body()));
+    }
+
     public function answer(): void
     {
         $this->run('POST', static fn(ShortcutsService $s): array => $s->answer(self::body()));

@@ -21,7 +21,8 @@ final class ShortcutsService
     public const MAX_TEXT_BYTES = 8000;
     private const HISTORY_ENTRIES = 30;
     private const RECENT_MESSAGES = 3;
-    private const RECENT_CHARS = 350;
+    private const MAX_TITLE_CHARS = 120;
+    private const RECENT_CHARS = 8000;
 
     private const ID_PATTERN = '/^[a-zA-Z0-9_.:-]{1,128}$/D';
 
@@ -131,6 +132,7 @@ final class ShortcutsService
         $out = [
             'ok' => true,
             'id' => $id,
+            'title' => self::title($detail, self::MAX_TITLE_CHARS),
             'display_name' => self::title($detail) . ' — ' . self::status_label($status, $detail),
             'status' => $status,
             'can_message' => $status !== 'needs_reply',
@@ -180,6 +182,22 @@ final class ShortcutsService
         if (self::status($detail) === 'needs_reply') return self::error('prompt_pending', 'This session is waiting on a prompt; answer it instead', 409);
 
         return $this->outcome(($this->call)(['action' => 'send_message', 'session' => $id, 'text' => $text, 'attachment_paths' => []]), 'Message sent');
+    }
+
+    /** @return array<string, mixed> */
+    public function rename(string $raw): array
+    {
+        $input = self::decode($raw);
+        if (isset($input['_http'])) return $input;
+        $id = $input['session'] ?? null;
+        if (!is_string($id) || preg_match(self::ID_PATTERN, $id) !== 1) return self::error('invalid_session', 'A valid session id is required', 422);
+        $title = $input['title'] ?? null;
+        if (!is_string($title) || $title === '' || trim($title) === '' || mb_strlen($title) > self::MAX_TITLE_CHARS || !mb_check_encoding($title, 'UTF-8')) {
+            return self::error('invalid_title', 'The name must be 1–' . self::MAX_TITLE_CHARS . ' characters', 422);
+        }
+        if ($this->detail($id) === null) return self::error('not_found', 'Session not found', 404);
+        $result = ($this->call)(['action' => 'rename_session', 'session' => $id, 'title' => $title]);
+        return ($result['ok'] ?? false) === true ? ['ok' => true, 'message' => 'Renamed'] : self::error('agent_rejected', 'The session did not accept that', 502);
     }
 
     /** @return array<string, mixed> */

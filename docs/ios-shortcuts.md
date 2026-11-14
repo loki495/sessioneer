@@ -45,6 +45,7 @@ Shortcut can test failure with "`code` has any value".
 | `GET /session?id=<id>` | One session with its pending prompt |
 | `POST /messages` | `{"session": "<id>", "text": "..."}` |
 | `POST /answers` | Answer the pending prompt |
+| `POST /rename` | `{"session": "<id>", "title": "..."}`; 1–120 characters, the same name the dashboard's rename sets |
 
 ### `GET /sessions`
 
@@ -80,7 +81,7 @@ stable session reference (never rely on names being unique). Only live sessions 
 }
 ```
 
-- `recent_text`: the last 3 text messages (`YOU:` / `AGENT:`, each cut to 350 characters) when no prompt is pending, otherwise empty. Use it as the **Ask for Input** prompt in the message branch.
+- `recent_text`: the last 3 text messages (`YOU:` / `AGENT:`, each up to 8000 characters, whitespace collapsed) when no prompt is pending, otherwise empty. Use it as the **Ask for Input** prompt in the message branch.
 - An idle session's `display_name` carries how long it has been quiet, for example `Docs — IDLE 25m` (`just now`, minutes, hours or days).
 - `prompt_kind`: `none`, `single` (exactly one question, whether a permission prompt or a one-question form) or `multi` (several questions answered together).
 - `prompt_id` identifies this exact prompt. Send it back with the answer.
