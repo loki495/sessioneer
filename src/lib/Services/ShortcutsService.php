@@ -129,6 +129,7 @@ final class ShortcutsService
 
         $status = self::status($detail);
         $prompt = self::prompt($detail);
+        $recent = $prompt === null ? $this->recent($id) : [];
         $out = [
             'ok' => true,
             'id' => $id,
@@ -141,7 +142,8 @@ final class ShortcutsService
             'prompt_kind' => $prompt === null ? 'none' : (count($prompt['questions']) === 1 ? 'single' : 'multi'),
             'question_count' => $prompt !== null ? count($prompt['questions']) : 0,
             'questions' => [],
-            'recent_text' => $prompt === null ? $this->recent_text($id) : '',
+            'recent_text' => implode("\n\n", $recent),
+            'recent' => $recent,
         ];
         if ($prompt !== null) {
             foreach ($prompt['questions'] as $q) {
@@ -292,26 +294,28 @@ final class ShortcutsService
         return mb_strlen($title) > $max ? mb_substr($title, 0, $max - 1) . '…' : $title;
     }
 
-    /** The last few user/assistant text messages as one block for the Shortcut's message prompt.
-     * Read failures give an empty string: this is context for the person, never needed to send.
+    /** The last few user/assistant text messages for the message prompt, one string each, newlines inside kept.
+     * Read failures give an empty list: this is context for the person, never needed to send.
+     * @return list<string>
      */
-    private function recent_text(string $id): string
+    private function recent(string $id): array
     {
         $history = ($this->call)(['action' => 'session_history', 'session' => $id, 'limit' => self::HISTORY_ENTRIES]);
-        if (($history['ok'] ?? false) !== true || !is_array($history['entries'] ?? null)) return '';
+        if (($history['ok'] ?? false) !== true || !is_array($history['entries'] ?? null)) return [];
         $lines = [];
         foreach ($history['entries'] as $entry) {
             if (!is_array($entry) || !in_array($entry['role'] ?? null, ['user', 'assistant'], true) || !is_array($entry['blocks'] ?? null)) continue;
-            $text = '';
+            $parts = [];
             foreach ($entry['blocks'] as $block) {
-                if (is_array($block) && ($block['kind'] ?? null) === 'text' && is_string($block['text'] ?? null)) $text .= ' ' . $block['text'];
+                if (is_array($block) && ($block['kind'] ?? null) === 'text' && is_string($block['text'] ?? null)) $parts[] = $block['text'];
             }
-            $text = trim(preg_replace('/\s+/u', ' ', $text) ?? '');
+            $text = implode("\n", $parts);
+            $text = trim(preg_replace(["/[ \t]+/u", "/ ?\n ?/u", "/\n{3,}/u"], [' ', "\n", "\n\n"], $text) ?? '');
             if ($text === '') continue;
             if (mb_strlen($text) > self::RECENT_CHARS) $text = mb_substr($text, 0, self::RECENT_CHARS - 1) . '…';
             $lines[] = ($entry['role'] === 'user' ? 'YOU: ' : 'AGENT: ') . $text;
         }
-        return implode("\n\n", array_slice($lines, -self::RECENT_MESSAGES));
+        return array_slice($lines, -self::RECENT_MESSAGES);
     }
 
     /** @return array<string, mixed>|null null when the host agent does not know this session */
