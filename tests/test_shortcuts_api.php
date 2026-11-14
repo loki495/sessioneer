@@ -103,10 +103,14 @@ assert_equal(4, $list['count'], 'count matches');
 assert_equal('1. Blocked one — NEEDS REPLY', $list['menu'][0], 'menu label is numbered and shows status');
 assert_equal($list['menu'], array_column($list['sessions'], 'display_name'), 'menu mirrors display_name');
 assert_equal(count($list['menu']), count(array_unique($list['menu'])), 'labels stay unique even when two sessions share a title');
-assert_equal(['id' => 'cc-block', 'display_name' => '1. Blocked one — NEEDS REPLY', 'status' => 'needs_reply', 'can_message' => false, 'pending_prompt_count' => 1], $list['sessions'][0], 'blocked session entry');
+assert_equal(['id' => 'cc-block', 'display_name' => '1. Blocked one — NEEDS REPLY', 'title' => '1. Blocked one', 'status_text' => 'NEEDS REPLY', 'status' => 'needs_reply', 'can_message' => false, 'pending_prompt_count' => 1], $list['sessions'][0], 'blocked session entry');
 assert_equal(true, $list['sessions'][2]['can_message'], 'an idle session accepts messages');
 $down = (new Api(static fn(array $r): array => []))->sessions();
 assert_equal(503, $down['_http'], 'unreachable host agent is 503');
+
+$long = (new Api(static fn(array $r): array => ['ok' => true, 'sessions' => [['name' => 'cc-long', 'title' => str_repeat('w', 200), 'activity' => time() - 60]]]))->sessions()['sessions'][0];
+assert_equal([120, true], [mb_strlen($long['title']) - 3, mb_strlen($long['display_name']) < mb_strlen($long['title']) + 20], 'title keeps up to 120 characters while display_name stays short');
+assert_equal('IDLE 1m', $long['status_text'], 'status_text carries status and idle age on its own');
 
 // ---- detail ---------------------------------------------------------------------------------
 $d = $api->session('cc-block');

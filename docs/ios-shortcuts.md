@@ -61,7 +61,7 @@ Shortcut can test failure with "`code` has any value".
 }
 ```
 
-Order: `needs_reply`, then `working`, then `idle`; newest activity first within each. `id` is the
+Each entry also has `title` (numbered, up to 120 characters) and `status_text` (for example `IDLE 25m`), for clients that show them on separate lines. Order: `needs_reply`, then `working`, then `idle`; newest activity first within each. `id` is the
 stable session reference (never rely on names being unique). Only live sessions are listed.
 
 ### `GET /session?id=<id>`

@@ -84,7 +84,8 @@ async function call(cfg, method, path, body) {
 }
 
 // A tappable list. Resolves with the chosen index, or -1 when dismissed. `header` is shown on top.
-async function chooseOne(header, labels, tall) {
+// `subtitles` (optional, parallel to `labels`) puts a second line under each row.
+async function chooseOne(header, labels, tall, subtitles) {
   let chosen = -1;
   const table = new UITable();
   table.showSeparators = true;
@@ -94,8 +95,9 @@ async function chooseOne(header, labels, tall) {
   table.addRow(head);
   labels.forEach((label, index) => {
     const row = new UITableRow();
-    row.height = tall ? 64 : 48;
-    row.addText(label);
+    row.height = subtitles ? 84 : (tall ? 64 : 48);
+    if (subtitles) row.addText(label, subtitles[index]);
+    else row.addText(label);
     row.onSelect = () => { chosen = index; };
     table.addRow(row);
   });
@@ -139,15 +141,45 @@ async function chooseMany(header, labels) {
   return finished ? Array.from(ticked).sort((a, b) => a - b) : null;
 }
 
-async function typeText(title, message) {
+function escapeHtml(text) {
+  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function typeLine(title, message) {
   const text = await ask(title, message, 'Your answer', false);
   return text === null || text === '' ? null : text;
+}
+
+// A multi-line box in a web sheet. A sheet cannot close itself, so: type, tap Close, then confirm
+// Send or Discard. If the web view cannot be used, fall back to the single-line alert.
+async function typeText(title, hint) {
+  const html = '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">'
+    + '<style>:root{color-scheme:light dark}body{font:17px -apple-system,sans-serif;margin:16px}'
+    + 'p{opacity:.65;margin:0 0 10px}textarea{width:100%;height:45vh;box-sizing:border-box;font:inherit;padding:10px}</style>'
+    + '<p>' + escapeHtml(hint) + '<br>Type, then tap Close and choose Send.</p><textarea id="t" autofocus></textarea>';
+  let text;
+  try {
+    const view = new WebView();
+    await view.loadHTML(html);
+    await view.present(false);
+    text = String(await view.evaluateJavaScript("document.getElementById('t').value", false)).trim();
+  } catch (e) {
+    return typeLine(title, hint);
+  }
+  if (!text) return null;
+  const confirm = new Alert();
+  confirm.title = title;
+  confirm.message = text.length > 400 ? text.slice(0, 400) + '…' : text;
+  confirm.addAction('Send');
+  confirm.addCancelAction('Discard');
+  return (await confirm.presentAlert()) === -1 ? null : text;
 }
 
 async function pickSession(cfg) {
   const list = await call(cfg, 'GET', '/sessions');
   if (list.count === 0) throw new ApiError('No live sessions.');
-  const index = await chooseOne('Sessioneer', list.menu, false);
+  const rows = Array.isArray(list.sessions) ? list.sessions : null;
+  const index = await chooseOne('Sessioneer', rows ? rows.map((x) => x.title || x.display_name) : list.menu, false, rows ? rows.map((x) => x.status_text || '') : undefined);
   return index === -1 ? null : list.ids[index];
 }
 

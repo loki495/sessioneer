@@ -44,6 +44,11 @@ async function run(scenario) {
       }
     }
   }
+  class WebView {
+    async loadHTML(html) { log.html = html; }
+    async present() { if (scenario.editor === 'broken') throw new Error('no web view'); }
+    async evaluateJavaScript() { return (scenario.editor || [''])[0]; }
+  }
   class Request {
     constructor(url) { this.url = url; this.headers = {}; }
     async loadJSON() {
@@ -56,7 +61,7 @@ async function run(scenario) {
   class Notification { async schedule() { log.notifications.push(this.body); } }
 
   const globals = {
-    Alert, UITable, UITableRow, Request, Notification,
+    Alert, UITable, UITableRow, WebView, Request, Notification,
     Keychain: {
       contains: (k) => keychain.has(k), get: (k) => keychain.get(k),
       set: (k, v) => keychain.set(k, v), remove: (k) => keychain.delete(k),
@@ -68,7 +73,7 @@ async function run(scenario) {
   return { log, keychain, leftover: steps };
 }
 
-const sessions = { ok: true, count: 2, menu: ['1. Deploy — NEEDS REPLY', '2. Docs — IDLE 5m'], ids: ['cc-a', 'cc-b'] };
+const sessions = { ok: true, count: 2, menu: ['1. Deploy — NEEDS REPLY', '2. Docs — IDLE 5m'], ids: ['cc-a', 'cc-b'], sessions: [{ id: 'cc-a', title: '1. Deploy', status_text: 'NEEDS REPLY' }, { id: 'cc-b', title: '2. Docs', status_text: 'IDLE 5m' }] };
 const question = (extra) => ({ index: 0, question: 'Run tests?', select_mode: 'one', multi_select: false, allows_text: true, choices: ['1. Yes', '2. No', '0. Type my own answer'], choice_ids: ['1', '2', '0'], ...extra });
 const configured = { 'sessioneer.base': 'https://s.example', 'sessioneer.token': 'tok', 'sessioneer.cf_asked': '1' };
 
@@ -93,7 +98,7 @@ const configured = { 'sessioneer.base': 'https://s.example', 'sessioneer.token':
   console.log('single prompt: a predefined choice');
   r = await run({
     keychain: configured,
-    tables: [{ select: ['NEEDS REPLY'] }, { select: ['2. No'] }],
+    tables: [{ select: ['Deploy'] }, { select: ['2. No'] }],
     api: (m, u) => u.endsWith('/sessions') ? sessions
       : u.includes('/session?id=cc-a') ? { ok: true, id: 'cc-a', display_name: 'Deploy', prompt_kind: 'single', prompt_id: 'abc123abc123', questions: [question()] }
       : { ok: true, message: 'Answer sent' },
@@ -106,7 +111,7 @@ const configured = { 'sessioneer.base': 'https://s.example', 'sessioneer.token':
   console.log('single prompt: typed answer');
   r = await run({
     keychain: configured, args: { shortcutParameter: 'cc-a' },
-    tables: [{ select: ['Type my own'] }], alerts: [{ button: 0, text: 'use sqlite' }],
+    tables: [{ select: ['Type my own'] }], editor: ['use sqlite'], alerts: [{ button: 0 }],
     api: (m, u) => u.includes('/session?id=cc-a') ? { ok: true, id: 'cc-a', display_name: 'Deploy', prompt_kind: 'single', prompt_id: 'abc123abc123', questions: [question()] } : { ok: true, message: 'Answer sent' },
   });
   check(!r.log.requests.some((q) => q.url.endsWith('/sessions')), 'a session id parameter skips the menu');
@@ -134,12 +139,36 @@ const configured = { 'sessioneer.base': 'https://s.example', 'sessioneer.token':
   console.log('message flow shows recent messages and sends the text');
   r = await run({
     keychain: configured, args: { shortcutParameter: 'cc-b' },
-    tables: [{ select: ['Write a message'] }], alerts: [{ button: 0, text: 'hello there' }],
+    tables: [{ select: ['Write a message'] }], editor: ['hello there\nsecond line'], alerts: [{ button: 0 }],
     api: (m, u) => u.includes('/session?id=') ? { ok: true, id: 'cc-b', display_name: 'Docs — IDLE 5m', prompt_kind: 'none', recent_text: 'YOU: hi\n\nAGENT: done' } : { ok: true, message: 'Message sent' },
   });
   check(r.log.tables[0].length === 4 && r.log.tables[0][2] === 'YOU: hi' && r.log.tables[0][3] === 'AGENT: done', 'header, write row, then each recent message as its own row');
-  check(JSON.stringify(r.log.requests[1].body) === JSON.stringify({ session: 'cc-b', text: 'hello there' }), 'posts the message');
+  check(JSON.stringify(r.log.requests[1].body) === JSON.stringify({ session: 'cc-b', text: 'hello there\nsecond line' }), 'posts the multi-line message');
+  check(r.log.html.includes('<textarea'), 'the message box is a multi-line textarea');
+  check(r.log.alerts.includes('Message'), 'a Send/Discard confirmation follows');
   check(r.log.output === 'Message sent', 'returns the result to a calling Shortcut');
+
+  console.log('discarding or leaving the editor empty sends nothing');
+  r = await run({ keychain: configured, args: { shortcutParameter: 'cc-b' }, tables: [{ select: ['Write a message'] }], editor: ['draft'], alerts: [{ button: -1 }],
+    api: () => ({ ok: true, id: 'cc-b', display_name: 'Docs', prompt_kind: 'none', recent_text: '' }) });
+  check(r.log.requests.length === 1, 'Discard sends nothing');
+  r = await run({ keychain: configured, args: { shortcutParameter: 'cc-b' }, tables: [{ select: ['Write a message'] }], editor: ['   '],
+    api: () => ({ ok: true, id: 'cc-b', display_name: 'Docs', prompt_kind: 'none', recent_text: '' }) });
+  check(r.log.requests.length === 1 && r.log.alerts.length === 0, 'an empty box sends nothing and asks nothing');
+
+  console.log('a failing web view falls back to the single-line field');
+  r = await run({ keychain: configured, args: { shortcutParameter: 'cc-b' }, tables: [{ select: ['Write a message'] }], editor: 'broken', alerts: [{ button: 0, text: 'fallback text' }],
+    api: (m, u) => u.includes('/session?id=') ? { ok: true, id: 'cc-b', display_name: 'Docs', prompt_kind: 'none', recent_text: '' } : { ok: true, message: 'Message sent' } });
+  check(r.log.requests[1].body.text === 'fallback text', 'the message is still sent');
+
+  console.log('session rows show the full title with the status on a second line');
+  r = await run({ keychain: configured, tables: [{ select: ['A very long'] }],
+    api: (m, u) => u.endsWith('/sessions') ? { ...sessions, sessions: [{ id: 'cc-a', title: '1. A very long title that the old label cut off', status_text: 'IDLE 5m', display_name: '1. A very long… — IDLE 5m' }, { id: 'cc-b', title: '2. Docs', status_text: 'WORKING' }] } : { ok: false, message: 'stop' } });
+  check(r.log.tables[0][1] === '1. A very long title that the old label cut off', 'the row title is the full title');
+
+  console.log('an older server without per-session fields still works');
+  r = await run({ keychain: configured, tables: [{ select: ['Deploy'] }], api: (m, u) => u.endsWith('/sessions') ? { ok: true, count: 1, menu: ['1. Deploy — NEEDS REPLY'], ids: ['cc-a'] } : { ok: false, message: 'stop' } });
+  check(r.log.requests.length === 2 && r.log.requests[1].url.includes('id=cc-a'), 'falls back to the menu labels');
 
   console.log('dismissing the message screen sends nothing');
   r = await run({ keychain: configured, args: { shortcutParameter: 'cc-b' }, tables: [{ select: [] }],
