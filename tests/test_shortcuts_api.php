@@ -89,10 +89,10 @@ $details = ['cc-block' => $single, 'cc-multi' => $multi, 'cc-perm' => $permissio
 $list = $api->sessions();
 assert_equal(['cc-block', 'cc-work', 'cc-idle', 'cc-dupe'], $list['ids'], 'attention first, then working, then idle by recency; invalid ids dropped');
 assert_equal(4, $list['count'], 'count matches');
-assert_equal('1. Blocked one — Needs reply', $list['menu'][0], 'menu label is numbered and shows status');
+assert_equal('1. Blocked one — NEEDS REPLY', $list['menu'][0], 'menu label is numbered and shows status');
 assert_equal($list['menu'], array_column($list['sessions'], 'display_name'), 'menu mirrors display_name');
 assert_equal(count($list['menu']), count(array_unique($list['menu'])), 'labels stay unique even when two sessions share a title');
-assert_equal(['id' => 'cc-block', 'display_name' => '1. Blocked one — Needs reply', 'status' => 'needs_reply', 'can_message' => false, 'pending_prompt_count' => 1], $list['sessions'][0], 'blocked session entry');
+assert_equal(['id' => 'cc-block', 'display_name' => '1. Blocked one — NEEDS REPLY', 'status' => 'needs_reply', 'can_message' => false, 'pending_prompt_count' => 1], $list['sessions'][0], 'blocked session entry');
 assert_equal(true, $list['sessions'][2]['can_message'], 'an idle session accepts messages');
 $down = (new Api(static fn(array $r): array => []))->sessions();
 assert_equal(503, $down['_http'], 'unreachable host agent is 503');

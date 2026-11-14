@@ -50,10 +50,10 @@ Shortcut can test failure with "`code` has any value".
 {
   "ok": true,
   "count": 2,
-  "menu": ["1. Deploy fix — Needs reply", "2. Docs — Idle"],
+  "menu": ["1. Deploy fix — NEEDS REPLY", "2. Docs — IDLE"],
   "ids": ["claude-headless-20261113-1", "cc-docs"],
   "sessions": [
-    {"id": "claude-headless-20261113-1", "display_name": "1. Deploy fix — Needs reply",
+    {"id": "claude-headless-20261113-1", "display_name": "1. Deploy fix — NEEDS REPLY",
      "status": "needs_reply", "can_message": false, "pending_prompt_count": 1}
   ]
 }
@@ -66,7 +66,7 @@ stable session reference (never rely on names being unique). Only live sessions 
 
 ```json
 {
-  "ok": true, "id": "cc-x", "display_name": "Deploy fix — Needs reply",
+  "ok": true, "id": "cc-x", "display_name": "Deploy fix — NEEDS REPLY",
   "status": "needs_reply", "can_message": false, "has_prompt": true,
   "prompt_id": "3fa9c0d1e2b4", "prompt_kind": "single", "question_count": 1,
   "questions": [

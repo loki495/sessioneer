@@ -236,7 +236,7 @@ final class ShortcutsService
     }
 
     private const TEXT_CHOICE_LABEL = '0. Type my own answer';
-    private const STATUS_LABELS = ['needs_reply' => 'Needs reply', 'working' => 'Working', 'idle' => 'Idle'];
+    private const STATUS_LABELS = ['needs_reply' => 'NEEDS REPLY', 'working' => 'WORKING', 'idle' => 'IDLE'];
 
     /** @param array<string, mixed> $entry */
     private static function status(array $entry): string
