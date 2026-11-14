@@ -78,7 +78,7 @@ stable session reference (never rely on names being unique). Only live sessions 
 }
 ```
 
-- `prompt_kind`: `none`, `single` (one question) or `multi` (several questions answered together).
+- `prompt_kind`: `none`, `single` (exactly one question, whether a permission prompt or a one-question form) or `multi` (several questions answered together).
 - `prompt_id` identifies this exact prompt. Send it back with the answer.
 - `choices` entries begin with their number. Splitting a chosen label at `.` and taking the first
   item gives the choice id. `0` is the typed-answer entry: it is never a valid `choice`, send

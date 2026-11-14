@@ -130,7 +130,7 @@ final class ShortcutsService
             'can_message' => $status !== 'needs_reply',
             'has_prompt' => $prompt !== null,
             'prompt_id' => $prompt['prompt_id'] ?? '',
-            'prompt_kind' => $prompt['kind'] ?? 'none',
+            'prompt_kind' => $prompt === null ? 'none' : (count($prompt['questions']) === 1 ? 'single' : 'multi'),
             'question_count' => $prompt !== null ? count($prompt['questions']) : 0,
             'questions' => [],
         ];
@@ -195,6 +195,12 @@ final class ShortcutsService
 
         $isMulti = $prompt['kind'] === 'multi';
         $request = null;
+        if ($isMulti && count($prompt['questions']) === 1 && !isset($input['answers'])) {
+            // A one-question form prompt is presented as `single`, so it takes choice/text like any other.
+            $one = isset($input['text']) ? (is_string($input['text']) && self::text($input['text']) !== null ? 'text:' . $input['text'] : null) : ($input['choice'] ?? null);
+            if (!is_string($one)) return self::error('invalid_answer', 'Send a valid choice or text', 422);
+            $input = ['answers' => [$one]] + $input;
+        }
         if (!$isMulti) {
             $q = $prompt['questions'][0];
             if (isset($input['choice'])) {

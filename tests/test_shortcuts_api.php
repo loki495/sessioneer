@@ -186,6 +186,19 @@ assert_equal(422, $api->answer(json_encode(['session' => 'cc-multi', 'prompt_id'
 assert_equal(422, $api->answer(json_encode(['session' => 'cc-multi', 'prompt_id' => $mp, 'answers' => ['0', '1']]))['_http'], 'the typed-answer entry is not an option number');
 assert_equal(422, $api->answer(json_encode(['session' => 'cc-multi', 'prompt_id' => $mp, 'choice' => '1']))['_http'], 'multi prompt needs answers, not choice');
 
+// A one-question form prompt is `single` and takes choice/text.
+$details['cc-form1'] = ['ok' => true, 'title' => 'Form', 'working' => false, 'blocked_reason' => 'Pick', 'prompt_options' => [], 'prompt_questions' => [['question' => 'Rotate?', 'options' => [['label' => 'Yes'], ['label' => 'No']]]]];
+$f = $api->session('cc-form1');
+assert_equal(['single', 1], [$f['prompt_kind'], $f['question_count']], 'one-question form prompt is reported as single');
+$calls = [];
+assert_equal(true, $api->answer(json_encode(['session' => 'cc-form1', 'prompt_id' => $f['prompt_id'], 'choice' => '2']))['ok'], 'choice accepted on a one-question form prompt');
+assert_equal(['answer_multi_question', [2]], [end($calls)['action'], end($calls)['answers']], 'it still uses answer_multi_question');
+$calls = [];
+$api->answer(json_encode(['session' => 'cc-form1', 'prompt_id' => $f['prompt_id'], 'text' => 'maybe']));
+assert_equal([['text' => 'maybe']], end($calls)['answers'], 'text accepted on a one-question form prompt');
+assert_equal(422, $api->answer(json_encode(['session' => 'cc-form1', 'prompt_id' => $f['prompt_id'], 'choice' => '7']))['_http'], 'bad choice rejected');
+assert_equal(422, $api->answer(json_encode(['session' => 'cc-form1', 'prompt_id' => $f['prompt_id'], 'choice' => '0']))['_http'], 'typed-answer entry is not a choice here either');
+
 // ---- messages -------------------------------------------------------------------------------
 $calls = [];
 assert_equal(['ok' => true, 'message' => 'Message sent'], $api->message(json_encode(['session' => 'cc-idle', 'text' => ' hello '])), 'message sent');
