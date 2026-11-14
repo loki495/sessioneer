@@ -22,7 +22,7 @@ final class ShortcutsService
     private const HISTORY_ENTRIES = 30;
     private const RECENT_MESSAGES = 3;
     private const MAX_TITLE_CHARS = 120;
-    private const RECENT_CHARS = 8000;
+    private const RECENT_CHARS = 30000;
 
     private const ID_PATTERN = '/^[a-zA-Z0-9_.:-]{1,128}$/D';
 

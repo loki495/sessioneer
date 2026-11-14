@@ -23,7 +23,7 @@ control (see "Launching it fast" in ios-shortcuts.md).
 - Pick a session. Each row shows the full title with the status and idle time on a second line.
 - A blocked prompt shows its options. `Type my own answer` appears when the prompt accepts text.
   Several questions are asked one after another; multi-select questions use tick rows and **Done**.
-- A session with no prompt shows its recent messages (in full, scrollable), a **Rename session** row and a **Write a message** row. Rename sets the same name the dashboard shows. Writing opens a multi-line box in a web sheet: type, tap **Close**, then choose **Send** or **Discard**. If the web sheet fails, it falls back to a one-line field.
+- A session with no prompt shows its recent messages (a preview of the long ones; tap one to read it all), a **Rename session** row and a **Write a message** row. Rename sets the same name the dashboard shows. Writing opens a multi-line box in a web sheet: type, tap **Close**, then choose **Send** or **Discard**. If the web sheet fails, it falls back to a one-line field.
 - The result appears as a notification and is returned to a calling Shortcut.
 
 Run with the parameter `reset` to forget the saved address and tokens. Run with a session id (the
