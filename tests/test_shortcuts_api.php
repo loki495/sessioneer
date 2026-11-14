@@ -134,7 +134,7 @@ $i = $api->session('cc-idle');
 assert_equal('Idle one — IDLE 2h', $i['display_name'], 'detail display name carries the idle age');
 assert_equal(['none', '', 0, true], [$i['prompt_kind'], $i['prompt_id'], $i['question_count'], $i['can_message']], 'idle detail has no prompt and allows messages');
 $recent = $i['recent_text'];
-assert_equal(["AGENT: second\n\nline", 3], [$i['recent'][0], count($i['recent'])], 'recent keeps the last 3 text messages with their newlines, skipping tool entries');
+assert_equal(["AGENT: second\nline", 3], [$i['recent'][0], count($i['recent'])], 'recent keeps the last 3 text messages with single line breaks, skipping tool entries');
 assert_equal(implode("\n\n", $i['recent']), $recent, 'recent_text is the same messages joined');
 assert_true(str_contains($recent, 'AGENT: ' . str_repeat('z', 500)) && !str_contains($recent, '…'), 'a 500-character message is shown in full');
 assert_equal(3, count($i['recent']), 'recent lists the messages separately');
