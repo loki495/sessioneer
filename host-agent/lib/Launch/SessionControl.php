@@ -8,6 +8,7 @@ use HostAgent\Runtimes\RuntimeType;
 use HostAgent\Services\BareProcessService;
 use HostAgent\Services\ProcessInspector;
 use HostAgent\Services\SessionService;
+use HostAgent\Services\SessionWakeService;
 use HostAgent\Services\TranscriptRouter;
 use HostAgent\Services\TranscriptService;
 use HostAgent\Stores\SidecarStore;
@@ -30,6 +31,8 @@ use HostAgent\Stores\SidecarStore;
  *   answers           array   answer: one entry per question of a multi-question prompt
  *   agent_session_id  string  take_over: the conversation to resume (confirm step)
  *   runtime           string  take_over: `headless` (default) or `tmux`
+ *   at                int     wake: unix time to send the prompt
+ *   message           string  wake: the prompt (also send)
  */
 class SessionControl
 {
@@ -178,6 +181,23 @@ class SessionControl
         $reply = self::dispatch(['action' => 'send_escape', 'session' => $name]);
 
         return ['name' => $name] + $reply + ['message' => ($reply['ok'] ?? false) === true ? 'Interrupted' : 'Could not interrupt'];
+    }
+
+    /**
+     * Schedules an `at` job that sends the prompt to the session at the given time (`SessionWakeService`).
+     *
+     * @param array<string, mixed> $request
+     * @return array<string, mixed>
+     */
+    public static function wake(array $request): array
+    {
+        $name = self::resolve((string)($request['target'] ?? ''));
+
+        if ($name === null) {
+            return self::not_found($request);
+        }
+
+        return ['name' => $name] + SessionWakeService::schedule($name, (int)($request['at'] ?? 0), (string)($request['message'] ?? ''));
     }
 
     /**

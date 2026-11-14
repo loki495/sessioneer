@@ -149,6 +149,13 @@ $bootstrap = json_encode([
   <section class="sess-sec"><h3 class="ui-subtitle">Details</h3><div id="sess-info-body" class="ui-col"></div></section>
   <section class="sess-sec"><h3 class="ui-subtitle">Actions</h3>
     <div id="sess-info-actions" class="sess-row-actions"></div>
+    <form id="sess-wake-form" class="ui-col" hidden>
+      <label class="ui-field" for="sess-wake-at">Wake up at</label>
+      <input type="datetime-local" id="sess-wake-at" required>
+      <label class="ui-field" for="sess-wake-text">Prompt to send</label>
+      <textarea id="sess-wake-text" rows="3" maxlength="30000" required>continue</textarea>
+      <div class="ui-row"><button type="submit" class="ui-btn">Schedule</button><button type="button" class="ui-btn" id="sess-wake-cancel">Cancel</button></div>
+    </form>
   </section>
   <section class="sess-sec" id="sess-tasks-sec" hidden><h3 class="ui-subtitle">Tasks</h3><ul id="sess-tasks" class="ui-checks"></ul></section>
   <section class="sess-sec"><h3 class="ui-subtitle">Files</h3>

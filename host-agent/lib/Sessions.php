@@ -497,6 +497,9 @@ function sessioneer_dispatch_action(array $request): array
         case 'launch_interrupt':
             return SessionControl::interrupt($request);
 
+        case 'launch_wake':
+            return SessionControl::wake($request);
+
         case 'launch_bare':
             return SessionControl::bare();
 

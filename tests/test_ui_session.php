@@ -114,7 +114,7 @@ try {
     assert_contains('href="/" aria-label="All sessions"', $body, 'page: back to the dashboard');
     assert_contains('id="sess-info-head-actions"', $body, 'page: star/rename/kill live in the info sheet header');
     $js = (string)file_get_contents(dirname(__DIR__) . '/public/js/ui-session-sheets.js');
-    foreach (['star', 'rename', 'kill'] as $act) {
+    foreach (['star', 'rename', 'kill', 'wake'] as $act) {
         assert_contains("data-info=\"{$act}\"", $js, "sheets.js: {$act} button is built");
     }
     assert_contains("\$('sess-info-head-actions').innerHTML", $js, 'sheets.js: header buttons are rendered into the sheet header');
