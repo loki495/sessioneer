@@ -9,6 +9,8 @@ Every read and write goes through the same host-agent actions the dashboard uses
 This is a Shortcut, not an app. It runs when you start it (Siri, Home Screen, Back Tap, Action
 Button). iOS cannot run it in the background when a push notification arrives.
 
+Prefer a script to 25 hand-built actions? [ios-scriptable.md](ios-scriptable.md) does the same with Scriptable.
+
 ## Setup
 
 1. Generate a token: `openssl rand -hex 32`. Use a different token from `QUICK_PROMPT_API_TOKEN`.
