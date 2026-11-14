@@ -47,7 +47,7 @@ assert_true(!str_contains(json_encode(Api::guard($none, 'GET')), $token), 'error
 $path = '/front-controller-path';
 $router = require __DIR__ . '/../src/routes.php';
 assert_equal('/front-controller-path', $path, 'routes.php leaves the including front controller\'s $path untouched');
-foreach (['sessions', 'session', 'messages', 'answers'] as $path) {
+foreach (['sessions', 'session', 'messages', 'answers', 'rename'] as $path) {
     assert_true($router->match('GET', '/api/shortcuts/v1/' . $path) !== null && $router->match('POST', '/api/shortcuts/v1/' . $path) !== null, "route registered: {$path}");
 }
 
@@ -135,7 +135,7 @@ assert_equal('Idle one — IDLE 2h', $i['display_name'], 'detail display name ca
 assert_equal(['none', '', 0, true], [$i['prompt_kind'], $i['prompt_id'], $i['question_count'], $i['can_message']], 'idle detail has no prompt and allows messages');
 $recent = $i['recent_text'];
 assert_equal(['AGENT: second line', 3], [explode("\n\n", $recent)[0], count(explode("\n\n", $recent))], 'recent_text keeps the last 3 text messages, skipping tool entries');
-assert_true(str_contains($recent, 'AGENT: ' . str_repeat('z', 349) . '…'), 'long messages are truncated');
+assert_true(str_contains($recent, 'AGENT: ' . str_repeat('z', 500)) && !str_contains($recent, '…'), 'a 500-character message is shown in full');
 assert_equal('', $api->session('cc-block')['recent_text'], 'no recent text while a prompt is pending');
 $history = ['ok' => false];
 assert_equal('', $api->session('cc-idle')['recent_text'], 'history failure gives an empty string, not an error');
@@ -239,6 +239,22 @@ $reply = ['ok' => false, 'message' => 'boom /home/secret'];
 $bad = $api->message(json_encode(['session' => 'cc-idle', 'text' => 'hi']));
 assert_equal(502, $bad['_http'], 'delivery failure is 502');
 assert_true(!str_contains(json_encode($bad), 'secret'), 'delivery failure text is not leaked');
+$reply = ['ok' => true, 'message' => 'done'];
+
+// ---- rename ---------------------------------------------------------------------------------
+$calls = [];
+assert_equal(['ok' => true, 'message' => 'Renamed'], $api->rename(json_encode(['session' => 'cc-idle', 'title' => 'New name'])), 'rename ok');
+$renamed = end($calls);
+assert_equal(['rename_session', 'cc-idle', 'New name'], [$renamed['action'], $renamed['session'], $renamed['title']], 'uses the dashboard rename_session action');
+assert_equal(404, $api->rename(json_encode(['session' => 'cc-gone', 'title' => 'x']))['_http'], 'rename of unknown session is 404');
+assert_equal(422, $api->rename(json_encode(['session' => 'cc-idle', 'title' => '  ']))['_http'], 'blank name rejected');
+assert_equal(422, $api->rename(json_encode(['session' => 'cc-idle', 'title' => str_repeat('a', 121)]))['_http'], 'over-long name rejected');
+assert_equal(422, $api->rename(json_encode(['session' => 'cc-idle', 'title' => ['a']]))['_http'], 'non-string name rejected');
+assert_equal(422, $api->rename(json_encode(['title' => 'x']))['_http'], 'rename without session rejected');
+$reply = ['ok' => false, 'message' => 'boom /home/secret'];
+$bad = $api->rename(json_encode(['session' => 'cc-idle', 'title' => 'x']));
+assert_equal(502, $bad['_http'], 'rename failure is 502');
+assert_true(!str_contains(json_encode($bad), 'secret'), 'rename failure text is not leaked');
 $reply = ['ok' => true, 'message' => 'done'];
 
 // ---- rate limit -----------------------------------------------------------------------------

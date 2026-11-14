@@ -20,7 +20,7 @@ $router->get('/api/quick-prompt', [\App\Controllers\QuickPromptController::class
 // Each path registers both verbs so a wrong verb gets the controller's JSON 405, not a bare 404.
 // Closure scope: this file is included into public/index.php, whose own $path must not be overwritten.
 (static function (Router $router): void {
-    foreach (['sessions' => 'sessions', 'session' => 'session', 'messages' => 'message', 'answers' => 'answer'] as $segment => $action) {
+    foreach (['sessions' => 'sessions', 'session' => 'session', 'messages' => 'message', 'answers' => 'answer', 'rename' => 'rename'] as $segment => $action) {
         foreach (['get', 'post'] as $verb) {
             $router->$verb('/api/shortcuts/v1/' . $segment, [\App\Controllers\ShortcutsController::class, $action]);
         }

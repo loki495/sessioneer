@@ -9,17 +9,20 @@
 // Optional: your address (not a secret), for example 'https://sessioneer.example.com'. When set, it is never asked for.
 const BASE_URL = '';
 
+// Shown on the session list, so a stale pasted copy is easy to spot.
+const VERSION = '4';
+
 const KEYS = { base: 'sessioneer.base', token: 'sessioneer.token', cfId: 'sessioneer.cf_id', cfSecret: 'sessioneer.cf_secret', cfAsked: 'sessioneer.cf_asked' };
 const API = '/api/shortcuts/v1';
 
 class ApiError extends Error {}
 
-async function ask(title, message, placeholder, secure) {
+async function ask(title, message, placeholder, secure, initial) {
   const alert = new Alert();
   alert.title = title;
   alert.message = message;
   if (secure) alert.addSecureTextField(placeholder, '');
-  else alert.addTextField(placeholder, '');
+  else alert.addTextField(placeholder, initial || '');
   alert.addAction('OK');
   alert.addCancelAction('Cancel');
   if ((await alert.presentAlert()) === -1) return null;
@@ -64,15 +67,17 @@ async function loadConfig(reset) {
 async function call(cfg, method, path, body) {
   const request = new Request(cfg.base + API + path);
   request.method = method;
-  request.headers = { Authorization: 'Bearer ' + cfg.token, Accept: 'application/json' };
+  // Scriptable hands back a copy from `request.headers`, so the object is built whole and assigned once.
+  const headers = { Authorization: 'Bearer ' + cfg.token, Accept: 'application/json' };
   if (cfg.cfId && cfg.cfSecret) {
-    request.headers['CF-Access-Client-Id'] = cfg.cfId;
-    request.headers['CF-Access-Client-Secret'] = cfg.cfSecret;
+    headers['CF-Access-Client-Id'] = cfg.cfId;
+    headers['CF-Access-Client-Secret'] = cfg.cfSecret;
   }
   if (body !== undefined) {
-    request.headers['Content-Type'] = 'application/json';
+    headers['Content-Type'] = 'application/json';
     request.body = JSON.stringify(body);
   }
+  request.headers = headers;
   let json;
   try {
     json = await request.loadJSON();
@@ -179,33 +184,46 @@ async function pickSession(cfg) {
   const list = await call(cfg, 'GET', '/sessions');
   if (list.count === 0) throw new ApiError('No live sessions.');
   const rows = Array.isArray(list.sessions) ? list.sessions : null;
-  const index = await chooseOne('Sessioneer', rows ? rows.map((x) => x.title || x.display_name) : list.menu, false, rows ? rows.map((x) => x.status_text || '') : undefined);
+  const index = await chooseOne('Sessioneer v' + VERSION, rows ? rows.map((x) => x.title || x.display_name) : list.menu, false, rows ? rows.map((x) => x.status_text || '') : undefined);
   return index === -1 ? null : list.ids[index];
 }
 
 // Recent messages sit below a "write a message" row, so long context scrolls instead of pushing the field away.
 async function messageFlow(cfg, detail) {
   const parts = detail.recent_text ? detail.recent_text.split('\n\n') : [];
-  let write = false;
+  let action = '';
   const table = new UITable();
   table.showSeparators = true;
   const head = new UITableRow();
   head.isHeader = true;
   head.addText(detail.display_name);
   table.addRow(head);
+  const rename = new UITableRow();
+  rename.height = 56;
+  rename.addText('✐  Rename session');
+  rename.onSelect = () => { action = 'rename'; };
+  table.addRow(rename);
   const compose = new UITableRow();
   compose.height = 56;
   compose.addText('✎  Write a message');
-  compose.onSelect = () => { write = true; };
+  compose.onSelect = () => { action = 'write'; };
   table.addRow(compose);
   parts.forEach((part) => {
     const row = new UITableRow();
-    row.height = Math.min(240, 36 + Math.ceil(part.length / 38) * 20);
-    row.addText(part);
+    // Rows have a fixed height, so it is estimated from the text: wrapped lines plus explicit newlines.
+    const lines = part.split('\n').reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / 34)), 0);
+    row.height = 28 + lines * 22;
+    const cell = row.addText(part);
+    if (cell) cell.lineLimit = 0;
     table.addRow(row);
   });
   await table.present(false);
-  if (!write) return null;
+  if (action === 'rename') {
+    const title = await ask('Rename session', 'The new name for this session.', 'Name', false, detail.title || '');
+    if (!title) return null;
+    return call(cfg, 'POST', '/rename', { session: detail.id, title });
+  }
+  if (action !== 'write') return null;
   const text = await typeText('Message', detail.display_name);
   if (text === null) return null;
   return call(cfg, 'POST', '/messages', { session: detail.id, text });
