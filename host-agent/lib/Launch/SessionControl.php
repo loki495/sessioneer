@@ -191,6 +191,11 @@ class SessionControl
      */
     public static function wake(array $request): array
     {
+        // The job delivers the prompt unstamped, as the user's own words; a session may not do that to a peer.
+        if (self::from_session($request)) {
+            return ['ok' => false, 'message' => '--wake is for a shell outside any session: the prompt arrives as the user\'s own, so a session cannot schedule it. Use --send to message a peer'];
+        }
+
         $name = self::resolve((string)($request['target'] ?? ''));
 
         if ($name === null) {

@@ -73,6 +73,9 @@ try {
     echo "launch_wake resolves a conversation id\n";
     $r = SessionControl::wake(['target' => 'conv-w1', 'at' => $when, 'message' => 'continue']);
     assert_equal('claude-headless-w1', $r['name'] ?? null, 'the session name is resolved');
+    $r = SessionControl::wake(['target' => 'conv-w1', 'at' => $when, 'message' => 'continue', 'from' => 'claude-headless-w2']);
+    assert_equal(false, $r['ok'], 'a request from a tracked session is refused');
+    assert_contains('outside any session', $r['message'], 'with the reason');
     $r = SessionControl::wake(['target' => 'missing', 'at' => $when, 'message' => 'continue']);
     assert_equal(false, $r['ok'], 'an unknown target is refused');
 } finally {

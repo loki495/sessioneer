@@ -97,7 +97,14 @@ final class SessionWakeService
         }
 
         $args[] = $prompt;
-        $log = sys_get_temp_dir() . '/sessioneer-wake.log';
+        // The per-user runtime directory, never a shared /tmp path another user could pre-create as a symlink.
+        $logDir = Config::cache_dir();
+
+        if (!is_dir($logDir)) {
+            @mkdir($logDir, 0700, true);
+        }
+
+        $log = $logDir . '/wake.log';
 
         return 'env -i ' . implode(' ', array_map('escapeshellarg', $env)) . ' '
             . escapeshellarg(dirname(__DIR__, 3) . '/bin/sessioneer') . ' '
