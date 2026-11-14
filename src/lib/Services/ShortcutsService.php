@@ -102,10 +102,13 @@ final class ShortcutsService
         $ids = [];
         foreach ($rows as $i => $entry) {
             $status = self::status($entry);
-            $display = ($i + 1) . '. ' . self::title($entry) . ' — ' . self::status_label($status, $entry);
+            $statusText = self::status_label($status, $entry);
+            $display = ($i + 1) . '. ' . self::title($entry) . ' — ' . $statusText;
             $sessions[] = [
                 'id' => $entry['name'],
                 'display_name' => $display,
+                'title' => ($i + 1) . '. ' . self::title($entry, 120),
+                'status_text' => $statusText,
                 'status' => $status,
                 'can_message' => $status !== 'needs_reply',
                 'pending_prompt_count' => $status === 'needs_reply' ? 1 : 0,
@@ -263,12 +266,12 @@ final class ShortcutsService
     }
 
     /** @param array<string, mixed> $entry */
-    private static function title(array $entry): string
+    private static function title(array $entry, int $max = 60): string
     {
         $title = is_string($entry['title'] ?? null) ? trim($entry['title']) : '';
         $title = preg_replace('/[\x00-\x1f]+/u', ' ', $title) ?? '';
         if ($title === '') $title = (string)($entry['name'] ?? 'Session');
-        return mb_strlen($title) > 60 ? mb_substr($title, 0, 59) . '…' : $title;
+        return mb_strlen($title) > $max ? mb_substr($title, 0, $max - 1) . '…' : $title;
     }
 
     /** The last few user/assistant text messages as one block for the Shortcut's message prompt.
