@@ -310,7 +310,7 @@ final class ShortcutsService
                 if (is_array($block) && ($block['kind'] ?? null) === 'text' && is_string($block['text'] ?? null)) $parts[] = $block['text'];
             }
             $text = implode("\n", $parts);
-            $text = trim(preg_replace(["/[ \t]+/u", "/ ?\n ?/u", "/\n{3,}/u"], [' ', "\n", "\n\n"], $text) ?? '');
+            $text = trim(preg_replace(["/[ \t]+/u", "/ ?\n[\s]*/u"], [' ', "\n"], $text) ?? '');
             if ($text === '') continue;
             if (mb_strlen($text) > self::RECENT_CHARS) $text = mb_substr($text, 0, self::RECENT_CHARS - 1) . '…';
             $lines[] = ($entry['role'] === 'user' ? 'YOU: ' : 'AGENT: ') . $text;
