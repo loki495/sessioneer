@@ -127,12 +127,26 @@ class ClaudeHeadlessHealthService
             $checks[] = self::check('claude_headless_quota', 'Claude quota footer is current', true, 'no rate-limit reading from the manager yet');
         } elseif ($quotaCapturedAt === null || $quotaCapturedAt + self::QUOTA_LAG_SECONDS < $seenAt) {
             $stored = $quotaCapturedAt === null ? 'nothing stored' : 'last stored ' . self::ago($now - $quotaCapturedAt);
-            $checks[] = self::check('claude_headless_quota', 'Claude quota footer is current', false, "the manager saw a reading " . self::ago($now - $seenAt) . " but {$stored}; the quota state is not being updated");
+            $checks[] = self::check('claude_headless_quota', 'Claude quota footer is current', false, "the manager saw a reading " . self::ago($now - $seenAt) . " but {$stored}; the quota state is not being updated" . self::quota_cause($reply['rate_limit'] ?? null));
         } else {
             $checks[] = self::check('claude_headless_quota', 'Claude quota footer is current', true, 'stored ' . self::ago($now - $quotaCapturedAt));
         }
 
         return $checks;
+    }
+
+    /** Why the manager's newest reading did or did not reach the stored quota, from the fields on_rate_limit() reports. */
+    private static function quota_cause(mixed $rateLimit): string
+    {
+        if (!is_array($rateLimit) || !array_key_exists('stored', $rateLimit)) {
+            return '';
+        }
+
+        $account = is_string($rateLimit['profile'] ?? null) && $rateLimit['profile'] !== '' ? $rateLimit['profile'] : 'default';
+
+        return $rateLimit['stored'] === false
+            ? " (that reading, from the {$account} account, had no usable five_hour/seven_day window, so it was not stored; see the manager log)"
+            : " (that reading, from the {$account} account, was passed to the store, so the write itself may have failed or lagged)";
     }
 
     /** @return array{key:string, section:string, label:string, ok:bool, detail:?string} */

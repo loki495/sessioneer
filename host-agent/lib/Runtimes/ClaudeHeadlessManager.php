@@ -1458,12 +1458,22 @@ final class ClaudeHeadlessManager
     {
         $info = is_array($event['rate_limit_info'] ?? null) ? $event['rate_limit_info'] : [];
         $windows = is_array($info['unifiedWindows'] ?? null) ? $info['unifiedWindows'] : [];
+
+        // A headless child renders no status line, so the dashboard's quota
+        // footer (fed by the statusLine script for TUI sessions) would freeze
+        // without this. Same store, same merge rule, keyed by the child's own account.
+        $fiveHour = self::quota_bucket($windows['five_hour'] ?? null);
+        $sevenDay = self::quota_bucket($windows['seven_day'] ?? null);
+        $stored = $fiveHour !== null || $sevenDay !== null;
+
         $this->lastRateLimit = [
             'status' => $info['status'] ?? null,
             'rate_limit_type' => $info['rateLimitType'] ?? null,
             'is_using_overage' => !empty($info['isUsingOverage']),
             'windows' => $windows,
             'seen_at' => time(),
+            'profile' => $child->profile,
+            'stored' => $stored,
         ];
 
         if (!empty($info['isUsingOverage'])) {
@@ -1471,14 +1481,13 @@ final class ClaudeHeadlessManager
             $this->log($this->spawnBlockedReason);
         }
 
-        // A headless child renders no status line, so the dashboard's quota
-        // footer (fed by the statusLine script for TUI sessions) would freeze
-        // without this. Same store, same merge rule, keyed by the child's own account.
-        $fiveHour = self::quota_bucket($windows['five_hour'] ?? null);
-        $sevenDay = self::quota_bucket($windows['seven_day'] ?? null);
-
-        if ($fiveHour !== null || $sevenDay !== null) {
+        if ($stored) {
             QuotaLiveStateWriter::record($child->profile, $fiveHour, $sevenDay);
+        } else {
+            // Not stored means the dashboard quota footer goes stale; say why
+            // so the health check's "not being updated" has a traceable cause.
+            $this->log('rate_limit_event not stored for account ' . ($child->profile ?? 'default') . ': no usable five_hour/seven_day window (windows='
+                . substr((string)json_encode($windows), 0, 300) . ', type=' . (is_string($info['rateLimitType'] ?? null) ? $info['rateLimitType'] : '?') . ')');
         }
     }
 
