@@ -10,7 +10,10 @@
 const BASE_URL = '';
 
 // Shown on the session list, so a stale pasted copy is easy to spot.
-const VERSION = '5';
+const VERSION = '6';
+
+// Longer messages show a preview in the list; tapping one opens the whole text.
+const PREVIEW_CHARS = 600;
 
 const KEYS = { base: 'sessioneer.base', token: 'sessioneer.token', cfId: 'sessioneer.cf_id', cfSecret: 'sessioneer.cf_secret', cfAsked: 'sessioneer.cf_asked' };
 const API = '/api/shortcuts/v1';
@@ -188,6 +191,18 @@ async function pickSession(cfg) {
   return index === -1 ? null : list.ids[index];
 }
 
+// The whole text of one message in a scrollable web sheet; Close returns to the list.
+async function showFull(text) {
+  const html = '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">'
+    + '<style>:root{color-scheme:light dark}body{font:16px -apple-system,sans-serif;margin:16px;white-space:pre-wrap;word-wrap:break-word}</style>'
+    + escapeHtml(text);
+  try {
+    const view = new WebView();
+    await view.loadHTML(html);
+    await view.present(false);
+  } catch (e) { /* the preview stays; nothing to recover */ }
+}
+
 // Recent messages sit below a "write a message" row, so long context scrolls instead of pushing the field away.
 async function messageFlow(cfg, detail) {
   const parts = Array.isArray(detail.recent) ? detail.recent : (detail.recent_text ? detail.recent_text.split('\n\n') : []);
@@ -210,11 +225,17 @@ async function messageFlow(cfg, detail) {
   table.addRow(compose);
   parts.forEach((part) => {
     const row = new UITableRow();
+    const long = part.length > PREVIEW_CHARS;
+    const shown = long ? part.slice(0, PREVIEW_CHARS) + '…\n(tap to read all)' : part;
     // Rows have a fixed height, so it is estimated from the text: wrapped lines plus explicit newlines.
-    const lines = part.split('\n').reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / 26)), 0);
-    row.height = 32 + lines * 24;
-    const cell = row.addText(part);
+    const lines = shown.split('\n').reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / 30)), 0);
+    row.height = 28 + lines * 23;
+    const cell = row.addText(shown);
     if (cell) cell.lineLimit = 0;
+    if (long) {
+      row.dismissOnSelect = false;
+      row.onSelect = () => { showFull(part); };
+    }
     table.addRow(row);
   });
   await table.present(false);

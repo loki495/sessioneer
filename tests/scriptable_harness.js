@@ -155,6 +155,15 @@ const configured = { 'sessioneer.base': 'https://s.example', 'sessioneer.token':
   });
   check(r.log.tables[0].length === 5 && r.log.tables[0][3] === 'YOU: a\n\nb', 'the recent array wins over recent_text and is not split again');
 
+  console.log('a long message shows a preview and opens in full on tap');
+  const longText = 'AGENT: ' + 'w'.repeat(1500);
+  r = await run({
+    keychain: configured, args: { shortcutParameter: 'cc-b' }, tables: [{ select: ['AGENT: '] }],
+    api: () => ({ ok: true, id: 'cc-b', display_name: 'Docs', prompt_kind: 'none', recent: [longText] }),
+  });
+  check(r.log.tables[0][3].length < 700 && r.log.tables[0][3].includes('tap to read all'), 'the row shows a short preview');
+  check(r.log.html.includes('w'.repeat(1500)), 'tapping opens the whole message');
+
   console.log('message flow shows recent messages and sends the text');
   r = await run({
     keychain: configured, args: { shortcutParameter: 'cc-b' },
