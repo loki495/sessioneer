@@ -11,8 +11,8 @@ answers, multi-select, and messaging with recent context, and it keeps the token
    (`SHORTCUTS_API_TOKEN`, `docker compose up -d`).
 2. Install Scriptable. In it, tap **+**, paste the contents of `SessioneerReply.js`, and name the
    script `Sessioneer Reply`.
-3. Run it. It asks for your Sessioneer address, the API token, and optionally a Cloudflare Access
-   service token (client id and secret). They are stored in the Keychain, not in the script.
+3. Optional: set `BASE_URL` at the top of the script to your address so it is never asked. Run it. It asks once for the address (unless set), the API token, and optionally a Cloudflare Access
+   service token (client id and secret). Each is saved as you enter it, so an interrupted setup resumes and a finished one never asks again. They are stored in the Keychain, not in the script.
 
 To launch it quickly, create a Shortcut with one **Run Script** action (Scriptable) set to
 `Sessioneer Reply`, then use that Shortcut from Siri, the Action Button, Back Tap or a Lock Screen

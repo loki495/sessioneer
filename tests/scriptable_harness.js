@@ -70,13 +70,21 @@ async function run(scenario) {
 
 const sessions = { ok: true, count: 2, menu: ['1. Deploy — NEEDS REPLY', '2. Docs — IDLE 5m'], ids: ['cc-a', 'cc-b'] };
 const question = (extra) => ({ index: 0, question: 'Run tests?', select_mode: 'one', multi_select: false, allows_text: true, choices: ['1. Yes', '2. No', '0. Type my own answer'], choice_ids: ['1', '2', '0'], ...extra });
-const configured = { 'sessioneer.base': 'https://s.example', 'sessioneer.token': 'tok' };
+const configured = { 'sessioneer.base': 'https://s.example', 'sessioneer.token': 'tok', 'sessioneer.cf_asked': '1' };
 
 (async () => {
   console.log('first run stores credentials in the keychain');
   let r = await run({ alerts: [{ button: 0, text: 'https://s.example/' }, { button: 0, text: 'secret-token' }, { button: 0, text: '' }], api: () => ({ ok: false, message: 'x' }), tables: [] });
   check(r.keychain.get('sessioneer.base') === 'https://s.example' && r.keychain.get('sessioneer.token') === 'secret-token', 'address (trailing slash trimmed) and token saved');
   check(!r.keychain.has('sessioneer.cf_id'), 'no Cloudflare headers when left empty');
+
+  console.log('an interrupted setup resumes instead of starting over');
+  r = await run({ alerts: [{ button: 0, text: 'https://s.example' }, { button: -1 }], api: () => { throw new Error('no call'); } });
+  check(r.keychain.get('sessioneer.base') === 'https://s.example' && !r.keychain.has('sessioneer.token'), 'the address is kept after cancelling at the token');
+  r = await run({ keychain: Object.fromEntries(r.keychain), alerts: [{ button: 0, text: 'tk' }, { button: 0, text: '' }], api: () => ({ ok: false, message: 'x' }) });
+  check(r.log.alerts.length === 2 && !r.log.alerts.includes('Sessioneer address'), 'the address is not asked again');
+  r = await run({ keychain: Object.fromEntries(r.keychain), args: {}, api: () => ({ ok: false, message: 'x' }), tables: [] });
+  check(r.log.alerts.length === 0, 'a finished setup, including declining Cloudflare, never prompts again');
 
   console.log('cancelling setup stores nothing');
   r = await run({ alerts: [{ button: -1 }], api: () => { throw new Error('no call expected'); } });

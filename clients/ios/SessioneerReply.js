@@ -1,12 +1,15 @@
 // Sessioneer Reply: answer a blocked prompt or message a session from an iPhone, using Scriptable.
-// Nothing to edit here. The first run asks for your Sessioneer address and API token and keeps
+// Nothing to edit here. The first run asks for your Sessioneer address, API token and (optional) Cloudflare token, and keeps
 // them in the iOS Keychain. See docs/ios-scriptable.md.
 //
 // Run it with a parameter to change behaviour:
 //   reset            forget the saved address and token, then ask again
 //   <session id>     skip the session menu (also: scriptable:///run?scriptName=...&session=<id>)
 
-const KEYS = { base: 'sessioneer.base', token: 'sessioneer.token', cfId: 'sessioneer.cf_id', cfSecret: 'sessioneer.cf_secret' };
+// Optional: your address (not a secret), for example 'https://sessioneer.example.com'. When set, it is never asked for.
+const BASE_URL = '';
+
+const KEYS = { base: 'sessioneer.base', token: 'sessioneer.token', cfId: 'sessioneer.cf_id', cfSecret: 'sessioneer.cf_secret', cfAsked: 'sessioneer.cf_asked' };
 const API = '/api/shortcuts/v1';
 
 class ApiError extends Error {}
@@ -23,21 +26,30 @@ async function ask(title, message, placeholder, secure) {
   return alert.textFieldValue(0).trim();
 }
 
+// Each answer is saved the moment it is given, so an interrupted setup resumes where it stopped.
 async function loadConfig(reset) {
   if (reset) Object.values(KEYS).forEach((key) => { if (Keychain.contains(key)) Keychain.remove(key); });
-  if (!Keychain.contains(KEYS.base) || !Keychain.contains(KEYS.token)) {
+  if (BASE_URL) Keychain.set(KEYS.base, BASE_URL.replace(/\/+$/, ''));
+  if (!Keychain.contains(KEYS.base)) {
     const base = await ask('Sessioneer address', 'For example https://sessioneer.example.com (no trailing slash).', 'https://', false);
     if (!base) return null;
+    Keychain.set(KEYS.base, base.replace(/\/+$/, ''));
+  }
+  if (!Keychain.contains(KEYS.token)) {
     const token = await ask('API token', 'The value of SHORTCUTS_API_TOKEN.', 'token', true);
     if (!token) return null;
-    const cfId = await ask('Cloudflare Access client id', 'Only if the address is behind Cloudflare Access. Leave empty otherwise.', 'client id', false);
-    const cfSecret = cfId ? await ask('Cloudflare Access client secret', 'The matching secret.', 'secret', true) : '';
-    Keychain.set(KEYS.base, base.replace(/\/+$/, ''));
     Keychain.set(KEYS.token, token);
-    if (cfId && cfSecret) {
+  }
+  if (!Keychain.contains(KEYS.cfAsked)) {
+    const cfId = await ask('Cloudflare Access client id', 'Only if the address is behind Cloudflare Access. Leave empty otherwise.', 'client id', false);
+    if (cfId === null) return null;
+    if (cfId) {
+      const cfSecret = await ask('Cloudflare Access client secret', 'The matching secret.', 'secret', true);
+      if (!cfSecret) return null;
       Keychain.set(KEYS.cfId, cfId);
       Keychain.set(KEYS.cfSecret, cfSecret);
     }
+    Keychain.set(KEYS.cfAsked, '1');
   }
   return {
     base: Keychain.get(KEYS.base),
