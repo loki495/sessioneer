@@ -766,7 +766,7 @@ $reply = AgentClient::agent_call(array_filter([
     'set_name' => $setName,
     'message' => $send !== null || $wake !== null ? $prompt : null,
     'at' => $wakeAt,
-    'from' => $send !== null || $peers || $answer !== null ? $self : null,
+    'from' => $send !== null || $peers || $answer !== null || $wake !== null ? $self : null,
     'force' => isset($opts['force']) ? true : null,
     'as_user' => isset($opts['as-user']) ? true : null,
     'history' => $history !== null ? (int)$history : null,
