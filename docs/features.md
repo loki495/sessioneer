@@ -239,7 +239,9 @@ Code 2.1.278):
 
 The health box's "Claude Code headless" section reports the manager, the credential
 in use, the CLI version against the one this handling was verified on, capacity and
-whether the quota footer is current.
+whether the quota footer is current. When it is stale, the detail names the account of the
+manager's last reading and whether that reading was stored; a reading with no usable
+`five_hour`/`seven_day` window is not stored and is logged by the manager.
 
 ### Claude Code implementation entry points
 

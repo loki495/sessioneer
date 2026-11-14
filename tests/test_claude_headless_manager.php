@@ -569,6 +569,7 @@ wait_until(static fn (): bool => status_is($sn(71), 'idle'));
 call($m8, 'sessioneer/sendInput', ['session' => $sn(71), 'content' => 'QUOTAJUNK now']);
 assert_true((bool)wait_until(static fn (): bool => has_result($m8, 'echo: QUOTAJUNK now') && status_is($sn(71), 'idle')), 'a turn whose rate_limit_event has unusable windows still completes');
 assert_equal($workBefore, GlobalStateStore::read(Config::quota_live_state_key('work')), 'and writes nothing (no bogus bucket, no fresh capture time)');
+assert_true(str_contains((string)file_get_contents($m8['log']), 'rate_limit_event not stored for account'), 'and the manager log says the reading was not stored');
 assert_true(!str_contains((string)file_get_contents($m8['log']), 'unexpected error'), 'without an unexpected error in the manager');
 
 // ============================================ inherited CLAUDE_CONFIG_DIR

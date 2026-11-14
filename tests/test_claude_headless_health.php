@@ -150,6 +150,11 @@ $c = by_key(H::build_checks('/usr/bin/claude', true, $unit, 'active', true, repl
 assert_equal(false, $c['claude_headless_quota']['ok'], 'no stored quota at all while the manager has a reading is red');
 assert_contains('nothing stored', (string)$c['claude_headless_quota']['detail'], 'saying nothing is stored');
 
+$c = run(reply(['rate_limit' => ['seen_at' => $now - 30, 'profile' => 'work', 'stored' => false]]), captured: $now - 540);
+assert_contains('from the work account, had no usable five_hour/seven_day window, so it was not stored', (string)$c['claude_headless_quota']['detail'], 'an unstored reading names its account and why');
+$c = run(reply(['rate_limit' => ['seen_at' => $now - 30, 'profile' => null, 'stored' => true]]), captured: $now - 540);
+assert_contains('from the default account, was passed to the store', (string)$c['claude_headless_quota']['detail'], 'a stored-but-stale reading names the default account and the store write');
+
 echo "Real inputs\n";
 $real = by_key(H::checks());
 assert_true(isset($real['claude_headless_cli'], $real['claude_headless_manager']), 'the real path reports the CLI and manager checks');
