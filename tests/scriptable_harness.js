@@ -148,6 +148,13 @@ const configured = { 'sessioneer.base': 'https://s.example', 'sessioneer.token':
   check(r.log.requests[1].url.endsWith('/rename') && JSON.stringify(r.log.requests[1].body) === JSON.stringify({ session: 'cc-b', title: 'Better name' }), 'posts session and title to /rename');
   check(r.log.output === 'Renamed', 'reports Renamed');
 
+  console.log('recent messages keep their own newlines');
+  r = await run({
+    keychain: configured, args: { shortcutParameter: 'cc-b' }, tables: [{ select: [] }],
+    api: () => ({ ok: true, id: 'cc-b', display_name: 'Docs', prompt_kind: 'none', recent: ['YOU: a\n\nb', 'AGENT: c'], recent_text: 'ignored' }),
+  });
+  check(r.log.tables[0].length === 5 && r.log.tables[0][3] === 'YOU: a\n\nb', 'the recent array wins over recent_text and is not split again');
+
   console.log('message flow shows recent messages and sends the text');
   r = await run({
     keychain: configured, args: { shortcutParameter: 'cc-b' },

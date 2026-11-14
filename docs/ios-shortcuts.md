@@ -81,6 +81,8 @@ stable session reference (never rely on names being unique). Only live sessions 
 }
 ```
 
+- `recent`: the same messages as a list of strings, with the newlines inside each message kept.
+- `title`: the session's own name (the one `rename` changes).
 - `recent_text`: the last 3 text messages (`YOU:` / `AGENT:`, each up to 8000 characters, whitespace collapsed) when no prompt is pending, otherwise empty. Use it as the **Ask for Input** prompt in the message branch.
 - An idle session's `display_name` carries how long it has been quiet, for example `Docs — IDLE 25m` (`just now`, minutes, hours or days).
 - `prompt_kind`: `none`, `single` (exactly one question, whether a permission prompt or a one-question form) or `multi` (several questions answered together).

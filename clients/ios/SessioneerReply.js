@@ -10,7 +10,7 @@
 const BASE_URL = '';
 
 // Shown on the session list, so a stale pasted copy is easy to spot.
-const VERSION = '4';
+const VERSION = '5';
 
 const KEYS = { base: 'sessioneer.base', token: 'sessioneer.token', cfId: 'sessioneer.cf_id', cfSecret: 'sessioneer.cf_secret', cfAsked: 'sessioneer.cf_asked' };
 const API = '/api/shortcuts/v1';
@@ -190,7 +190,7 @@ async function pickSession(cfg) {
 
 // Recent messages sit below a "write a message" row, so long context scrolls instead of pushing the field away.
 async function messageFlow(cfg, detail) {
-  const parts = detail.recent_text ? detail.recent_text.split('\n\n') : [];
+  const parts = Array.isArray(detail.recent) ? detail.recent : (detail.recent_text ? detail.recent_text.split('\n\n') : []);
   let action = '';
   const table = new UITable();
   table.showSeparators = true;
@@ -211,8 +211,8 @@ async function messageFlow(cfg, detail) {
   parts.forEach((part) => {
     const row = new UITableRow();
     // Rows have a fixed height, so it is estimated from the text: wrapped lines plus explicit newlines.
-    const lines = part.split('\n').reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / 34)), 0);
-    row.height = 28 + lines * 22;
+    const lines = part.split('\n').reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / 26)), 0);
+    row.height = 32 + lines * 24;
     const cell = row.addText(part);
     if (cell) cell.lineLimit = 0;
     table.addRow(row);
