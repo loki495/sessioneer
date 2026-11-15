@@ -127,13 +127,16 @@ function mdRenderCodeBlock(code) {
   return '<pre class="whitespace-pre overflow-auto rounded border border-slate-800 bg-slate-950/60 px-2 py-1.5 text-xs text-slate-300 my-1"><code>' + escapeHtml(code) + '</code></pre>';
 }
 
-function renderMarkdown(text) {
+// renderCode(code) may return HTML for a fenced block, or null to keep the plain <pre>.
+function renderMarkdown(text, renderCode) {
   var extracted = mdExtractFencedCodeBlocks(text);
   var segments = mdSplitIntoSegments(extracted.text);
 
   return segments.map(function (segment) {
     if (segment.type === 'code') {
-      return mdRenderCodeBlock(extracted.codeBlocks[segment.index] || '');
+      var code = extracted.codeBlocks[segment.index] || '';
+      var custom = renderCode ? renderCode(code) : null;
+      return custom !== null && custom !== undefined ? custom : mdRenderCodeBlock(code);
     }
     if (segment.type === 'ul') {
       return mdRenderList(segment.items, false, null);

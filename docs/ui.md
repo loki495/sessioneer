@@ -154,9 +154,21 @@ transcript as the only scroller, and a footer (scroll buttons, controls summary,
 message box). The shell follows the visual viewport, so the footer stays above
 the iOS keyboard and a pinch-zoom does not resize it.
 
+**No zoom.** Every page sets `maximum-scale=1, user-scalable=no` in its viewport meta and
+`touch-action: pan-x pan-y` on `html`; the layout also cancels the `gesture*` events, which iOS
+Safari raises for a pinch even when the meta tag forbids it.
+
+**Wrapping.** Transcript entries, tool-call headlines and code frames wrap long unbroken text
+(`overflow-wrap: anywhere`) instead of widening the page, and fenced code wraps too.
+
+**Code blocks.** A fenced block in message text gets Copy and Full screen only when it is real
+code: more than one line, or at least `CODE_ACTION_MIN_CHARS` (40) characters. A one-word or short
+block stays a plain `<pre>`, and inline code never gets buttons.
+
 **Scroll buttons.** Up and down step to the previous or next visible user or assistant message
 (tool calls are not stops). Down treats a message that cannot reach the top edge as the end, so it
-cannot stall on the last messages. Up loads older messages at the top. Last jumps to the newest
+cannot stall on the last messages, and a landed message counts as passed even when it reads a
+fraction of a pixel low (`NAV_SLACK`). Up loads older messages at the top. Last jumps to the newest
 message; on an archived page opened at a search hit it first loads every later page.
 
 **Rendering.** The server renders only the shell and a bootstrap JSON (the
@@ -244,8 +256,7 @@ fix (the shell follows the visual viewport's offset as well as its height) canno
 exercised off a real iPhone.
 
 **Images.** A thumbnail opens a full-screen layer above the footer and every
-sheet; tapping toggles fit and natural size (scroll to pan), and pinch zoom is the
-browser's own. "Open original" opens the file.
+sheet; tapping toggles fit and natural size (scroll to pan). Pinch zoom is off. "Open original" opens the file.
 
 **Details sheet.** One panel per topic. Details: session name and id, workdir and
 resume command (copy), branch, worktree, account, runtime, context %. Actions: star,

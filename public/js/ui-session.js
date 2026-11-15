@@ -160,6 +160,19 @@
       + '<button type="button" class="sess-link" data-act="fullscreen" data-raw="' + ref + '" data-title="' + esc(tag || 'Output') + '">Full screen</button></div></div>';
   }
 
+  // A fenced block gets Copy and Full screen only when it is real code: more than one line, or long
+  // enough not to be a single word or short phrase.
+  var CODE_ACTION_MIN_CHARS = 40;
+  function proseCode(code) {
+    var trimmed = String(code).trim();
+    if (trimmed.indexOf('\n') === -1 && trimmed.length < CODE_ACTION_MIN_CHARS) { return null; }
+    var ref = rawRef(code);
+    return '<div class="sess-code"><pre><code>' + esc(code) + '</code></pre>'
+      + '<div class="sess-code-actions"><button type="button" class="sess-link" data-act="copy" data-raw="' + ref + '">Copy</button>'
+      + '<button type="button" class="sess-link" data-act="fullscreen" data-raw="' + ref + '" data-title="Code">Full screen</button></div></div>';
+  }
+  function markdown(text) { return renderMarkdown(text, proseCode); }
+
   function mediaHtml(block, line) {
     var out = '';
     if (block.image) {
@@ -213,7 +226,7 @@
   }
 
   function textBlock(text) {
-    return '<div class="sess-text">' + renderMarkdown(text) + '</div>'
+    return '<div class="sess-text">' + markdown(text) + '</div>'
       + '<div class="sess-actions"><button type="button" class="sess-link" data-act="copy" data-raw="' + rawRef(text) + '">Copy</button></div>';
   }
 
@@ -224,7 +237,7 @@
       case 'text':
         return '<div data-line="' + line + '">' + textBlock(text) + '</div>';
       case 'thinking':
-        return '<div class="sess-think" data-line="' + line + '"><span class="sess-label">Reasoning</span><div class="sess-text">' + renderMarkdown(text) + '</div></div>';
+        return '<div class="sess-think" data-line="' + line + '"><span class="sess-label">Reasoning</span><div class="sess-text">' + markdown(text) + '</div></div>';
       case 'plan':
         return '<div data-line="' + line + '"><span class="sess-label">Plan</span>' + textBlock(text) + '</div>';
       case 'tool_use':
@@ -234,12 +247,12 @@
         var answered = parseAnswered(text);
         if (answered) { return '<div data-line="' + line + '">' + answerRows(answered) + '</div>' + media; }
         return '<div data-line="' + line + '">'
-          + (block.agent_type != null ? '<div class="sess-text">' + renderMarkdown(text) + '</div>' : codeBlock(prettyJson(text), 'Output'))
+          + (block.agent_type != null ? '<div class="sess-text">' + markdown(text) + '</div>' : codeBlock(prettyJson(text), 'Output'))
           + '</div>' + media;
       case 'task_notification':
         var status = block.status === 'failed' ? 'Subagent failed' : (block.status == null || block.status === 'completed' ? 'Subagent finished' : 'Subagent ' + block.status);
         return '<div data-line="' + line + '"><p class="sess-desc">' + esc(block.summary != null ? status + ': ' + block.summary : status) + '</p>'
-          + '<div class="sess-text">' + renderMarkdown(text) + '</div></div>';
+          + '<div class="sess-text">' + markdown(text) + '</div></div>';
       case 'image':
         return media || (text ? '<p class="ui-muted ui-small" data-line="' + line + '">' + esc(text) + '</p>' : '');
       case 'question':
@@ -765,7 +778,7 @@
       var kind = kids[i].getAttribute('data-msg');
       if (kind === 'user') { return null; }
       if (kind === 'assistant') {
-        var copy = kids[i].querySelector('[data-act="copy"]');
+        var copy = kids[i].querySelector('.sess-actions [data-act="copy"]');
         return copy ? raws[parseInt(copy.getAttribute('data-raw'), 10)] : null;
       }
     }
@@ -781,7 +794,7 @@
     slot._text = text;
     slot.hidden = !text;
     slot.open = !!text;
-    slot.querySelector('.sess-text').innerHTML = text ? renderMarkdown(text) : '';
+    slot.querySelector('.sess-text').innerHTML = text ? markdown(text) : '';
   }
 
   function renderPrompt(d) {
@@ -1127,12 +1140,15 @@
     if (scroller.scrollTop > 0) { scroller.scrollTop = 0; }
     if (T.hasMore) { toast('Loading older…'); loadOlder(false); }
   }
+  // Landing leaves a message 8px under the top edge; scroll positions round to whole pixels, so the
+  // landed message can read a fraction of a pixel below that. NAV_SLACK keeps it from being "next" again.
+  var NAV_SLACK = 16;
   function goNext() {
     var msgs = messages();
     var max = scroller.scrollHeight - scroller.clientHeight;
     for (var i = 0; i < msgs.length; i++) {
       var r = relTop(msgs[i]);
-      if (r > 8) {
+      if (r > NAV_SLACK) {
         var target = scroller.scrollTop + r - 8;
         // The last messages cannot reach the top edge; scrolling to the clamped end would leave the same
         // message "next" forever, so take it as the end of the transcript.

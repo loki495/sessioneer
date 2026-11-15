@@ -81,7 +81,7 @@ try {
     $body = $page['body'];
     assert_equal(200, $page['status'], 'GET /session: 200');
     assert_contains('<title>Fix the login redirect bug</title>', $body, 'page: titled with the session title');
-    assert_contains('name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"', $body, 'page: mobile viewport with safe-area support, pinch zoom left to the browser');
+    assert_contains('name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"', $body, 'page: mobile viewport with safe-area support, zoom disabled');
     assert_true(preg_match('#href="/css/ui-session\.css\?v=\d+"#', $body) === 1, 'page: session stylesheet is cache-busted');
     foreach (['ui-session', 'ui-session-sheets', 'markdown'] as $script) {
         assert_true(preg_match('#src="/js/' . $script . '\.js\?v=\d+"#', $body) === 1, "page: {$script}.js is loaded cache-busted");

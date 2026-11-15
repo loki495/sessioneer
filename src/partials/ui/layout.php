@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<?php /* viewport-fit=cover is what makes env(safe-area-inset-*) non-zero in the iOS home-screen app. */ ?>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<?php /* viewport-fit=cover is what makes env(safe-area-inset-*) non-zero in the iOS home-screen app. Zoom is off on every page: the scale limits cover Android, the gesture handlers below cover iOS Safari, which ignores them. */ ?>
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title><?= $this->e($title) ?></title>
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" type="image/png" href="/icons/icon-192.png">
@@ -19,6 +19,11 @@
   var dark = pref === 'dark' || (pref === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
 })();
+</script>
+<script>
+['gesturestart', 'gesturechange', 'gestureend'].forEach(function (name) {
+  document.addEventListener(name, function (e) { e.preventDefault(); });
+});
 </script>
 <link rel="stylesheet" href="<?= \App\Assets::versioned_url('/css/ui.css') ?>">
 <?= $this->section('head') ?>
