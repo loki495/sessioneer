@@ -106,6 +106,18 @@
     try { if (window.speechSynthesis) { window.speechSynthesis.cancel(); } } catch (e) {}
   }
 
+  // A web page cannot open the Settings app on iOS, so the panel says where to go.
+  function isHomeScreenApp() {
+    return window.navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  }
+  function blockedHelp(code) {
+    var head = 'Speech recognition is blocked (' + code + '). ';
+    if (isHomeScreenApp()) {
+      return head + 'This is the home-screen app, where iOS often does not allow it. Open this page in Safari instead, or use the keyboard microphone key.';
+    }
+    return head + 'In Safari, tap the aA button, then Website Settings, and allow Microphone. Also check Settings > Privacy & Security > Speech Recognition and Microphone, and that Dictation is on (Settings > General > Keyboard > Enable Dictation). Or use the keyboard microphone key.';
+  }
+
   function join(a, b) { return (a + ' ' + b).replace(/\s+/g, ' ').trim(); }
 
   function startListening(clear) {
@@ -140,7 +152,7 @@
       if (code === 'no-speech' || code === 'aborted') { return; }
       wantListening = false;
       if (code === 'not-allowed' || code === 'service-not-allowed') {
-        setStatus('Speech recognition is blocked (' + code + '). Allow the microphone and Speech Recognition for this site, or use the keyboard microphone. A home-screen app may not support it.', true);
+        setStatus(blockedHelp(code), true);
       } else {
         setStatus('Speech recognition failed (' + code + ').', true);
       }

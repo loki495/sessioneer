@@ -303,6 +303,7 @@ try {
         cdp_evaluate($page, "document.getElementById('sess-mic').click()");
         cdp_evaluate($page, "window.__recs[window.__recs.length - 1].onerror({ error: 'not-allowed' })");
         assert_contains('not-allowed', (string)cdp_evaluate($page, "document.getElementById('ui-voice-status').textContent"), 'voice: a blocked microphone names the error code');
+        assert_contains('Website Settings', (string)cdp_evaluate($page, "document.getElementById('ui-voice-status').textContent"), 'voice: and says where to allow it in Safari');
         cdp_evaluate($page, "document.querySelector('#ui-voice [data-voice=\"cancel\"]').click()");
         assert_equal(false, cdp_evaluate($page, "document.getElementById('ui-voice').open"), 'voice: Close leaves without sending');
 
