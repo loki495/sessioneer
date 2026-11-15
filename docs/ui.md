@@ -159,7 +159,8 @@ the iOS keyboard and a pinch-zoom does not resize it.
 Safari raises for a pinch even when the meta tag forbids it.
 
 **Wrapping.** Transcript entries, tool-call headlines and code frames wrap long unbroken text
-(`overflow-wrap: anywhere`) instead of widening the page, and fenced code wraps too.
+(`overflow-wrap: anywhere`) instead of widening the page. Code blocks (fenced text and tool output) do
+not wrap: they scroll inside their own frame, sideways for long lines and up to 16rem tall.
 
 **Code blocks.** Every fenced block in message text gets Copy and Full screen, however short.
 Inline code and quotes are not fenced and get no buttons.
