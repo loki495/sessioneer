@@ -390,11 +390,13 @@
   function applyViewOptions() {
     document.body.classList.toggle('sess-hide-reasoning', !api.prefs.reasoning);
     document.body.classList.toggle('sess-hide-subagent', !api.prefs.subagent);
+    document.body.classList.toggle('sess-wrap-code', api.prefs.wrapCode);
   }
   function syncOptions() {
     $('sess-opt-reasoning').checked = api.prefs.reasoning;
     $('sess-opt-subagent').checked = api.prefs.subagent;
     $('sess-opt-confirm').checked = api.prefs.confirm;
+    $('sess-opt-wrapcode').checked = api.prefs.wrapCode;
     $('sess-opt-poll').value = String(api.prefs.pollMs);
   }
   $('sess-opt-reasoning').addEventListener('change', function () {
@@ -406,6 +408,9 @@
   });
   $('sess-opt-subagent').addEventListener('change', function () {
     api.prefs.subagent = this.checked; api.save('v2s-subagent', this.checked ? '1' : '0'); applyViewOptions();
+  });
+  $('sess-opt-wrapcode').addEventListener('change', function () {
+    api.prefs.wrapCode = this.checked; api.save('v2s-wrapcode', this.checked ? '1' : '0'); applyViewOptions();
   });
   $('sess-opt-confirm').addEventListener('change', function () {
     api.prefs.confirm = this.checked; api.save('v2s-confirm', this.checked ? '1' : '0');

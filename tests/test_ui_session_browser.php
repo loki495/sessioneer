@@ -165,6 +165,11 @@ try {
         cdp_evaluate($page, "document.getElementById('sess-fullscreen-close').click()");
         assert_equal(true, cdp_evaluate($page, "(function () { var s = document.getElementById('sess-scroll'); return s.scrollWidth <= s.clientWidth; }())"), 'layout: long code lines and unbroken words do not widen the transcript');
         assert_equal(true, cdp_evaluate($page, "(function () { var p = Array.prototype.slice.call(document.querySelectorAll('#sess-list .sess-code pre')).pop(); return p.scrollWidth > p.clientWidth && getComputedStyle(p).whiteSpace === 'pre' && ['auto', 'scroll'].indexOf(getComputedStyle(p).overflowX) !== -1; }())"), 'layout: a long code line scrolls inside its block instead of wrapping');
+        cdp_evaluate($page, "(function () { var c = document.getElementById('sess-opt-wrapcode'); c.checked = true; c.dispatchEvent(new Event('change')); }())");
+        assert_equal(true, cdp_evaluate($page, "(function () { var p = Array.prototype.slice.call(document.querySelectorAll('#sess-list .sess-code pre')).pop(); return p.scrollWidth <= p.clientWidth && getComputedStyle(p).whiteSpace === 'pre-wrap'; }())"), 'layout: the View option wraps code blocks instead');
+        assert_equal('1', cdp_evaluate($page, "localStorage.getItem('v2s-wrapcode')"), 'layout: the wrap choice is remembered');
+        cdp_evaluate($page, "(function () { var c = document.getElementById('sess-opt-wrapcode'); c.checked = false; c.dispatchEvent(new Event('change')); }())");
+        assert_equal(false, cdp_evaluate($page, "document.body.classList.contains('sess-wrap-code')"), 'layout: turning it off scrolls again');
 
         cdp_evaluate($page, "window.fetch = window.__beforeHistoryPatch; UiSession.api.reload()");
         assert_true(uib_wait($page, "document.querySelectorAll('#sess-list > *').length > 5"), 'code: the canned transcript is back after the check');
