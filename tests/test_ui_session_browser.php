@@ -261,6 +261,51 @@ try {
         assert_true(uib_wait($page, "window.__posted.filter(function (p) { return p.url.indexOf('session_send') >= 0; }).length === 1"), 'footer: sending posts the message');
         assert_true(uib_wait($page, "document.getElementById('sess-text').value === ''"), 'footer: and clears the box once accepted');
 
+        // --- voice: speak a whole message, read it back, retry, then send ---
+        cdp_evaluate($page, <<<'JS'
+        (function () {
+            window.__recs = []; window.__spoken = [];
+            function FakeRec() { window.__recs.push(this); }
+            FakeRec.prototype.start = function () { this.started = true; };
+            FakeRec.prototype.stop = function () { var me = this; setTimeout(function () { if (me.onend) { me.onend(); } }, 0); };
+            FakeRec.prototype.abort = function () {};
+            window.webkitSpeechRecognition = FakeRec; window.SpeechRecognition = FakeRec;
+            window.SpeechSynthesisUtterance = function (t) { this.text = t; };
+            Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: { speak: function (u) { window.__spoken.push(u.text); }, cancel: function () {} } });
+            window.__say = function (i, parts) { window.__recs[i].onresult({ results: parts.map(function (t) { return [{ transcript: t }]; }) }); };
+            UiVoice.refresh();
+            return true;
+        }());
+        JS);
+        assert_equal(false, cdp_evaluate($page, "document.getElementById('sess-mic').hidden"), 'voice: the mic button shows when the browser can recognise speech');
+        $sendsBefore = (int)cdp_evaluate($page, "window.__posted.filter(function (p) { return p.url.indexOf('session_send') >= 0; }).length");
+        cdp_evaluate($page, "document.getElementById('sess-mic').click()");
+        assert_equal(true, cdp_evaluate($page, "document.getElementById('ui-voice').open"), 'voice: the mic opens the review panel');
+        cdp_evaluate($page, "window.__say(0, ['please check the logs', 'and report back'])");
+        assert_equal('please check the logs and report back', cdp_evaluate($page, "document.getElementById('ui-voice-text').value"), 'voice: the live text shows what was heard so far');
+        cdp_evaluate($page, "window.__recs[0].onend()");
+        assert_true(uib_wait($page, "window.__recs.length === 2 && window.__recs[1].started === true"), 'voice: recognition that ends on its own is restarted while the person is still talking');
+        cdp_evaluate($page, "window.__say(1, ['then fix the typo'])");
+        assert_equal('please check the logs and report back then fix the typo', cdp_evaluate($page, "document.getElementById('ui-voice-text').value"), 'voice: the restarted pieces are joined into one message');
+        cdp_evaluate($page, "document.querySelector('#ui-voice [data-voice=\"stop\"]').click()");
+        assert_true(uib_wait($page, "document.querySelector('#ui-voice [data-voice=\"send\"]').hidden === false"), 'voice: Stop moves to the review step');
+        assert_equal('please check the logs and report back then fix the typo', cdp_evaluate($page, "window.__spoken[window.__spoken.length - 1]"), 'voice: the whole message is read back');
+        assert_equal($sendsBefore, (int)cdp_evaluate($page, "window.__posted.filter(function (p) { return p.url.indexOf('session_send') >= 0; }).length"), 'voice: nothing is sent before the person confirms');
+        cdp_evaluate($page, "document.querySelector('#ui-voice [data-voice=\"retry\"]').click()");
+        assert_equal('', cdp_evaluate($page, "document.getElementById('ui-voice-text').value"), 'voice: Retry clears the text and listens again');
+        cdp_evaluate($page, "window.__say(window.__recs.length - 1, ['second try'])");
+        cdp_evaluate($page, "document.querySelector('#ui-voice [data-voice=\"stop\"]').click()");
+        assert_true(uib_wait($page, "document.getElementById('ui-voice-text').value === 'second try' && document.querySelector('#ui-voice [data-voice=\"send\"]').hidden === false"), 'voice: the retry text is what is reviewed');
+        cdp_evaluate($page, "document.querySelector('#ui-voice [data-voice=\"send\"]').click()");
+        assert_true(uib_wait($page, "window.__posted.filter(function (p) { return p.url.indexOf('session_send') >= 0; }).length === " . ($sendsBefore + 1)), 'voice: Send posts the confirmed text once');
+        assert_contains('message=second', (string)cdp_evaluate($page, "window.__posted.filter(function (p) { return p.url.indexOf('session_send') >= 0; }).pop().body"), 'voice: and it is the retried text');
+        assert_equal(false, cdp_evaluate($page, "document.getElementById('ui-voice').open"), 'voice: the panel closes after sending');
+        cdp_evaluate($page, "document.getElementById('sess-mic').click()");
+        cdp_evaluate($page, "window.__recs[window.__recs.length - 1].onerror({ error: 'not-allowed' })");
+        assert_contains('not-allowed', (string)cdp_evaluate($page, "document.getElementById('ui-voice-status').textContent"), 'voice: a blocked microphone names the error code');
+        cdp_evaluate($page, "document.querySelector('#ui-voice [data-voice=\"cancel\"]').click()");
+        assert_equal(false, cdp_evaluate($page, "document.getElementById('ui-voice').open"), 'voice: Close leaves without sending');
+
         // Enter on a touch screen never sends (a soft keyboard reports shiftKey at the start of a sentence); Shift+Enter sends elsewhere
         $enter = "(function (coarse) { var real = window.matchMedia; window.matchMedia = function (q) { return { matches: coarse && q.indexOf('pointer: coarse') >= 0 }; }; var t = document.getElementById('sess-text'); t.value = 'typed'; t.dispatchEvent(new Event('input')); window.__posted = []; var ev = new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true }); t.dispatchEvent(ev); window.matchMedia = real; return ev.defaultPrevented; }(%s))";
         assert_equal(false, cdp_evaluate($page, sprintf($enter, 'true')), 'footer: on a touch screen Shift+Enter is left alone (a newline), never a send');

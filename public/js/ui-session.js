@@ -1075,6 +1075,20 @@
       .then(function () { textEl.disabled = false; updateSend(); });
   }
 
+  // Dictation: the review panel sends the text it was given, so it goes through the normal send path.
+  if (window.UiVoice && $('sess-mic')) {
+    window.UiVoice.attach({
+      button: $('sess-mic'),
+      title: 'Dictate a message',
+      sendLabel: 'Send',
+      onSend: function (text) {
+        textEl.value = textEl.value.trim() === '' ? text : textEl.value.replace(/\s*$/, '') + '\n' + text;
+        grow(); updateSend();
+        sendMessage();
+      }
+    });
+  }
+
   function stopTurn() {
     if (!window.confirm('Stop the current turn?')) { return; }
     stopBtn.disabled = true;

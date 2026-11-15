@@ -85,6 +85,34 @@ try {
         assert_equal(3, cdp_evaluate($page, "document.querySelectorAll('#ui-browser-list button').length"), 'new session: parent and both canned project folders are available');
 
         if ($opened) {
+            // Dictating the first message: review it, then it lands in the form; Start session still creates.
+            cdp_evaluate($page, <<<'JS'
+            (function () {
+                window.__recs = []; window.__spoken = [];
+                function FakeRec() { window.__recs.push(this); }
+                FakeRec.prototype.start = function () {};
+                FakeRec.prototype.stop = function () { var me = this; setTimeout(function () { if (me.onend) { me.onend(); } }, 0); };
+                FakeRec.prototype.abort = function () {};
+                window.webkitSpeechRecognition = FakeRec; window.SpeechRecognition = FakeRec;
+                window.SpeechSynthesisUtterance = function (t) { this.text = t; };
+                Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: { speak: function (u) { window.__spoken.push(u.text); }, cancel: function () {} } });
+                UiVoice.refresh();
+                return true;
+            }());
+            JS);
+            assert_equal(false, cdp_evaluate($page, "document.getElementById('ui-new-mic').hidden"), 'voice: the dictate button shows in the new session form');
+            cdp_evaluate($page, "document.getElementById('ui-new-mic').click()");
+            assert_equal(true, cdp_evaluate($page, "document.getElementById('ui-voice').open"), 'voice: the review panel opens above the form');
+            cdp_evaluate($page, "window.__recs[0].onresult({ results: [[{ transcript: 'refactor the parser' }], [{ transcript: 'and add tests' }]] })");
+            cdp_evaluate($page, "document.querySelector('#ui-voice [data-voice=\"stop\"]').click()");
+            assert_true(uidb_wait($page, "document.querySelector('#ui-voice [data-voice=\"send\"]').textContent === 'Use this text'"), 'voice: the review step offers to use the text');
+            assert_equal('', cdp_evaluate($page, "document.getElementById('ui-new-prompt').value"), 'voice: the form is untouched until the text is confirmed');
+            cdp_evaluate($page, "document.querySelector('#ui-voice [data-voice=\"send\"]').click()");
+            assert_equal('refactor the parser and add tests', cdp_evaluate($page, "document.getElementById('ui-new-prompt').value"), 'voice: the confirmed text becomes the first message');
+            assert_equal(true, cdp_evaluate($page, "document.getElementById('ui-new-dialog').open"), 'voice: the new session form stays open for Start');
+        }
+
+        if ($opened) {
             // Refuse once at the HTTP boundary, then let the real fixture endpoint handle retry.
             cdp_evaluate($page, <<<'JS'
             window.__dashboardFetch = window.fetch;
