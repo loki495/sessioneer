@@ -572,6 +572,8 @@ if ($resume !== null && $nonLaunch && $takeOver === null) {
 $wakeAt = null;
 
 if ($wake !== null) {
+    // PHP defaults to UTC; "18:30" means the machine's clock, the same one `at` reads.
+    date_default_timezone_set(\HostAgent\Services\SessionWakeService::system_timezone());
     $atText = $opt('at');
     $wakeAt = $atText === null ? false : strtotime($atText);
 
