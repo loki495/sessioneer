@@ -157,8 +157,43 @@
   }
 
   document.addEventListener('visibilitychange', function () {
-    if (!document.hidden) { poll(); }
+    if (!document.hidden) { poll(); loadWakes(); }
   });
+
+  // ---- scheduled wake-ups: fetched after load, never part of the card fragment ----
+  function loadWakes() {
+    var fold = document.getElementById('ui-wakes');
+    if (!fold) { return; }
+    var n = document.getElementById('ui-wakes-n');
+    var body = document.getElementById('ui-wakes-body');
+    function fail(message) {
+      fold.hidden = false;
+      n.textContent = '!';
+      body.innerHTML = '';
+      var p = document.createElement('p');
+      p.className = 'ui-muted ui-small';
+      p.textContent = message || 'Could not load wake-ups';
+      body.appendChild(p);
+    }
+    fetch('/wakes', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (res) {
+      if (!res.ok) { fail(res.message); return; }
+      if (!res.count) { fold.hidden = true; return; }
+      fold.hidden = false;
+      n.textContent = String(res.count);
+      body.innerHTML = res.wakes_html;
+      window.UiWakes.localize(body);
+    }).catch(function () { fail(''); });
+  }
+  if (window.UiWakes && document.getElementById('ui-wakes')) {
+    window.UiWakes.attach(document.getElementById('ui-wakes-body'), {
+      toast: toast,
+      post: postJson,
+      getJson: function (url) { return fetch(url, { credentials: 'same-origin' }).then(function (r) { return r.json(); }); },
+      refresh: loadWakes
+    });
+    loadWakes();
+    setInterval(function () { if (!document.hidden) { loadWakes(); } }, 60000);
+  }
 
   // ---- click delegation ----
   document.addEventListener('click', function (e) {

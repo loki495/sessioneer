@@ -33,6 +33,8 @@ use HostAgent\Stores\SidecarStore;
  *   runtime           string  take_over: `headless` (default) or `tmux`
  *   at                int     wake: unix time to send the prompt
  *   message           string  wake: the prompt (also send)
+ *   include_prompt    bool    wake_list: add each wake's full prompt
+ *   job               int     wake_show, wake_cancel: the at job number (a JSON integer above 0)
  */
 class SessionControl
 {
@@ -203,6 +205,62 @@ class SessionControl
         }
 
         return ['name' => $name] + SessionWakeService::schedule($name, (int)($request['at'] ?? 0), (string)($request['message'] ?? ''));
+    }
+
+    /**
+     * Lists the scheduled wake-ups, all or those of one session's conversation. `from` is ignored: the
+     * rule that a session asks the user before cancelling is an instruction, not code.
+     *
+     * @param array<string, mixed> $request
+     * @return array<string, mixed>
+     */
+    public static function wake_list(array $request): array
+    {
+        $target = trim((string)($request['target'] ?? ''));
+        $conversation = null;
+
+        if ($target !== '') {
+            $name = self::resolve($target);
+
+            if ($name === null) {
+                return self::not_found($request);
+            }
+
+            $sidecar = SidecarStore::read_sidecar($name);
+            $conversation = is_string($sidecar['agent_session_id'] ?? null) ? $sidecar['agent_session_id'] : '';
+
+            if ($conversation === '') {
+                return ['ok' => true, 'wakes' => [], 'time_zone' => SessionWakeService::system_timezone()];
+            }
+        }
+
+        $reply = SessionWakeService::list($conversation, ($request['include_prompt'] ?? false) === true);
+
+        return $reply['ok'] ? $reply + ['time_zone' => SessionWakeService::system_timezone()] : ['ok' => false, 'message' => (string)($reply['message'] ?? '')];
+    }
+
+    /**
+     * @param array<string, mixed> $request
+     * @return array<string, mixed>
+     */
+    public static function wake_show(array $request): array
+    {
+        return SessionWakeService::show(self::job_number($request));
+    }
+
+    /**
+     * @param array<string, mixed> $request
+     * @return array<string, mixed>
+     */
+    public static function wake_cancel(array $request): array
+    {
+        return SessionWakeService::cancel(self::job_number($request));
+    }
+
+    /** @param array<string, mixed> $request */
+    private static function job_number(array $request): int
+    {
+        return is_int($request['job'] ?? null) && $request['job'] > 0 ? $request['job'] : 0;
     }
 
     /**

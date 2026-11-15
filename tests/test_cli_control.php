@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 /**
  * `bin/sessioneer` session control: --show, --answer, --interrupt, --bare,
- * --take-over, --send --as-user and --kill. Checks the option rules (refused
+ * --take-over, --send --as-user, --kill, --wake-list and --wake-cancel. Checks the option rules (refused
  * before any request is sent), the request each flag builds, and what is
  * printed, against the stub tests/fixtures/fake_control_agent.php over a real
  * socket. Never spawns claude.
@@ -153,6 +153,151 @@ try {
     assert_true($sent['at'] >= $before + 7200 && $sent['at'] <= time() + 7200, '--wake: --at is sent as a unix time');
     $cli(['--wake', 'blocked', '--at', '+2 hours', 'check the build']);
     assert_equal('check the build', requests($logPath)[1]['message'], '--wake: a given prompt is sent as is');
+
+    echo "--wake-list and --wake-cancel option rules\n";
+    $excl = '--kill, --list, --show, --answer, --interrupt, --wake, --wake-list, --wake-cancel, --bare, --take-over, --send, --peers and --usage cannot be combined';
+    @unlink($logPath);
+    foreach ([
+        'wake-cancel with a word' => [['--wake-cancel', 'abc'], '--wake-cancel needs an at job number'],
+        'wake-cancel 0' => [['--wake-cancel', '0'], '--wake-cancel needs an at job number'],
+        'wake-cancel negative' => [['--wake-cancel=-4'], '--wake-cancel needs an at job number'],
+        'wake-cancel a decimal' => [['--wake-cancel', '2.5'], '--wake-cancel needs an at job number'],
+        'wake-cancel trailing text' => [['--wake-cancel', '26abc'], '--wake-cancel needs an at job number'],
+        'wake-cancel an empty value' => [['--wake-cancel', ''], '--wake-cancel needs an at job number'],
+        'wake-list with a prompt' => [['--wake-list', 'hello'], '--wake-list and --wake-cancel take no prompt'],
+        'wake-cancel with a prompt' => [['--wake-cancel', '26', 'hello'], '--wake-list and --wake-cancel take no prompt'],
+        'wake-list with wake-cancel' => [['--wake-list', '--wake-cancel', '26'], $excl],
+        'wake-list with kill' => [['--wake-list', '--kill', 'a'], $excl],
+        'wake-cancel with kill' => [['--wake-cancel', '26', '--kill', 'a'], $excl],
+        'wake-list with list' => [['--wake-list', '--list'], $excl],
+        'wake-list with show' => [['--wake-list', '--show', 'a'], $excl],
+        'wake-cancel with send' => [['--wake-cancel', '26', '--send', 'a', 'hi'], $excl],
+        'wake-list with wake' => [['--wake-list', '--wake', 'a', '--at', '+1 hour'], $excl],
+        'wake-cancel with usage' => [['--wake-cancel', '26', '--usage'], $excl],
+        'wake-list with bare' => [['--wake-list', '--bare'], $excl],
+        'a stray --at with wake-list' => [['--wake-list', '--at', '+1 hour'], '--at only applies to --wake'],
+        'a stray --at with wake-cancel' => [['--wake-cancel', '26', '--at', '+1 hour'], '--at only applies to --wake'],
+        'wake-list with --next' => [['--wake-list', '--next'], '--next cannot be combined with --wake-list'],
+        'wake-cancel with --rotate' => [['--wake-cancel', '26', '--rotate'], '--rotate cannot be combined with --wake-cancel'],
+        'wake-list with --offer' => [['--wake-list', '--offer'], '--offer cannot be combined with --wake-list'],
+        'wake-cancel with --next' => [['--next', '--wake-cancel', '26'], '--next cannot be combined with --wake-cancel'],
+        'wake-list with --session' => [['--session', 'a', '--set-name', 'N', '--wake-list'], '--session needs --set-name, and renames that session only: no prompt and no other action'],
+        'wake-cancel with --session' => [['--wake-cancel', '26', '--session', 'a', '--set-name', 'N'], '--session needs --set-name, and renames that session only: no prompt and no other action'],
+        'wake-cancel with a leading zero' => [['--wake-cancel', '011'], '--wake-cancel needs an at job number'],
+    ] as $label => [$args, $needle]) {
+        [$code, $out, $err] = $cli($args);
+        assert_equal(1, $code, "{$label}: exit 1");
+        assert_contains($needle, $err, "{$label}: says why");
+        assert_equal('', $out, "{$label}: nothing on stdout");
+    }
+
+    assert_equal([], requests($logPath), 'none of them reached the host agent');
+
+    echo "--wake-list\n";
+    [$code, $out, $err] = $cli(['--wake-list']);
+    assert_equal(0, $code, '--wake-list: exit 0');
+    assert_equal(
+        "26\t2026-11-15 10:30 EST\tscheduled\tclaude-headless-1794700000\ta5c36bac-1111-4222-8333-444455556666\tThe task should've ran. Can you check logs…\n"
+        . "30\t2026-11-14 18:46 EST\toverdue\t-\tses_abc\tcontinue\n",
+        $out,
+        '--wake-list: one tab-separated line per wake: job, local time, state, session or -, conversation id, preview'
+    );
+    assert_equal('', $err, '--wake-list: nothing on stderr');
+    $sent = requests($logPath)[0];
+    assert_equal('launch_wake_list', $sent['action'] ?? null, '--wake-list: sends launch_wake_list');
+    assert_true(!array_key_exists('include_prompt', $sent) && !array_key_exists('from', $sent), '--wake-list: plain, it sends neither include_prompt nor from');
+    $cli(['--wake-list'], '', ['SESSIONEER_SELF' => 'claude-headless-9']);
+    assert_true(!array_key_exists('from', requests($logPath)[count(requests($logPath)) - 1]), '--wake-list: inside a session it still sends no from');
+
+    file_put_contents($logPath . '.wake-empty', '1');
+    [$code, $out, $err] = $cli(['--wake-list']);
+    assert_equal([0, '', ''], [$code, $out, $err], '--wake-list: an empty queue prints nothing and exits 0');
+    [$code, $out] = $cli(['--wake-list', '--json']);
+    assert_equal(0, $code, '--wake-list --json: an empty queue exits 0');
+    assert_equal([], json_decode($out, true)['wakes'] ?? null, '--wake-list --json: with an empty wakes list');
+    @unlink($logPath . '.wake-empty');
+
+    [$code, $out, $err] = $cli(['--wake-list', '--json']);
+    assert_equal(0, $code, '--wake-list --json: exit 0');
+    $json = json_decode($out, true);
+    assert_equal(true, $json['ok'] ?? null, '--wake-list --json: the reply is printed as JSON');
+    assert_equal([26, 30], array_column($json['wakes'] ?? [], 'job'), '--wake-list --json: every wake');
+    assert_equal("The task should've ran. Can you check logs\nand report \$HOME `date`", $json['wakes'][0]['prompt'] ?? null, '--wake-list --json: each wake carries its full prompt');
+    assert_equal('America/New_York', $json['time_zone'] ?? null, '--wake-list --json: the whole reply, time zone included');
+    assert_contains("\n    ", $out, '--wake-list --json: pretty-printed');
+    assert_equal(true, requests($logPath)[count(requests($logPath)) - 1]['include_prompt'] ?? null, '--wake-list --json: sends include_prompt true');
+
+    file_put_contents($logPath . '.wake-fail', '1');
+    [$code, $out, $err] = $cli(['--wake-list', '--json']);
+    assert_equal(1, $code, '--wake-list --json: a failure exits 1');
+    assert_equal(['ok' => false, 'message' => 'The at command is not available (AT_BIN=at)'], json_decode($out, true), '--wake-list --json: the failure reply is on stdout');
+    assert_equal('', $err, '--wake-list --json: nothing on stderr');
+    [$code, $out, $err] = $cli(['--wake-list']);
+    assert_equal(1, $code, '--wake-list: a failure exits 1');
+    assert_equal('', $out, '--wake-list: nothing on stdout');
+    assert_contains('sessioneer: The at command is not available (AT_BIN=at)', $err, '--wake-list: the message after the sessioneer: prefix');
+    @unlink($logPath . '.wake-fail');
+
+    echo "--wake-cancel\n";
+    @unlink($logPath);
+    [$code, $out, $err] = $cli(['--wake-cancel', '26']);
+    assert_equal(0, $code, '--wake-cancel: exit 0');
+    assert_equal("claude-headless-1794700000\n", $out, '--wake-cancel: prints the session name');
+    assert_contains('Cancelled wake-up 26 (2026-11-15 10:30 EST)', $err, '--wake-cancel: and the message on stderr');
+    $sent = requests($logPath)[0];
+    assert_equal(['launch_wake_cancel', 26], [$sent['action'] ?? null, $sent['job'] ?? null], '--wake-cancel: sends launch_wake_cancel with the job as a number');
+
+    [$code, $out, $err] = $cli(['--wake-cancel', '27']);
+    assert_equal([0, "\n"], [$code, $out], '--wake-cancel: a wake-up with no session prints an empty line');
+    assert_contains('Cancelled wake-up 27', $err, '--wake-cancel: with the message on stderr');
+
+    [$code, $out, $err] = $cli(['--wake-cancel', '99']);
+    assert_equal(1, $code, '--wake-cancel: a job that is gone exits 1');
+    assert_equal('', $out, '--wake-cancel: nothing on stdout');
+    assert_contains('sessioneer: Wake-up 99 no longer exists: it already ran or was cancelled', $err, '--wake-cancel: sessioneer: and the reason');
+    foreach ([98 => 'Wake-up 98 is already running', 97 => 'Job 97 is not a Sessioneer wake-up'] as $job => $message) {
+        [$code, $out, $err] = $cli(['--wake-cancel', (string)$job]);
+        assert_equal([1, ''], [$code, $out], "--wake-cancel {$job}: refused, exit 1, nothing on stdout");
+        assert_contains('sessioneer: ' . $message, $err, "--wake-cancel {$job}: with the reason");
+    }
+
+    [$code, $out] = $cli(['--wake-cancel', '26', '--json']);
+    $json = json_decode($out, true);
+    assert_equal(0, $code, '--wake-cancel --json: exit 0');
+    assert_equal(['ok' => true, 'job' => 26, 'name' => 'claude-headless-1794700000', 'message' => 'Cancelled wake-up 26 (2026-11-15 10:30 EST)'], $json, '--wake-cancel --json: the reply');
+
+    [$code, $out, $err] = $cli(['--wake-cancel', '99', '--json']);
+    assert_equal(1, $code, '--wake-cancel --json: a failure exits 1');
+    assert_equal(['ok' => false, 'gone' => true, 'message' => 'Wake-up 99 no longer exists: it already ran or was cancelled'], json_decode($out, true), '--wake-cancel --json: the failure reply is on stdout');
+    assert_equal('', $err, '--wake-cancel --json: nothing on stderr');
+
+    $cli(['--wake-cancel', '26']);
+    assert_true(!array_key_exists('from', requests($logPath)[count(requests($logPath)) - 1]), '--wake-cancel outside a session sends no from');
+    $cli(['--wake-cancel', '26'], '', ['SESSIONEER_SELF' => 'claude-headless-9']);
+    $last = requests($logPath)[count(requests($logPath)) - 1];
+    assert_equal(['launch_wake_cancel', 26, 'claude-headless-9'], [$last['action'] ?? null, $last['job'] ?? null, $last['from'] ?? null], '--wake-cancel inside a session is still sent, with from = SESSIONEER_SELF: the ask-first rule is an instruction, not code');
+    $cli(['--wake-cancel', '26'], '', ['CODEX_THREAD_ID' => 'thread-7']);
+    assert_equal('thread-7', requests($logPath)[count(requests($logPath)) - 1]['from'] ?? null, '--wake-cancel in a Codex session sends from = CODEX_THREAD_ID');
+    $cli(['--wake-cancel', '26'], '', ['SESSIONEER_SELF' => 'claude-headless-9', 'CODEX_THREAD_ID' => 'thread-7']);
+    assert_equal('claude-headless-9', requests($logPath)[count(requests($logPath)) - 1]['from'] ?? null, '--wake-cancel: SESSIONEER_SELF wins over CODEX_THREAD_ID');
+    $cli(['--wake-list'], '', ['SESSIONEER_SELF' => 'claude-headless-9']);
+    assert_equal('launch_wake_list', requests($logPath)[count(requests($logPath)) - 1]['action'] ?? null, '--wake-list works inside a session');
+
+    echo "--help documents the new options and the ask-first rule (indentation is not pinned)\n";
+    [$code, $out] = $cli(['--help']);
+    assert_equal(0, $code, '--help: exit 0');
+    assert_contains('--wake-list', $out, '--help: names --wake-list');
+    assert_contains('--wake-cancel', $out, '--help: names --wake-cancel');
+    $helpLines = array_map('trim', explode("\n", $out));
+
+    foreach ([
+        'Wake-ups:          sessioneer --wake-list [--json]',
+        'Cancel a wake-up:  sessioneer --wake-cancel JOB [--json]',
+        '--wake-list       list scheduled wake-ups: job, local time, state, session, conversation id, prompt preview',
+        '--wake-cancel JOB cancel a scheduled wake-up; a session must ask the user (ask-user tool) before cancelling one the user did not request',
+    ] as $line) {
+        assert_true(in_array($line, $helpLines, true), "--help: has the line \"{$line}\"");
+    }
 
     echo "--bare\n";
     [$code, $out] = $cli(['--bare']);

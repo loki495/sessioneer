@@ -156,6 +156,7 @@ $bootstrap = json_encode([
       <textarea id="sess-wake-text" rows="3" maxlength="30000" required>continue</textarea>
       <div class="ui-row"><button type="submit" class="ui-btn">Schedule</button><button type="button" class="ui-btn" id="sess-wake-cancel">Cancel</button></div>
     </form>
+    <?php if (!$archived): ?><div id="sess-wakes" class="ui-col"></div><?php endif ?>
   </section>
   <section class="sess-sec" id="sess-tasks-sec" hidden><h3 class="ui-subtitle">Tasks</h3><ul id="sess-tasks" class="ui-checks"></ul></section>
   <section class="sess-sec"><h3 class="ui-subtitle">Files</h3>
@@ -206,5 +207,6 @@ $bootstrap = json_encode([
 <script src="<?= \App\Assets::versioned_url('/js/ui-quota.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/ui-flow.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/ui-session.js') ?>"></script>
+<script src="<?= \App\Assets::versioned_url('/js/ui-wakes.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/ui-session-sheets.js') ?>"></script>
 <?php endif ?>

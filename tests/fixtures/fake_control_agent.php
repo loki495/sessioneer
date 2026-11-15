@@ -53,6 +53,46 @@ switch ($request['action'] ?? '') {
         echo json_encode(['ok' => true, 'name' => 'claude-headless-1', 'job' => 7, 'message' => 'Wake-up scheduled (at job 7)']);
         break;
 
+    case 'launch_wake_list':
+        $flags = (string)getenv('FAKE_CONTROL_LOG');
+
+        if (is_file($flags . '.wake-fail')) {
+            echo json_encode(['ok' => false, 'message' => 'The at command is not available (AT_BIN=at)']);
+            break;
+        }
+
+        $wakes = is_file($flags . '.wake-empty') ? [] : [
+            ['job' => 26, 'at' => 1794756600, 'at_local' => '2026-11-15 10:30 EST', 'state' => 'scheduled', 'agent' => 'claude', 'agent_session_id' => 'a5c36bac-1111-4222-8333-444455556666',
+                'workdir' => '/tmp/p', 'profile' => 'work', 'session' => 'claude-headless-1794700000', 'prompt_preview' => "The task should've ran. Can you check logs…", 'prompt_length' => 87],
+            ['job' => 30, 'at' => 1794700000, 'at_local' => '2026-11-14 18:46 EST', 'state' => 'overdue', 'agent' => 'opencode', 'agent_session_id' => 'ses_abc',
+                'workdir' => null, 'profile' => null, 'session' => null, 'prompt_preview' => 'continue', 'prompt_length' => 8],
+        ];
+
+        if (($request['include_prompt'] ?? false) === true) {
+            $wakes = array_map(static fn (array $w): array => $w + ['prompt' => $w['job'] === 26 ? "The task should've ran. Can you check logs\nand report \$HOME `date`" : 'continue'], $wakes);
+        }
+
+        echo json_encode(['ok' => true, 'wakes' => $wakes, 'time_zone' => 'America/New_York']);
+        break;
+
+    case 'launch_wake_cancel':
+        $job = $request['job'] ?? null;
+
+        if ($job === 26) {
+            echo json_encode(['ok' => true, 'job' => 26, 'name' => 'claude-headless-1794700000', 'message' => 'Cancelled wake-up 26 (2026-11-15 10:30 EST)']);
+        } elseif ($job === 27) {
+            echo json_encode(['ok' => true, 'job' => 27, 'name' => '', 'message' => 'Cancelled wake-up 27 (2026-11-16 08:00 EST)']);
+        } elseif ($job === 98) {
+            echo json_encode(['ok' => false, 'message' => 'Wake-up 98 is already running']);
+        } elseif ($job === 97) {
+            echo json_encode(['ok' => false, 'message' => 'Job 97 is not a Sessioneer wake-up']);
+        } elseif (is_int($job) && $job > 0) {
+            echo json_encode(['ok' => false, 'gone' => true, 'message' => "Wake-up {$job} no longer exists: it already ran or was cancelled"]);
+        } else {
+            echo json_encode(['ok' => false, 'message' => 'Needs an at job number']);
+        }
+        break;
+
     case 'launch_bare':
         echo json_encode(['ok' => true, 'bare' => [
             ['pid' => 4242, 'cwd' => '/tmp/p', 'resolved_agent_session_id' => 'conv-1', 'resolved_title' => 'Fix the thing'],

@@ -43,6 +43,7 @@ $router->get('/history', [UiController::class, 'history']);
 $router->get('/archived-history', [UiController::class, 'archivedHistory']);
 $router->get('/fragment', [UiController::class, 'fragment']);
 $router->get('/archived', [UiController::class, 'archived']);
+$router->get('/wakes', [UiController::class, 'wakes']);
 $router->get('/action', [UiController::class, 'action']);
 $router->post('/action', [UiController::class, 'action']);
 

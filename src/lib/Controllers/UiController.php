@@ -179,6 +179,64 @@ class UiController extends Controller
         ]);
     }
 
+    /** Wake-up list as rendered rows, or with ?job=N one wake-up's full prompt (the rows only carry a preview). */
+    public function wakes(): void
+    {
+        $this->start_readonly_json();
+
+        if (isset($_GET['job'])) {
+            $job = self::wake_job($_GET['job']);
+            $result = $job === null ? ['ok' => false, 'message' => 'Needs an at job number'] : AgentClient::agent_call(['action' => 'launch_wake_show', 'job' => $job]);
+
+            echo json_encode(($result['ok'] ?? false)
+                ? ['ok' => true, 'prompt' => (string)($result['wake']['prompt'] ?? '')]
+                : ['ok' => false, 'message' => (string)($result['message'] ?? 'Unknown error')]);
+
+            return;
+        }
+
+        $request = ['action' => 'launch_wake_list'];
+        $session = trim((string)($_GET['session'] ?? ''));
+
+        if ($session !== '') {
+            $request['target'] = $session;
+        }
+
+        $result = AgentClient::agent_call($request);
+
+        if (!($result['ok'] ?? false)) {
+            echo json_encode(['ok' => false, 'message' => (string)($result['message'] ?? 'Unknown error')]);
+
+            return;
+        }
+
+        $wakes = is_array($result['wakes'] ?? null) ? $result['wakes'] : [];
+        $truncated = !empty($result['truncated']);
+        $out = ['ok' => true, 'count' => count($wakes), 'wakes_html' => UiView::wakes_html($wakes, ($_GET['compact'] ?? '') === '1', $truncated)];
+
+        if ($truncated) {
+            $out['truncated'] = true;
+        }
+
+        echo json_encode($out);
+    }
+
+    /** A valid at job number: ASCII digits, no leading zero. */
+    private static function wake_job(mixed $value): ?int
+    {
+        return is_string($value) && preg_match('/^[1-9][0-9]*$/', $value) === 1 && (string)(int)$value === $value ? (int)$value : null;
+    }
+
+    /** @return array<string, mixed> */
+    private function wake_cancel(): array
+    {
+        $job = self::wake_job($_POST['job'] ?? null);
+
+        return $job === null
+            ? ['ok' => false, 'message' => 'Needs an at job number']
+            : $this->agent_plain(['action' => 'launch_wake_cancel', 'job' => $job]);
+    }
+
     /** Lazy, like the classic one: a full transcript-directory scan is not worth doing on every poll. */
     public function archived(): void
     {
@@ -218,6 +276,7 @@ class UiController extends Controller
                 'at' => (int)($_POST['at'] ?? 0),
                 'message' => (string)($_POST['text'] ?? ''),
             ]),
+            'wake_cancel' => $this->wake_cancel(),
             'flow_rotate' => $this->flow_rotate(),
             'flow_rotate_request' => $this->flow_rotate_request(),
             'flow_offer_dismiss' => $this->flow_offer_dismiss(),
