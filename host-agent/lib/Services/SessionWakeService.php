@@ -35,8 +35,9 @@ final class SessionWakeService
             return ['ok' => false, 'message' => 'The prompt is longer than ' . self::MAX_PROMPT_CHARS . ' characters'];
         }
 
-        if ($when <= $now + 30) {
-            return ['ok' => false, 'message' => 'Pick a time at least a minute from now'];
+        // `at` has one-minute resolution, so any later minute is schedulable, seconds included.
+        if (intdiv($when, 60) <= intdiv($now, 60)) {
+            return ['ok' => false, 'message' => 'Pick a time in a later minute than now'];
         }
 
         if ($when > $now + self::MAX_AHEAD_SECONDS) {

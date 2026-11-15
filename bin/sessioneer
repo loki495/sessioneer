@@ -115,7 +115,7 @@ function usage(): string
                         to the session at --at TIME, resuming it if it is archived
       --at TIME         with --wake: when to send it, anything `strtotime` reads
                         in this machine's time zone ("18:30", "tomorrow 09:00",
-                        "+2 hours", "2026-12-01 08:00"); between a minute and 30
+                        "+2 hours", "2026-12-01 08:00"); from the next minute to 30
                         days from now
       --bare            list Claude processes running in a terminal Sessioneer did
                         not start: pid, conversation id, directory, title
