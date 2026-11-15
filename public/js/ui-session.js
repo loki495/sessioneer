@@ -416,6 +416,8 @@
   }
   function toBottom() {
     scroller.scrollTop = scroller.scrollHeight;
+    // Images and code blocks can still grow after this paint; settle once more on the next frame.
+    if (window.requestAnimationFrame) { requestAnimationFrame(function () { scroller.scrollTop = scroller.scrollHeight; }); }
     $('sess-newdot').hidden = true;
   }
   function historyUrl(extra) {
@@ -1103,7 +1105,15 @@
   // ======================================================================
 
   function messages() {
-    return Array.prototype.slice.call(listEl.querySelectorAll('[data-msg]'));
+    // A hidden message (display:none) reports a zero rect, which would read as "above the viewport".
+    return Array.prototype.slice.call(listEl.querySelectorAll('[data-msg]')).filter(function (el) { return el.getClientRects().length > 0; });
+  }
+  function atBottom() {
+    return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 2;
+  }
+  function hasNewerPages() {
+    var box = $('sess-newer');
+    return !!box && !box.hidden;
   }
   function relTop(el) {
     return el.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
@@ -1119,11 +1129,29 @@
   }
   function goNext() {
     var msgs = messages();
+    var max = scroller.scrollHeight - scroller.clientHeight;
     for (var i = 0; i < msgs.length; i++) {
       var r = relTop(msgs[i]);
-      if (r > 8) { scroller.scrollTop += r - 8; return; }
+      if (r > 8) {
+        var target = scroller.scrollTop + r - 8;
+        // The last messages cannot reach the top edge; scrolling to the clamped end would leave the same
+        // message "next" forever, so take it as the end of the transcript.
+        if (target >= max - 1) { toBottom(); } else { scroller.scrollTop = target; }
+        return;
+      }
     }
+    if (atBottom() && hasNewerPages()) { loadNewer().then(function () { if (!atBottom()) { goNext(); } }); return; }
     toBottom();
+  }
+  // "Last": the newest message. An archived page opened at a search hit has not loaded the pages after it.
+  function goLast() {
+    var guard = 0;
+    function more() {
+      if (hasNewerPages() && guard++ < 200) { return loadNewer().then(more); }
+      toBottom();
+      return Promise.resolve();
+    }
+    return more();
   }
 
   // ======================================================================
@@ -1232,7 +1260,7 @@
   $('sess-load-until-user').addEventListener('click', function () { loadOlder(true); });
   $('sess-prev').addEventListener('click', goPrev);
   $('sess-next').addEventListener('click', goNext);
-  $('sess-bottom').addEventListener('click', toBottom);
+  $('sess-bottom').addEventListener('click', goLast);
   scroller.addEventListener('scroll', function () { if (nearBottom()) { $('sess-newdot').hidden = true; } }, { passive: true });
 
   sendBtn.addEventListener('click', sendMessage);
