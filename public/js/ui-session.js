@@ -160,12 +160,8 @@
       + '<button type="button" class="sess-link" data-act="fullscreen" data-raw="' + ref + '" data-title="' + esc(tag || 'Output') + '">Full screen</button></div></div>';
   }
 
-  // A fenced block gets Copy and Full screen only when it is real code: more than one line, or long
-  // enough not to be a single word or short phrase.
-  var CODE_ACTION_MIN_CHARS = 40;
+  // Every fenced block gets Copy and Full screen, however short. Inline code and quotes are not fenced.
   function proseCode(code) {
-    var trimmed = String(code).trim();
-    if (trimmed.indexOf('\n') === -1 && trimmed.length < CODE_ACTION_MIN_CHARS) { return null; }
     var ref = rawRef(code);
     return '<div class="sess-code"><pre><code>' + esc(code) + '</code></pre>'
       + '<div class="sess-code-actions"><button type="button" class="sess-link" data-act="copy" data-raw="' + ref + '">Copy</button>'
