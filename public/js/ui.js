@@ -635,6 +635,20 @@
     });
   });
 
+  // ---- dictate the first message: the review panel hands the text back to the form, Start still creates ----
+  if (window.UiVoice && document.getElementById('ui-new-mic')) {
+    window.UiVoice.attach({
+      button: document.getElementById('ui-new-mic'),
+      title: 'Dictate the first message',
+      sendLabel: 'Use this text',
+      onSend: function (text) {
+        var promptEl = document.getElementById('ui-new-prompt');
+        promptEl.value = promptEl.value.trim() === '' ? text : promptEl.value.replace(/\s*$/, '') + '\n' + text;
+        promptEl.focus();
+      }
+    });
+  }
+
   // ---- boot ----
   var bootPrefill = readNewPrefill();
   if (bootPrefill) { openNewDialog(bootPrefill); }

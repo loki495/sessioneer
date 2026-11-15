@@ -158,6 +158,19 @@ the iOS keyboard and a pinch-zoom does not resize it.
 `touch-action: pan-x pan-y` on `html`; the layout also cancels the `gesture*` events, which iOS
 Safari raises for a pinch even when the meta tag forbids it.
 
+**Voice input.** `public/js/ui-voice.js` adds a mic button to the session footer and a **Dictate the
+first message** button to the New session form. Both stay hidden when the browser has no
+`SpeechRecognition`/`webkitSpeechRecognition`. Tapping one opens a review panel and starts listening:
+the whole message is spoken in one go and the text shows live. Recognition that ends on its own (iOS does
+after a pause) is restarted while you have not tapped **Stop**, and the pieces are joined. After **Stop**
+the transcript is read back with `speechSynthesis` (the **Read back automatically** box, on by default and
+kept as `v2-voice-readback`), is editable, and nothing is sent until you choose: **Send** (session page)
+or **Use this text** (the form, where **Start session** still creates the session), **Retry** (clear and
+listen again), **Add more** (keep the text and listen on) or close. A blocked or failing recognizer shows
+its error code in the panel. Recognition runs in the browser, so it is as reliable as the browser's: iOS
+home-screen web apps have historically not offered it, in which case the keyboard's own mic key still works
+in both boxes.
+
 **Wrapping.** Transcript entries, tool-call headlines and code frames wrap long unbroken text
 (`overflow-wrap: anywhere`) instead of widening the page. Code blocks (fenced text and tool output) do
 not wrap: they scroll inside their own frame, sideways for long lines and up to 16rem tall. The Details sheet's

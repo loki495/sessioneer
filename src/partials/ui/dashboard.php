@@ -162,6 +162,7 @@
     <label class="ui-field" id="ui-new-prompt-wrap">First message (optional)
       <textarea id="ui-new-prompt" name="prompt" rows="3" placeholder="Sent as soon as the session starts"></textarea>
     </label>
+    <button type="button" class="ui-btn ui-mic-btn" id="ui-new-mic" hidden>&#127908; Dictate the first message</button>
 
     <div class="ui-field">Working directory
       <div class="ui-browser">
@@ -199,4 +200,5 @@
 <script src="<?= \App\Assets::versioned_url('/js/ui-quota.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/ui-flow.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/ui-wakes.js') ?>"></script>
+<script src="<?= \App\Assets::versioned_url('/js/ui-voice.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/ui.js') ?>"></script>

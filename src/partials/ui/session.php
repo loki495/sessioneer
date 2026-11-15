@@ -83,6 +83,7 @@ $bootstrap = json_encode([
           <button type="button" class="ui-icon-btn sess-attach" id="sess-attach-btn" aria-label="Attach file">+</button>
           <input type="file" id="sess-file" multiple hidden>
           <textarea id="sess-text" rows="1" placeholder="Message" enterkeyhint="enter" aria-label="Message"></textarea>
+          <button type="button" class="ui-icon-btn ui-mic" id="sess-mic" aria-label="Dictate a message" hidden>&#127908;</button>
           <button type="button" class="ui-btn ui-btn-danger sess-stop" id="sess-stop" hidden>Stop</button>
           <button type="button" class="ui-btn ui-btn-primary sess-send" id="sess-send" disabled>Send</button>
         </div>
@@ -205,6 +206,7 @@ $bootstrap = json_encode([
 <script src="<?= \App\Assets::versioned_url('/js/ui-session.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/ui-archived.js') ?>"></script>
 <?php else: ?>
+<script src="<?= \App\Assets::versioned_url('/js/ui-voice.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/ui-quota.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/ui-flow.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/ui-session.js') ?>"></script>
