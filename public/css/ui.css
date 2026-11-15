@@ -418,3 +418,15 @@ input[type="search"], select, textarea, input[type="text"], input[type="datetime
 #ui-voice.is-listening .ui-voice-text { border-color: var(--blocked); box-shadow: 0 0 0 2px color-mix(in srgb, var(--blocked) 35%, transparent); }
 .ui-dictbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 0; }
 .ui-dictbar[hidden] { display: none; }
+.ui-voice-mode { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 2px solid var(--accent-line); border-radius: 14px; background: var(--surface-2); font-size: 1.05rem; line-height: 1.3; }
+.ui-voice-dot { flex: none; width: 14px; height: 14px; border-radius: 50%; background: var(--text-muted); }
+.ui-voice-mode[data-mode="listening"] { border-color: var(--blocked); background: color-mix(in srgb, var(--blocked) 14%, var(--surface-2)); }
+.ui-voice-mode[data-mode="listening"] .ui-voice-dot { background: var(--blocked); animation: ui-voice-pulse 1.1s ease-in-out infinite; }
+.ui-voice-mode[data-mode="speaking"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--surface-2)); }
+.ui-voice-mode[data-mode="speaking"] .ui-voice-dot { background: var(--accent); animation: ui-voice-pulse 1.6s ease-in-out infinite; }
+.ui-voice-mode[data-mode="command"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, var(--surface-2)); font-weight: 650; }
+.ui-voice-mode[data-mode="command"] .ui-voice-dot { background: var(--accent); animation: ui-voice-pulse 0.8s ease-in-out infinite; }
+.ui-voice-mode[data-mode="error"] { border-color: var(--blocked); color: var(--blocked); }
+.ui-voice-mode[data-mode="error"] .ui-voice-dot { background: var(--blocked); }
+@keyframes ui-voice-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .ui-voice-dot { animation: none !important; } }

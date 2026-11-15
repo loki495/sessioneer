@@ -20,6 +20,7 @@
   var RESTART_DELAY_MS = 150;
   var BURST_MIN_CHARS = 8; // a keyboard-dictation insert is a phrase; typing adds one character
   var BAR_POLL_MS = 1000;
+  var RESTART_AFTER_STOP_MS = 400; // iOS refuses a new recognition started while the last one is still shutting down
 
   var attached = [];
   var dlg = null;
@@ -34,6 +35,8 @@
   var silenceTimer = null;
   var cmdTimer = null;
   var speakTimer = null;
+  var startTimer = null;
+  var retriedStart = false;
 
   function ctor() { return window.SpeechRecognition || window.webkitSpeechRecognition || null; }
   function supported() { return !!ctor(); }
@@ -56,6 +59,7 @@
     dlg.className = 'ui-sheet';
     dlg.innerHTML = '<div class="ui-sheet-body">'
       + '<div class="ui-sheet-head"><h2 id="ui-voice-title">Dictate</h2><button type="button" class="ui-icon-btn" data-voice="cancel" aria-label="Close">&times;</button></div>'
+      + '<div id="ui-voice-mode" class="ui-voice-mode" data-mode="review" aria-live="polite"><span class="ui-voice-dot" aria-hidden="true"></span><strong id="ui-voice-mode-label"></strong></div>'
       + '<p id="ui-voice-status" class="ui-muted ui-small" role="status"></p>'
       + '<textarea id="ui-voice-text" class="ui-voice-text" rows="8" aria-label="Transcript"></textarea>'
       + '<div class="ui-voice-actions">'
@@ -73,6 +77,8 @@
     document.body.appendChild(dlg);
     el.title = dlg.querySelector('#ui-voice-title');
     el.status = dlg.querySelector('#ui-voice-status');
+    el.mode = dlg.querySelector('#ui-voice-mode');
+    el.modeLabel = dlg.querySelector('#ui-voice-mode-label');
     el.text = dlg.querySelector('#ui-voice-text');
     el.readback = dlg.querySelector('#ui-voice-readback');
     el.commands = dlg.querySelector('#ui-voice-commands');
@@ -93,9 +99,9 @@
       stopCommand();
       var act = node.getAttribute('data-voice');
       if (act === 'stop') { stopListening(); }
-      else if (act === 'readback') { setStatus('Reading it back...'); speak(listenForCommand); }
-      else if (act === 'more') { startListening(false); }
-      else if (act === 'retry') { startListening(true); }
+      else if (act === 'readback') { setMode('speaking'); setStatus(''); speak(listenForCommand); }
+      else if (act === 'more') { startListening(false, true); }
+      else if (act === 'retry') { startListening(true, true); }
       else if (act === 'send') { send(); }
       else if (act === 'cancel') { close(); }
     });
@@ -116,6 +122,20 @@
       el.pause.appendChild(opt);
     }
     el.pause.value = stored;
+  }
+
+  // The big banner says what the panel is doing right now: starting | listening | speaking | command | review | error.
+  var MODE_LABELS = {
+    starting: 'Starting the microphone...',
+    listening: 'Listening: speak now',
+    speaking: 'Reading it back',
+    command: 'Your turn: say send, add more or clear',
+    review: 'Paused: choose below',
+    error: 'Not listening'
+  };
+  function setMode(mode, label) {
+    el.mode.setAttribute('data-mode', mode);
+    el.modeLabel.textContent = label || MODE_LABELS[mode];
   }
 
   function setStatus(text, bad) {
@@ -196,19 +216,29 @@
     silenceTimer = setTimeout(function () { if (state === 'listening' && wantListening) { stopListening(); } }, ms);
   }
 
-  function startListening(clear) {
+  // delayed: the previous recognizer was just stopped, so give iOS a moment before starting the next one.
+  function startListening(clear, delayed) {
     var Recognition = ctor();
-    if (!Recognition) { setStatus('Speech recognition is not available in this browser. Use the keyboard microphone instead.', true); show('review'); return; }
+    if (!Recognition) { setMode('error'); setStatus('Speech recognition is not available in this browser. Use the keyboard microphone instead.', true); show('review'); return; }
     stopSpeaking();
     stopCommand();
+    clearTimeout(startTimer);
     committed = clear ? '' : el.text.value.trim();
     el.text.value = committed;
     restarts = 0;
+    retriedStart = false;
     wantListening = true;
     show('listening');
-    setStatus(pauseMs() > 0 ? 'Listening. Speak your whole message; I stop when you pause.' : 'Listening. Speak your whole message, then tap Stop.');
-    armSilence(FIRST_SPEECH_WAIT_MS);
-    begin();
+    setMode('starting');
+    setStatus('');
+    function go() {
+      if (!wantListening || state !== 'listening') { return; }
+      setMode('listening');
+      setStatus(pauseMs() > 0 ? 'Speak your whole message; I stop when you pause.' : 'Speak your whole message, then tap Stop.');
+      armSilence(FIRST_SPEECH_WAIT_MS);
+      begin();
+    }
+    if (delayed) { startTimer = setTimeout(go, RESTART_AFTER_STOP_MS); } else { go(); }
   }
 
   function begin() {
@@ -231,6 +261,7 @@
       if (code === 'no-speech' || code === 'aborted') { return; }
       wantListening = false;
       clearTimeout(silenceTimer);
+      setMode('error');
       if (code === 'not-allowed' || code === 'service-not-allowed') {
         setStatus(blockedHelp(code), true);
       } else {
@@ -248,7 +279,15 @@
       }
       finish();
     };
-    try { rec.start(); } catch (e) { wantListening = false; setStatus('Could not start listening: ' + e.message, true); finish(); }
+    try { rec.start(); } catch (e) {
+      // iOS can still be closing the previous recognizer: try once more shortly before giving up.
+      if (!retriedStart) {
+        retriedStart = true;
+        setTimeout(function () { if (wantListening) { try { begin(); } catch (e2) { wantListening = false; setMode('error'); setStatus('Could not start listening: ' + e2.message, true); finish(); } } }, RESTART_AFTER_STOP_MS);
+        return;
+      }
+      wantListening = false; setMode('error'); setStatus('Could not start listening: ' + e.message, true); finish();
+    }
   }
 
   function stopListening() {
@@ -264,12 +303,14 @@
     clearTimeout(silenceTimer);
     show('review');
     if (el.text.value.trim() === '') {
-      setStatus('Nothing was heard. Tap Clear to try again.', el.status.classList.contains('ui-voice-bad'));
+      setMode('review', 'Nothing was heard');
+      setStatus('Tap Clear to try again.', el.status.classList.contains('ui-voice-bad'));
       return;
     }
-    if (el.status.classList.contains('ui-voice-bad')) { return; }
+    if (el.status.classList.contains('ui-voice-bad')) { setMode('error'); return; }
+    setMode('review');
     setStatus('Check the text, edit it if needed, then ' + (current.sendLabel || 'Send').toLowerCase() + ' or clear.');
-    if (el.readback.checked) { setStatus('Reading it back...'); speak(listenForCommand); } else { listenForCommand(); }
+    if (el.readback.checked) { setMode('speaking'); setStatus(''); speak(listenForCommand); } else { listenForCommand(); }
   }
 
   // ---- spoken commands after the read back ----
@@ -292,8 +333,8 @@
 
   function runCommand(name) {
     if (name === 'send') { send(); }
-    else if (name === 'more') { startListening(false); }
-    else if (name === 'retry') { startListening(true); }
+    else if (name === 'more') { startListening(false, true); }
+    else if (name === 'retry') { startListening(true, true); }
     else if (name === 'cancel') { close(); }
   }
 
@@ -310,7 +351,7 @@
   function listenForCommand(attempt) {
     var Recognition = ctor();
     attempt = attempt || 0;
-    if (!Recognition || !el.commands.checked || state !== 'review' || !dlg.open) { setStatus('Tap Send, Add more or Clear.'); return; }
+    if (!Recognition || !el.commands.checked || state !== 'review' || !dlg.open) { setMode('review'); setStatus('Tap Send, Add more or Clear.'); return; }
     stopCommand();
     var heard = false;
     var mine = new Recognition();
@@ -318,27 +359,30 @@
     mine.continuous = false;
     mine.interimResults = false;
     mine.lang = (navigator.language || 'en-US');
-    setStatus('Say "' + (current.sendLabel || 'send').toLowerCase() + '", "add more" or "clear", or tap a button.');
+    setMode('command', 'Your turn: say "' + (current.sendLabel || 'send').toLowerCase() + '", "add more" or "clear"');
+    setStatus('Or tap a button.');
     mine.onresult = function (event) {
       if (cmdRec !== mine) { return; }
       heard = true;
       var name = commandFor(event.results[0] && event.results[0][0] ? event.results[0][0].transcript : '');
       stopCommand();
       if (name) { runCommand(name); return; }
+      setMode('review');
       setStatus('I did not catch a command. Tap Send, Add more or Clear.');
     };
-    mine.onerror = function () { if (cmdRec === mine) { stopCommand(); setStatus('Tap Send, Add more or Clear.'); } };
+    mine.onerror = function () { if (cmdRec === mine) { stopCommand(); setMode('review'); setStatus('Tap Send, Add more or Clear.'); } };
     mine.onend = function () {
       if (cmdRec !== mine || heard) { return; }
       stopCommand();
-      if (state === 'review' && dlg.open && attempt + 1 < COMMAND_ATTEMPTS) { listenForCommand(attempt + 1); } else { setStatus('Tap Send, Add more or Clear.'); }
+      if (state === 'review' && dlg.open && attempt + 1 < COMMAND_ATTEMPTS) { listenForCommand(attempt + 1); } else { setMode('review'); setStatus('Tap Send, Add more or Clear.'); }
     };
     cmdTimer = setTimeout(function () { if (cmdRec === mine) { try { mine.stop(); } catch (e) {} } }, COMMAND_WAIT_MS);
-    try { mine.start(); } catch (e) { stopCommand(); setStatus('Tap Send, Add more or Clear.'); }
+    try { mine.start(); } catch (e) { stopCommand(); setMode('review'); setStatus('Tap Send, Add more or Clear.'); }
   }
 
   function teardown() {
     wantListening = false;
+    clearTimeout(startTimer);
     clearTimeout(silenceTimer);
     stopCommand();
     if (rec) { try { rec.abort(); } catch (e) {} rec = null; }
@@ -365,6 +409,7 @@
     el.title.textContent = opts.title || 'Dictate';
     dlg.querySelector('[data-voice="send"]').textContent = opts.sendLabel || 'Send';
     el.text.value = '';
+    setMode('starting');
     setStatus('');
     el.readback.checked = load(READBACK_KEY, '1') === '1';
     el.commands.checked = load(COMMANDS_KEY, '1') === '1';

@@ -173,6 +173,12 @@ first message** button to the New session form; both stay hidden when the browse
    "don't send" never sends. Two listening attempts of 8 seconds each; after that the buttons remain.
    The buttons (**Send** / **Use this text**, **Add more**, **Clear**, **Read back**) always work.
 
+A large banner at the top of the panel shows the current mode in words and colour: **Starting the
+microphone**, **Listening** (red, pulsing dot), **Reading it back** (blue), **Your turn: say send, add
+more or clear** (bold, fast pulse), **Paused: choose below** or **Not listening** (error). **Add more**
+and **Clear** wait 0.4 seconds before starting the next recognizer, because iOS refuses one that starts
+while the previous is still closing; a start that still fails is retried once.
+
 Nothing is sent until you confirm. On the form **Use this text** only fills the first message; **Start
 session** still creates the session. A blocked or failing recognizer shows its error code and where to
 allow it: a web page cannot open iOS Settings, and home-screen apps have historically not offered
