@@ -34,6 +34,7 @@ SidecarStore::write_sidecar('claude-headless-w1', ['workdir' => '/tmp/proj', 'sp
 SidecarStore::write_sidecar('claude-headless-w2', ['workdir' => '/tmp/proj', 'spawned_at' => 1, 'agent' => 'claude']);
 SidecarStore::write_sidecar('oc-w3', ['workdir' => '/tmp/proj', 'spawned_at' => 1, 'agent_session_id' => 'ses_abc', 'agent' => 'opencode']);
 
+putenv('TZ=America/Los_Angeles');
 $now = 1_800_000_000;
 $when = $now + 7200;
 
@@ -58,7 +59,8 @@ try {
     assert_equal(true, $r['ok'], 'scheduled');
     assert_equal(42, $r['job'], 'the at job id is returned');
     assert_contains('at job 42', $r['message'], 'the message names the job');
-    assert_equal('-t ' . date('YmdHi', $when), trim((string)file_get_contents($root . '/at-args')), 'at gets the time as -t');
+    $expected = (new DateTimeImmutable('@' . $when))->setTimezone(new DateTimeZone('America/Los_Angeles'))->format('YmdHi');
+    assert_equal('-t ' . $expected, trim((string)file_get_contents($root . '/at-args')), 'at gets the time in the machine zone, not PHP\'s UTC');
     $script = (string)file_get_contents($root . '/at-script');
     assert_true(str_starts_with($script, "env -i 'HOME="), 'the job starts under env -i');
     assert_contains("'--resume' 'conv-w1' '--workdir' '/tmp/proj' '--profile' 'work'", $script, 'resume, workdir and profile');

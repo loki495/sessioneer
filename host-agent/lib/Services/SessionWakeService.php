@@ -59,7 +59,8 @@ final class SessionWakeService
         );
 
         $atBin = Config::sessioneer_config('AT_BIN', 'at');
-        $result = ProcessRunner::run_process([$atBin, '-t', date('YmdHi', $when)], $script . "\n");
+        $local = (new \DateTimeImmutable('@' . $when))->setTimezone(new \DateTimeZone(self::system_timezone()));
+        $result = ProcessRunner::run_process([$atBin, '-t', $local->format('YmdHi')], $script . "\n");
         $output = $result['stdout'] . "\n" . $result['stderr'];
 
         if ($result['exit'] !== 0 || !preg_match('/^job (\d+) at /m', $output, $m)) {
@@ -70,8 +71,29 @@ final class SessionWakeService
             'ok' => true,
             'job' => (int)$m[1],
             'at' => $when,
-            'message' => 'Wake-up scheduled for ' . date('Y-m-d H:i', $when) . ' (at job ' . $m[1] . ')',
+            'message' => 'Wake-up scheduled for ' . $local->format('Y-m-d H:i T') . ' (at job ' . $m[1] . ')',
         ];
+    }
+
+    /**
+     * The machine's own time zone, which is the one `at` reads its time in. PHP's default is UTC unless
+     * php.ini says otherwise, so `date()` would be hours off.
+     */
+    public static function system_timezone(): string
+    {
+        $tz = getenv('TZ');
+
+        if ($tz !== false && $tz !== '' && @timezone_open(ltrim($tz, ':')) !== false) {
+            return ltrim($tz, ':');
+        }
+
+        $link = @readlink('/etc/localtime');
+
+        if ($link !== false && preg_match('#zoneinfo/(.+)$#', $link, $m) && @timezone_open($m[1]) !== false) {
+            return $m[1];
+        }
+
+        return 'UTC';
     }
 
     /** The shell command the job runs. */
