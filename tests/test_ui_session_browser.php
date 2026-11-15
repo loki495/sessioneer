@@ -293,8 +293,10 @@ try {
         assert_true(uib_wait($page, "document.querySelector('#ui-voice [data-voice=\"send\"]').hidden === false"), 'voice: Stop moves to the review step');
         assert_equal('please check the logs and report back then fix the typo', cdp_evaluate($page, "window.__spoken[window.__spoken.length - 1]"), 'voice: the whole message is read back');
         assert_equal($sendsBefore, (int)cdp_evaluate($page, "window.__posted.filter(function (p) { return p.url.indexOf('session_send') >= 0; }).length"), 'voice: nothing is sent before the person confirms');
+        $recsBefore = (int)cdp_evaluate($page, "window.__recs.length");
         cdp_evaluate($page, "document.querySelector('#ui-voice [data-voice=\"retry\"]').click()");
         assert_equal('', cdp_evaluate($page, "document.getElementById('ui-voice-text').value"), 'voice: Retry clears the text and listens again');
+        assert_true(uib_wait($page, "window.__recs.length === " . ($recsBefore + 1)), 'voice: Clear starts a new recognizer once the old one has had time to stop');
         cdp_evaluate($page, "window.__say(window.__recs.length - 1, ['second try'])");
         cdp_evaluate($page, "document.querySelector('#ui-voice [data-voice=\"stop\"]').click()");
         assert_true(uib_wait($page, "document.getElementById('ui-voice-text').value === 'second try' && document.querySelector('#ui-voice [data-voice=\"send\"]').hidden === false"), 'voice: the retry text is what is reviewed');
@@ -326,6 +328,8 @@ try {
         assert_true(uib_wait($page, "document.querySelector('#ui-voice [data-voice=\"send\"]').hidden === false"), 'hands-free: a pause ends listening without tapping Stop');
         assert_equal('please run the tests', cdp_evaluate($page, "window.__spoken[window.__spoken.length - 1]"), 'hands-free: the text is read back');
         assert_true(uib_wait($page, "window.__recs.length === window.__before + 2"), 'hands-free: after the read back it listens for a command');
+        assert_equal('command', cdp_evaluate($page, "document.getElementById('ui-voice-mode').getAttribute('data-mode')"), 'hands-free: the banner says it is your turn to speak a command');
+        assert_contains('say', strtolower((string)cdp_evaluate($page, "document.getElementById('ui-voice-mode-label').textContent")), 'hands-free: and tells you what to say');
         assert_equal($sendsBefore, $sends(), 'hands-free: nothing is sent yet');
         cdp_evaluate($page, "window.__cmd(\"don't send\")");
         assert_equal($sendsBefore, $sends(), 'hands-free: a negated command is not taken as send');
@@ -334,6 +338,8 @@ try {
         assert_true(uib_wait($page, "window.__recs.length === window.__before + 3"), 'hands-free: reading back again listens for a command again');
         cdp_evaluate($page, "window.__cmd('clear')");
         assert_true(uib_wait($page, "document.getElementById('ui-voice-text').value === '' && document.querySelector('#ui-voice [data-voice=\"stop\"]').hidden === false"), 'hands-free: "clear" empties the text and listens again');
+        assert_true(uib_wait($page, "window.__last().continuous === true && window.__last().started === true"), 'hands-free: and a new dictation recognizer starts after a short wait');
+        assert_equal('listening', cdp_evaluate($page, "document.getElementById('ui-voice-mode').getAttribute('data-mode')"), 'hands-free: the banner says it is listening');
         cdp_evaluate($page, "window.__last().onresult({ results: [[{ transcript: 'take two' }]] })");
         assert_true(uib_wait($page, "document.querySelector('#ui-voice [data-voice=\"send\"]').hidden === false && document.getElementById('ui-voice-text').value === 'take two'"), 'hands-free: the second take stops on its own pause');
         assert_true(uib_wait($page, "window.__last().continuous === false"), 'hands-free: a command listener is waiting');
@@ -341,6 +347,24 @@ try {
         assert_true(uib_wait($page, "window.__posted.filter(function (p) { return p.url.indexOf('session_send') >= 0; }).length === " . ($sendsBefore + 1)), 'hands-free: "send it" sends the confirmed text');
         assert_equal(false, cdp_evaluate($page, "document.getElementById('ui-voice').open"), 'hands-free: and the panel closes');
         assert_equal(1, (int)cdp_evaluate($page, "window.__spoken.filter(function (t) { return t === 'take two'; }).length"), 'hands-free: the retried take was read back once');
+
+        // Add more (the button) goes back to listening and the new words are appended.
+        cdp_evaluate($page, "document.getElementById('sess-mic').click()");
+        cdp_evaluate($page, "window.__last().onresult({ results: [[{ transcript: 'part one' }]] })");
+        assert_true(uib_wait($page, "document.querySelector('#ui-voice [data-voice=\"more\"]').hidden === false && document.getElementById('ui-voice-text').value === 'part one'"), 'add more: the first part is reviewed');
+        assert_true(uib_wait($page, "window.__last().continuous === false"), 'add more: the command listener is up');
+        $recsNow = (int)cdp_evaluate($page, "window.__recs.length");
+        cdp_evaluate($page, "document.querySelector('#ui-voice [data-voice=\"more\"]').click()");
+        assert_true(uib_wait($page, "window.__recs.length === " . ($recsNow + 1) . " && window.__last().continuous === true && window.__last().started === true"), 'add more: tapping it starts a new dictation recognizer');
+        assert_equal('listening', cdp_evaluate($page, "document.getElementById('ui-voice-mode').getAttribute('data-mode')"), 'add more: the banner says listening');
+        assert_equal('part one', cdp_evaluate($page, "document.getElementById('ui-voice-text').value"), 'add more: the earlier text is kept');
+        cdp_evaluate($page, "window.__last().onresult({ results: [[{ transcript: 'part two' }]] })");
+        assert_true(uib_wait($page, "document.querySelector('#ui-voice [data-voice=\"send\"]').hidden === false && document.getElementById('ui-voice-text').value === 'part one part two'"), 'add more: the new words are appended and listening stops on the next pause');
+        assert_true(uib_wait($page, "window.__last().continuous === false"), 'add more: the command listener is up again');
+        $recsNow = (int)cdp_evaluate($page, "window.__recs.length");
+        cdp_evaluate($page, "window.__cmd('add more')");
+        assert_true(uib_wait($page, "window.__recs.length === " . ($recsNow + 1) . " && window.__last().continuous === true && window.__last().started === true"), 'add more: saying it also goes back to listening');
+        cdp_evaluate($page, "document.querySelector('#ui-voice [data-voice=\"cancel\"]').click()");
 
         // --- keyboard dictation: a pause after a phrase offers Send / Add more / Clear ---
         $insert = static fn (string $value, string $type): string => "(function () { var t = document.getElementById('sess-text'); t.value = " . json_encode($value) . "; t.dispatchEvent(new InputEvent('input', { inputType: '{$type}', bubbles: true })); return true; }())";
