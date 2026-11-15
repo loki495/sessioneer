@@ -17,10 +17,10 @@ const WAKE_HOSTILE_PREVIEW = '<script>alert(1)</script> " onmouseover="alert(2)"
 const WAKE_HOSTILE_PROMPT = "<script>alert(1)</script>\n\" onmouseover=\"alert(2)\" 'x' & \$HOME `date` \\ end\n--workdir";
 
 /** @return array<string, mixed> */
-function wake_row(int $job, string $state, ?string $session, string $preview): array
+function wake_row(int $job, string $state, ?string $session, string $preview, ?string $title = null): array
 {
     return ['job' => $job, 'at' => 1794756600 + $job, 'at_local' => '2026-11-15 10:30 EST', 'state' => $state, 'agent' => 'claude', 'agent_session_id' => 'conv-' . $job,
-        'workdir' => '/tmp/p', 'profile' => null, 'session' => $session, 'prompt_preview' => $preview, 'prompt_length' => 99];
+        'workdir' => '/tmp/p', 'profile' => null, 'session' => $session, 'title' => $title, 'prompt_preview' => $preview, 'prompt_length' => 99];
 }
 
 if ($action === 'launch_wake_list') {
@@ -31,7 +31,7 @@ if ($action === 'launch_wake_list') {
         'with-session' => [wake_row(13, 'scheduled', 'claude-headless-uniquename9', 'has a session')],
         'empty' => [],
         'hostile' => [wake_row(14, 'scheduled', null, WAKE_HOSTILE_PREVIEW)],
-        default => [wake_row(11, 'scheduled', 'claude-headless-sched', 'scheduled later'), wake_row(12, 'running', 'claude-headless-run', 'running now'), wake_row(15, 'overdue', null, 'overdue one')],
+        default => [wake_row(11, 'scheduled', 'claude-headless-sched', 'scheduled later', 'Mail scan designer'), wake_row(12, 'running', 'claude-headless-run', 'running now'), wake_row(15, 'overdue', null, 'overdue one', 'Old archived chat')],
     };
 
     if ($target === 'boom') {

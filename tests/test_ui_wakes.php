@@ -150,7 +150,9 @@ try {
     assert_contains('<span class="ui-chip ui-wake-state ui-wake-state-scheduled">scheduled</span>', $html, 'row 11: the state chip');
     assert_contains('<span class="ui-chip ui-wake-state ui-wake-state-running">running</span>', $html, 'row 12: a running chip');
     assert_contains('<span class="ui-chip ui-wake-state ui-wake-state-overdue">overdue</span>', $html, 'row 15: an overdue chip');
-    assert_contains('<a class="ui-inline-link ui-wake-session" href="/session?session=claude-headless-sched">claude-headless-sched</a>', $html, 'row 11: a live session links to its page');
+    assert_contains('<a class="ui-inline-link ui-wake-session" href="/session?session=claude-headless-sched">Mail scan designer</a> <span class="ui-muted ui-small ui-wake-name">claude-headless-sched</span>', $html, 'row 11: the link text is the session title, the session name follows');
+    assert_contains('<a class="ui-inline-link ui-wake-session" href="/session?session=claude-headless-run">claude-headless-run</a>', $html, 'row 12: with no title the link text is the session name');
+    assert_contains('>Old archived chat</a> <span class="ui-muted ui-small ui-wake-name">…conv-15</span>', $html, 'row 15: an archived session shows its title and the short conversation id');
     assert_contains('href="/archived-session?agent_session_id=conv-15"', $html, 'row 15: with no session the link goes to the archived page for the conversation');
     assert_contains('<p class="ui-wake-preview">scheduled later</p>', $html, 'row 11: the preview paragraph');
     assert_contains('<button type="button" class="ui-btn ui-btn-quiet" data-wake-show="11">Show full prompt</button>', $html, 'row 11: the Show full prompt button');

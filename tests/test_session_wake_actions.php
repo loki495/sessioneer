@@ -40,7 +40,7 @@ $act = static function (array $request): array {
 };
 $noLeak = static fn (array $reply): bool => !str_contains(json_encode($reply), 'hunter2') && !str_contains(json_encode($reply), 'atrun') && !str_contains(json_encode($reply), 'Execution directory');
 $epoch = static fn (string $local): int => wake_epoch($local);
-$wakeKeys = ['agent', 'agent_session_id', 'at', 'at_local', 'job', 'profile', 'prompt_length', 'prompt_preview', 'session', 'state', 'workdir'];
+$wakeKeys = ['agent', 'agent_session_id', 'at', 'at_local', 'job', 'profile', 'prompt_length', 'prompt_preview', 'session', 'state', 'title', 'workdir'];
 $withPrompt = array_merge($wakeKeys, ['prompt']);
 sort($withPrompt);
 $hostile = "it's \"quoted\" \$HOME `date` \\ back\n--workdir";

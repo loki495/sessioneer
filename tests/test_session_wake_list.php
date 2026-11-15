@@ -260,7 +260,7 @@ try {
     $rig->add(18, $stampOf('2026-11-15 13:30:00'), null);
     $rig->add(19, $stampOf('2026-11-15 09:00:00'), $wakeBody($realNoSidecar));
     $rig->add(20, $stampOf('2026-11-15 10:30:00'), $wakeBody($other));
-    $wakeKeys = ['agent', 'agent_session_id', 'at', 'at_local', 'job', 'profile', 'prompt_length', 'prompt_preview', 'session', 'state', 'workdir'];
+    $wakeKeys = ['agent', 'agent_session_id', 'at', 'at_local', 'job', 'profile', 'prompt_length', 'prompt_preview', 'session', 'state', 'title', 'workdir'];
 
     echo "list returns only Sessioneer wake jobs, sorted by time then job\n";
     $r = wk('list', null, false, $now);
@@ -283,6 +283,7 @@ try {
     assert_equal('/tmp/proj', $w11['workdir'], 'workdir');
     assert_equal('work', $w11['profile'], 'profile');
     assert_equal('claude-headless-w1', $w11['session'], 'the session that tracks the conversation');
+    assert_true(array_key_exists('title', $w11) && ($w11['title'] === null || is_string($w11['title'])), 'the title is a string or null');
     assert_equal(mb_strlen($hostile), $w11['prompt_length'], 'prompt_length counts characters of the full prompt');
     assert_equal("it's \"quoted\" \$HOME `date` \\ back --workdir", $w11['prompt_preview'], 'the preview collapses whitespace runs to one space and keeps quotes and symbols');
     assert_equal(null, $wakes[19]['workdir'], 'no --workdir gives a null workdir');
