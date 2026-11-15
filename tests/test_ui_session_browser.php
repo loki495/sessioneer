@@ -358,6 +358,12 @@ try {
         assert_true(uib_wait($page, "window.__recs.length === " . ($recsNow + 1) . " && window.__last().continuous === true && window.__last().started === true"), 'add more: tapping it starts a new dictation recognizer');
         assert_equal('listening', cdp_evaluate($page, "document.getElementById('ui-voice-mode').getAttribute('data-mode')"), 'add more: the banner says listening');
         assert_equal('part one', cdp_evaluate($page, "document.getElementById('ui-voice-text').value"), 'add more: the earlier text is kept');
+        // iOS reports the end of the old recognizer late: it must not add a second live recognizer or change the text.
+        $recsAfterStart = (int)cdp_evaluate($page, "window.__recs.length");
+        cdp_evaluate($page, "(function () { var old = window.__recs.filter(function (r) { return r.continuous === true; }); old = old[old.length - 2]; if (old) { if (old.onresult) { old.onresult({ results: [[{ transcript: 'stale words' }]] }); } if (old.onend) { old.onend(); } } })()");
+        usleep(500000);
+        assert_equal($recsAfterStart, (int)cdp_evaluate($page, "window.__recs.length"), 'add more: a late end from the old recognizer starts no extra recognizer');
+        assert_equal('part one', cdp_evaluate($page, "document.getElementById('ui-voice-text').value"), 'add more: a late result from the old recognizer is ignored');
         cdp_evaluate($page, "window.__last().onresult({ results: [[{ transcript: 'part two' }]] })");
         assert_true(uib_wait($page, "document.querySelector('#ui-voice [data-voice=\"send\"]').hidden === false && document.getElementById('ui-voice-text').value === 'part one part two'"), 'add more: the new words are appended and listening stops on the next pause');
         assert_true(uib_wait($page, "window.__last().continuous === false"), 'add more: the command listener is up again');

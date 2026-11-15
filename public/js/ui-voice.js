@@ -222,6 +222,7 @@
     if (!Recognition) { setMode('error'); setStatus('Speech recognition is not available in this browser. Use the keyboard microphone instead.', true); show('review'); return; }
     stopSpeaking();
     stopCommand();
+    detachRecognizer();
     clearTimeout(startTimer);
     committed = clear ? '' : el.text.value.trim();
     el.text.value = committed;
@@ -241,15 +242,27 @@
     if (delayed) { startTimer = setTimeout(go, RESTART_AFTER_STOP_MS); } else { go(); }
   }
 
+  // iOS can report the end of an old recognizer late; its events must not touch the new one (duplicate text, two live recognizers).
+  function detachRecognizer() {
+    if (!rec) { return; }
+    var old = rec;
+    rec = null;
+    old.onresult = null; old.onerror = null; old.onend = null;
+    try { old.abort(); } catch (e) {}
+  }
+
   function begin() {
     var Recognition = ctor();
     var sessionText = '';
-    rec = new Recognition();
+    var mine = new Recognition();
+    detachRecognizer();
+    rec = mine;
     rec.continuous = true;
     rec.interimResults = true;
     rec.lang = (navigator.language || 'en-US');
 
     rec.onresult = function (event) {
+      if (rec !== mine) { return; }
       var text = '';
       for (var i = 0; i < event.results.length; i++) { text += event.results[i][0].transcript + ' '; }
       sessionText = text;
@@ -257,6 +270,7 @@
       armSilence(pauseMs());
     };
     rec.onerror = function (event) {
+      if (rec !== mine) { return; }
       var code = event && event.error ? event.error : 'unknown';
       if (code === 'no-speech' || code === 'aborted') { return; }
       wantListening = false;
@@ -269,6 +283,7 @@
       }
     };
     rec.onend = function () {
+      if (rec !== mine) { return; }
       committed = join(committed, sessionText);
       sessionText = '';
       el.text.value = committed;
