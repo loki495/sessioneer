@@ -159,17 +159,30 @@ the iOS keyboard and a pinch-zoom does not resize it.
 Safari raises for a pinch even when the meta tag forbids it.
 
 **Voice input.** `public/js/ui-voice.js` adds a mic button to the session footer and a **Dictate the
-first message** button to the New session form. Both stay hidden when the browser has no
-`SpeechRecognition`/`webkitSpeechRecognition`. Tapping one opens a review panel and starts listening:
-the whole message is spoken in one go and the text shows live. Recognition that ends on its own (iOS does
-after a pause) is restarted while you have not tapped **Stop**, and the pieces are joined. After **Stop**
-the transcript is read back with `speechSynthesis` (the **Read back automatically** box, on by default and
-kept as `v2-voice-readback`), is editable, and nothing is sent until you choose: **Send** (session page)
-or **Use this text** (the form, where **Start session** still creates the session), **Retry** (clear and
-listen again), **Add more** (keep the text and listen on) or close. A blocked or failing recognizer shows
-its error code in the panel. Recognition runs in the browser, so it is as reliable as the browser's: iOS
-home-screen web apps have historically not offered it, in which case the keyboard's own mic key still works
-in both boxes.
+first message** button to the New session form; both stay hidden when the browser has no
+`SpeechRecognition`/`webkitSpeechRecognition`. One tap starts a hands-free flow:
+
+1. **Listen.** Speak the whole message. Recognition that ends on its own (iOS does after a pause) is
+   restarted and the pieces are joined.
+2. **Stop on a pause.** After the chosen silence (2, 3 or 5 seconds, default 3, kept as
+   `v2-voice-pause`; "Never" means tap **Stop**) listening ends. Ten seconds with no speech at all also ends it.
+3. **Read back.** The transcript is spoken with `speechSynthesis` (`v2-voice-readback`, on by default) and is editable.
+4. **Spoken command.** After the read back the panel listens once for a short phrase (`v2-voice-commands`,
+   on by default): "send" (also "yes", "confirm", "go ahead"; on the form "use it"), "add more" or "continue",
+   "clear" or "retry", "cancel". It only accepts up to four words and ignores any phrase with a negation, so
+   "don't send" never sends. Two listening attempts of 8 seconds each; after that the buttons remain.
+   The buttons (**Send** / **Use this text**, **Add more**, **Clear**, **Read back**) always work.
+
+Nothing is sent until you confirm. On the form **Use this text** only fills the first message; **Start
+session** still creates the session. A blocked or failing recognizer shows its error code and where to
+allow it: a web page cannot open iOS Settings, and home-screen apps have historically not offered
+recognition, in which case the keyboard's own mic key still works.
+
+**Keyboard dictation prompt.** The same script watches the session message box and the form's first
+message. The browser gives no "dictation stopped" event, so an input that adds at least 8 characters at
+once (not a paste, drop or delete) counts as dictation; after the same pause a bar offers **Send** (session
+page only), **Add more** and **Clear**. One-character typing, pastes and edits never show it, and typing
+after a phrase hides it.
 
 **Wrapping.** Transcript entries, tool-call headlines and code frames wrap long unbroken text
 (`overflow-wrap: anywhere`) instead of widening the page. Code blocks (fenced text and tool output) do

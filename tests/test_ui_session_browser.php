@@ -278,6 +278,8 @@ try {
         }());
         JS);
         assert_equal(false, cdp_evaluate($page, "document.getElementById('sess-mic').hidden"), 'voice: the mic button shows when the browser can recognise speech');
+        // The first round drives the buttons by hand: no auto-stop, no spoken commands.
+        cdp_evaluate($page, "localStorage.setItem('v2-voice-pause', '0'); localStorage.setItem('v2-voice-commands', '0'); true");
         $sendsBefore = (int)cdp_evaluate($page, "window.__posted.filter(function (p) { return p.url.indexOf('session_send') >= 0; }).length");
         cdp_evaluate($page, "document.getElementById('sess-mic').click()");
         assert_equal(true, cdp_evaluate($page, "document.getElementById('ui-voice').open"), 'voice: the mic opens the review panel');
@@ -306,6 +308,61 @@ try {
         assert_contains('Website Settings', (string)cdp_evaluate($page, "document.getElementById('ui-voice-status').textContent"), 'voice: and says where to allow it in Safari');
         cdp_evaluate($page, "document.querySelector('#ui-voice [data-voice=\"cancel\"]').click()");
         assert_equal(false, cdp_evaluate($page, "document.getElementById('ui-voice').open"), 'voice: Close leaves without sending');
+
+        // --- voice, hands-free: stop on a pause, read back, then a spoken command ---
+        cdp_evaluate($page, <<<'JS'
+        (function () {
+            localStorage.setItem('v2-voice-pause', '0.3'); localStorage.setItem('v2-voice-commands', '1');
+            Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: { speak: function (u) { window.__spoken.push(u.text); setTimeout(function () { if (u.onend) { u.onend(); } }, 0); }, cancel: function () {} } });
+            window.__last = function () { return window.__recs[window.__recs.length - 1]; };
+            window.__cmd = function (text) { window.__last().onresult({ results: [[{ transcript: text }]] }); };
+            return true;
+        }());
+        JS);
+        $sends = static fn (): int => (int)cdp_evaluate($page, "window.__posted.filter(function (p) { return p.url.indexOf('session_send') >= 0; }).length");
+        $sendsBefore = $sends();
+        cdp_evaluate($page, "window.__before = window.__recs.length; document.getElementById('sess-mic').click()");
+        cdp_evaluate($page, "window.__last().onresult({ results: [[{ transcript: 'please run the tests' }]] })");
+        assert_true(uib_wait($page, "document.querySelector('#ui-voice [data-voice=\"send\"]').hidden === false"), 'hands-free: a pause ends listening without tapping Stop');
+        assert_equal('please run the tests', cdp_evaluate($page, "window.__spoken[window.__spoken.length - 1]"), 'hands-free: the text is read back');
+        assert_true(uib_wait($page, "window.__recs.length === window.__before + 2"), 'hands-free: after the read back it listens for a command');
+        assert_equal($sendsBefore, $sends(), 'hands-free: nothing is sent yet');
+        cdp_evaluate($page, "window.__cmd(\"don't send\")");
+        assert_equal($sendsBefore, $sends(), 'hands-free: a negated command is not taken as send');
+        assert_contains('did not catch', (string)cdp_evaluate($page, "document.getElementById('ui-voice-status').textContent"), 'hands-free: and the panel says it did not catch a command');
+        cdp_evaluate($page, "document.querySelector('#ui-voice [data-voice=\"readback\"]').click()");
+        assert_true(uib_wait($page, "window.__recs.length === window.__before + 3"), 'hands-free: reading back again listens for a command again');
+        cdp_evaluate($page, "window.__cmd('clear')");
+        assert_true(uib_wait($page, "document.getElementById('ui-voice-text').value === '' && document.querySelector('#ui-voice [data-voice=\"stop\"]').hidden === false"), 'hands-free: "clear" empties the text and listens again');
+        cdp_evaluate($page, "window.__last().onresult({ results: [[{ transcript: 'take two' }]] })");
+        assert_true(uib_wait($page, "document.querySelector('#ui-voice [data-voice=\"send\"]').hidden === false && document.getElementById('ui-voice-text').value === 'take two'"), 'hands-free: the second take stops on its own pause');
+        assert_true(uib_wait($page, "window.__last().continuous === false"), 'hands-free: a command listener is waiting');
+        cdp_evaluate($page, "window.__cmd('Send it')");
+        assert_true(uib_wait($page, "window.__posted.filter(function (p) { return p.url.indexOf('session_send') >= 0; }).length === " . ($sendsBefore + 1)), 'hands-free: "send it" sends the confirmed text');
+        assert_equal(false, cdp_evaluate($page, "document.getElementById('ui-voice').open"), 'hands-free: and the panel closes');
+        assert_equal(1, (int)cdp_evaluate($page, "window.__spoken.filter(function (t) { return t === 'take two'; }).length"), 'hands-free: the retried take was read back once');
+
+        // --- keyboard dictation: a pause after a phrase offers Send / Add more / Clear ---
+        $insert = static fn (string $value, string $type): string => "(function () { var t = document.getElementById('sess-text'); t.value = " . json_encode($value) . "; t.dispatchEvent(new InputEvent('input', { inputType: '{$type}', bubbles: true })); return true; }())";
+        cdp_evaluate($page, $insert('a', 'insertText'));
+        usleep(700000);
+        assert_equal(true, cdp_evaluate($page, "document.querySelector('.ui-dictbar').hidden"), 'dictation bar: typing one character never shows it');
+        cdp_evaluate($page, $insert('a pasted block of text', 'insertFromPaste'));
+        usleep(700000);
+        assert_equal(true, cdp_evaluate($page, "document.querySelector('.ui-dictbar').hidden"), 'dictation bar: a paste never shows it');
+        cdp_evaluate($page, $insert('dictated phrase, a full sentence', 'insertText'));
+        assert_equal(true, cdp_evaluate($page, "document.querySelector('.ui-dictbar').hidden"), 'dictation bar: not before the pause');
+        assert_true(uib_wait($page, "document.querySelector('.ui-dictbar').hidden === false"), 'dictation bar: a pause after a phrase-sized insert shows it');
+        cdp_evaluate($page, "document.querySelector('.ui-dictbar [data-bar=\"clear\"]').click()");
+        assert_equal('', cdp_evaluate($page, "document.getElementById('sess-text').value"), 'dictation bar: Clear empties the box');
+        assert_equal(true, cdp_evaluate($page, "document.querySelector('.ui-dictbar').hidden"), 'dictation bar: and hides');
+        cdp_evaluate($page, $insert('another dictated sentence here', 'insertText'));
+        assert_true(uib_wait($page, "document.querySelector('.ui-dictbar').hidden === false"), 'dictation bar: shows again after the next phrase');
+        $sendsBefore = $sends();
+        cdp_evaluate($page, "document.querySelector('.ui-dictbar [data-bar=\"send\"]').click()");
+        assert_true(uib_wait($page, "window.__posted.filter(function (p) { return p.url.indexOf('session_send') >= 0; }).length === " . ($sendsBefore + 1)), 'dictation bar: Send posts the text');
+        assert_equal(true, cdp_evaluate($page, "document.querySelector('.ui-dictbar').hidden"), 'dictation bar: and hides');
+        cdp_evaluate($page, "localStorage.setItem('v2-voice-pause', '0'); localStorage.setItem('v2-voice-commands', '0'); true");
 
         // Enter on a touch screen never sends (a soft keyboard reports shiftKey at the start of a sentence); Shift+Enter sends elsewhere
         $enter = "(function (coarse) { var real = window.matchMedia; window.matchMedia = function (q) { return { matches: coarse && q.indexOf('pointer: coarse') >= 0 }; }; var t = document.getElementById('sess-text'); t.value = 'typed'; t.dispatchEvent(new Event('input')); window.__posted = []; var ev = new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true }); t.dispatchEvent(ev); window.matchMedia = real; return ev.defaultPrevented; }(%s))";
