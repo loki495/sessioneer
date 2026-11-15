@@ -160,7 +160,9 @@ Safari raises for a pinch even when the meta tag forbids it.
 
 **Wrapping.** Transcript entries, tool-call headlines and code frames wrap long unbroken text
 (`overflow-wrap: anywhere`) instead of widening the page. Code blocks (fenced text and tool output) do
-not wrap: they scroll inside their own frame, sideways for long lines and up to 16rem tall.
+not wrap: they scroll inside their own frame, sideways for long lines and up to 16rem tall. The Details sheet's
+View section has **Wrap long lines in code blocks** (off by default, kept in `localStorage` as
+`v2s-wrapcode`) to wrap them instead.
 
 **Code blocks.** Every fenced block in message text gets Copy and Full screen, however short.
 Inline code and quotes are not fenced and get no buttons.

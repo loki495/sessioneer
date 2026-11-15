@@ -169,6 +169,7 @@ $bootstrap = json_encode([
   <section class="sess-sec"><h3 class="ui-subtitle">View</h3>
     <label class="ui-check"><input type="checkbox" id="sess-opt-reasoning"> Show reasoning text</label>
     <label class="ui-check"><input type="checkbox" id="sess-opt-subagent" checked> Show subagent calls and outputs</label>
+    <label class="ui-check"><input type="checkbox" id="sess-opt-wrapcode"> Wrap long lines in code blocks</label>
     <label class="ui-check"><input type="checkbox" id="sess-opt-confirm"> Confirm before sending prompt answers</label>
     <label class="ui-field">Poll interval
       <select id="sess-opt-poll"><option value="1000">1s</option><option value="3000">3s</option><option value="5000">5s</option><option value="10000">10s</option><option value="15000">15s</option></select>

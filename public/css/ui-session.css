@@ -102,6 +102,9 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 .sess-code-actions { display: flex; gap: 14px; padding: 0 10px 6px; }
 .sess-desc { font-size: 0.9rem; }
 
+/* View option: wrap long lines in code blocks instead of scrolling sideways */
+.sess-wrap-code .sess-code pre, .sess-wrap-code .sess-text pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
 /* reasoning (opt-in) */
 .sess-think { border-left: 3px solid var(--idle); padding-left: 10px; color: var(--text-muted); font-size: 0.88rem; }
 .sess-think .sess-label { display: block; margin-bottom: 2px; }

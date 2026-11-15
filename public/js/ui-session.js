@@ -36,6 +36,7 @@
     reasoning: load('v2s-reasoning', '0') === '1',
     subagent: load('v2s-subagent', '1') === '1',
     confirm: load('v2s-confirm', '0') === '1',
+    wrapCode: load('v2s-wrapcode', '0') === '1',
     pollMs: parseInt(load('v2-poll', '3000'), 10) || 3000
   };
 
@@ -1373,6 +1374,7 @@
   textEl.value = load(DRAFT_KEY, '');
   document.body.classList.toggle('sess-hide-reasoning', !prefs.reasoning);
   document.body.classList.toggle('sess-hide-subagent', !prefs.subagent);
+  document.body.classList.toggle('sess-wrap-code', prefs.wrapCode);
   if (ARCH) {
     renderArchivedHeader(detail);
     $('sess-compose').hidden = true;
