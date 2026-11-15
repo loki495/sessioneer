@@ -210,8 +210,8 @@ question block carries the whole result text (`answer_output`). Codex writes no
 recognizable answer text in its transcript, so its answers stay as they are.
 
 **Sessions and usage popups.** The bar's list button (or a swipe left) opens a
-popup of every session: needs-input first, then working, then idle, starred first
-within each (starred rows are faintly amber), a filter box, a star toggle per row,
+popup of every session: starred first, then needs-input, working and idle, newest
+activity first within each tier (starred rows are faintly amber), a filter box, a star toggle per row,
 tap to switch. The Sessions and Usage popups open at full height and do not
 resize once their content arrives. Each row shows agent (with its model and
 reasoning level when known),

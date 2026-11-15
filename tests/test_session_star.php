@@ -32,6 +32,12 @@ $rows = [
 ];
 $out = sessioneer_with_stars(['ok' => true, 'sessions' => $rows]);
 assert_equal(['s-star-idle', 's-block', 's-work', 's-idle-new', 's-idle-old'], array_column($out['sessions'], 'name'), 'star: order is starred, blocked, working, idle by recency');
+$real = sessioneer_with_stars(['ok' => true, 'sessions' => [
+    ['name' => 'r-idle', 'working' => false, 'blocked_reason' => null, 'activity' => 9],
+    ['name' => 'r-work', 'working' => true, 'blocked_reason' => null, 'activity' => 5],
+    ['name' => 'r-block', 'working' => false, 'blocked_reason' => 'Allow?', 'activity' => 1],
+]]);
+assert_equal(['r-block', 'r-work', 'r-idle'], array_column($real['sessions'], 'name'), 'star: real rows (working flag, blocked_reason) order blocked, working, idle');
 assert_equal(true, $out['sessions'][0]['starred'], 'star: the row carries starred=true');
 assert_equal(false, $out['sessions'][1]['starred'], 'star: other rows carry starred=false');
 

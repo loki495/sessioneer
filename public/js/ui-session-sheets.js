@@ -605,7 +605,7 @@
       if (profileChoice && rowProfile(x) !== profileChoice) { return false; }
       return x.name !== session && (!q || (String(x.title || '') + ' ' + x.name + ' ' + String(x.workdir || '')).toLowerCase().indexOf(q) !== -1);
     }).sort(function (a, b) {
-      return (order[statusOfRow(a)] - order[statusOfRow(b)]) || ((b.starred ? 1 : 0) - (a.starred ? 1 : 0)) || ((b.activity || 0) - (a.activity || 0));
+      return ((b.starred ? 1 : 0) - (a.starred ? 1 : 0)) || (order[statusOfRow(a)] - order[statusOfRow(b)]) || ((b.activity || 0) - (a.activity || 0));
     });
     var rowHtml = function (x) {
       var st = statusOfRow(x);
