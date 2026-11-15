@@ -649,6 +649,10 @@
     });
   }
 
+  if (window.UiVoice && document.getElementById('ui-new-prompt')) {
+    window.UiVoice.watch({ field: document.getElementById('ui-new-prompt'), before: document.getElementById('ui-new-mic') });
+  }
+
   // ---- boot ----
   var bootPrefill = readNewPrefill();
   if (bootPrefill) { openNewDialog(bootPrefill); }

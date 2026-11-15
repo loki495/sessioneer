@@ -416,3 +416,5 @@ input[type="search"], select, textarea, input[type="text"], input[type="datetime
 .ui-voice-actions .ui-btn[hidden] { display: none; }
 .ui-voice-bad { color: var(--blocked); }
 #ui-voice.is-listening .ui-voice-text { border-color: var(--blocked); box-shadow: 0 0 0 2px color-mix(in srgb, var(--blocked) 35%, transparent); }
+.ui-dictbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 0; }
+.ui-dictbar[hidden] { display: none; }

@@ -1089,6 +1089,16 @@
     });
   }
 
+  // Keyboard dictation: a pause after a phrase-sized insert offers Send / Add more / Clear.
+  if (window.UiVoice && $('sess-compose')) {
+    window.UiVoice.watch({
+      field: textEl,
+      before: $('sess-compose').querySelector('.sess-composerow'),
+      sendLabel: 'Send',
+      onSend: function () { sendMessage(); }
+    });
+  }
+
   function stopTurn() {
     if (!window.confirm('Stop the current turn?')) { return; }
     stopBtn.disabled = true;
