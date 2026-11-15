@@ -12,9 +12,10 @@
   var PAUSE_DEFAULT_SECONDS = '3';
   var FIRST_SPEECH_WAIT_MS = 10000;
   var COMMAND_WAIT_MS = 8000;
-  var COMMAND_ATTEMPTS = 2;
+  var COMMAND_ATTEMPTS = 3;
   var COMMAND_MAX_WORDS = 4;
   var SPEAK_FALLBACK_BASE_MS = 4000;
+  var SPEAK_START_CHECK_MS = 2000;
   var SPEAK_FALLBACK_PER_CHAR_MS = 90;
   var MAX_RESTARTS = 60;
   var RESTART_DELAY_MS = 150;
@@ -35,6 +36,7 @@
   var silenceTimer = null;
   var cmdTimer = null;
   var speakTimer = null;
+  var startCheckTimer = null;
   var startTimer = null;
   var retriedStart = false;
 
@@ -160,7 +162,11 @@
   // the dialog unlocks the later read back, which runs after recognition has ended.
   function unlockSpeech() {
     if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) { return; }
-    try { window.speechSynthesis.speak(new window.SpeechSynthesisUtterance('')); } catch (e) {}
+    try {
+      var silent = new window.SpeechSynthesisUtterance(' ');
+      silent.volume = 0;
+      window.speechSynthesis.speak(silent);
+    } catch (e) {}
   }
 
   // Speaks the transcript, then calls done (when given). done also runs if speech is unavailable or never
@@ -169,20 +175,28 @@
     var synth = window.speechSynthesis;
     var text = el.text.value.trim();
     clearTimeout(speakTimer);
+    clearTimeout(startCheckTimer);
     var called = false;
     function finishOnce() {
       if (called) { return; }
       called = true;
       clearTimeout(speakTimer);
+      clearTimeout(startCheckTimer);
       if (done) { done(); }
     }
     if (!synth || !window.SpeechSynthesisUtterance || text === '') { finishOnce(); return; }
     try {
       synth.cancel();
       var utterance = new window.SpeechSynthesisUtterance(text);
+      var started = false;
+      utterance.onstart = function () { started = true; };
       utterance.onend = finishOnce;
       utterance.onerror = finishOnce;
+      if (synth.resume) { synth.resume(); }
       synth.speak(utterance);
+      startCheckTimer = setTimeout(function () {
+        if (!called && !started) { setStatus('Read back has not started. Check the ringer switch and volume, or turn Read back off.', true); }
+      }, SPEAK_START_CHECK_MS);
       speakTimer = setTimeout(finishOnce, SPEAK_FALLBACK_BASE_MS + text.length * SPEAK_FALLBACK_PER_CHAR_MS);
     } catch (e) {
       setStatus('Read back is not available: ' + e.message, true);
@@ -191,6 +205,7 @@
   }
   function stopSpeaking() {
     clearTimeout(speakTimer);
+    clearTimeout(startCheckTimer);
     try { if (window.speechSynthesis) { window.speechSynthesis.cancel(); } } catch (e) {}
   }
 
@@ -385,12 +400,20 @@
       setMode('review');
       setStatus('I did not catch a command. Tap Send, Add more or Clear.');
     };
-    mine.onerror = function () { if (cmdRec === mine) { stopCommand(); setMode('review'); setStatus('Tap Send, Add more or Clear.'); } };
-    mine.onend = function () {
-      if (cmdRec !== mine || heard) { return; }
+    // iOS ends a quiet command listener with a no-speech or aborted error before onend: treat both as "heard nothing" and retry.
+    function nothingHeard() {
       stopCommand();
       if (state === 'review' && dlg.open && attempt + 1 < COMMAND_ATTEMPTS) { listenForCommand(attempt + 1); } else { setMode('review'); setStatus('Tap Send, Add more or Clear.'); }
+    }
+    mine.onerror = function (event) {
+      if (cmdRec !== mine) { return; }
+      var code = event && event.error ? event.error : 'unknown';
+      if (code === 'no-speech' || code === 'aborted') { nothingHeard(); return; }
+      stopCommand();
+      setMode('review');
+      setStatus('Could not listen for a command (' + code + '). Tap Send, Add more or Clear.', true);
     };
+    mine.onend = function () { if (cmdRec === mine && !heard) { nothingHeard(); } };
     cmdTimer = setTimeout(function () { if (cmdRec === mine) { try { mine.stop(); } catch (e) {} } }, COMMAND_WAIT_MS);
     try { mine.start(); } catch (e) { stopCommand(); setMode('review'); setStatus('Tap Send, Add more or Clear.'); }
   }

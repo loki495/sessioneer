@@ -166,11 +166,13 @@ first message** button to the New session form; both stay hidden when the browse
    restarted and the pieces are joined.
 2. **Stop on a pause.** After the chosen silence (2, 3 or 5 seconds, default 3, kept as
    `v2-voice-pause`; "Never" means tap **Stop**) listening ends. Ten seconds with no speech at all also ends it.
-3. **Read back.** The transcript is spoken with `speechSynthesis` (`v2-voice-readback`, on by default) and is editable.
+3. **Read back.** The transcript is spoken with `speechSynthesis` (`v2-voice-readback`, on by default) and is editable. If the browser has not started speaking after 2 seconds, the panel says so and points at
+   the iPhone ringer switch and volume.
 4. **Spoken command.** After the read back the panel listens once for a short phrase (`v2-voice-commands`,
    on by default): "send" (also "yes", "confirm", "go ahead"; on the form "use it"), "add more" or "continue",
    "clear" or "retry", "cancel". It only accepts up to four words and ignores any phrase with a negation, so
-   "don't send" never sends. Two listening attempts of 8 seconds each; after that the buttons remain.
+   "don't send" never sends. Three listening attempts of 8 seconds each (a no-speech or aborted error counts as heard nothing and listens
+   again; any other error is named in the status); after that the buttons remain.
    The buttons (**Send** / **Use this text**, **Add more**, **Clear**, **Read back**) always work.
 
 A large banner at the top of the panel shows the current mode in words and colour: **Starting the
