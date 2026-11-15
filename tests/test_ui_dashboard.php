@@ -89,7 +89,7 @@ try {
     assert_equal('/session?session=x&jump_line=3', curl_request('GET', "{$base}/v2/session?session=x&jump_line=3")['headers']['location'] ?? null, 'GET /v2/session: to /session, query kept');
     assert_equal('/archived-session?agent_session_id=y', curl_request('GET', "{$base}/v2/archived-session?agent_session_id=y")['headers']['location'] ?? null, 'GET /v2/archived-session: to /archived-session');
     assert_contains('<title>Sessioneer</title>', $body, 'GET /: titled');
-    assert_contains('name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"', $body, 'GET /: mobile viewport with safe-area support');
+    assert_contains('name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"', $body, 'GET /: mobile viewport with safe-area support');
     assert_contains("localStorage.getItem('v2-theme')", $body, 'GET /: theme is resolved before first paint');
     assert_true(preg_match('#href="/css/ui\.css\?v=\d+"#', $body) === 1, 'GET /: stylesheet is cache-busted');
     assert_true(preg_match('#src="/js/ui\.js\?v=\d+"#', $body) === 1, 'GET /: script is cache-busted');

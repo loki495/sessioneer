@@ -129,11 +129,44 @@ try {
         cdp_evaluate($page, "document.getElementById('sess-scroll').scrollTop = 0");
         $down = cdp_evaluate($page, $stepJs('sess-next'));
         assert_true($down[0] < 60 && $down[1] < 3, 'nav: repeated next reaches the end and stops moving there');
+        // Tall messages with fractional heights: every next click must advance until the end is reached.
+        $tall = <<<'JS'
+        (function () {
+          var l = document.getElementById('sess-list'), w = document.querySelector('.sess-assistant');
+          for (var i = 0; i < 6; i++) { var c = w.cloneNode(true); c.style.minHeight = (300.4 + i * 0.3) + 'px'; l.appendChild(c); }
+          var s = document.getElementById('sess-scroll'); s.scrollTop = 0; var prev = -1, stalls = 0;
+          for (var n = 0; n < 20; n++) {
+            document.getElementById('sess-next').click();
+            var t = Math.round(s.scrollTop), end = s.scrollHeight - t - s.clientHeight < 3;
+            if (t <= prev && !end) { stalls++; }
+            prev = t;
+          }
+          return stalls;
+        }());
+        JS;
+        assert_equal(0, cdp_evaluate($page, $tall), 'nav: next never stalls short of the end, even with fractional message heights');
         $up = cdp_evaluate($page, $stepJs('sess-prev'));
         assert_true($up[0] < 60 && $up[2] === 0, 'nav: repeated prev reaches the top and stops moving there');
         cdp_evaluate($page, "(function () { var d = document.getElementById('sess-info'); d.showModal(); document.getElementById('sess-wake-at').value = ''; document.getElementById('sess-wake-form').dispatchEvent(new Event('submit', { cancelable: true })); }())");
         assert_true(uib_wait($page, "(function () { var t = document.getElementById('ui-toast'); if (t.hidden) { return false; } var r = t.getBoundingClientRect(); return t.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); }())"), 'a toast raised while a sheet is open paints above the sheet');
         cdp_evaluate($page, "document.getElementById('sess-info').close()");
+
+        // --- fenced code blocks in message text: Copy and Full screen only on real code ---
+        $codeText = "Run this:\n\n```php\n<?php\necho 'hello';\nexit(0);\n```\n\nOr just:\n\n```\nls\n```\n\nand a `short` inline span, plus\n\n```\n" . str_repeat('x', 60) . "\n```\n\n" . str_repeat('unbrokenword', 40);
+        cdp_evaluate($page, "(function () { var prev = window.fetch; window.__beforeHistoryPatch = prev; window.fetch = function (u, o) { if (String(u).indexOf('/history?') === 0) { return Promise.resolve(new Response(JSON.stringify({ ok: true, entries: [{ type: 'assistant', role: 'assistant', timestamp: '2026-01-01T12:00:05Z', blocks: [{ kind: 'text', text: " . json_encode($codeText) . " }], line: 3 }], has_more: false, next_before: null }), { status: 200 })); } return prev(u, o); }; true; }())");
+        cdp_evaluate($page, "UiSession.api.jumpTo(0)");
+        assert_true(uib_wait($page, "document.querySelectorAll('#sess-list .sess-code').length === 2"), 'code: the multi-line block and the long one get the code frame; the one-word block does not');
+        assert_equal(3, cdp_evaluate($page, "document.querySelectorAll('#sess-list pre').length"), 'code: all three fenced blocks still render');
+        assert_equal(2, cdp_evaluate($page, "document.querySelectorAll('#sess-list .sess-code [data-act=\"copy\"]').length"), 'code: Copy on each real code block');
+        assert_equal(2, cdp_evaluate($page, "document.querySelectorAll('#sess-list .sess-code [data-act=\"fullscreen\"]').length"), 'code: Full screen on each real code block');
+        assert_equal(0, cdp_evaluate($page, "document.querySelectorAll('#sess-list .sess-text :not(.sess-code) > pre [data-act]').length"), 'code: no buttons on the one-word block');
+        cdp_evaluate($page, "document.querySelector('#sess-list .sess-code [data-act=\"fullscreen\"]').click()");
+        assert_contains("echo 'hello';", (string)cdp_evaluate($page, "document.getElementById('sess-fullscreen-text').textContent"), 'code: Full screen shows the code');
+        cdp_evaluate($page, "document.getElementById('sess-fullscreen-close').click()");
+        assert_equal(true, cdp_evaluate($page, "(function () { var s = document.getElementById('sess-scroll'); return s.scrollWidth <= s.clientWidth; }())"), 'layout: long code lines and unbroken words do not widen the transcript');
+
+        cdp_evaluate($page, "window.fetch = window.__beforeHistoryPatch; UiSession.api.reload()");
+        assert_true(uib_wait($page, "document.querySelectorAll('#sess-list > *').length > 5"), 'code: the canned transcript is back after the check');
 
         // --- blocked prompt: no repeated "Waiting on" line, options, the agent's words before it ---
         $panel = (string)cdp_evaluate($page, "document.getElementById('sess-prompt').textContent");
