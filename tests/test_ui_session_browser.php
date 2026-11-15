@@ -152,7 +152,7 @@ try {
         cdp_evaluate($page, "document.getElementById('sess-info').close()");
 
         // --- fenced code blocks in message text: Copy and Full screen on every fenced block ---
-        $codeText = "Run this:\n\n```php\n<?php\necho 'hello';\nexit(0);\n```\n\nOr just:\n\n```\nls\n```\n\nand a `short` inline span, plus\n\n```\n" . str_repeat('x', 60) . "\n```\n\n" . str_repeat('unbrokenword', 40);
+        $codeText = "Run this:\n\n```php\n<?php\necho 'hello';\nexit(0);\n```\n\nOr just:\n\n```\nls\n```\n\nand a `short` inline span, plus\n\n```\n" . str_repeat('x', 200) . "\n```\n\n" . str_repeat('unbrokenword', 40);
         cdp_evaluate($page, "(function () { var prev = window.fetch; window.__beforeHistoryPatch = prev; window.fetch = function (u, o) { if (String(u).indexOf('/history?') === 0) { return Promise.resolve(new Response(JSON.stringify({ ok: true, entries: [{ type: 'assistant', role: 'assistant', timestamp: '2026-01-01T12:00:05Z', blocks: [{ kind: 'text', text: " . json_encode($codeText) . " }], line: 3 }], has_more: false, next_before: null }), { status: 200 })); } return prev(u, o); }; true; }())");
         cdp_evaluate($page, "UiSession.api.jumpTo(0)");
         assert_true(uib_wait($page, "document.querySelectorAll('#sess-list .sess-code').length === 3"), 'code: every fenced block gets the code frame, even the one-word one');
@@ -164,6 +164,7 @@ try {
         assert_contains("echo 'hello';", (string)cdp_evaluate($page, "document.getElementById('sess-fullscreen-text').textContent"), 'code: Full screen shows the code');
         cdp_evaluate($page, "document.getElementById('sess-fullscreen-close').click()");
         assert_equal(true, cdp_evaluate($page, "(function () { var s = document.getElementById('sess-scroll'); return s.scrollWidth <= s.clientWidth; }())"), 'layout: long code lines and unbroken words do not widen the transcript');
+        assert_equal(true, cdp_evaluate($page, "(function () { var p = Array.prototype.slice.call(document.querySelectorAll('#sess-list .sess-code pre')).pop(); return p.scrollWidth > p.clientWidth && getComputedStyle(p).whiteSpace === 'pre' && ['auto', 'scroll'].indexOf(getComputedStyle(p).overflowX) !== -1; }())"), 'layout: a long code line scrolls inside its block instead of wrapping');
 
         cdp_evaluate($page, "window.fetch = window.__beforeHistoryPatch; UiSession.api.reload()");
         assert_true(uib_wait($page, "document.querySelectorAll('#sess-list > *').length > 5"), 'code: the canned transcript is back after the check');

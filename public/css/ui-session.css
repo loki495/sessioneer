@@ -76,7 +76,7 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 .sess-text ul, .sess-text ol { margin: 0.4em 0; padding-left: 1.3em; }
 .sess-text li { white-space: pre-wrap; }
 .sess-text code { padding: 1px 5px; border-radius: 5px; background: var(--code-bg); font-size: 0.86em; }
-.sess-text pre { margin: 0.5em 0; padding: 9px 11px; border-radius: 8px; background: var(--code-bg); overflow-x: auto; font-size: 0.8rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sess-text pre { margin: 0.5em 0; padding: 9px 11px; border-radius: 8px; background: var(--code-bg); overflow-x: auto; font-size: 0.8rem; white-space: pre; overflow-wrap: normal; }
 .sess-text pre code { padding: 0; background: none; font-size: inherit; }
 .sess-user .sess-text code, .sess-user .sess-text pre { background: color-mix(in srgb, var(--user-text) 12%, transparent); }
 
@@ -97,7 +97,7 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 .sess-hide-subagent .sess-sub-only { display: none; }
 
 .sess-code { position: relative; border: 1px solid var(--border); border-radius: 8px; background: var(--code-bg); min-width: 0; }
-.sess-code pre { margin: 0; padding: 8px 10px; max-height: 16rem; overflow: auto; overscroll-behavior: contain; font-size: 0.76rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sess-code pre { margin: 0; padding: 8px 10px; max-height: 16rem; overflow: auto; overscroll-behavior: contain; font-size: 0.76rem; white-space: pre; overflow-wrap: normal; }
 .sess-code-tag { overflow-wrap: anywhere; padding: 5px 10px 0; font-size: 0.68rem; font-weight: 650; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
 .sess-code-actions { display: flex; gap: 14px; padding: 0 10px 6px; }
 .sess-desc { font-size: 0.9rem; }
