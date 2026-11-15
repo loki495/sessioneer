@@ -293,9 +293,10 @@ try {
         assert_true(uib_wait($page, "document.querySelector('#ui-voice [data-voice=\"send\"]').hidden === false"), 'voice: Stop moves to the review step');
         assert_equal('please check the logs and report back then fix the typo', cdp_evaluate($page, "window.__spoken[window.__spoken.length - 1]"), 'voice: the whole message is read back');
         assert_equal($sendsBefore, (int)cdp_evaluate($page, "window.__posted.filter(function (p) { return p.url.indexOf('session_send') >= 0; }).length"), 'voice: nothing is sent before the person confirms');
+        assert_true(uib_wait($page, "document.getElementById('ui-voice-status').textContent.indexOf('Read back has not started') === 0", 5.0), 'voice: a read back that makes no sound says so and points at the ringer switch');
         $recsBefore = (int)cdp_evaluate($page, "window.__recs.length");
         cdp_evaluate($page, "document.querySelector('#ui-voice [data-voice=\"retry\"]').click()");
-        assert_equal('', cdp_evaluate($page, "document.getElementById('ui-voice-text').value"), 'voice: Retry clears the text and listens again');
+        assert_equal('',cdp_evaluate($page, "document.getElementById('ui-voice-text').value"), 'voice: Retry clears the text and listens again');
         assert_true(uib_wait($page, "window.__recs.length === " . ($recsBefore + 1)), 'voice: Clear starts a new recognizer once the old one has had time to stop');
         cdp_evaluate($page, "window.__say(window.__recs.length - 1, ['second try'])");
         cdp_evaluate($page, "document.querySelector('#ui-voice [data-voice=\"stop\"]').click()");
@@ -347,6 +348,17 @@ try {
         assert_true(uib_wait($page, "window.__posted.filter(function (p) { return p.url.indexOf('session_send') >= 0; }).length === " . ($sendsBefore + 1)), 'hands-free: "send it" sends the confirmed text');
         assert_equal(false, cdp_evaluate($page, "document.getElementById('ui-voice').open"), 'hands-free: and the panel closes');
         assert_equal(1, (int)cdp_evaluate($page, "window.__spoken.filter(function (t) { return t === 'take two'; }).length"), 'hands-free: the retried take was read back once');
+
+        // A quiet command listener ends with a no-speech error on iOS: it listens again instead of dropping to "paused".
+        cdp_evaluate($page, "document.getElementById('sess-mic').click()");
+        cdp_evaluate($page, "window.__last().onresult({ results: [[{ transcript: 'quiet one' }]] })");
+        assert_true(uib_wait($page, "window.__last().continuous === false && document.getElementById('ui-voice-mode').getAttribute('data-mode') === 'command'"), 'quiet command: the command listener is up');
+        $recsNow = (int)cdp_evaluate($page, "window.__recs.length");
+        cdp_evaluate($page, "window.__last().onerror({ error: 'no-speech' })");
+        assert_true(uib_wait($page, "window.__recs.length === " . ($recsNow + 1) . " && window.__last().continuous === false && document.getElementById('ui-voice-mode').getAttribute('data-mode') === 'command'"), 'quiet command: a no-speech error listens again and the banner still asks for a command');
+        cdp_evaluate($page, "window.__last().onerror({ error: 'not-allowed' })");
+        assert_true(uib_wait($page, "document.getElementById('ui-voice-mode').getAttribute('data-mode') === 'review' && document.getElementById('ui-voice-status').textContent.indexOf('not-allowed') !== -1"), 'quiet command: a real error names its code and falls back to the buttons');
+        cdp_evaluate($page, "document.querySelector('#ui-voice [data-voice=\"cancel\"]').click()");
 
         // Add more (the button) goes back to listening and the new words are appended.
         cdp_evaluate($page, "document.getElementById('sess-mic').click()");
