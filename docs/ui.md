@@ -154,6 +154,11 @@ transcript as the only scroller, and a footer (scroll buttons, controls summary,
 message box). The shell follows the visual viewport, so the footer stays above
 the iOS keyboard and a pinch-zoom does not resize it.
 
+**Scroll buttons.** Up and down step to the previous or next visible user or assistant message
+(tool calls are not stops). Down treats a message that cannot reach the top edge as the end, so it
+cannot stall on the last messages. Up loads older messages at the top. Last jumps to the newest
+message; on an archived page opened at a search hit it first loads every later page.
+
 **Rendering.** The server renders only the shell and a bootstrap JSON (the
 session detail, hex-escaped so transcript text cannot close the `<script>`); the
 transcript comes from `/history` (the `session_history` action plus

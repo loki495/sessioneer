@@ -125,6 +125,12 @@ try {
         assert_equal(true, cdp_evaluate($page, "(function () { var el = document.querySelector('[data-msg]'); var s = document.getElementById('sess-scroll'); return Math.abs(el.getBoundingClientRect().top - s.getBoundingClientRect().top) < 40 || true; }())"), 'nav: lands on a message');
         cdp_evaluate($page, "document.getElementById('sess-bottom').click()");
         assert_equal(true, cdp_evaluate($page, "(function () { var s = document.getElementById('sess-scroll'); return s.scrollHeight - s.scrollTop - s.clientHeight < 3; }())"), 'nav: the bottom button reaches the latest');
+        $stepJs = static fn (string $btn): string => "(function () { var s = document.getElementById('sess-scroll'); var n = 0, last = -1; while (n++ < 60) { document.getElementById('{$btn}').click(); var t = Math.round(s.scrollTop); if (t === last) { break; } last = t; } return [n, Math.round(s.scrollHeight - s.scrollTop - s.clientHeight), Math.round(s.scrollTop)]; }())";
+        cdp_evaluate($page, "document.getElementById('sess-scroll').scrollTop = 0");
+        $down = cdp_evaluate($page, $stepJs('sess-next'));
+        assert_true($down[0] < 60 && $down[1] < 3, 'nav: repeated next reaches the end and stops moving there');
+        $up = cdp_evaluate($page, $stepJs('sess-prev'));
+        assert_true($up[0] < 60 && $up[2] === 0, 'nav: repeated prev reaches the top and stops moving there');
         cdp_evaluate($page, "(function () { var d = document.getElementById('sess-info'); d.showModal(); document.getElementById('sess-wake-at').value = ''; document.getElementById('sess-wake-form').dispatchEvent(new Event('submit', { cancelable: true })); }())");
         assert_true(uib_wait($page, "(function () { var t = document.getElementById('ui-toast'); if (t.hidden) { return false; } var r = t.getBoundingClientRect(); return t.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); }())"), 'a toast raised while a sheet is open paints above the sheet');
         cdp_evaluate($page, "document.getElementById('sess-info').close()");
