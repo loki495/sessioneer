@@ -31,6 +31,7 @@
       <?php if ($readOnly): ?><span class="ui-chip ui-chip-warn">Terminal, read only</span><?php endif ?>
       <?php if ($isWorker): ?><span class="ui-chip ui-chip-accent">Worker</span><?php endif ?>
       <?php if (!empty($conversationId)): ?><span class="ui-chip ui-chip-id" title="Conversation <?= $this->e((string)$conversationId) ?>">&hellip;<?= $this->e(substr((string)$conversationId, -8)) ?></span><?php endif ?>
+      <?php if (!empty($pendingWake)): ?><span class="ui-chip ui-chip-wake" data-wake-at="<?= (int)$pendingWake['next_at'] ?>" data-wake-count="<?= (int)$pendingWake['count'] ?>" title="Next wake-up <?= $this->e((string)$pendingWake['next_at_local']) ?>">&#9200; <?= (int)$pendingWake['count'] ?></span><?php endif ?>
     </div>
 
     <?php if ($isWorker && $parentSessionId !== null): ?>

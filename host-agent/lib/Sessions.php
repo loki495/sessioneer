@@ -17,6 +17,7 @@ require_once __DIR__ . '/../../vendor/autoload.php';
 use HostAgent\Services\Config;
 use HostAgent\Services\GitBranchService;
 use HostAgent\Services\SessionService;
+use HostAgent\Services\SessionWakeService;
 use HostAgent\Services\PromptInteractionService;
 use HostAgent\Services\PlanFileService;
 use HostAgent\Services\SessionLifecycleService;
@@ -253,6 +254,17 @@ function sessioneer_dispatch_action(array $request): array
         case 'list':
             $list = ['ok' => true] + SessionService::list_all_sessions();
             $list['sessions'] = sessioneer_merge_headless_sessions($list['sessions']);
+            $pendingWakes = SessionWakeService::pending_by_conversation();
+
+            foreach ($list['sessions'] as &$entry) {
+                $id = $entry['agent_session_id'] ?? null;
+
+                if (is_string($id) && isset($pendingWakes[$id])) {
+                    $entry['pending_wake'] = $pendingWakes[$id];
+                }
+            }
+
+            unset($entry);
             $list['bare'] = BareProcessService::declutter_bare_list(BareProcessService::enrich_bare_with_confirmed_ids($list['bare']));
 
             return $list;
@@ -499,6 +511,15 @@ function sessioneer_dispatch_action(array $request): array
 
         case 'launch_wake':
             return SessionControl::wake($request);
+
+        case 'launch_wake_list':
+            return SessionControl::wake_list($request);
+
+        case 'launch_wake_show':
+            return SessionControl::wake_show($request);
+
+        case 'launch_wake_cancel':
+            return SessionControl::wake_cancel($request);
 
         case 'launch_bare':
             return SessionControl::bare();

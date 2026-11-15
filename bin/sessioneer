@@ -38,6 +38,8 @@ function usage(): string
                          sessioneer --answer TARGET --answers JSON
       Interrupt:         sessioneer --interrupt TARGET
       Wake up later:     sessioneer --wake TARGET --at TIME ["prompt"]
+      Wake-ups:          sessioneer --wake-list [--json]
+      Cancel a wake-up:  sessioneer --wake-cancel JOB [--json]
       Terminal Claudes:  sessioneer --bare [--json]
       Take one over:     sessioneer --take-over PID_OR_CONVERSATION_ID [--resume ID]
       Message a session: sessioneer --send TARGET --as-user "message"
@@ -117,6 +119,8 @@ function usage(): string
                         in this machine's time zone ("18:30", "tomorrow 09:00",
                         "+2 hours", "2026-12-01 08:00"); from the next minute to 30
                         days from now
+      --wake-list       list scheduled wake-ups: job, local time, state, session, conversation id, prompt preview
+      --wake-cancel JOB cancel a scheduled wake-up; a session must ask the user (ask-user tool) before cancelling one the user did not request
       --bare            list Claude processes running in a terminal Sessioneer did
                         not start: pid, conversation id, directory, title
       --take-over TARGET
@@ -290,7 +294,7 @@ function emit_envelope(array $envelope): void
     echo json_encode($envelope, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
 }
 
-$longOptions = ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'wake:', 'at:', 'bare', 'take-over:', 'as-user', 'set-name:', 'session:', 'next', 'rotate', 'offer', 'all', 'intent:', 'post', 'handoff:', 'plan:', 'prompt:', 'dry-run', 'clear'];
+$longOptions = ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'wake:', 'wake-list', 'wake-cancel:', 'at:', 'bare', 'take-over:', 'as-user', 'set-name:', 'session:', 'next', 'rotate', 'offer', 'all', 'intent:', 'post', 'handoff:', 'plan:', 'prompt:', 'dry-run', 'clear'];
 
 // getopt ignores an unknown option, which would start a launch; these two were removed.
 foreach ($argv as $arg) {
@@ -416,7 +420,7 @@ foreach ($flowModifiers as $modifier => $commands) {
 if ($flowCommands !== []) {
     $command = $flowCommands[0];
 
-    foreach (['kill', 'list', 'send', 'peers', 'usage', 'show', 'answer', 'interrupt', 'wake', 'bare', 'take-over', 'session', 'resume', 'wait'] as $other) {
+    foreach (['kill', 'list', 'send', 'peers', 'usage', 'show', 'answer', 'interrupt', 'wake', 'wake-list', 'wake-cancel', 'bare', 'take-over', 'session', 'resume', 'wait'] as $other) {
         if (isset($opts[$other])) {
             fail("--{$command} cannot be combined with --{$other}");
         }
@@ -525,6 +529,9 @@ $show = $opt('show');
 $answer = $opt('answer');
 $interrupt = $opt('interrupt');
 $wake = $opt('wake');
+$wakeList = isset($opts['wake-list']);
+$wakeCancelGiven = isset($opts['wake-cancel']);
+$wakeCancel = $opt('wake-cancel');
 $bare = isset($opts['bare']);
 $takeOver = $opt('take-over');
 $setName = $opt('set-name');
@@ -535,9 +542,9 @@ if (isset($opts['set-name']) && $setName === null) {
 }
 
 // Every action that is not a launch or a resume.
-$nonLaunch = $kill !== null || $list || $send !== null || $peers || $show !== null || $answer !== null || $interrupt !== null || $wake !== null || $bare || $takeOver !== null || $sessionTarget !== null;
+$nonLaunch = $kill !== null || $list || $send !== null || $peers || $show !== null || $answer !== null || $interrupt !== null || $wake !== null || $wakeList || $wakeCancelGiven || $bare || $takeOver !== null || $sessionTarget !== null;
 
-if ($sessionTarget !== null && ($setName === null || $prompt !== '' || $resume !== null || $kill !== null || $list || $send !== null || $peers || $show !== null || $answer !== null || $interrupt !== null || $wake !== null || $bare || $takeOver !== null || isset($opts['usage']) || isset($opts['wait']))) {
+if ($sessionTarget !== null && ($setName === null || $prompt !== '' || $resume !== null || $kill !== null || $list || $send !== null || $peers || $show !== null || $answer !== null || $interrupt !== null || $wake !== null || $wakeList || $wakeCancelGiven || $bare || $takeOver !== null || isset($opts['usage']) || isset($opts['wait']))) {
     fail('--session needs --set-name, and renames that session only: no prompt and no other action');
 }
 
@@ -545,8 +552,8 @@ if ($setName !== null && $sessionTarget === null && $nonLaunch) {
     fail('--set-name names the session a launch or resume starts; use --session TARGET to rename an existing one');
 }
 
-if (count(array_filter([$kill !== null, $list, $send !== null, $peers, isset($opts['usage']), $show !== null, $answer !== null, $interrupt !== null, $wake !== null, $bare, $takeOver !== null])) > 1) {
-    fail('--kill, --list, --show, --answer, --interrupt, --wake, --bare, --take-over, --send, --peers and --usage cannot be combined');
+if (count(array_filter([$kill !== null, $list, $send !== null, $peers, isset($opts['usage']), $show !== null, $answer !== null, $interrupt !== null, $wake !== null, $wakeList, $wakeCancelGiven, $bare, $takeOver !== null])) > 1) {
+    fail('--kill, --list, --show, --answer, --interrupt, --wake, --wake-list, --wake-cancel, --bare, --take-over, --send, --peers and --usage cannot be combined');
 }
 
 // Modifiers belong to one action each; a stray one would otherwise be ignored.
@@ -567,6 +574,14 @@ foreach ([
 
 if ($resume !== null && $nonLaunch && $takeOver === null) {
     fail('--resume only applies to launching a session or to --take-over');
+}
+
+if ($wakeCancelGiven && ($wakeCancel === null || preg_match('/^[1-9][0-9]*$/', $wakeCancel) !== 1)) {
+    fail('--wake-cancel needs an at job number');
+}
+
+if (($wakeList || $wakeCancelGiven) && $prompt !== '') {
+    fail('--wake-list and --wake-cancel take no prompt');
 }
 
 $wakeAt = null;
@@ -744,6 +759,8 @@ $action = match (true) {
     $answer !== null => 'launch_answer',
     $interrupt !== null => 'launch_interrupt',
     $wake !== null => 'launch_wake',
+    $wakeList => 'launch_wake_list',
+    $wakeCancelGiven => 'launch_wake_cancel',
     $bare => 'launch_bare',
     $takeOver !== null => 'launch_take_over',
     default => 'launch',
@@ -768,7 +785,9 @@ $reply = AgentClient::agent_call(array_filter([
     'set_name' => $setName,
     'message' => $send !== null || $wake !== null ? $prompt : null,
     'at' => $wakeAt,
-    'from' => $send !== null || $peers || $answer !== null || $wake !== null ? $self : null,
+    'job' => $wakeCancel !== null ? (int)$wakeCancel : null,
+    'include_prompt' => $wakeList && isset($opts['json']) ? true : null,
+    'from' => $send !== null || $peers || $answer !== null || $wake !== null || $wakeCancelGiven ? $self : null,
     'force' => isset($opts['force']) ? true : null,
     'as_user' => isset($opts['as-user']) ? true : null,
     'history' => $history !== null ? (int)$history : null,
@@ -872,6 +891,10 @@ if (isset($opts['json'])) {
 } elseif ($ok && $list) {
     foreach ($reply['sessions'] ?? [] as $s) {
         echo implode("\t", [(string)$s['name'], (string)$s['status'], (string)($s['agent_session_id'] ?? '-'), (string)($s['workdir'] ?? '-')]), "\n";
+    }
+} elseif ($ok && $wakeList) {
+    foreach ($reply['wakes'] ?? [] as $w) {
+        echo implode("\t", [(string)$w['job'], (string)$w['at_local'], (string)$w['state'], (string)($w['session'] ?? '-'), (string)$w['agent_session_id'], (string)$w['prompt_preview']]), "\n";
     }
 } elseif ($ok && $show !== null) {
     echo show_text($reply);

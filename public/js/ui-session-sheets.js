@@ -264,6 +264,27 @@
     $('sess-wake-at').focus();
   }
 
+  // The conversation's pending wake-ups, listed under the schedule form; no timer, refreshed on open and after a change.
+  function loadWakes() {
+    var box = $('sess-wakes');
+    if (!box || !api.detail() || !api.detail().agent_session_id) { return; }
+    api.getJson('/wakes?' + api.qs({ session: session, compact: 1 })).then(function (res) {
+      if (res && res.ok) {
+        box.innerHTML = res.wakes_html;
+        window.UiWakes.localize(box);
+      } else {
+        box.innerHTML = '<p class="ui-muted ui-small"></p>';
+        box.firstChild.textContent = (res && res.message) || 'Could not load wake-ups';
+      }
+    }).catch(function () {
+      box.innerHTML = '<p class="ui-muted ui-small">Could not load wake-ups</p>';
+    });
+  }
+
+  if ($('sess-wakes')) {
+    window.UiWakes.attach($('sess-wakes'), { toast: api.toast, post: api.post, getJson: api.getJson, refresh: loadWakes });
+  }
+
   $('sess-wake-cancel').addEventListener('click', function () { $('sess-wake-form').hidden = true; });
 
   $('sess-wake-form').addEventListener('submit', function (e) {
@@ -272,7 +293,7 @@
     if (!isFinite(when)) { api.toast('Pick a time', true); return; }
     api.post('/action', { action: 'wake', session: session, at: String(Math.floor(when / 1000)), text: $('sess-wake-text').value }).then(function (res) {
       api.toast(res.message || (res.ok ? 'Scheduled' : 'Failed'), !res.ok);
-      if (res.ok) { $('sess-wake-form').hidden = true; }
+      if (res.ok) { $('sess-wake-form').hidden = true; loadWakes(); }
     }).catch(function () { api.toast('Network error', true); });
   });
 
@@ -654,7 +675,7 @@
   function openSheet(id) {
     var dlg = $(id);
     if (id === 'sess-controls') { buildControls(api.detail()); }
-    if (id === 'sess-info') { buildInfo(api.detail()); syncOptions(); loadPlanFiles(); loadUploads(); }
+    if (id === 'sess-info') { buildInfo(api.detail()); syncOptions(); loadPlanFiles(); loadUploads(); loadWakes(); }
     if (id === 'sess-sessions') { $('sess-sessions-filter').value = ''; loadSessions(); }
     if (id === 'sess-quota') { loadQuota(); }
     if (id === 'sess-search') { setTimeout(function () { searchInput.focus(); }, 50); }

@@ -398,3 +398,12 @@ input[type="search"], select, textarea, input[type="text"], input[type="datetime
   .ui-main { max-width: 50rem; }
   .ui-sheet { max-width: 39rem; }
 }
+
+/* Wake-up rows (dashboard fold and session info sheet) */
+.ui-wake { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 0; border-top: 1px solid var(--border); }
+.ui-wake:first-child { border-top: 0; }
+.ui-wake-preview { flex-basis: 100%; margin: 0; overflow-wrap: anywhere; }
+.ui-wake-full { flex-basis: 100%; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow: auto; }
+.ui-wake-state-running { color: var(--working); }
+.ui-wake-state-overdue { color: var(--blocked); }
+.ui-chip-wake { white-space: nowrap; }

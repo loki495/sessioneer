@@ -144,6 +144,30 @@ class UiView extends View
         return self::render('ui/bare-list', ['rowsHtml' => $rows]);
     }
 
+    /** @param array<int, array<string, mixed>> $wakes */
+    public static function wakes_html(array $wakes, bool $compact, bool $truncated = false): string
+    {
+        $rows = '';
+
+        foreach ($wakes as $w) {
+            $session = isset($w['session']) && $w['session'] !== '' ? (string)$w['session'] : null;
+            $conversation = (string)($w['agent_session_id'] ?? '');
+
+            $rows .= self::render('ui/wake-row', [
+                'job' => (int)$w['job'],
+                'at' => (int)$w['at'],
+                'atLocal' => (string)($w['at_local'] ?? ''),
+                'state' => (string)$w['state'],
+                'compact' => $compact,
+                'sessionHref' => $session !== null ? '/session?session=' . urlencode($session) : '/archived-session?agent_session_id=' . urlencode($conversation),
+                'sessionLabel' => $session ?? ('…' . substr($conversation, -8)),
+                'preview' => (string)($w['prompt_preview'] ?? ''),
+            ]);
+        }
+
+        return self::render('ui/wake-list', ['rowsHtml' => $rows, 'truncated' => $truncated]);
+    }
+
     /** @param array<int, array<string, mixed>> $archived */
     public static function archived_html(array $archived, string $csrfToken): string
     {
@@ -189,6 +213,7 @@ class UiView extends View
             'runtime' => (string)($s['runtime'] ?? 'tmux'),
             'kind' => (string)($s['kind'] ?? 'user'),
             'conversationId' => $s['agent_session_id'] ?? null,
+            'pendingWake' => is_array($s['pending_wake'] ?? null) ? $s['pending_wake'] : null,
             'parentSessionId' => $s['parent_session_id'] ?? null,
             'starred' => !empty($s['starred']),
             'workdir' => $s['workdir'] ?? null,

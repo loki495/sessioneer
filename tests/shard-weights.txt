@@ -104,3 +104,9 @@ test_cli_control.php 1
 test_launch_control.php 120
 test_session_star.php 1
 test_session_wake.php 1
+test_session_wake_list.php 10
+test_session_wake_actions.php 3
+test_session_wake_chip.php 4
+test_ui_wakes.php 6
+test_session_wake_agent_process.php 2
+test_ui_wakes_browser.php 12

@@ -43,6 +43,7 @@
     <div id="ui-sessions" class="ui-stack"><?= $sessionsHtml ?></div>
     <p id="ui-filter-empty" class="ui-muted ui-center" hidden>Nothing matches this filter.</p>
     <div id="ui-bare"><?= $bareHtml ?></div>
+    <details id="ui-wakes" class="ui-card ui-card-flat ui-col ui-fold" hidden><summary class="ui-section-title">Scheduled wake-ups (<span id="ui-wakes-n">0</span>)</summary><div id="ui-wakes-body" class="ui-stack"></div></details>
   </section>
 
   <section class="ui-panel" id="ui-panel-search" data-panel="search" hidden>
@@ -197,4 +198,5 @@
 <script src="<?= \App\Assets::versioned_url('/js/ui-sheets.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/ui-quota.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/ui-flow.js') ?>"></script>
+<script src="<?= \App\Assets::versioned_url('/js/ui-wakes.js') ?>"></script>
 <script src="<?= \App\Assets::versioned_url('/js/ui.js') ?>"></script>
