@@ -45,6 +45,10 @@
   var toastTimer = null;
   function toast(message, bad) {
     var el = document.getElementById('ui-toast');
+    // An open sheet is a modal dialog in the browser's top layer, which paints over everything outside it.
+    var sheet = document.querySelector('dialog[open]');
+    var home = sheet || document.body;
+    if (el.parentNode !== home) { home.appendChild(el); }
     el.textContent = message;
     el.className = 'ui-toast' + (bad ? ' is-bad' : '');
     el.hidden = false;

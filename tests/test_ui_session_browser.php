@@ -125,6 +125,9 @@ try {
         assert_equal(true, cdp_evaluate($page, "(function () { var el = document.querySelector('[data-msg]'); var s = document.getElementById('sess-scroll'); return Math.abs(el.getBoundingClientRect().top - s.getBoundingClientRect().top) < 40 || true; }())"), 'nav: lands on a message');
         cdp_evaluate($page, "document.getElementById('sess-bottom').click()");
         assert_equal(true, cdp_evaluate($page, "(function () { var s = document.getElementById('sess-scroll'); return s.scrollHeight - s.scrollTop - s.clientHeight < 3; }())"), 'nav: the bottom button reaches the latest');
+        cdp_evaluate($page, "(function () { var d = document.getElementById('sess-info'); d.showModal(); document.getElementById('sess-wake-at').value = ''; document.getElementById('sess-wake-form').dispatchEvent(new Event('submit', { cancelable: true })); }())");
+        assert_true(uib_wait($page, "(function () { var t = document.getElementById('ui-toast'); if (t.hidden) { return false; } var r = t.getBoundingClientRect(); return t.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); }())"), 'a toast raised while a sheet is open paints above the sheet');
+        cdp_evaluate($page, "document.getElementById('sess-info').close()");
 
         // --- blocked prompt: no repeated "Waiting on" line, options, the agent's words before it ---
         $panel = (string)cdp_evaluate($page, "document.getElementById('sess-prompt').textContent");

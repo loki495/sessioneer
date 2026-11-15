@@ -42,8 +42,8 @@ try {
     echo "Refusals create no job\n";
     foreach ([
         'an empty prompt' => ['claude-headless-w1', $when, '  ', 'Write the prompt'],
-        'a past time' => ['claude-headless-w1', $now - 5, 'continue', 'at least a minute'],
-        'too soon' => ['claude-headless-w1', $now + 10, 'continue', 'at least a minute'],
+        'a past time' => ['claude-headless-w1', $now - 5, 'continue', 'later minute'],
+        'the same minute' => ['claude-headless-w1', $now + 10, 'continue', 'later minute'],
         'too far' => ['claude-headless-w1', $now + 31 * 86400, 'continue', 'within the next 30 days'],
         'no conversation yet' => ['claude-headless-w2', $when, 'continue', 'no conversation yet'],
         'unknown session' => ['nope', $when, 'continue', 'no conversation yet'],
@@ -53,6 +53,10 @@ try {
         assert_contains($needle, $r['message'], "{$label}: reason");
     }
     assert_true(!file_exists($root . '/at-script'), 'no refusal reached at');
+
+    echo "The next minute is allowed even with seconds left in this one\n";
+    $r = SessionWakeService::schedule('claude-headless-w1', $now + 60, 'continue', $now + 45);
+    assert_equal(true, $r['ok'], 'next minute, 15 seconds away');
 
     echo "A Claude session with a profile\n";
     $r = SessionWakeService::schedule('claude-headless-w1', $when, "it's done?\nsecond line", $now);
