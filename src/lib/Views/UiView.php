@@ -161,6 +161,7 @@ class UiView extends View
                 'compact' => $compact,
                 'sessionHref' => $session !== null ? '/session?session=' . urlencode($session) : '/archived-session?agent_session_id=' . urlencode($conversation),
                 'sessionLabel' => $session ?? ('…' . substr($conversation, -8)),
+                'title' => isset($w['title']) && $w['title'] !== '' ? (string)$w['title'] : null,
                 'preview' => (string)($w['prompt_preview'] ?? ''),
             ]);
         }

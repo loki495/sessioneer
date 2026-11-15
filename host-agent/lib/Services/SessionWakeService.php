@@ -430,6 +430,9 @@ final class SessionWakeService
             $preview = mb_substr($preview, 0, self::PREVIEW_CHARS) . '…';
         }
 
+        $name = SidecarStore::find_by_agent_session_id($parsed['agent_session_id']);
+        $title = SessionService::session_title($parsed['agent_session_id'], null, $parsed['workdir'], $name ?? '', $parsed['profile']);
+
         $state = $row['queue'] === '=' ? 'running' : ($row['at'] < $now - self::OVERDUE_AFTER_SECONDS ? 'overdue' : 'scheduled');
 
         return [
@@ -441,7 +444,8 @@ final class SessionWakeService
             'agent_session_id' => $parsed['agent_session_id'],
             'workdir' => $parsed['workdir'],
             'profile' => $parsed['profile'],
-            'session' => SidecarStore::find_by_agent_session_id($parsed['agent_session_id']),
+            'session' => $name,
+            'title' => $title !== '' ? $title : null,
             'prompt_preview' => $preview,
             'prompt_length' => mb_strlen($prompt),
         ] + ($includePrompt ? ['prompt' => $prompt] : []);
