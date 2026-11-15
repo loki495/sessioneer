@@ -161,9 +161,8 @@ Safari raises for a pinch even when the meta tag forbids it.
 **Wrapping.** Transcript entries, tool-call headlines and code frames wrap long unbroken text
 (`overflow-wrap: anywhere`) instead of widening the page, and fenced code wraps too.
 
-**Code blocks.** A fenced block in message text gets Copy and Full screen only when it is real
-code: more than one line, or at least `CODE_ACTION_MIN_CHARS` (40) characters. A one-word or short
-block stays a plain `<pre>`, and inline code never gets buttons.
+**Code blocks.** Every fenced block in message text gets Copy and Full screen, however short.
+Inline code and quotes are not fenced and get no buttons.
 
 **Scroll buttons.** Up and down step to the previous or next visible user or assistant message
 (tool calls are not stops). Down treats a message that cannot reach the top edge as the end, so it

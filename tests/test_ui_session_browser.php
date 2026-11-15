@@ -151,15 +151,15 @@ try {
         assert_true(uib_wait($page, "(function () { var t = document.getElementById('ui-toast'); if (t.hidden) { return false; } var r = t.getBoundingClientRect(); return t.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); }())"), 'a toast raised while a sheet is open paints above the sheet');
         cdp_evaluate($page, "document.getElementById('sess-info').close()");
 
-        // --- fenced code blocks in message text: Copy and Full screen only on real code ---
+        // --- fenced code blocks in message text: Copy and Full screen on every fenced block ---
         $codeText = "Run this:\n\n```php\n<?php\necho 'hello';\nexit(0);\n```\n\nOr just:\n\n```\nls\n```\n\nand a `short` inline span, plus\n\n```\n" . str_repeat('x', 60) . "\n```\n\n" . str_repeat('unbrokenword', 40);
         cdp_evaluate($page, "(function () { var prev = window.fetch; window.__beforeHistoryPatch = prev; window.fetch = function (u, o) { if (String(u).indexOf('/history?') === 0) { return Promise.resolve(new Response(JSON.stringify({ ok: true, entries: [{ type: 'assistant', role: 'assistant', timestamp: '2026-01-01T12:00:05Z', blocks: [{ kind: 'text', text: " . json_encode($codeText) . " }], line: 3 }], has_more: false, next_before: null }), { status: 200 })); } return prev(u, o); }; true; }())");
         cdp_evaluate($page, "UiSession.api.jumpTo(0)");
-        assert_true(uib_wait($page, "document.querySelectorAll('#sess-list .sess-code').length === 2"), 'code: the multi-line block and the long one get the code frame; the one-word block does not');
+        assert_true(uib_wait($page, "document.querySelectorAll('#sess-list .sess-code').length === 3"), 'code: every fenced block gets the code frame, even the one-word one');
         assert_equal(3, cdp_evaluate($page, "document.querySelectorAll('#sess-list pre').length"), 'code: all three fenced blocks still render');
-        assert_equal(2, cdp_evaluate($page, "document.querySelectorAll('#sess-list .sess-code [data-act=\"copy\"]').length"), 'code: Copy on each real code block');
-        assert_equal(2, cdp_evaluate($page, "document.querySelectorAll('#sess-list .sess-code [data-act=\"fullscreen\"]').length"), 'code: Full screen on each real code block');
-        assert_equal(0, cdp_evaluate($page, "document.querySelectorAll('#sess-list .sess-text :not(.sess-code) > pre [data-act]').length"), 'code: no buttons on the one-word block');
+        assert_equal(3, cdp_evaluate($page, "document.querySelectorAll('#sess-list .sess-code [data-act=\"copy\"]').length"), 'code: Copy on every fenced block');
+        assert_equal(3, cdp_evaluate($page, "document.querySelectorAll('#sess-list .sess-code [data-act=\"fullscreen\"]').length"), 'code: Full screen on every fenced block');
+        assert_equal(0, cdp_evaluate($page, "document.querySelectorAll('#sess-list .sess-text code:not(pre code) [data-act], #sess-list .sess-text p [data-act]').length"), 'code: inline code gets no buttons');
         cdp_evaluate($page, "document.querySelector('#sess-list .sess-code [data-act=\"fullscreen\"]').click()");
         assert_contains("echo 'hello';", (string)cdp_evaluate($page, "document.getElementById('sess-fullscreen-text').textContent"), 'code: Full screen shows the code');
         cdp_evaluate($page, "document.getElementById('sess-fullscreen-close').click()");
