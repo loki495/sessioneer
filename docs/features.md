@@ -578,3 +578,5 @@ deliberately narrow.
 ## iOS Quick Prompt
 
 The optional bearer-token `POST /api/quick-prompt` uses the existing Claude headless manager and Codex bridge, returns only terminal short answers inline, and otherwise returns a session link (including approval waits). It supports allowlisted project/model/profile choices, deterministic `@sessioneer` hints, bounded waiting, shared rate limiting, and optional idempotency keys. An optional local Ollama router picks agent/account/model/project from the prompt; a session that finishes with a short, tool-free answer is archived, as are failed ones. Claude starts in auto mode by default. Continuation is restricted to compatible live idle Quick Prompt Claude sessions in their original mode; Codex requests create fresh threads. See [quick-prompt.md](quick-prompt.md) for configuration and Shortcuts setup.
+
+Session details recommend rotation or takeover based on the live source, claims and prepared handoff or plan. The recommendation is checked only when the details sheet opens, and rotation rechecks before acting.

@@ -110,3 +110,11 @@ test_session_wake_chip.php 4
 test_ui_wakes.php 6
 test_session_wake_agent_process.php 2
 test_ui_wakes_browser.php 12
+test_session_flow_phpstan.php 1
+test_session_flow_live_dependencies.php 1
+test_session_flow_review_regressions.php 1
+test_session_flow_source_prompt.php 1
+test_session_flow_archive_replaced.php 1
+test_session_flow_reap_entry.php 2
+test_session_flow_continuation.php 1
+test_session_continuation_browser.php 12

@@ -277,6 +277,8 @@ class UiController extends Controller
                 'message' => (string)($_POST['text'] ?? ''),
             ]),
             'wake_cancel' => $this->wake_cancel(),
+            'flow_continuation' => AgentClient::agent_call(['action' => 'flow_continuation', 'session' => $_POST['session'] ?? null]),
+            'flow_continue_rotate' => $this->flow_continue_rotate(),
             'flow_rotate' => $this->flow_rotate(),
             'flow_rotate_request' => $this->flow_rotate_request(),
             'flow_offer_dismiss' => $this->flow_offer_dismiss(),
@@ -310,6 +312,20 @@ class UiController extends Controller
      *
      * @return array<string, mixed>
      */
+    private function flow_continue_rotate(): array
+    {
+        $params = ['action' => 'flow_continue_rotate', 'session' => $_POST['session'] ?? null];
+        foreach (['agent', 'profile'] as $key) {
+            if (is_string($_POST[$key] ?? null) && trim($_POST[$key]) !== '') { $params[$key] = trim($_POST[$key]); }
+        }
+        $result = AgentClient::agent_call($params);
+        if (($result['ok'] ?? false) === true && is_string($result['session'] ?? null) && $result['session'] !== '') {
+            $result['redirect'] = '/session?session=' . urlencode($result['session']);
+        }
+        return $result;
+    }
+
+    /** @return array<string, mixed> */
     private function flow_rotate_request(): array
     {
         return $this->agent_plain(['action' => 'flow_rotate_request', 'session' => (string)($_POST['session'] ?? '')]);

@@ -50,6 +50,7 @@ class SidecarStore
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'starred', 'INTEGER');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'rotated_from', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'rotated_to', 'TEXT');
+        SqliteDb::add_column_if_missing($pdo, 'sidecars', 'rotation_closed_at', 'INTEGER');
 
         return $pdo;
     }
@@ -206,7 +207,24 @@ class SidecarStore
     /** Own columns for the same reason as no_tools: the headless sync that rewrites a sidecar keeps the rotation link. */
     public static function set_rotation(string $sessionName, ?string $from, ?string $to): void
     {
-        self::db()->prepare('UPDATE sidecars SET rotated_from = COALESCE(?, rotated_from), rotated_to = COALESCE(?, rotated_to) WHERE session_name = ?')->execute([$from, $to, $sessionName]);
+        self::db()->prepare('UPDATE sidecars SET rotated_from = COALESCE(?, rotated_from), rotated_to = COALESCE(?, rotated_to), rotation_closed_at = CASE WHEN ? IS NULL THEN rotation_closed_at END WHERE session_name = ?')->execute([$from, $to, $to, $sessionName]);
+    }
+
+    /** Marks a rotation finished (source archived or gone) so the reaper stops visiting it; a later rotate of the source reopens it. */
+    public static function close_rotation(string $source, int $now): void
+    {
+        self::db()->prepare('UPDATE sidecars SET rotation_closed_at = ? WHERE session_name = ?')->execute([$now, $source]);
+    }
+
+    /**
+     * Sources rotated to a receiver whose rotation is not yet closed.
+     *
+     * @return list<array{session_name: string, rotated_to: string, agent: ?string, agent_session_id: ?string}>
+     */
+    public static function list_open_rotations(): array
+    {
+        /** @var list<array{session_name: string, rotated_to: string, agent: ?string, agent_session_id: ?string}> */
+        return self::db()->query("SELECT session_name, rotated_to, agent, agent_session_id FROM sidecars WHERE rotated_to IS NOT NULL AND rotated_to != '' AND rotation_closed_at IS NULL")->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     /** Null or empty clears the name. False when no such session is tracked. */

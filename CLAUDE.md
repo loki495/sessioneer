@@ -69,7 +69,7 @@ repo suite reaches it through `tests/test_sessioneer_client.php`, which just
 requires that runner.
 
 No Pint/Rector here — this is not a Laravel project. **PHPStan does run**,
-though: `composer phpstan` (level 6 over `host-agent/lib`, `host-agent/hooks`,
+though: `composer phpstan` (level 6 over `bin/sessioneer`, `host-agent/lib`, `host-agent/hooks`,
 `src/lib` and `packages/sessioneer-client/src`), and CI gates on it, so run it
 before pushing. Findings that predate a change live in
 `phpstan-baseline.neon` — note that a baseline entry

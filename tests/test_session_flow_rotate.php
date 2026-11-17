@@ -79,6 +79,8 @@ $source = static function (string $name, array $extra = [], array $status = ['st
         SidecarStore::set_tool_rules($name, $extra['allowed_tools'] ?? null, $extra['disallowed_tools'] ?? null);
     }
 };
+/** The source argument FlowService::rotate must hand to PromptBuilder for a fixture source. */
+$srcOf = static fn (string $name, string $agent = 'claude'): array => ['name' => $name, 'id' => $UUID, 'agent' => $agent];
 $factsFor = static fn (string $agent = 'claude', string $profile = 'work', string $status = 'idle'): array => [
     'context_tokens' => 260000, 'idle_seconds' => 60, 'source' => ['agent' => $agent, 'profile' => $profile, 'status' => $status],
 ];
@@ -140,12 +142,12 @@ assert_equal(true, $r['ok'] ?? null, 'rotate: ok');
 assert_equal('recv-1', $r['session'] ?? null, 'rotate: the reply names the receiver session');
 assert_equal(1, count($log->launch), 'rotate: exactly one launch');
 $req = $log->launch[0] ?? [];
-assert_equal(PromptBuilder::handoff('123'), $req['prompt'] ?? null, 'rotate: the prompt is PromptBuilder::handoff');
+assert_equal(PromptBuilder::handoff('123', $srcOf('src-a')), $req['prompt'] ?? null, 'rotate: the prompt is PromptBuilder::handoff');
 assert_equal(['claude', 'work', '/w/src-a'], [$req['agent'] ?? null, $req['profile'] ?? null, $req['workdir'] ?? null], 'rotate: receiver defaults to the source agent, profile and workdir');
 assert_equal('high', $req['effort'] ?? null, 'rotate: receiver defaults to the source effort');
 assert_equal(false, array_key_exists('agent_session_id', $req), 'rotate: the receiver is a new session, never a resume of the source');
 assert_equal('plan', $req['starting_mode'] ?? null, 'rotate: the receiver starts in the source mode');
-assert_equal(PromptBuilder::handoff('123'), $r['prompt'] ?? null, 'rotate: the reply carries the prompt');
+assert_equal(PromptBuilder::handoff('123', $srcOf('src-a')), $r['prompt'] ?? null, 'rotate: the reply carries the prompt');
 assert_true(is_array($r['warnings'] ?? null), 'rotate: the reply has a warnings list');
 assert_true(count(array_filter((array) ($r['warnings'] ?? []), static fn ($w): bool => is_string($w) && str_contains($w, 'SESSIONEER_CLAIMS_CMD'))) === 1, 'rotate: SESSIONEER_CLAIMS_CMD unset gives one warning naming it');
 assert_equal([], $log->runner, 'rotate: no claims command, no runner call');
@@ -159,9 +161,9 @@ assert_equal('recv-1', SidecarStore::read_sidecar('src-a')['rotated_to'] ?? null
 echo "rotate: plan, prompt and launch options\n";
 [$deps, $log] = $make($known);
 $r = FlowService::rotate(['session' => 'src-b', 'plan_id' => '456'], $deps);
-assert_equal(PromptBuilder::plan('456'), $log->launch[0]['prompt'] ?? null, 'rotate: plan_id gives PromptBuilder::plan');
+assert_equal(PromptBuilder::plan('456', '', $srcOf('src-b')), $log->launch[0]['prompt'] ?? null, 'rotate: plan_id gives PromptBuilder::plan');
 $r = FlowService::rotate(['session' => 'src-b', 'prompt' => 'Fix the parser, tests are in t/.'], $deps);
-assert_equal(PromptBuilder::selfContained('Fix the parser, tests are in t/.'), $log->launch[1]['prompt'] ?? null, 'rotate: prompt gives PromptBuilder::selfContained');
+assert_equal(PromptBuilder::selfContained('Fix the parser, tests are in t/.', $srcOf('src-b')), $log->launch[1]['prompt'] ?? null, 'rotate: prompt gives PromptBuilder::selfContained');
 $r = FlowService::rotate(['session' => 'src-b', 'handoff_id' => '5', 'set_name' => 'Next leg', 'workdir' => '/w/other'], $deps);
 assert_equal(['Next leg', '/w/other'], [$log->launch[2]['set_name'] ?? null, $log->launch[2]['workdir'] ?? null], 'rotate: set_name and workdir overrides reach the launch');
 $r = FlowService::rotate(['session' => 'src-b', 'handoff_id' => '5', 'profile' => 'personal', 'model' => 'sonnet', 'effort' => 'low'], $deps);
@@ -192,6 +194,19 @@ $source('src-manual', [], ['status' => 'idle', 'mode' => 'manual']);
 [$deps, $log] = $make($known + ['src-manual' => $factsFor()]);
 FlowService::rotate(['session' => 'src-manual', 'handoff_id' => '7', 'agent' => 'codex'], $deps);
 assert_equal(false, array_key_exists('starting_mode', $log->launch[0] ?? []), 'rotate: a mode the receiver cannot reproduce is not passed');
+
+echo "rotate: cross-agent mode safety is rechecked\n";
+foreach (['unknown-mode' => 'unknown', 'dontAsk-mode' => 'dontAsk', 'plan-mode' => 'plan'] as $name => $mode) {
+    $source($name, [], ['status' => 'idle', 'mode' => $mode]);
+    [$deps, $log] = $make([$name => $factsFor()]);
+    $r = FlowService::rotate(['session' => $name, 'handoff_id' => '1', 'agent' => 'codex'], $deps);
+    assert_equal($mode === 'plan', $r['ok'] ?? null, "{$mode}: direct launch enforces mode compatibility");
+    if ($mode === 'plan') {
+        assert_equal('plan', $log->launch[0]['starting_mode'] ?? null, 'plan launches read-only');
+    } else {
+        assert_equal([], $log->launch, "{$mode}: no unsafe launch");
+    }
+}
 
 echo "rotate: invalid input is refused\n";
 [$deps, $log] = $make($known);
@@ -266,7 +281,11 @@ SessionOfferStore::post('src-e', 'agent', ['state' => 'ROTATE'], '9', null, 'go'
 SessionOfferStore::dismiss('src-e', $NOW);
 [$deps, $log] = $make(['src-e' => $factsFor()]);
 $late = FlowService::rotate(['session' => 'src-e', 'handoff_id' => '9'], $deps);
-assert_true(is_bool($late['ok'] ?? null), 'tap: a dismissed offer still gives a handled reply');
+assert_equal(false, $late['ok'] ?? null, 'tap: a dismissed offer is refused');
+assert_equal([], $log->launch, 'tap: a dismissed offer never launches');
+[$deps, $log] = $make(['src-d' => $factsFor()]);
+assert_equal(false, FlowService::rotate(['session' => 'src-d', 'handoff_id' => '9'], $deps)['ok'] ?? null, 'tap: a third stale tap is refused');
+assert_equal([], $log->launch, 'tap: third stale tap never launches');
 
 echo "rotate: dry run\n";
 $reset();
@@ -275,7 +294,7 @@ SessionOfferStore::post('src-f', 'hook', ['state' => 'ROTATE'], '9', null, null,
 [$deps, $log] = $make(['src-f' => $factsFor()]);
 $r = FlowService::rotate(['session' => 'src-f', 'handoff_id' => '9', 'dry_run' => true], $deps);
 assert_equal([true, true], [$r['ok'] ?? null, $r['dry_run'] ?? null], 'dry run: ok and flagged');
-assert_equal(PromptBuilder::handoff('9'), $r['prompt'] ?? null, 'dry run: shows the prompt it would send');
+assert_equal(PromptBuilder::handoff('9', $srcOf('src-f')), $r['prompt'] ?? null, 'dry run: shows the prompt it would send');
 assert_equal([], $log->launch, 'dry run: launches nothing');
 assert_equal(null, SidecarStore::read_sidecar('src-f')['rotated_to'] ?? null, 'dry run: writes no rotated_to');
 assert_true(SessionOfferStore::get('src-f', $NOW) !== null, 'dry run: does not consume the offer');
@@ -332,6 +351,58 @@ assert_equal(null, SidecarStore::read_sidecar('src-g')['rotated_to'] ?? null, 'f
 assert_equal([], $log->forbidden, 'failure: the source is still not archived');
 [$deps, $log] = $make(['src-g' => $factsFor()]);
 assert_equal(true, FlowService::rotate(['session' => 'src-g', 'handoff_id' => '4'], $deps)['ok'] ?? null, 'failure: the lock was released, a retry works');
+
+echo "rotate: failed launch restores the offer\n";
+$reset();
+$source('src-retry');
+SessionOfferStore::post('src-retry', 'agent', ['state' => 'ROTATE'], '4', null, 'original', $NOW - 5);
+$original = SessionOfferStore::get('src-retry', $NOW);
+[$deps, $log] = $make(['src-retry' => $factsFor()], null, static fn (): array => ['ok' => false, 'message' => 'no capacity']);
+assert_equal(false, FlowService::rotate(['session' => 'src-retry', 'handoff_id' => '4'], $deps)['ok'] ?? null, 'failed launch refuses');
+assert_equal($original, SessionOfferStore::get('src-retry', $NOW), 'failed launch preserves exact offer and expiry');
+[$deps, $log] = $make(['src-retry' => $factsFor()]);
+assert_equal(true, FlowService::rotate(['session' => 'src-retry', 'handoff_id' => '4'], $deps)['ok'] ?? null, 'the exact offer can be retried');
+
+echo "rotate: exception and replacement preserve offers\n";
+$reset();
+$source('src-exception');
+SessionOfferStore::post('src-exception', 'agent', ['state' => 'ROTATE'], '4', null, 'original', $NOW);
+$original = SessionOfferStore::get('src-exception', $NOW);
+[$deps, $log] = $make(['src-exception' => $factsFor()], null, static function (): array { throw new RuntimeException('fixture dispatch failure'); });
+try {
+    FlowService::rotate(['session' => 'src-exception', 'handoff_id' => '4'], $deps);
+} catch (Throwable) {
+    // The existing error policy may rethrow; the offer must survive either outcome.
+}
+assert_equal($original, SessionOfferStore::get('src-exception', $NOW), 'throwing launch preserves exact offer');
+[$deps, $log] = $make(['src-exception' => $factsFor()]);
+assert_equal(true, FlowService::rotate(['session' => 'src-exception', 'handoff_id' => '4'], $deps)['ok'] ?? null, 'throwing launch leaves a retryable offer');
+$reset();
+$source('src-replacement');
+SessionOfferStore::post('src-replacement', 'agent', ['state' => 'ROTATE'], '4', null, 'original', $NOW);
+[$deps, $log] = $make(['src-replacement' => $factsFor()], null, static function () use ($NOW): array {
+    SessionOfferStore::post('src-replacement', 'agent', ['state' => 'PARK'], '5', null, 'replacement', $NOW);
+    return ['ok' => false, 'message' => 'fixture failure'];
+});
+FlowService::rotate(['session' => 'src-replacement', 'handoff_id' => '4'], $deps);
+assert_equal('replacement', SessionOfferStore::get('src-replacement', $NOW)['prompt'] ?? null, 'failed launch cannot undo a replacement posted in the same second');
+
+echo "rotate: a separately claimed identical replacement stays claimed\n";
+$reset();
+$source('src-same');
+SessionOfferStore::post('src-same', 'agent', ['state' => 'ROTATE'], '4', null, 'same', $NOW);
+$claimResult = null;
+[$deps, $log] = $make(['src-same' => $factsFor()], null, static function () use ($NOW, &$claimResult): array {
+    SessionOfferStore::post('src-same', 'agent', ['state' => 'ROTATE'], '4', null, 'same', $NOW);
+    $claimResult = SessionOfferStore::claimLaunch('src-same', $NOW);
+    return ['ok' => false, 'message' => 'fixture failure'];
+});
+FlowService::rotate(['session' => 'src-same', 'handoff_id' => '4'], $deps);
+assert_equal(true, $claimResult, 'identical replacement was separately claimed');
+assert_equal(null, SessionOfferStore::get('src-same', $NOW), 'failure does not release another attempt’s claim');
+[$deps, $log] = $make(['src-same' => $factsFor()]);
+assert_equal(false, FlowService::rotate(['session' => 'src-same', 'handoff_id' => '4'], $deps)['ok'] ?? null, 'claimed replacement cannot be dispatched again');
+assert_equal([], $log->launch, 'claimed replacement never launches twice');
 
 echo "ok\n";
 test_exit();

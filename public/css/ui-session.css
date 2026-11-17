@@ -160,6 +160,7 @@ html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 .sess-kv code { display: block; font-size: 0.78rem; overflow-wrap: anywhere; }
 .sess-row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .sess-row-actions .ui-btn { flex: 1 1 8rem; }
+.sess-row-actions [data-continuation-why] { flex: 1 1 100%; margin: 0; overflow-wrap: anywhere; }
 .sess-hit { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; text-align: left; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); text-decoration: none; }
 .sess-hit b { font-size: 0.9rem; }
 .sess-file-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; font-size: 0.9rem; }

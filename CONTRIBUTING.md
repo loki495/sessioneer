@@ -385,7 +385,7 @@ composer phpstan
 ```
 
 Runs on the **host**, not inside the container: `phpstan.neon` scans both `src/lib` (container-side) and
-`host-agent/lib`/`host-agent/hooks` (host-native) in one pass, and
+`host-agent/lib`/`host-agent/hooks` and `bin/sessioneer` (host-native) in one pass, and
 `host-agent/` is deliberately never mounted into the container at all (see
 "Architecture: container + host-native agent" above) - `docker exec` has
 no way to see it. Host PHP just needs to be a reasonably recent version;

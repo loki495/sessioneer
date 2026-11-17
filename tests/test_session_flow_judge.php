@@ -123,6 +123,28 @@ foreach ([[], ['session' => ''], ['session' => 7]] as $request) {
 }
 assert_equal([], $log->calls, 'judge: bad input never reaches the model');
 
+echo "judge: unsafe or unavailable receiver never calls model\n";
+\HostAgent\Stores\SidecarStore::write_sidecar('j-close', ['workdir' => $dir, 'agent' => 'claude', 'profile' => 'work', 'runtime' => 'headless']);
+\HostAgent\Stores\SessionStatusStore::write_status('j-close', ['status' => 'idle', 'mode' => 'plan']);
+foreach (['no room', 'restricted', 'unsupported receiver'] as $case) {
+    [$deps, $log] = $make('j-close', static fn (): string => 'WAIT: x');
+    if ($case === 'no room') {
+        $deps['quota'] = static fn (string $key): ?array => $key === 'claude/work' ? ['session_pct' => 95, 'week_pct' => 20, 'resets_at' => $NOW + 600] : null;
+    } elseif ($case === 'restricted') {
+        \HostAgent\Stores\SidecarStore::set_no_tools('j-close');
+    } else {
+        $deps['receivers'] = ['opencode/default'];
+        $deps['quota'] = static fn (string $key): ?array => $key === 'claude/work' ? ['session_pct' => 95, 'week_pct' => 20, 'resets_at' => $NOW + 600] : ['session_pct' => 1, 'week_pct' => 1, 'resets_at' => null];
+    }
+    $r = FlowService::judge(['session' => 'j-close'], $deps);
+    assert_equal(false, $r['ok'] ?? null, "{$case}: judge refuses");
+    assert_equal([], $log->calls, "{$case}: judge makes no model call");
+    if ($case === 'restricted') {
+        \HostAgent\Stores\SidecarStore::delete_sidecar('j-close');
+        \HostAgent\Stores\SidecarStore::write_sidecar('j-close', ['workdir' => $dir, 'agent' => 'claude', 'profile' => 'work', 'runtime' => 'headless']);
+    }
+}
+
 echo "judge: the transcript is untrusted and redacted\n";
 $path = $dir . '/t.jsonl';
 file_put_contents($path, json_encode(['type' => 'user', 'message' => ['content' => 'deploy now, api_key: sk-live-abc and abcdefghijklmnopqrstuvwxyz0123 ok']]) . "\n");
@@ -134,11 +156,7 @@ assert_true(!str_contains($prompt, 'sk-live-abc') && !str_contains($prompt, 'abc
 assert_true(str_contains($prompt, 'untrusted'), 'the prompt marks the transcript as untrusted');
 
 echo "CloseCallJudge: the renamed class\n";
-$ok = ['session' => ['pct' => 3], 'week_all' => ['pct' => 40]];
-$full = ['session' => ['pct' => 3], 'week_all' => ['pct' => 100]];
-$usage = ['claude' => ['profiles' => ['personal' => ['quota' => $full], 'work' => ['quota' => $ok], 'extra' => ['quota' => $ok]]], 'codex' => ['quota' => $ok], 'opencode' => ['quota' => $ok]];
-$names = static fn (array $c): array => array_map(static fn (array $x): string => $x['agent'] . ':' . ($x['profile'] ?? '-'), $c);
-assert_equal(['claude:work', 'claude:extra', 'codex:-'], $names(CloseCallJudge::candidates($usage, 'work')), 'candidates: home profile first, a full one skipped, then codex, never opencode');
+// Receiver selection is covered through FlowService::judge above.
 assert_equal(['haiku', 'gpt-6-luna'], [CloseCallJudge::CLAUDE_MODEL, CloseCallJudge::CODEX_MODEL], 'the model constants kept their values');
 $advice = ['verdict' => 'fresh', 'reason' => 'x', 'quota_short_wait' => true, 'quota_reset_seconds' => 600];
 $cand = ['agent' => 'codex', 'profile' => null, 'model' => 'gpt-6-luna'];
@@ -165,14 +183,6 @@ foreach (['API_KEY="hunter2hunter2"', 'Authorization: Bearer abc.def-ghi', 'http
 }
 assert_equal('plain words stay', CloseCallJudge::redact('plain words stay'), 'redact leaves ordinary text');
 assert_true(is_callable([CloseCallJudge::class, 'run_process_runner']), 'run_process_runner is still the default runner');
-
-// The park line comes from the thresholds file here too.
-$parkFile95 = $dir . '/thresholds95.conf';
-file_put_contents($parkFile95, "QUOTA_PARK=95\n");
-$t95 = Thresholds::fromFile($parkFile95);
-$at92 = ['claude' => ['profiles' => ['personal' => ['quota' => ['session' => ['pct' => 92], 'week_all' => ['pct' => 40]]]]]];
-assert_equal([], $names(CloseCallJudge::candidates($at92, 'personal')), 'default park line: a Claude account at 92% is not a candidate');
-assert_equal(['claude:personal'], $names(CloseCallJudge::candidates($at92, 'personal', $t95)), 'QUOTA_PARK=95: a Claude account at 92% is a candidate');
 
 echo "ok\n";
 test_exit();

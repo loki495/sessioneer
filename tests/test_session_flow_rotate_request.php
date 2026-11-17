@@ -100,7 +100,7 @@ echo "rotate_request: defaults\n";
 [$deps, $log] = $make($known);
 $r = FlowService::rotate_request(['session' => 'rr-idle'], $deps);
 assert_equal(true, $r['ok'] ?? null, 'only a session is enough');
-assert_true(str_starts_with((string) ($log->launch[0]['prompt'] ?? ''), '/rotate ') && str_contains((string) ($log->launch[0]['prompt'] ?? ''), 'agent=claude'), 'an absent agent means the source agent');
+assert_true(str_starts_with((string) ($log->launch[0]['prompt'] ?? ''), '/rotate ') && str_contains((string) ($log->launch[0]['prompt'] ?? ''), '--agent claude'), 'an absent agent means the source agent');
 
 echo "rotate_request: refused\n";
 foreach (['rr-working', 'rr-blocked'] as $busy) {
@@ -136,7 +136,10 @@ assert_equal([true, false], [$a['ok'] ?? null, $b['ok'] ?? null], 'the second ta
 assert_equal(1, count($log->launch), 'two taps send /rotate once');
 assert_equal(null, SessionOfferStore::get('rr-idle', $NOW), 'the claimed offer is no longer live');
 [$deps, $log] = $make($known);
-assert_equal(true, FlowService::rotate_request(['session' => 'rr-idle'], $deps)['ok'] ?? null, 'with no live offer the request proceeds');
+assert_equal(false, FlowService::rotate_request(['session' => 'rr-idle'], $deps)['ok'] ?? null, 'a third stale tap is refused');
+assert_equal([], $log->launch, 'a stale tap never sends');
+SessionOfferStore::clear('rr-idle');
+assert_equal(true, FlowService::rotate_request(['session' => 'rr-idle'], $deps)['ok'] ?? null, 'a genuinely absent offer permits an explicit request');
 SessionOfferStore::post('rr-working', 'hook', ['state' => 'ROTATE'], null, null, null, $NOW - 5);
 FlowService::rotate_request(['session' => 'rr-working'], $deps);
 assert_true(SessionOfferStore::get('rr-working', $NOW) !== null, 'a refused (not idle) request leaves the offer live');
@@ -146,6 +149,73 @@ echo "rotate_request: a failed send\n";
 $r = FlowService::rotate_request(['session' => 'rr-idle'], $deps);
 assert_equal(false, $r['ok'] ?? null, 'a failed send is a failed request');
 assert_true(str_contains((string) ($r['message'] ?? ''), 'session is gone'), 'the sender message is passed on');
+
+echo "rotate_request: failed offer can retry and replacement survives\n";
+SessionOfferStore::clear('rr-idle');
+SessionOfferStore::post('rr-idle', 'agent', ['state' => 'ROTATE'], '71', null, 'original', $NOW - 5);
+$original = SessionOfferStore::get('rr-idle', $NOW);
+[$deps, $log] = $make($known, ['ok' => false, 'message' => 'unavailable']);
+assert_equal(false, FlowService::rotate_request(['session' => 'rr-idle'], $deps)['ok'] ?? null, 'failed send refuses');
+assert_equal($original, SessionOfferStore::get('rr-idle', $NOW), 'failed send restores the exact offer and expiry');
+[$deps, $log] = $make($known);
+assert_equal(true, FlowService::rotate_request(['session' => 'rr-idle'], $deps)['ok'] ?? null, 'retry sends the original offer');
+SessionOfferStore::clear('rr-idle');
+SessionOfferStore::post('rr-idle', 'agent', ['state' => 'ROTATE'], '71', null, 'original', $NOW);
+[$deps, $log] = $make($known);
+$deps['launch'] = static function () use ($NOW): array {
+    SessionOfferStore::post('rr-idle', 'agent', ['state' => 'PARK'], '72', null, 'replacement', $NOW);
+    return ['ok' => false, 'message' => 'unavailable'];
+};
+FlowService::rotate_request(['session' => 'rr-idle'], $deps);
+assert_equal('replacement', SessionOfferStore::get('rr-idle', $NOW)['prompt'] ?? null, 'failure cannot undo a replacement posted in the same second');
+
+echo "rotate_request: serialize concurrent dispatch\n";
+SessionOfferStore::clear('rr-idle');
+[$deps, $log] = $make($known);
+$inner = null;
+$deps['launch'] = static function () use (&$deps, &$inner): array {
+    static $inside = false;
+    if (!$inside) {
+        $inside = true;
+        $inner = FlowService::rotate_request(['session' => 'rr-idle'], $deps);
+        $inside = false;
+    }
+    return ['ok' => true, 'name' => 'rr-idle'];
+};
+$outer = FlowService::rotate_request(['session' => 'rr-idle'], $deps);
+assert_equal(true, $outer['ok'] ?? null, 'outer unoffered request succeeds');
+assert_equal(false, $inner['ok'] ?? null, 'concurrent unoffered request is refused before dispatch');
+
+echo "rotate_request: exception releases exact offer\n";
+SessionOfferStore::clear('rr-idle');
+SessionOfferStore::post('rr-idle', 'agent', ['state' => 'ROTATE'], '73', null, 'exception offer', $NOW - 5);
+$original = SessionOfferStore::get('rr-idle', $NOW);
+[$deps, $log] = $make($known);
+$deps['launch'] = static function (): array { throw new RuntimeException('fixture dispatch failure'); };
+try {
+    FlowService::rotate_request(['session' => 'rr-idle'], $deps);
+} catch (Throwable) {
+    // The existing error policy may rethrow; the offer must survive either outcome.
+}
+assert_equal($original, SessionOfferStore::get('rr-idle', $NOW), 'throwing send preserves exact offer');
+[$deps, $log] = $make($known);
+assert_equal(true, FlowService::rotate_request(['session' => 'rr-idle'], $deps)['ok'] ?? null, 'throwing send leaves a retryable offer');
+
+echo "shared lock: request blocks rotate\n";
+SessionOfferStore::clear('rr-idle');
+[$deps, $log] = $make($known);
+$innerRotate = null;
+$dispatchCount = 0;
+$deps['launch'] = static function () use (&$deps, &$innerRotate, &$dispatchCount): array {
+    $dispatchCount++;
+    if ($dispatchCount === 1) {
+        $innerRotate = FlowService::rotate(['session' => 'rr-idle', 'handoff_id' => '9'], $deps);
+    }
+    return ['ok' => true, 'name' => 'rr-idle'];
+};
+FlowService::rotate_request(['session' => 'rr-idle'], $deps);
+assert_equal(false, $innerRotate['ok'] ?? null, 'concurrent rotate is refused during send');
+assert_equal(1, $dispatchCount, 'cross-action contention dispatches once');
 
 echo "ok\n";
 test_exit();

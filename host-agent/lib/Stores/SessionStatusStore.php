@@ -91,8 +91,8 @@ class SessionStatusStore
                 'mode' => $row['mode'],
                 'last_message' => $row['last_message'],
                 'last_turn_error' => $row['last_turn_error'],
-                'token_usage' => $row['token_usage_json'] !== null ? json_decode($row['token_usage_json'], true) : null,
-                'context_usage' => $row['context_usage_json'] !== null ? json_decode($row['context_usage_json'], true) : null,
+                'token_usage' => self::decode_usage($row['token_usage_json']),
+                'context_usage' => self::decode_usage($row['context_usage_json']),
                 'model' => $row['model'],
                 'effort' => $row['effort'],
                 'updated_at' => $row['updated_at'] !== null ? (int)$row['updated_at'] : null,
@@ -100,6 +100,26 @@ class SessionStatusStore
         }
 
         return null;
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    public static function read_many(): array
+    {
+        $rows = self::db()->query('SELECT session_name, status, mode, token_usage_json, context_usage_json, model, updated_at FROM session_status')->fetchAll(\PDO::FETCH_ASSOC);
+        $out = [];
+        foreach ($rows as $row) {
+            $row['token_usage'] = self::decode_usage($row['token_usage_json']);
+            $row['context_usage'] = self::decode_usage($row['context_usage_json']);
+            $out[(string) $row['session_name']] = $row;
+        }
+        return $out;
+    }
+
+    /** @return array<string, mixed>|null */
+    private static function decode_usage(?string $json): ?array
+    {
+        $decoded = $json === null ? null : json_decode($json, true);
+        return is_array($decoded) ? $decoded : null;
     }
 
     /**

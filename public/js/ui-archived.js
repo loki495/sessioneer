@@ -14,9 +14,13 @@
 
   function $(x) { return document.getElementById(x); }
 
+  var continuationToken = 0;
+  var continuation = { action: 'takeover', why: 'Checking continuation options…' };
+  var continuationBusy = false;
+
   api.openSheet = function (name) {
     var dlg = $(name);
-    if (dlg && !dlg.open) { dlg.showModal(); }
+    if (dlg && !dlg.open) { dlg.showModal(); if (name === 'sess-info' && detail.agent_session_id) { loadContinuation(); } }
     if (name === 'sess-search') { $('sess-search-input').focus(); }
   };
   // Tapping an image opens the original: this page has no viewer layer.
@@ -47,10 +51,57 @@
   $('sess-info-body').innerHTML = rows.filter(function (r) { return r[1]; }).map(function (r) {
     return '<div class="ui-kv"><span class="ui-muted">' + esc(r[0]) + '</span><span class="ui-path">' + esc(r[1]) + '</span></div>';
   }).join('');
-  $('sess-info-actions').innerHTML = canResume
-    ? '<button type="button" class="ui-btn ui-btn-primary" id="sess-info-resume">Resume (headless)</button>'
-    : '<p class="ui-muted ui-small">This agent cannot be resumed from here.</p>';
-  if (canResume) { $('sess-info-resume').addEventListener('click', resume); }
+  function renderActions() {
+    var rotate = '<button type="button" class="ui-btn' + (continuation.action === 'rotate' ? ' ui-btn-primary' : '') + '" data-info="rotate-new"' + (continuationBusy ? ' disabled' : '') + '>Rotate session</button>';
+    var takeover = '<button type="button" class="ui-btn' + (continuation.action !== 'rotate' ? ' ui-btn-primary' : '') + '" data-info="takeover-new"' + (continuationBusy ? ' disabled' : '') + '>Take over in new session</button>';
+    $('sess-info-actions').innerHTML = '<p class="ui-small ui-muted" data-continuation-why>' + esc(continuation.why) + '</p>'
+      + (continuation.action === 'rotate' ? rotate + takeover : takeover + rotate)
+      + (canResume ? '<button type="button" class="ui-btn" id="sess-info-resume">Resume (headless)</button>' : '');
+  }
+  function loadContinuation() {
+    var token = ++continuationToken;
+    continuation = { action: 'takeover', why: 'Checking continuation options…' };
+    renderActions();
+    api.post('/action', { action: 'flow_continuation', session: id }).then(function (res) {
+      if (token !== continuationToken || !$('sess-info').hasAttribute('open')) { return; }
+      continuation = res && res.ok && (res.action === 'rotate' || res.action === 'takeover') && typeof res.why === 'string' && res.why.trim()
+        ? { action: res.action, why: res.why } : { action: 'takeover', why: 'Continuation recommendation is unavailable.' };
+      renderActions();
+    }).catch(function () {
+      if (token !== continuationToken || !$('sess-info').hasAttribute('open')) { return; }
+      continuation = { action: 'takeover', why: 'Continuation recommendation is unavailable.' };
+      renderActions();
+    });
+  }
+  $('sess-info-actions').addEventListener('click', function (e) {
+    var button = e.target instanceof Element ? e.target.closest('button') : null;
+    if (!button) { return; }
+    if (button.id === 'sess-info-resume') { resume(); return; }
+    if (button.getAttribute('data-info') === 'takeover-new') {
+      var agent = detail.agent || 'claude';
+      var profile = agent === 'claude' && detail.profile ? String(detail.profile) : '';
+      var source = agent + (profile && profile.toLowerCase() !== 'personal' ? ' ' + profile : '') + ' ' + (detail.agent_session_id || id);
+      var params = { agent: agent, workdir: detail.cwd || '', prompt: agent === 'claude' ? '/takeover ' + source : 'Use the global takeover skill for source ' + source + '.' };
+      if (profile) { params.profile = profile; }
+      try { window.sessionStorage.setItem('ui-new-prefill', JSON.stringify(params)); } catch (err) { api.toast('Could not open the form', true); return; }
+      window.location.href = '/';
+    } else if (button.getAttribute('data-info') === 'rotate-new') {
+      var token = continuationToken;
+      continuationBusy = true;
+      renderActions();
+      api.post('/action', { action: 'flow_continue_rotate', session: id }).then(function (res) {
+        continuationBusy = false;
+        if (res && res.ok && res.redirect && token === continuationToken && $('sess-info').hasAttribute('open')) { window.location.href = res.redirect; return; }
+        api.toast((res && res.message) || (res && res.ok ? 'Done' : 'Rotation failed'), !(res && res.ok));
+        if ($('sess-info').hasAttribute('open')) { renderActions(); }
+      }).catch(function () {
+        continuationBusy = false;
+        api.toast('Network error', true);
+        if ($('sess-info').hasAttribute('open')) { renderActions(); }
+      });
+    }
+  });
+  renderActions();
 
   // ---- search ----
   var input = $('sess-search-input');

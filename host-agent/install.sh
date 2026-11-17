@@ -123,6 +123,17 @@ echo "Antigravity quota-poll timer units installed but NOT enabled - only"
 echo "useful if you've set ANTIGRAVITY_BIN in .env, then run:"
 echo "  systemctl --user enable --now sessioneer-antigravity-quota-check.timer"
 
+# Session-flow reaper: archives a rotated source once its receiver holds a claim.
+# Installed, not auto-enabled, like the timers above; needs SESSIONEER_CLAIMS_CMD in .env to act.
+render_unit sessioneer-flow-reap.service
+cp "$SCRIPT_DIR/systemd/sessioneer-flow-reap.timer" "$UNIT_DIR/sessioneer-flow-reap.timer"
+systemctl --user daemon-reload
+
+echo
+echo "Session-flow reap timer units installed but NOT enabled - only useful once"
+echo "SESSIONEER_CLAIMS_CMD is set in .env, then run:"
+echo "  systemctl --user enable --now sessioneer-flow-reap.timer"
+
 # OpenCode headless server: unlike the two timers above, this one IS
 # enabled/started here - it's a live long-running daemon with no
 # un-configured no-op state (a missing OPENCODE_BIN either fails the

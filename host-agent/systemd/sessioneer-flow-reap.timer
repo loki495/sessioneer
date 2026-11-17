@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodically archive rotated source sessions once their receiver holds a claim
+
+[Timer]
+# OnUnitActiveSec (not OnCalendar) so a slow tick can't pile up overlapping runs.
+OnBootSec=60s
+OnUnitActiveSec=30s
+Unit=sessioneer-flow-reap.service
+
+[Install]
+WantedBy=timers.target

@@ -13,7 +13,8 @@ final class PromptBuilder
 {
     private const MAX_LENGTH = 8000;
 
-    public static function plan(string $planId, string $note = ''): string
+    /** @param array{name?: string, id?: ?string, agent?: string}|null $source the session being replaced */
+    public static function plan(string $planId, string $note = '', ?array $source = null): string
     {
         self::digits($planId, 'plan id');
         $text = "Continue Dibs plan {$planId}. Read the plan, claim it, then work from todo_next.";
@@ -21,16 +22,17 @@ final class PromptBuilder
             $text .= ' ' . self::line($note, 'note');
         }
 
-        return self::limit($text);
+        return self::limit($text . self::sourceParagraph($source));
     }
 
-    public static function handoff(string $taskId): string
+    /** @param array{name?: string, id?: ?string, agent?: string}|null $source the session being replaced */
+    public static function handoff(string $taskId, ?array $source = null): string
     {
         self::digits($taskId, 'task id');
 
         return self::limit("Continue from the handoff in Dibs task {$taskId}. Read it and claim the task. "
             . 'Re-verify its State against git, the tests and Dibs before acting, and ask only what is not under Decisions made. '
-            . 'Then continue its Next steps. Archive the source session once it holds no claim.');
+            . 'Then continue its Next steps.' . self::sourceParagraph($source));
     }
 
     /** `$agent` and `$profile` form the slash command's source argument: "<agent> [<profile>] <id>". */
@@ -56,16 +58,20 @@ final class PromptBuilder
 
     public static function rotateRequest(string $receiver, ?string $model, ?string $effort, ?string $profile): string
     {
-        return self::limit('/rotate ' . self::receiverArgs($receiver, $model, $effort, $profile));
+        return self::limit('/rotate ' . self::textInstruction($receiver, $model, $effort, $profile));
     }
 
     public static function textInstruction(string $receiver, ?string $model, ?string $effort, ?string $profile): string
     {
-        return self::limit('Write a handoff and rotate this session to a fresh one: ' . self::receiverArgs($receiver, $model, $effort, $profile) . '.');
+        return self::limit('Prepare a handoff, then run sessioneer --rotate --handoff with its id ' . self::receiverArgs($receiver, $model, $effort, $profile) . '.');
     }
 
-    /** Free text for a receiver with no other context; the 8000-character limit applies to the text itself. */
-    public static function selfContained(string $text): string
+    /**
+     * Free text for a receiver with no other context; the 8000-character limit applies to the text itself.
+     *
+     * @param array{name?: string, id?: ?string, agent?: string}|null $source the session being replaced
+     */
+    public static function selfContained(string $text, ?array $source = null): string
     {
         if (trim($text) === '') {
             throw new \InvalidArgumentException('text is empty');
@@ -74,15 +80,33 @@ final class PromptBuilder
             throw new \InvalidArgumentException('text is longer than ' . self::MAX_LENGTH . ' characters');
         }
 
-        return "Complete this task. It is self-contained; no earlier conversation is available.\n\n" . $text;
+        return "Complete this task. It is self-contained; no earlier conversation is available.\n\n" . $text . self::sourceParagraph($source);
+    }
+
+    /** @param array{name?: string, id?: ?string, agent?: string}|null $source */
+    private static function sourceParagraph(?array $source): string
+    {
+        if ($source === null) {
+            return '';
+        }
+        $name = self::line((string) ($source['name'] ?? ''), 'source name');
+        if (trim($name) === '') {
+            throw new \InvalidArgumentException('source name must not be blank');
+        }
+        $agent = self::token((string) ($source['agent'] ?? ''), 'source agent');
+        $id = (string) ($source['id'] ?? '');
+        $who = $name . ($id !== '' ? ' ' . self::token($id, 'source id') : '') . " ({$agent})";
+
+        return "\n\nSource session: {$who}. Claim your Dibs task first. Sessioneer archives the source once it is idle and holds no claim; "
+            . 'do not archive or force-stop it yourself, and if it is still working or holds a claim, leave it and tell Andres.';
     }
 
     private static function receiverArgs(string $receiver, ?string $model, ?string $effort, ?string $profile): string
     {
-        $parts = ['agent=' . self::token($receiver, 'receiver')];
+        $parts = ['--agent ' . self::token($receiver, 'receiver')];
         foreach (['model' => $model, 'effort' => $effort, 'profile' => $profile] as $name => $value) {
             if ($value !== null) {
-                $parts[] = $name . '=' . self::token($value, $name);
+                $parts[] = '--' . $name . ' ' . self::token($value, $name);
             }
         }
 

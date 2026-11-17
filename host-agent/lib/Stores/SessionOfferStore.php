@@ -20,7 +20,9 @@ final class SessionOfferStore
 
     private static function db(): \PDO
     {
-        return SqliteDb::connect(Config::sessions_sqlite_path(), SqliteDb::sessions_schema());
+        $db = SqliteDb::connect(Config::sessions_sqlite_path(), SqliteDb::sessions_schema());
+        SqliteDb::add_column_if_missing($db, 'session_offers', 'reservation', 'TEXT');
+        return $db;
     }
 
     /**
@@ -47,7 +49,7 @@ final class SessionOfferStore
              ON CONFLICT(session_name) DO UPDATE SET
                  origin = excluded.origin, decision_json = excluded.decision_json, handoff_id = excluded.handoff_id,
                  plan_id = excluded.plan_id, prompt = excluded.prompt, created_at = excluded.created_at,
-                 expires_at = excluded.expires_at, dismissed_at = NULL, launched_at = NULL
+                 expires_at = excluded.expires_at, dismissed_at = NULL, launched_at = NULL, reservation = NULL
              WHERE excluded.origin = \'agent\'
                 OR NOT (session_offers.origin = \'agent\' AND session_offers.dismissed_at IS NULL
                         AND session_offers.launched_at IS NULL AND session_offers.expires_at > :now)'
@@ -93,6 +95,37 @@ final class SessionOfferStore
     public static function claimLaunch(string $session, int $now): bool
     {
         return self::markLive('launched_at', $session, $now);
+    }
+
+    /** Reserve a live offer with an attempt identity; null means no live offer. */
+    public static function reserve(string $session, int $now): ?string
+    {
+        $token = bin2hex(random_bytes(16));
+        $stmt = self::db()->prepare('UPDATE session_offers SET launched_at = :now, reservation = :token WHERE session_name = :s AND ' . self::LIVE);
+        $stmt->execute([':now' => $now, ':token' => $token, ':s' => $session]);
+        return $stmt->rowCount() === 1 ? $token : null;
+    }
+
+    /** Atomically reserve only the live context selected for a continuation. */
+    public static function reserveContext(string $session, int $now, ?string $handoff, ?string $plan): ?string
+    {
+        $token = bin2hex(random_bytes(16));
+        $stmt = self::db()->prepare('UPDATE session_offers SET launched_at = :now, reservation = :token WHERE session_name = :s AND ' . self::LIVE . ' AND handoff_id IS :handoff AND plan_id IS :plan');
+        $stmt->execute([':now' => $now, ':token' => $token, ':s' => $session, ':handoff' => $handoff, ':plan' => $plan]);
+        return $stmt->rowCount() === 1 ? $token : null;
+    }
+
+    /** Remove only inactive offers that were never launched, before an explicit prepare request. */
+    public static function clearInactiveUnlaunched(string $session, int $now): void
+    {
+        $stmt = self::db()->prepare('DELETE FROM session_offers WHERE session_name = :s AND launched_at IS NULL AND reservation IS NULL AND (dismissed_at IS NOT NULL OR expires_at <= :now)');
+        $stmt->execute([':s' => $session, ':now' => $now]);
+    }
+
+    public static function rollback(string $session, string $token, int $now): void
+    {
+        $stmt = self::db()->prepare('UPDATE session_offers SET launched_at = NULL, reservation = NULL WHERE session_name = :s AND reservation = :token AND dismissed_at IS NULL AND expires_at > :now');
+        $stmt->execute([':s' => $session, ':token' => $token, ':now' => $now]);
     }
 
     public static function clear(string $session, ?string $origin = null): void

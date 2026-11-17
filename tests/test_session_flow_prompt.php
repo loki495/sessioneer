@@ -79,8 +79,7 @@ foreach (['git', 'tests', 'Dibs'] as $w) {
 }
 assert_contains('Decisions made', $h, 'handoff: ask only what is not under Decisions made');
 assert_contains('Next steps', $h, 'handoff: continue its Next steps');
-assert_contains('archive', strtolower($h), 'handoff: archive the source');
-assert_contains('claim', strtolower(substr($h, (int) stripos($h, 'archive'))), 'handoff: archive condition is about claims');
+assert_true(!str_contains($h, 'Archive the source session once it holds no claim.'), 'handoff: archiving the source is the host\'s job, the receiver is no longer told to do it');
 assert_true(!str_starts_with(ltrim($h), '/'), 'handoff: no leading slash command');
 $rejects(static fn () => P::handoff(''), 'handoff: empty id throws');
 $rejects(static fn () => P::handoff('abc'), 'handoff: non-digit id throws');
@@ -157,6 +156,18 @@ foreach (['rotateRequest' => [P::class, 'rotateRequest'], 'textInstruction' => [
     $rejects(static fn () => $fn('codex', str_repeat('m', 8000), null, null), "$name: result over 8000 throws");
     $ok = $fn('codex', 'claude-opus-4.5:fast_1', 'x-high', 'p.1');
     assert_contains('claude-opus-4.5:fast_1', $ok, "$name: allowed charset . : - _ accepted");
+}
+
+foreach ([$r, $tx] as $instruction) {
+    assert_contains('handoff', strtolower($instruction), 'rotation instruction prepares a handoff');
+    assert_contains('sessioneer --rotate', $instruction, 'rotation instruction invokes sessioneer --rotate');
+    foreach (['--agent codex', '--model gpt-5', '--effort high', '--profile work'] as $option) {
+        assert_contains($option, $instruction, "rotation instruction includes {$option}");
+    }
+    assert_true(!preg_match('/\b(?:agent|model|effort|profile)=/', $instruction), 'rotation instruction excludes unsupported pseudo-options');
+}
+foreach (['--model', '--effort', '--profile'] as $option) {
+    assert_true(!str_contains($rn, $option), "absent {$option} is omitted");
 }
 
 echo "selfContained()\n";
