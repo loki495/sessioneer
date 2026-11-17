@@ -95,7 +95,7 @@ processes (the pty-host wrapper, whose own cwd never leaves the daemon's
 internal pool path, plus its REPL child, whose cwd is the real project
 folder) into one row rather than showing both separately. **Take over** on
 a daemon-managed worker kills both halves of the pair (not just the one
-clicked) and resumes into the real project cwd. A headless session's own
+clicked) and resumes into the real project cwd, including projects under the system temporary directory. A wrapper takeover is refused before stopping either process if the roster and live child cannot corroborate that directory. A headless session's own
 process is not a bare one: it is left out of the discovery list, and Kill and
 Take over refuse it (stop it, or switch it to a terminal, from its own row).
 Likewise a `claude` process whose parent is also `claude` (the worker `claude rc`

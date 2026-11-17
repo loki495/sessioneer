@@ -700,7 +700,7 @@ class BareProcessService
      *    the real project folder) - which resolve to the exact SAME
      *    agent_session_id, since daemon_roster_pid_map() checks both a
      *    worker's `pid` and `replPid` - down to the single row whose own
-     *    cwd looks like a real project path (not under /tmp), tagging it
+     *    cwd is not a daemon spare-pool path, tagging it
      *    with how many other real pids also back that same session
      *    (`hidden_worker_count`) rather than just silently dropping them -
      *    nothing disappears without a trace, it just isn't its own
@@ -746,11 +746,9 @@ class BareProcessService
             $existingCwd = is_string($result[$existingIndex]['cwd'] ?? null) ? $result[$existingIndex]['cwd'] : '';
             $thisCwd = is_string($b['cwd'] ?? null) ? $b['cwd'] : '';
 
-            // Prefer whichever of the two looks like a real project
-            // directory (not the daemon's own internal /tmp pool path) as
-            // the one kept and shown - if somehow neither or both qualify,
-            // the first one seen stays, arbitrarily but deterministically.
-            if (str_starts_with($existingCwd, '/tmp/') && !str_starts_with($thisCwd, '/tmp/')) {
+            // Only prefer the other row when the matching conversation's
+            // first row is a daemon spare, not merely a project under /tmp.
+            if (self::is_daemon_spare_cwd($existingCwd) && !self::is_daemon_spare_cwd($thisCwd)) {
                 $b['hidden_worker_count'] = ($result[$existingIndex]['hidden_worker_count'] ?? 0) + 1;
                 $result[$existingIndex] = $b;
             } else {
@@ -759,6 +757,13 @@ class BareProcessService
         }
 
         return $result;
+    }
+
+    private static function is_daemon_spare_cwd(string $cwd): bool
+    {
+        $tmp = rtrim(sys_get_temp_dir(), '/');
+        return str_starts_with($cwd, $tmp . '/')
+            && preg_match('~(?:^|/)cc-daemon-[0-9]+/[^/]+/spare(?:/|$)~D', $cwd) === 1;
     }
 
     /**
@@ -926,18 +931,29 @@ class BareProcessService
         if ($matchedId !== null) {
             $siblingPids = self::daemon_roster_sibling_pids($pid);
 
-            // A daemon-managed worker's bg-pty-host wrapper half never
-            // chdirs out of the internal spare-pool location (see
-            // declutter_bare_list()'s own docblock) - if THIS pid is that
-            // half, resume into its sibling's real cwd instead of the
-            // pool path this one's own $workdir would otherwise carry.
-            if (str_starts_with($workdir, '/tmp/') && $siblingPids !== []) {
-                foreach (ProcessInspector::find_claude_processes() as $proc) {
-                    if ($proc['pid'] === $siblingPids[0] && $proc['cwd'] !== null && !str_starts_with($proc['cwd'], '/tmp/')) {
-                        $workdir = $proc['cwd'];
-                        break;
+            // A roster wrapper must have a corroborated live REPL and project
+            // directory before either process is stopped.
+            foreach (self::daemon_roster_workers() as $worker) {
+                if (($worker['pid'] ?? null) !== $pid) {
+                    continue;
+                }
+                $repl = $worker['replPid'] ?? null;
+                $project = $worker['cwd'] ?? null;
+                $verified = false;
+                if (is_int($repl) && in_array($repl, $siblingPids, true) && is_string($project) && $project !== ''
+                    && self::resolve_via_daemon_roster($pid) === $matchedId && self::resolve_via_daemon_roster($repl) === $matchedId) {
+                    foreach (ProcessInspector::find_claude_processes() as $proc) {
+                        if ($proc['pid'] === $repl && $proc['cwd'] === $project) {
+                            $workdir = $project;
+                            $verified = true;
+                            break;
+                        }
                     }
                 }
+                if (!$verified) {
+                    return ['ok' => false, 'message' => 'Cannot verify the daemon worker project directory; no process was stopped'];
+                }
+                break;
             }
 
             $killResult = self::kill_bare_process($pid);
