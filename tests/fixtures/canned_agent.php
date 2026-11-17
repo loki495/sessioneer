@@ -589,7 +589,7 @@ if (is_string($effortStatePath) && is_file($effortStatePath)) {
 $flowStatePath = getenv('CANNED_FLOW_STATE');
 if (is_string($flowStatePath) && is_file($flowStatePath)) {
     $flowState = json_decode((string)file_get_contents($flowStatePath), true);
-    $idle = ['working' => false, 'blocked_reason' => null, 'prompt_context' => null, 'prompt_options' => [], 'agent' => 'claude', 'runtime' => 'headless', 'status' => 'idle', 'activity' => time() - 7200, 'agent_session_id' => CANNED_CLAUDE_SESSION_ID];
+    $idle = ($flowState['detail_override'] ?? []) + ['working' => false, 'blocked_reason' => null, 'prompt_context' => null, 'prompt_options' => [], 'agent' => 'claude', 'runtime' => 'headless', 'status' => 'idle', 'activity' => time() - 7200, 'agent_session_id' => CANNED_CLAUDE_SESSION_ID];
     $overlay = ['flow' => $flowState['flow'] ?? null, 'offer' => $flowState['offer'] ?? null];
     if ($action === 'list') {
         $response['sessions'][0] = $overlay + $idle + $response['sessions'][0];
@@ -598,6 +598,14 @@ if (is_string($flowStatePath) && is_file($flowStatePath)) {
     }
     if (is_string($action) && str_starts_with($action, 'flow_') && is_string($flowState['log'] ?? null)) {
         file_put_contents($flowState['log'], json_encode($request) . "\n", FILE_APPEND | LOCK_EX);
+    }
+    if (is_string($flowState['all_log'] ?? null)) {
+        file_put_contents($flowState['all_log'], json_encode($request) . "\n", FILE_APPEND | LOCK_EX);
+    }
+    if ($action === 'flow_continuation') {
+        $response = $flowState['continuation'] ?? ['ok' => true, 'action' => 'takeover', 'can_rotate' => false, 'why' => 'No prepared handoff'];
+    } elseif ($action === 'flow_continue_rotate') {
+        $response = $flowState['continue_rotate'] ?? ['ok' => true, 'session' => 'cc-fake-headless'];
     }
 }
 

@@ -530,6 +530,12 @@ function sessioneer_dispatch_action(array $request): array
         case 'launch_set_name':
             return \HostAgent\Launch\LaunchService::set_name($request);
 
+        case 'flow_continuation':
+            return \HostAgent\SessionFlow\FlowService::continuation($request, \HostAgent\SessionFlow\FlowService::live());
+
+        case 'flow_continue_rotate':
+            return \HostAgent\SessionFlow\FlowService::continue_rotation($request, \HostAgent\SessionFlow\FlowService::live());
+
         case 'flow_next':
             return \HostAgent\SessionFlow\FlowService::next($request, \HostAgent\SessionFlow\FlowService::live());
 

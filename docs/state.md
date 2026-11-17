@@ -27,12 +27,13 @@ Both are opened with WAL mode by one connection per request; the schemas live in
 | `profile` | the Claude account (a `host-agent/config/agents.php` profile) the session runs under; empty is the default account |
 | `title` | a title the agent or a sync supplied |
 | `rotated_from`, `rotated_to` | set when a session started as another's receiver, and on the source that rotated to it; both stay empty for a session that never rotated |
+| `rotation_closed_at` | set on a source when the `sessioneer-flow-reap` timer (`host-agent/flow_reap.php`, every 30 seconds, installed but not enabled) has archived it or found it or its receiver gone; a new rotate of the source clears it; NULL means the reaper still visits it |
 
 **`session_status`** - one row per tracked session, its live state: `status` (`idle`, `working`, `blocked`), `blocked_json` (the pending prompt), `mode`, `model`, `last_message`, `last_turn_error`, `token_usage_json`, `updated_at`.
 
 **`pending_tools`** - the exact, untruncated tool call a tmux session is about to run, written by the `PreToolUse` hook so a permission prompt can show it in full.
 
-**`session_offers`** - at most one live offer per session: the decision it was posted with (`origin` says whether a hook or the agent posted it), the handoff or plan id, the prompt, and `created_at`, `expires_at` (24 hours), `dismissed_at` and `launched_at`. The dashboard's list and session detail read it to draw the flow band, and `--next --post` and `--offer` write it; a dismissed or expired offer is ignored and cleared on the next write. A live agent-posted offer is not replaced by a hook-posted one.
+**`session_offers`** - at most one live offer per session: the decision it was posted with (`origin` says whether a hook or the agent posted it), the handoff or plan id, the prompt, and `created_at`, `expires_at` (24 hours), `dismissed_at` and `launched_at`. The dashboard's list and session detail read it to draw the flow band, and `--next --post` and `--offer` write it. A `reservation` token identifies a dispatch attempt: a failed send or a failed launch with no receiver identity releases only that reservation, preserving its payload and expiry for retry without changing a replacement offer. A failed fresh launch that names an existing receiver keeps the offer consumed to prevent a duplicate. Used, dismissed and expired rows remain as tombstones so repeated stale taps are refused; an explicit continuation preparation can remove a dismissed or expired row only if it was never launched or reserved. Continuation receiver launches atomically reserve only the selected handoff and plan; a changed or missing offer is refused without consuming its replacement; an explicit clear or a new post removes or replaces them. A live agent-posted offer is not replaced by a hook-posted one.
 
 ## `push.sqlite`
 

@@ -78,7 +78,7 @@ as they are: `/session_star.php`, `/session_rename.php`, `/answer_prompt.php`,
 
 `POST /action` is the JSON action endpoint. It takes
 `action` = `new`, `resume`, `switch_runtime`, `take_over`, `take_over_confirm`, `kill`, `kill_bare`, `cleanup`,
-`install_hook`, `set_push_timer_interval`, `flow_rotate`, `flow_rotate_request`, `flow_judge`, `flow_offer_dismiss`, `wake` or `wake_cancel`, plus `csrf_token`, and answers `{ok, message, redirect?}`. `wake_cancel` (`job`) removes one scheduled wake-up through the host agent's `launch_wake_cancel`; `GET /wakes` lists them (`session`, `compact=1`) or, with `job`, returns one full prompt. `take_over` (a
+`install_hook`, `set_push_timer_interval`, `flow_rotate`, `flow_rotate_request`, `flow_continuation`, `flow_continue_rotate`, `flow_judge`, `flow_offer_dismiss`, `wake` or `wake_cancel`, plus `csrf_token`, and answers `{ok, message, redirect?}`. `wake_cancel` (`job`) removes one scheduled wake-up through the host agent's `launch_wake_cancel`; `GET /wakes` lists them (`session`, `compact=1`) or, with `job`, returns one full prompt. `take_over` (a
 bare process) answers with a redirect to the new headless session, or
 `{needs_choice, pid, workdir, candidates, suggested_agent_session_id}` when the process
 could not be identified (nothing is stopped yet); the page then shows a picker and posts
@@ -100,7 +100,7 @@ A session with a context or quota decision shows a band: on its dashboard card, 
 session page, and in the session details sheet. That is one band per place, two on the session page, and both act
 the same. The band draws a decision the host agent has already stored: the `flow` the `list` overlay attaches to
 an idle row whose cache is cold or whose context is at `CTX_GO_MAX` tokens or more, or the decision a live offer
-carries when the row has none. Nothing is sent to the host and no model runs until someone taps a button.
+carries when the row has none. The overlay reads stored Claude and Codex context snapshots in a batch, so an idle row at the context threshold gets a band even while its cache is warm. Missing or malformed readings stay unknown; this list path does not read transcripts or query live managers for context. Nothing is sent to the host and no model runs until someone taps a button.
 
 A `ROTATE` decision offers:
 
@@ -341,3 +341,5 @@ SESSIONEER_BIND_ADDR=<lan ip> PHP_CLI_SERVER_WORKERS=4 \
 
 It talks to the real host agent, so actions are real. The Host allowlist accepts
 the bind address.
+
+The Details Actions section checks `flow_continuation` once when opened and recommends Rotate session or Take over in new session, with a reason. A live idle source with a readable empty claims list and a current handoff or plan recommends rotation; unavailable or unsafe facts recommend takeover. The check is read-only. Rotate posts `flow_continue_rotate`, which checks the source, claims and offer again before starting a receiver; an idle source without ready context or clear claims is asked to prepare rotation instead. Both choices remain available, including on archived conversations, where rotation is refused if the source is unavailable.

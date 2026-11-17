@@ -291,5 +291,52 @@ assert_equal('ROTATE', $out[0]['flow']['state'] ?? null, 'overlay: source quota 
 assert_equal('claude/work', $log->quota[0] ?? null, 'overlay: source quota first');
 assert_true(in_array('codex/main', $log->quota, true), 'overlay: receiver quota read because the state would be ROTATE');
 
+echo "configured quota and receiver boundaries\n";
+file_put_contents($dir . '/custom.conf', "QUOTA_GO_MAX=60\nQUOTA_PARK=70\n");
+foreach ([
+    'both below' => [59, 59, 'ROTATE'],
+    'session at go' => [60, 59, 'PARK'],
+    'week at park' => [59, 70, 'PARK'],
+    'missing week' => [59, null, 'PARK'],
+    'negative' => [-1, 59, 'PARK'],
+    'string' => ['59', 59, 'PARK'],
+] as $label => [$sessionPct, $weekPct, $state]) {
+    [$deps, $log] = $make(['boundary' => $facts['highquota']], [
+        'claude/work' => ['session_pct' => 70, 'week_pct' => 10, 'resets_at' => null],
+        'codex/main' => ['session_pct' => $sessionPct, 'week_pct' => $weekPct, 'resets_at' => null],
+    ]);
+    $deps['thresholds'] = Thresholds::fromFile($dir . '/custom.conf');
+    $deps['receivers'] = ['codex/main'];
+    $result = FlowService::next(['session' => 'boundary'], $deps);
+    assert_equal($state, $result['state'] ?? null, "configured quota {$label}");
+    if ($state === 'PARK') {
+        assert_equal(null, $result['receiver'] ?? null, "{$label} has no receiver");
+    }
+}
+
+echo "production receiver safety through next and posted decision\n";
+$good = ['session_pct' => 10, 'week_pct' => 10, 'resets_at' => null];
+$high = ['session_pct' => 95, 'week_pct' => 10, 'resets_at' => $NOW + 500];
+$sourceFacts = ['context_tokens' => 100, 'idle_seconds' => 10, 'source' => ['agent' => 'claude', 'profile' => 'work', 'status' => 'idle']];
+foreach (['plain', 'tool-less', 'restricted', 'unknown-mode', 'dontAsk'] as $name) {
+    \HostAgent\Stores\SidecarStore::write_sidecar($name, ['workdir' => $dir, 'agent' => 'claude', 'profile' => 'work', 'runtime' => 'headless']);
+    \HostAgent\Stores\SessionStatusStore::write_status($name, ['status' => 'idle', 'mode' => $name === 'unknown-mode' ? 'unknown' : ($name === 'dontAsk' ? 'dontAsk' : 'plan')]);
+}
+\HostAgent\Stores\SidecarStore::set_no_tools('tool-less');
+\HostAgent\Stores\SidecarStore::set_tool_rules('restricted', 'Read', null);
+$allFacts = array_fill_keys(['plain', 'tool-less', 'restricted', 'unknown-mode', 'dontAsk'], $sourceFacts);
+[$deps, $log] = $make($allFacts, ['claude/work' => $high, 'claude/personal' => $good, 'codex/main' => $good, 'opencode/default' => $good]);
+$deps['receivers'] = ['opencode/default', 'codex/main', 'claude/work', 'claude/personal'];
+foreach (['plain' => 'codex/main', 'tool-less' => null, 'restricted' => 'claude/personal', 'unknown-mode' => 'claude/personal', 'dontAsk' => 'claude/personal'] as $name => $key) {
+    $r = FlowService::next(['session' => $name, 'post' => true], $deps);
+    assert_equal($key, $r['receiver']['key'] ?? null, "{$name}: next selects a safe receiver");
+    assert_equal($key, SessionOfferStore::get($name, $NOW)['decision']['receiver']['key'] ?? null, "{$name}: posted decision agrees");
+    assert_equal($key === null ? 'PARK' : 'ROTATE', $r['state'] ?? null, "{$name}: quota state follows receiver safety");
+}
+[$deps, $log] = $make(['plain' => $sourceFacts], ['claude/work' => $high, 'opencode/default' => $good]);
+$deps['receivers'] = ['claude/work', 'opencode/default'];
+$r = FlowService::next(['session' => 'plain'], $deps);
+assert_equal(['PARK', null], [$r['state'] ?? null, $r['receiver'] ?? null], 'source account and nonlaunchable agent are excluded');
+
 echo "ok\n";
 test_exit();

@@ -157,8 +157,8 @@ function usage(): string
                         fresh session continues
       --rotate [TARGET] start a fresh receiver session for TARGET (default: the calling
                         session) from exactly one of --handoff, --plan or --prompt, and
-                        print its name. The old session is never archived or stopped here;
-                        the receiver does that after its takeover checks. --agent,
+                        print its name. Sessioneer archives the source once the receiver
+                        holds a claim and the source is idle and claim-free. --agent,
                         --model, --effort, --profile, --workdir and --set-name shape it.
       --prompt TEXT     with --rotate, a self-contained prompt (at most 8000 characters)
       --dry-run         with --rotate, print the prompt and receiver without starting it
@@ -297,6 +297,7 @@ function emit_envelope(array $envelope): void
 $longOptions = ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'wake:', 'wake-list', 'wake-cancel:', 'at:', 'bare', 'take-over:', 'as-user', 'set-name:', 'session:', 'next', 'rotate', 'offer', 'all', 'intent:', 'post', 'handoff:', 'plan:', 'prompt:', 'dry-run', 'clear'];
 
 // getopt ignores an unknown option, which would start a launch; these two were removed.
+$argv = $_SERVER['argv'] ?? [];
 foreach ($argv as $arg) {
     foreach (['--advise', '--act'] as $removed) {
         if ($arg === $removed || str_starts_with($arg, $removed . '=')) {
@@ -825,6 +826,7 @@ if (isset($opts['wait'])) {
     }
 
     $name = (string)($reply['name'] ?? '');
+    $timeout = $opt('timeout');
     $deadline = $timeout !== null ? time() + (int)$timeout : null;
     fwrite(STDERR, $name . "\n");
 

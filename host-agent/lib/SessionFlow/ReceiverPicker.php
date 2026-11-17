@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace HostAgent\SessionFlow;
 
-use HostAgent\Services\Config;
-use HostAgent\Stores\SidecarStore;
 
 /**
  * Which account takes over a session whose own account is blocked, and which
@@ -14,128 +12,8 @@ use HostAgent\Stores\SidecarStore;
  */
 final class ReceiverPicker
 {
-    /**
-     * Antigravity has no headless launcher, so its takeover stays manual.
-     * A blocked Claude source reserves other Claude profiles for last resort.
-     */
-    private const RECEIVER_ORDER = ['claude', 'codex', 'opencode'];
-    private const CLAUDE_RECEIVER_ORDER = ['codex', 'opencode', 'claude'];
-
-    /**
-     * Permission modes in this app's own vocabulary (see PermissionMode), plus
-     * the two Codex sandboxes a session can record. dontAsk is left out: a
-     * fresh session that denied every unapproved tool call could not read the
-     * source conversation.
-     */
     private const CROSS_AGENT_MODES = ['', 'manual', 'accept edits', 'plan', 'auto', 'workspace-write', 'full'];
-
-    /** OpenCode has no permission modes at all, so only a read-only source cannot travel to it. */
-    private const OPENCODE_MODES = ['', 'manual', 'accept edits', 'auto', 'workspace-write', 'full'];
-
-    /** The modes a Claude session records, in this app's vocabulary (not Codex's sandbox names). */
     private const CLAUDE_MODES = ['manual', 'accept edits', 'plan', 'auto', 'dontAsk'];
-
-    /**
-     * @param array{name:string,agent:string,agent_session_id:string,workdir:?string,profile:string} $session
-     * @param array<string,mixed> $usage
-     * @param array<string,mixed> $status
-     * @return array{agent:string,profile:?string}|null
-     */
-    public static function pick(array $session, array $usage, bool $blocked, array $status, ?Thresholds $thresholds = null): ?array
-    {
-        if (!$blocked) {
-            return ['agent' => $session['agent'], 'profile' => $session['agent'] === 'claude' ? $session['profile'] : null];
-        }
-
-        $old = SidecarStore::read_sidecar($session['name']) ?? [];
-        // A tool-less source cannot read itself, so no replacement could transfer its work.
-        if (!empty($old['no_tools'])) {
-            return null;
-        }
-
-        $mode = (string) ($status['mode'] ?? '');
-        $order = $session['agent'] === 'claude' ? self::CLAUDE_RECEIVER_ORDER : self::RECEIVER_ORDER;
-        foreach ($order as $agent) {
-            if ($agent === $session['agent'] && $agent !== 'claude') {
-                continue;
-            }
-            if ($agent !== $session['agent'] && !self::crossAgentSafe($old, $status)) {
-                continue;
-            }
-            // OpenCode has no permission modes, so a read-only source restriction cannot travel with it.
-            if ($agent === 'opencode' && !in_array($mode, self::OPENCODE_MODES, true)) {
-                continue;
-            }
-            if ($agent === 'claude') {
-                // Prefer a manual agy takeover over spending another Claude profile.
-                if ($session['agent'] === 'claude' && self::crossAgentSafe($old, $status) && self::manualReceivers($usage, $thresholds) !== []) {
-                    return null;
-                }
-                $profiles = $usage['claude']['profiles'] ?? [];
-                $names = array_keys($profiles);
-                sort($names);
-                foreach ($names as $name) {
-                    // Only a Claude source has a profile of its own to skip; Codex carries none.
-                    if (($session['agent'] === 'claude' && $name === $session['profile'])
-                        || !self::hasRoom($profiles[$name]['quota'] ?? null, $thresholds)) {
-                        continue;
-                    }
-                    if (Config::claude_bin($name) !== '') {
-                        return ['agent' => 'claude', 'profile' => $name];
-                    }
-                }
-                continue;
-            }
-            if ($agent === 'codex' && Config::codex_bin() !== '' && self::hasRoom($usage['codex']['quota'] ?? null, $thresholds)) {
-                return ['agent' => 'codex', 'profile' => null];
-            }
-            if ($agent === 'opencode' && Config::opencode_bin() !== ''
-                && self::hasRoom($usage['opencode']['profiles']['default']['quota'] ?? ($usage['opencode']['quota'] ?? null), $thresholds)) {
-                return ['agent' => 'opencode', 'profile' => null];
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Agents with room that Sessioneer cannot start headless, so the takeover
-     * prompt has to be pasted into a session there by hand.
-     *
-     * @param array<string,mixed> $usage
-     * @return list<string>
-     */
-    public static function manualReceivers(array $usage, ?Thresholds $thresholds = null): array
-    {
-        $quota = $usage['antigravity']['profiles']['default']['quota'] ?? ($usage['antigravity']['quota'] ?? null);
-        return self::hasRoom($quota, $thresholds) ? ['Antigravity'] : [];
-    }
-
-    /**
-     * Every metered window an account reports must be below the park line the passed
-     * Thresholds carries (QUOTA_PARK), or the built-in 90 with none. An account that
-     * reports usage but no percentage windows has no limit to hit (OpenCode bills per
-     * token against no plan), so it counts as room. No reading at all is not room.
-     *
-     * @param array<string,mixed>|null $quota
-     */
-    public static function hasRoom(?array $quota, ?Thresholds $thresholds = null): bool
-    {
-        if ($quota === null) {
-            return false;
-        }
-        $park = $thresholds?->get('QUOTA_PARK') ?? Thresholds::DEFAULT_QUOTA_PARK;
-        foreach ($quota as $window) {
-            if (!is_array($window) || !array_key_exists('pct', $window)) {
-                continue;
-            }
-            if (!is_numeric($window['pct']) || $window['pct'] >= $park) {
-                return false;
-            }
-        }
-        return true;
-    }
-
     /**
      * Tool rules cannot be translated across agents at all, and a mode outside
      * this app's own vocabulary (or the launch-only dontAsk) is not offered to

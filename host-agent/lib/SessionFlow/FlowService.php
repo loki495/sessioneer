@@ -25,6 +25,79 @@ use HostAgent\Stores\SidecarStore;
 final class FlowService
 {
     /**
+     * @param array<string, mixed> $request
+     * @param array<string, mixed> $deps
+     * @return array<string, mixed>
+     */
+    public static function continuation(array $request, array $deps): array
+    {
+        $session = $request['session'] ?? null;
+        if (!is_string($session) || trim($session) === '') {
+            return ['ok' => false, 'message' => 'A session name is required'];
+        }
+        return self::continuationFacts($session, $deps)['reply'];
+    }
+
+    /**
+     * @param array<string, mixed> $request
+     * @param array<string, mixed> $deps
+     * @return array<string, mixed>
+     */
+    public static function continue_rotation(array $request, array $deps): array
+    {
+        $session = $request['session'] ?? null;
+        if (!is_string($session) || trim($session) === '') {
+            return ['ok' => false, 'message' => 'A session name is required'];
+        }
+        $facts = self::continuationFacts($session, $deps);
+        if (!$facts['live'] || $facts['status'] !== 'idle') {
+            return ['ok' => false, 'message' => 'The source session must be live and idle to rotate.'];
+        }
+        $params = ['session' => $session];
+        foreach (['agent', 'profile'] as $key) {
+            if (isset($request[$key])) { $params[$key] = $request[$key]; }
+        }
+        if ($facts['reply']['can_rotate']) {
+            if ($facts['reply']['handoff_id'] !== null) { $params['handoff_id'] = $facts['reply']['handoff_id']; }
+            else { $params['plan_id'] = $facts['reply']['plan_id']; }
+            return self::rotate($params, $deps, [$facts['reply']['handoff_id'], $facts['reply']['plan_id']]);
+        }
+        return self::rotate_request($params, $deps, true);
+    }
+
+    /**
+     * @param array<string, mixed> $deps
+     * @return array<string, mixed>
+     */
+    private static function continuationFacts(string $session, array $deps): array
+    {
+        $detail = $deps['detail']($session);
+        $live = ($detail['ok'] ?? false) === true;
+        $status = is_string($detail['status'] ?? null) ? $detail['status'] : (!empty($detail['blocked_reason']) || !empty($detail['prompt_context']) ? 'blocked' : (($detail['working'] ?? false) === true ? 'working' : 'idle'));
+        $now = $deps['clock']();
+        $offer = SessionOfferStore::get($session, $now);
+        [$handoff, $plan] = FlowDecider::continuationIds($offer, $now);
+        $claims = null;
+        $sidecar = SidecarStore::read_sidecar($session);
+        $id = $sidecar['agent_session_id'] ?? null;
+        $command = Config::sessioneer_config('SESSIONEER_CLAIMS_CMD', '');
+        if ($live && $command !== '' && is_string($id) && $id !== '') {
+            $result = $deps['runner']($command, $id);
+            $decoded = json_decode((string) ($result['stdout'] ?? ''));
+            $list = is_object($decoded) ? ($decoded->claims ?? null) : $decoded;
+            if (($result['exit'] ?? 1) === 0 && is_array($list)) {
+                $claims = [];
+                foreach ($list as $claim) {
+                    if (!is_object($claim)) { $claims = null; break; }
+                    $claims[] = (array) $claim;
+                }
+            }
+        }
+        $policy = FlowDecider::continuation(['live' => $live, 'status' => $status], $offer, $claims, $now);
+        return ['live' => $live, 'status' => $status, 'reply' => ['ok' => true] + $policy + ['handoff_id' => $handoff, 'plan_id' => $plan]];
+    }
+
+    /**
      * All mode ({all: true}, no session) decides every tracked session (deps 'sessions') and posts nothing.
      *
      * @param array<string, mixed> $request session, optional intent, handoff_id, plan_id, post; or all
@@ -56,7 +129,7 @@ final class FlowService
 
         $intent = is_string($request['intent'] ?? null) ? $request['intent'] : null;
         $facts = $session === '' ? null : $deps['facts']($session, []);
-        $decision = self::decide($facts, $intent, $deps, $now);
+        $decision = self::decide($facts, $intent, $deps, $now, $session);
         $reply = ['ok' => true] + $decision + [
             'source' => $facts['source'] ?? null,
             'facts' => ['context_tokens' => $facts['context_tokens'] ?? null, 'idle_seconds' => $facts['idle_seconds'] ?? null],
@@ -97,7 +170,7 @@ final class FlowService
 
         try {
             $prompt = is_string($request['prompt'] ?? null) ? $request['prompt'] : self::prompt($request)[0];
-            $decision = is_array($request['decision'] ?? null) ? $request['decision'] : self::decide($facts, null, $deps, $now);
+            $decision = is_array($request['decision'] ?? null) ? $request['decision'] : self::decide($facts, null, $deps, $now, $self);
             SessionOfferStore::post($self, 'agent', $decision, self::id($request, 'handoff_id'), self::id($request, 'plan_id'), $prompt, $now);
         } catch (\InvalidArgumentException $e) {
             return ['ok' => false, 'message' => $e->getMessage()];
@@ -122,14 +195,15 @@ final class FlowService
 
     /**
      * Start a fresh receiver session for a source session. Never archives or kills the source:
-     * the receiver does that once it holds the handoff.
+     * archive_replaced() does that once the receiver holds a claim.
      *
      * @param array<string, mixed> $request session; one of handoff_id, plan_id, prompt; optional agent,
      *     profile, model, effort, workdir, set_name, dry_run
      * @param array<string, mixed> $deps
+     * @param ?array{?string, ?string} $expectedContext
      * @return array<string, mixed>
      */
-    public static function rotate(array $request, array $deps): array
+    public static function rotate(array $request, array $deps, ?array $expectedContext = null): array
     {
         $session = is_string($request['session'] ?? null) ? $request['session'] : '';
         $dryRun = !empty($request['dry_run']);
@@ -140,7 +214,7 @@ final class FlowService
         $old = $known[1];
 
         try {
-            $prompt = self::rotatePrompt($request);
+            $prompt = self::rotatePrompt($request, $session, $old);
             $launch = self::receiverRequest($request, $old, $prompt, (string) (SessionStatusStore::read_status($session)['mode'] ?? ''));
         } catch (\InvalidArgumentException $e) {
             return ['ok' => false, 'message' => $e->getMessage()];
@@ -157,29 +231,130 @@ final class FlowService
         if ($lock === null) {
             return ['ok' => false, 'message' => "A rotate of {$session} is already running"];
         }
+        $reservation = null;
+        $dispatched = false;
         try {
             $held = $command === '' ? null : self::claimsHeld($command, (string) ($old['agent_session_id'] ?? ''), $deps);
             if ($held !== null) {
                 return ['ok' => false, 'message' => $held];
             }
-            $stale = self::claimOffer($session, $deps['clock']());
+            if ($expectedContext !== null) {
+                $reservation = SessionOfferStore::reserveContext($session, $deps['clock'](), $expectedContext[0], $expectedContext[1]);
+                $stale = $reservation === null ? 'The prepared offer changed or is no longer available; check the session and tap again' : null;
+            } else {
+                $stale = self::claimOffer($session, $deps['clock'](), $reservation);
+            }
             if ($stale !== null) {
                 return ['ok' => false, 'message' => $stale];
             }
 
             $started = $deps['launch']($launch);
             $name = $started['name'] ?? null;
-            if (($started['ok'] ?? false) !== true || !is_string($name)) {
-                return ['ok' => false, 'message' => 'The receiver did not start; the source session was left as it is: ' . (string) ($started['message'] ?? '')];
+            $dispatched = ($started['ok'] ?? false) === true || (is_string($name) && $name !== '');
+            if (($started['ok'] ?? false) !== true || !is_string($name) || $name === '') {
+                $detail = (string) ($started['message'] ?? '');
+                $message = is_string($name) && $name !== ''
+                    ? "Receiver {$name} exists but the launch reported an error: {$detail}"
+                    : 'The receiver did not start; the source session was left as it is: ' . $detail;
+                return ['ok' => false, 'message' => $message];
             }
             SidecarStore::set_rotation($name, $session, null);
             SidecarStore::set_rotation($session, null, $name);
         } finally {
+            if (!$dispatched && $reservation !== null) {
+                SessionOfferStore::rollback($session, $reservation, $deps['clock']());
+            }
             flock($lock, LOCK_UN);
             fclose($lock);
         }
 
         return ['session' => $name] + $reply;
+    }
+
+    /**
+     * Archives each rotated source once its receiver holds a claim and the source is idle and
+     * claim-free, then closes the rotation. Every read is fresh; one candidate failing never stops
+     * the others. A source is never force-stopped: a refusal leaves it waiting for the next pass.
+     *
+     * @param array<string, mixed> $deps clock, runner, kill
+     * @return array<string, mixed> ok, results (source, receiver, outcome archived|waiting|closed|error, detail), skipped
+     */
+    public static function archive_replaced(array $deps): array
+    {
+        $lock = self::lockFile('flow-reap');
+        if ($lock === null) {
+            return ['ok' => true, 'results' => [], 'skipped' => true];
+        }
+        $results = [];
+        try {
+            foreach (SidecarStore::list_open_rotations() as $candidate) {
+                $source = $candidate['session_name'];
+                $receiver = $candidate['rotated_to'];
+                try {
+                    [$outcome, $detail] = self::reap($source, $receiver, $deps);
+                } catch (\Throwable $e) {
+                    [$outcome, $detail] = ['error', $e->getMessage()];
+                }
+                $results[] = ['source' => $source, 'receiver' => $receiver, 'outcome' => $outcome, 'detail' => $detail];
+            }
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+
+        return ['ok' => true, 'results' => $results];
+    }
+
+    /**
+     * @param array<string, mixed> $deps
+     * @return array{0: string, 1: string} outcome and detail
+     */
+    private static function reap(string $source, string $receiver, array $deps): array
+    {
+        $close = static function (string $outcome, string $detail) use ($source, $deps): array {
+            SidecarStore::close_rotation($source, $deps['clock']());
+
+            return [$outcome, $detail];
+        };
+        $old = SidecarStore::read_sidecar($source);
+        if ($old === null) {
+            return $close('closed', 'the source no longer exists');
+        }
+        if ($receiver === $source) {
+            return $close('closed', 'the source is its own receiver');
+        }
+        $new = SidecarStore::read_sidecar($receiver);
+        if ($new === null) {
+            return $close('closed', 'the receiver no longer exists; the source was left as it is');
+        }
+
+        $command = Config::sessioneer_config('SESSIONEER_CLAIMS_CMD', '');
+        if ($command === '') {
+            return ['waiting', 'SESSIONEER_CLAIMS_CMD is not set'];
+        }
+        $receiverId = (string) ($new['agent_session_id'] ?? '');
+        if ($receiverId === '' || (self::claimList($command, $receiverId, $deps, true) ?? []) === []) {
+            return ['waiting', 'the receiver holds no claim yet'];
+        }
+        $sourceId = (string) ($old['agent_session_id'] ?? '');
+        if (($old['agent_session_id'] ?? '') === '' || (SessionStatusStore::read_status($source)['status'] ?? null) !== 'idle') {
+            return ['waiting', 'the source is not idle'];
+        }
+        if (self::claimList($command, $sourceId, $deps) !== []) {
+            return ['waiting', 'the source still holds claims or they could not be read'];
+        }
+
+        $killed = $deps['kill'](['target' => $source, 'agent' => (string) ($old['agent'] ?? 'claude')]);
+        if (($killed['ok'] ?? false) === true) {
+            return $close('archived', (string) ($killed['message'] ?? ''));
+        }
+        $message = (string) ($killed['message'] ?? '');
+        // Launcher replies for an untracked target read "No <agent> session found for ...".
+        if (preg_match('/unknown|not found|\bno [a-z ]*session found for\b/i', $message) === 1) {
+            return $close('closed', $message);
+        }
+
+        return ['waiting', $message !== '' ? $message : 'the stop was refused'];
     }
 
     /**
@@ -190,7 +365,7 @@ final class FlowService
      * @param array<string, mixed> $deps
      * @return array<string, mixed>
      */
-    public static function rotate_request(array $request, array $deps): array
+    public static function rotate_request(array $request, array $deps, bool $clearInactive = false): array
     {
         $session = is_string($request['session'] ?? null) ? $request['session'] : '';
         $known = self::source($session, $deps);
@@ -215,21 +390,37 @@ final class FlowService
             return ['ok' => false, 'message' => $e->getMessage()];
         }
 
-        $stale = self::claimOffer($session, $deps['clock']());
-        if ($stale !== null) {
-            return ['ok' => false, 'message' => $stale];
+        $lock = self::lock($session);
+        if ($lock === null) {
+            return ['ok' => false, 'message' => "A rotate of {$session} is already running"];
         }
-        $sent = $deps['launch'](array_filter([
-            'agent' => $agent,
-            'workdir' => $old['workdir'] ?? null,
-            'profile' => $agent === 'claude' ? ($old['profile'] ?? 'personal') : null,
-            'agent_session_id' => $id,
-            'prompt' => $text,
-        ]));
+        $reservation = null;
+        $dispatched = false;
+        try {
+            if ($clearInactive) { SessionOfferStore::clearInactiveUnlaunched($session, $deps['clock']()); }
+            $stale = self::claimOffer($session, $deps['clock'](), $reservation);
+            if ($stale !== null) {
+                return ['ok' => false, 'message' => $stale];
+            }
+            $sent = $deps['launch'](array_filter([
+                'agent' => $agent,
+                'workdir' => $old['workdir'] ?? null,
+                'profile' => $agent === 'claude' ? ($old['profile'] ?? 'personal') : null,
+                'agent_session_id' => $id,
+                'prompt' => $text,
+            ]));
 
-        return ($sent['ok'] ?? false) === true
-            ? ['ok' => true, 'session' => $session, 'prompt' => $text]
-            : ['ok' => false, 'message' => 'The /rotate turn was not sent: ' . (string) ($sent['message'] ?? '')];
+            $dispatched = ($sent['ok'] ?? false) === true;
+            return $dispatched
+                ? ['ok' => true, 'session' => $session, 'prompt' => $text]
+                : ['ok' => false, 'message' => 'The /rotate turn was not sent: ' . (string) ($sent['message'] ?? '')];
+        } finally {
+            if (!$dispatched && $reservation !== null) {
+                SessionOfferStore::rollback($session, $reservation, $deps['clock']());
+            }
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
     }
 
     /**
@@ -248,7 +439,7 @@ final class FlowService
             return ['ok' => false, 'message' => $session === '' ? 'judge needs a session' : "Unknown session {$session}"];
         }
 
-        $decision = self::decide($facts, null, $deps, $now);
+        $decision = self::decide($facts, null, $deps, $now, $session);
         $receiver = $decision['receiver'];
         if ($decision['state'] !== 'ROTATE' || $decision['trigger'] !== 'quota' || !$decision['close_call'] || $receiver === null || $decision['reset_at'] === null) {
             return ['ok' => false, 'message' => 'Not a close call: only a quota reset less than an hour away is judged by a model'];
@@ -290,19 +481,28 @@ final class FlowService
         $now = $deps['clock']();
         $t = $deps['thresholds'];
         $out = [];
+        $statuses = isset($deps['stored_statuses']) ? $deps['stored_statuses']() : null;
         foreach ($rows as $row) {
             $name = is_string($row['name'] ?? null) ? $row['name'] : '';
+            if ($statuses !== null) {
+                $status = $statuses[$name] ?? [];
+                $agent = (string) ($row['agent'] ?? 'claude');
+                $stored = FlowFacts::stored($status['context_usage'] ?? null, $status['token_usage'] ?? null, $agent, (string) ($status['model'] ?? ''), (int) ($status['updated_at'] ?? $now), null);
+                $row['context_tokens'] = $stored['context_tokens'] ?? null;
+                $row['_flow_status'] = $status;
+            }
             $row['offer'] = $name === '' ? null : SessionOfferStore::get($name, $now);
             $idle = is_int($row['activity'] ?? null) ? $now - $row['activity'] : null;
             $cold = $idle !== null && $idle >= $t->get('IDLE_MIN') * 60;
             $heavy = is_int($row['context_tokens'] ?? null) && $row['context_tokens'] >= $t->get('CTX_GO_MAX');
             if ($name !== '' && ($row['status'] ?? null) === 'idle' && ($cold || $heavy)) {
                 $facts = $deps['facts']($name, $row);
-                $flow = self::decide($facts, null, $deps, $now);
+                $flow = self::decide($facts, null, $deps, $now, $name);
                 if ($flow['state'] !== 'UNKNOWN') {
                     $row['flow'] = $flow;
                 }
             }
+            unset($row['_flow_status']);
             $out[] = $row;
         }
 
@@ -323,12 +523,15 @@ final class FlowService
 
         return [
             'clock' => static fn (): int => time(),
+            'detail' => static fn (string $session): array => \dispatch_action(['action' => 'session_detail', 'session' => $session]),
+            'stored_statuses' => [SessionStatusStore::class, 'read_many'],
             'facts' => static fn (string $session, array $row): ?array => self::storedFacts($session, $row),
             'quota' => static fn (string $key): ?array => self::quotaReading($usage(), $key),
             'receivers' => self::receivers(),
             'thresholds' => Thresholds::fromFile(Config::session_flow_thresholds_path()),
             'sessions' => static fn (): array => array_column(SidecarStore::list_runtime_sidecars('headless'), 'session_name'),
             'launch' => [LaunchService::class, 'launch'],
+            'kill' => [LaunchService::class, 'kill'],
             'runner' => static fn (string $command, string $conversationId): array => ProcessRunner::run_process(['sh', '-c', $command . ' "$1"', 'sh', $conversationId]),
             'judge_runner' => [CloseCallJudge::class, 'run_process_runner'],
             'transcript' => static fn (string $session): ?string => self::transcriptPath($session),
@@ -349,8 +552,11 @@ final class FlowService
             : [$facts, $sidecar];
     }
 
-    /** @param array<string, mixed> $request */
-    private static function rotatePrompt(array $request): string
+    /**
+     * @param array<string, mixed> $request
+     * @param array<string, mixed> $old the source sidecar
+     */
+    private static function rotatePrompt(array $request, string $session, array $old): string
     {
         $given = array_filter(array_intersect_key($request, array_flip(['handoff_id', 'plan_id', 'prompt'])), static fn ($v): bool => $v !== null);
         if (count($given) !== 1) {
@@ -364,10 +570,12 @@ final class FlowService
             throw new \InvalidArgumentException(key($given) . ' must be digits only');
         }
 
+        $source = ['name' => $session, 'id' => $old['agent_session_id'] ?? null, 'agent' => (string) ($old['agent'] ?? 'claude')];
+
         return match (key($given)) {
-            'handoff_id' => PromptBuilder::handoff($value),
-            'plan_id' => PromptBuilder::plan($value),
-            default => PromptBuilder::selfContained($value),
+            'handoff_id' => PromptBuilder::handoff($value, $source),
+            'plan_id' => PromptBuilder::plan($value, '', $source),
+            default => PromptBuilder::selfContained($value, $source),
         };
     }
 
@@ -395,8 +603,8 @@ final class FlowService
         if (!empty($old['no_tools'])) {
             throw new \InvalidArgumentException('A tool-less source cannot be rotated: the receiver could not read the handoff or move claims');
         }
-        if (!$same && (!empty($old['allowed_tools']) || !empty($old['disallowed_tools']))) {
-            throw new \InvalidArgumentException('Tool rules cannot cross agents, so a source with tool rules can only rotate to the same agent');
+        if (!$same && !ReceiverPicker::crossAgentSafe($old, ['mode' => $mode])) {
+            throw new \InvalidArgumentException('Source mode or tool rules cannot cross agents');
         }
 
         $effort ??= $same ? ($old['effort'] ?? null) : null;
@@ -436,38 +644,62 @@ final class FlowService
         if ($conversationId === '') {
             return 'The source has no conversation id, so its Dibs claims cannot be checked';
         }
-        $result = $deps['runner']($command, $conversationId);
-        $claims = json_decode((string) ($result['stdout'] ?? ''), true);
-        if (($result['exit'] ?? 1) !== 0 || !is_array($claims)) {
+        $list = self::claimList($command, $conversationId, $deps);
+        if ($list === null) {
             return 'The claims check (SESSIONEER_CLAIMS_CMD) failed, so the source was not rotated';
         }
-        $list = array_key_exists('claims', $claims) ? $claims['claims'] : $claims;
 
-        return $list === [] || $list === null ? null : 'The source still holds Dibs claims; release or hand them off first';
+        return $list === [] ? null : 'The source still holds Dibs claims; release or hand them off first';
     }
 
     /**
-     * Consumes a live offer so a second tap cannot launch again. A stale offer (already launched,
-     * dismissed or expired) refuses this tap and is cleared, so the next tap acts on fresh state.
+     * The claims a conversation holds; null when the command failed or printed something that is not a claims list.
+     * Strict mode also rejects an object without a `claims` key: a wrong "holds a claim" archives a session early.
+     *
+     * @param array<string, mixed> $deps
+     * @return list<mixed>|null
      */
-    private static function claimOffer(string $session, int $now): ?string
+    private static function claimList(string $command, string $conversationId, array $deps, bool $strict = false): ?array
     {
-        if (SessionOfferStore::claimLaunch($session, $now) || !SessionOfferStore::has($session)) {
+        $result = $deps['runner']($command, $conversationId);
+        $claims = json_decode((string) ($result['stdout'] ?? ''), true);
+        if (($result['exit'] ?? 1) !== 0 || !is_array($claims)) {
             return null;
         }
-        SessionOfferStore::clear($session);
+        if ($strict && !array_is_list($claims) && !array_key_exists('claims', $claims)) {
+            return null;
+        }
+        $list = array_key_exists('claims', $claims) ? $claims['claims'] : $claims;
+        if ($list === null) {
+            return [];
+        }
 
+        return is_array($list) ? array_values($list) : null;
+    }
+
+    private static function claimOffer(string $session, int $now, ?string &$reservation): ?string
+    {
+        $reservation = SessionOfferStore::reserve($session, $now);
+        if ($reservation !== null || !SessionOfferStore::has($session)) {
+            return null;
+        }
         return 'This offer was already used, dismissed or expired; check the session and tap again';
     }
 
     /** @return resource|null null when another rotate of this source holds the lock */
     private static function lock(string $session)
     {
+        return self::lockFile('flow-rotate-' . sha1($session));
+    }
+
+    /** @return resource|null null when something else holds the named lock */
+    private static function lockFile(string $name)
+    {
         $dir = Config::cache_dir();
         if (!is_dir($dir) && !mkdir($dir, 0700, true) && !is_dir($dir)) {
             return null;
         }
-        $handle = fopen($dir . '/flow-rotate-' . sha1($session) . '.lock', 'c');
+        $handle = fopen($dir . '/' . $name . '.lock', 'c');
         if ($handle === false || !flock($handle, LOCK_EX | LOCK_NB)) {
             return null;
         }
@@ -488,7 +720,7 @@ final class FlowService
      * @param array<string, mixed> $deps
      * @return array<string, mixed>
      */
-    private static function decide(?array $facts, ?string $intent, array $deps, int $now): array
+    private static function decide(?array $facts, ?string $intent, array $deps, int $now, string $session): array
     {
         $t = $deps['thresholds'];
         if ($facts === null) {
@@ -500,7 +732,13 @@ final class FlowService
         $decision = FlowDecider::decide($facts, [], $t, $intent, $now);
         if (in_array($decision['state'], ['ROTATE', 'PARK'], true)) {
             $map = [];
+            $old = $facts['_sidecar'] ?? SidecarStore::read_sidecar($session) ?? [];
+            $mode = (string) (array_key_exists('_mode', $facts) ? $facts['_mode'] : (SessionStatusStore::read_status($session)['mode'] ?? ''));
             foreach ($deps['receivers'] as $key) {
+                [$agent] = explode('/', $key, 2);
+                if (!in_array($agent, ['claude', 'codex'], true) || !empty($old['no_tools']) || ($agent !== $facts['source']['agent'] && !ReceiverPicker::crossAgentSafe($old, ['mode' => $mode]))) {
+                    continue;
+                }
                 $reading = $key === $source ? null : $deps['quota']($key);
                 if ($reading !== null) {
                     $map[$key] = $reading;
@@ -561,14 +799,16 @@ final class FlowService
         }
         $agent = (string) ($sidecar['agent'] ?? 'claude');
         $profile = $agent === 'claude' ? (string) ($sidecar['profile'] ?? 'personal') : 'default';
-        $status = SessionStatusStore::read_status($session) ?? [];
+        $status = $row['_flow_status'] ?? SessionStatusStore::read_status($session) ?? [];
         $now = time();
         $id = (string) ($sidecar['agent_session_id'] ?? '');
-        $path = $agent === 'claude' && $id !== '' ? TranscriptRouter::find_transcript_path($id, $profile) : null;
+        $path = !array_key_exists('_flow_status', $row) && $agent === 'claude' && $id !== '' ? TranscriptRouter::find_transcript_path($id, $profile) : null;
         $stored = FlowFacts::stored($status['context_usage'] ?? null, $status['token_usage'] ?? null, $agent, (string) ($status['model'] ?? ''), (int) ($status['updated_at'] ?? $now), $path);
         $activity = is_int($row['activity'] ?? null) ? $row['activity'] : ($stored['last_activity'] ?? null);
 
         return [
+            '_sidecar' => $sidecar,
+            '_mode' => $status['mode'] ?? '',
             'context_tokens' => $stored['context_tokens'] ?? null,
             'idle_seconds' => $activity === null ? null : max(0, $now - $activity),
             'source' => ['agent' => $agent, 'profile' => $profile, 'status' => (string) ($status['status'] ?? 'idle')],
@@ -608,9 +848,6 @@ final class FlowService
         $keys = [];
         if (Config::codex_bin() !== '') {
             $keys[] = 'codex/default';
-        }
-        if (Config::opencode_bin() !== '') {
-            $keys[] = 'opencode/default';
         }
         foreach (Config::claude_profiles_to_scan() as $profile) {
             if (Config::claude_bin($profile) !== '') {

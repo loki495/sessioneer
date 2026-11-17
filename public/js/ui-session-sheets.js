@@ -176,6 +176,10 @@
     return '';
   }
 
+  var continuationToken = 0;
+  var continuation = { action: 'takeover', why: 'Checking continuation options…' };
+  var continuationBusy = false;
+
   function buildInfo(d) {
     var body = $('sess-info-body');
     var html = '';
@@ -200,7 +204,9 @@
 
     var actions = '';
     if (d.agent_session_id) {
-      actions += '<button type="button" class="ui-btn" data-info="takeover-new">Take over in new session</button>';
+      var rotate = '<button type="button" class="ui-btn' + (continuation.action === 'rotate' ? ' ui-btn-primary' : '') + '" data-info="rotate-new"' + (continuationBusy ? ' disabled' : '') + '>Rotate session</button>';
+      var takeover = '<button type="button" class="ui-btn' + (continuation.action !== 'rotate' ? ' ui-btn-primary' : '') + '" data-info="takeover-new"' + (continuationBusy ? ' disabled' : '') + '>Take over in new session</button>';
+      actions += '<p class="ui-small ui-muted" data-continuation-why>' + esc(continuation.why) + '</p>' + (continuation.action === 'rotate' ? rotate + takeover : takeover + rotate);
     }
     if ((d.agent || 'claude') === 'claude' && d.runtime !== 'headless') {
       actions += '<button type="button" class="ui-btn" data-info="switch" data-runtime="headless">Take over (headless)</button>';
@@ -241,6 +247,8 @@
         api.toast(res.ok ? 'Renamed' : (res.message || 'Rename failed'), !res.ok);
         if (res.ok) { api.pollNow(); }
       });
+    } else if (what === 'rotate-new') {
+      continueRotate(d);
     } else if (what === 'takeover-new') {
       takeOverInNewSession(d, b);
     } else if (what === 'switch') {
@@ -296,6 +304,42 @@
       if (res.ok) { $('sess-wake-form').hidden = true; loadWakes(); }
     }).catch(function () { api.toast('Network error', true); });
   });
+
+  function loadContinuation() {
+    var token = ++continuationToken;
+    continuation = { action: 'takeover', why: 'Checking continuation options…' };
+    buildInfo(api.detail());
+    api.post('/action', { action: 'flow_continuation', session: session }).then(function (res) {
+      if (token !== continuationToken || !$('sess-info').hasAttribute('open')) { return; }
+      continuation = res && res.ok && (res.action === 'rotate' || res.action === 'takeover') && typeof res.why === 'string' && res.why.trim()
+        ? { action: res.action, why: res.why } : { action: 'takeover', why: 'Continuation recommendation is unavailable.' };
+      buildInfo(api.detail());
+    }).catch(function () {
+      if (token !== continuationToken || !$('sess-info').hasAttribute('open')) { return; }
+      continuation = { action: 'takeover', why: 'Continuation recommendation is unavailable.' };
+      buildInfo(api.detail());
+    });
+  }
+
+  function continueRotate(d) {
+    var token = continuationToken;
+    var params = { action: 'flow_continue_rotate', session: session };
+    var receiver = d.flow && d.flow.receiver;
+    if (receiver && receiver.agent) { params.agent = receiver.agent; }
+    if (receiver && receiver.profile) { params.profile = receiver.profile; }
+    continuationBusy = true;
+    buildInfo(d);
+    api.post('/action', params).then(function (res) {
+      continuationBusy = false;
+      if (res && res.ok && res.redirect && token === continuationToken && $('sess-info').hasAttribute('open')) { window.location.href = res.redirect; return; }
+      api.toast((res && res.message) || (res && res.ok ? 'Done' : 'Rotation failed'), !(res && res.ok));
+      if ($('sess-info').hasAttribute('open')) { buildInfo(api.detail()); }
+    }).catch(function () {
+      continuationBusy = false;
+      api.toast('Network error', true);
+      if ($('sess-info').hasAttribute('open')) { buildInfo(api.detail()); }
+    });
+  }
 
   // Opens the dashboard's New Session form prefilled to continue this conversation. Nothing is launched here:
   // the source's stored flow decision picks the receiver when it names one, else the session's own agent and account.
@@ -367,7 +411,7 @@
       }).join('') : '<p class="ui-muted ui-small">No uploaded files.</p>';
     }).catch(function () {});
   }
-  api.refreshFiles = function () { if ($('sess-info').open) { loadUploads(); } };
+  api.refreshFiles = function () { if ($('sess-info').hasAttribute('open')) { loadUploads(); } };
 
   $('sess-uploads').addEventListener('click', function (e) {
     var b = closest(e.target, '[data-del]');
@@ -684,7 +728,10 @@
     if (id === 'sess-sessions') { $('sess-sessions-filter').value = ''; loadSessions(); }
     if (id === 'sess-quota') { loadQuota(); }
     if (id === 'sess-search') { setTimeout(function () { searchInput.focus(); }, 50); }
-    if (!dlg.open) { dlg.showModal(); }
+    if (!dlg.open) {
+      dlg.showModal();
+      if (id === 'sess-info' && api.detail().agent_session_id) { loadContinuation(); }
+    }
   }
 
   api.controlsSummary = controlsSummary;
