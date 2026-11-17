@@ -131,11 +131,14 @@ try {
         foreach ([['agent' => 'claude', 'profile' => 'work'], ['agent' => 'codex', 'profile' => 'main']] as $receiver) {
             $flow = ['state' => 'ROTATE', 'why' => 'ready', 'trigger' => 'context', 'receiver' => $receiver];
             $set(['ok' => true, 'action' => 'rotate', 'can_rotate' => true, 'why' => 'ready'], ['ok' => false, 'message' => 'fixture refused rotation'], $flow);
-            cdp_navigate($page, $base . '/session?session=cc-20260101-1200');
-            continuation_wait($page, '!!document.querySelector("[data-open=sess-info]")');
+            $receiverReady = '(function () { var u = window.UiSession, d = u && u.api && u.api.detail(); return !!d && u.session === "cc-20260101-1200" && location.search === "?session=cc-20260101-1200" && d.name === "cc-20260101-1200" && !!d.flow && !!d.flow.receiver && d.flow.receiver.agent === ' . json_encode($receiver['agent']) . ' && d.flow.receiver.profile === ' . json_encode($receiver['profile']) . '; }())';
+            assert_equal(false, cdp_evaluate($page, $receiverReady), 'receiver fixture: previous page does not satisfy current receiver readiness');
+            assert_true(cdp_navigate($page, $base . '/session?session=cc-20260101-1200'), 'receiver fixture: session navigation succeeds');
+            assert_true(continuation_wait($page, $receiverReady), 'receiver fixture: current detail contains the expected receiver');
+            assert_true(continuation_wait($page, '!!document.querySelector("[data-open=sess-info]")'), 'receiver fixture: details opener available');
             cdp_evaluate($page, 'document.querySelector("[data-open=sess-info]").click()');
             continuation_wait($page, '!!document.querySelector("[data-info=takeover-new]")');
-            continuation_wait($page, '!!document.querySelector("[data-continuation-why]") && document.querySelector("[data-continuation-why]").textContent.indexOf("ready") >= 0');
+            assert_true(continuation_wait($page, '!!document.querySelector("[data-continuation-why]") && document.querySelector("[data-continuation-why]").textContent.indexOf("ready") >= 0'), 'receiver fixture: recommendation loaded');
             cdp_evaluate($page, 'var b = document.querySelector("[data-info=rotate-new]"); if (b) b.click()');
             continuation_wait($page, '!!document.querySelector("#ui-toast") && document.querySelector("#ui-toast").textContent.indexOf("fixture refused rotation") >= 0');
             $sent = $entries(); $rotation = end($sent) ?: [];
