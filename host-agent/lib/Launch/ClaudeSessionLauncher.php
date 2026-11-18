@@ -169,7 +169,13 @@ class ClaudeSessionLauncher implements SessionLauncher
             return ['ok' => false, 'message' => "No headless Claude session found for '{$target}'"];
         }
 
+        // Stored status first: detail() reconciles it with the live process and would
+        // overwrite a working or blocked value. Either one non-idle refuses the stop.
         $status = (string)$entry['status'];
+
+        if ($status === 'idle' && empty($request['force'])) {
+            $status = (string)($runtime->detail($tracked)['session']['status'] ?? 'unknown');
+        }
 
         if ($status !== 'idle' && empty($request['force'])) {
             return ['ok' => false, 'name' => $tracked, 'message' => "Session {$tracked} is {$status}; stopping it would drop that work (use --force)"];

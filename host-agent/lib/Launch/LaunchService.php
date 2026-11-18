@@ -10,6 +10,9 @@ use HostAgent\Services\SessionLifecycleService;
 use HostAgent\Services\TmuxService;
 use HostAgent\Services\TranscriptRouter;
 use HostAgent\Stores\SidecarStore;
+use HostAgent\Stores\SessionStatusStore;
+use HostAgent\Services\Config;
+use HostAgent\Services\ProcessRunner;
 
 /**
  * Resolves the SessionLauncher for a request's agent. The one place that
@@ -37,7 +40,13 @@ class LaunchService
             return $launcher;
         }
 
+        $parent = self::caller($request);
         $reply = $launcher->launch($request);
+        if (is_string($reply['name'] ?? null)) {
+            if (($reply['action'] ?? null) === 'created' && $parent !== null) {
+                SidecarStore::remember_parent($reply['name'], $parent);
+            }
+        }
         $title = is_string($request['set_name'] ?? null) ? trim($request['set_name']) : '';
 
         if ($title === '' || ($reply['ok'] ?? false) !== true || !is_string($reply['name'] ?? null)) {
@@ -55,6 +64,116 @@ class LaunchService
         $reply['message'] = trim((string)($reply['message'] ?? '') . ' ' . $named['message']);
 
         return $reply;
+    }
+
+    /**
+     * @param array<string, mixed> $request
+     * @return array{agent:string, profile:?string, agent_session_id:string, name:string}|null
+     */
+    private static function caller(array $request): ?array
+    {
+        $name = SessionControl::resolve(is_string($request['from'] ?? null) ? $request['from'] : '');
+        $row = $name !== null ? SidecarStore::read_sidecar($name) : null;
+        if ($row === null || !is_string($row['agent_session_id'] ?? null) || $row['agent_session_id'] === '') return null;
+        return ['agent' => $row['agent'] ?? 'claude', 'profile' => $row['profile'] ?? null, 'agent_session_id' => $row['agent_session_id'], 'name' => $name];
+    }
+
+    /**
+     * @param array<string, mixed> $request
+     * @return array<string, mixed>
+     */
+    public static function spawned(array $request): array
+    {
+        $parent = self::caller($request);
+        if ($parent === null) return ['ok' => false, 'message' => 'A tracked calling session is required'];
+        $sessions = [];
+        foreach (self::children($parent) as $name) {
+            $detail = \sessioneer_dispatch_action(['action' => 'session_detail', 'session' => $name]);
+            $sessions[] = ['name' => $name, 'spawned_by' => SidecarStore::read_sidecar($name)['spawned_by'] ?? null] + $detail;
+        }
+        return ['ok' => true, 'sessions' => $sessions];
+    }
+
+    /**
+     * @param array<string, mixed> $request
+     * @return array<string, mixed>
+     */
+    public static function reap(array $request): array
+    {
+        $parent = self::caller($request);
+        if ($parent === null) return ['ok' => false, 'message' => 'A tracked calling session is required'];
+        $results = [];
+        // No session_detail here: it reconciles a stale stored status with the
+        // live process, which would hide a working child before it is checked.
+        foreach (self::children($parent) as $name) {
+            $row = SidecarStore::read_sidecar($name);
+            $id = $row['agent_session_id'] ?? null;
+            $reason = 'Status, identity, ownership or claims could not be verified';
+            $archived = false;
+            if (is_string($id) && $id !== '' && self::verified($request, $name, $id, $parent)) {
+                $result = self::kill(['target' => $name]);
+                $archived = ($result['ok'] ?? false) === true;
+                $reason = (string)($result['message'] ?? ($archived ? 'Archived' : 'Archive refused'));
+            }
+            $results[] = ['name' => $name, 'archived' => $archived, 'reason' => $reason];
+        }
+        return ['ok' => true, 'results' => $results];
+    }
+
+    /**
+     * @param array{agent:string, profile:?string, agent_session_id:string, name:string} $parent
+     * @return list<string>
+     */
+    private static function children(array $parent): array
+    {
+        $names = [];
+        foreach (SidecarStore::all_names() as $name) {
+            if ($name !== $parent['name'] && (SidecarStore::read_sidecar($name)['spawned_by'] ?? null) === $parent) $names[] = $name;
+        }
+
+        return $names;
+    }
+
+    /**
+     * Re-checks identity, status and claims in sequence so a change made while
+     * the claims lookup ran is caught before anything is archived.
+     *
+     * @param array<string, mixed> $request
+     * @param array{agent:string, profile:?string, agent_session_id:string, name:string} $parent
+     */
+    private static function verified(array $request, string $name, string $id, array $parent): bool
+    {
+        // The second pass runs right before the mutation: a claim, status or owner
+        // taken during the first claims lookup must still be seen.
+        for ($pass = 0; $pass < 2; $pass++) {
+            if (!self::eligible($name, $id, $parent)) return false;
+            if (!self::claims_clear($id)) return false;
+            if (self::caller($request) !== $parent) return false;
+        }
+
+        return self::eligible($name, $id, $parent);
+    }
+
+    /** @param array<string, mixed> $parent */
+    private static function eligible(string $name, string $id, array $parent): bool
+    {
+        $row = SidecarStore::read_sidecar($name);
+        if ($row === null || ($row['agent_session_id'] ?? null) !== $id || ($row['spawned_by'] ?? null) !== $parent
+            || (SessionStatusStore::read_status($name)['status'] ?? null) !== 'idle') return false;
+        $detail = \sessioneer_dispatch_action(['action' => 'session_detail', 'session' => $name]);
+        return ($detail['ok'] ?? false) === true && ($detail['status'] ?? null) === 'idle'
+            && ($detail['agent_session_id'] ?? null) === $id;
+    }
+
+    private static function claims_clear(string $id): bool
+    {
+        $command = trim(Config::sessioneer_config('SESSIONEER_CLAIMS_CMD', ''));
+        if ($command === '') return false;
+        $result = ProcessRunner::run_process(['timeout', '-k', '5', '15', 'sh', '-c', $command . ' "$1"', 'sh', $id]);
+        if ($result['exit'] !== 0) return false;
+        $decoded = json_decode($result['stdout']);
+        if (is_array($decoded)) return $decoded === [];
+        return is_object($decoded) && array_keys(get_object_vars($decoded)) === ['claims'] && is_array($decoded->claims) && $decoded->claims === [];
     }
 
     /**

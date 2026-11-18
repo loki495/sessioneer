@@ -46,6 +46,7 @@ function usage(): string
       Message a peer:    sessioneer --send TARGET "message"
       Who am I:          sessioneer --whoami
       Peer sessions:     sessioneer --peers [--json]
+      Spawned sessions:  sessioneer --spawned [--json]  |  sessioneer --reap [--json]
       Usage stats:       sessioneer --usage
       Context state:     sessioneer --next [TARGET | --all] [--intent step-end|wait|done] [--handoff ID | --plan ID] [--post] [--json]
       Rotate to fresh:   sessioneer --rotate [TARGET] (--handoff ID | --plan ID | --prompt TEXT) [--dry-run] [--json]
@@ -136,6 +137,9 @@ function usage(): string
                         "[sessioneer peer: NAME · DIR · BRANCH]". Information
                         and requests only, never approval.
       --whoami          print this session's own name (SESSIONEER_SELF, or CODEX_THREAD_ID inside Codex)
+      --spawned         list the sessions the calling session launched (direct children only)
+      --reap            archive the calling session's own spawned sessions that are idle and
+                        hold no Dibs claim; never forced, one result line per child
       --peers           list the other live sessions in this session's git
                         repository: name, status, branch, directory
       --usage           print the last known usage (quota) stats as JSON: one
@@ -294,7 +298,7 @@ function emit_envelope(array $envelope): void
     echo json_encode($envelope, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
 }
 
-$longOptions = ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'wake:', 'wake-list', 'wake-cancel:', 'at:', 'bare', 'take-over:', 'as-user', 'set-name:', 'session:', 'next', 'rotate', 'offer', 'all', 'intent:', 'post', 'handoff:', 'plan:', 'prompt:', 'dry-run', 'clear'];
+$longOptions = ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'wake:', 'wake-list', 'wake-cancel:', 'at:', 'bare', 'take-over:', 'as-user', 'set-name:', 'session:', 'next', 'rotate', 'offer', 'all', 'intent:', 'post', 'handoff:', 'plan:', 'prompt:', 'dry-run', 'clear', 'spawned', 'reap'];
 
 // getopt ignores an unknown option, which would start a launch; these two were removed.
 $argv = $_SERVER['argv'] ?? [];
@@ -421,7 +425,7 @@ foreach ($flowModifiers as $modifier => $commands) {
 if ($flowCommands !== []) {
     $command = $flowCommands[0];
 
-    foreach (['kill', 'list', 'send', 'peers', 'usage', 'show', 'answer', 'interrupt', 'wake', 'wake-list', 'wake-cancel', 'bare', 'take-over', 'session', 'resume', 'wait'] as $other) {
+    foreach (['kill', 'list', 'send', 'peers', 'usage', 'show', 'answer', 'interrupt', 'wake', 'wake-list', 'wake-cancel', 'bare', 'take-over', 'session', 'resume', 'wait', 'spawned', 'reap'] as $other) {
         if (isset($opts[$other])) {
             fail("--{$command} cannot be combined with --{$other}");
         }
@@ -526,6 +530,8 @@ $kill = $opt('kill');
 $list = isset($opts['list']);
 $send = $opt('send');
 $peers = isset($opts['peers']);
+$spawned = isset($opts['spawned']);
+$reap = isset($opts['reap']);
 $show = $opt('show');
 $answer = $opt('answer');
 $interrupt = $opt('interrupt');
@@ -543,7 +549,7 @@ if (isset($opts['set-name']) && $setName === null) {
 }
 
 // Every action that is not a launch or a resume.
-$nonLaunch = $kill !== null || $list || $send !== null || $peers || $show !== null || $answer !== null || $interrupt !== null || $wake !== null || $wakeList || $wakeCancelGiven || $bare || $takeOver !== null || $sessionTarget !== null;
+$nonLaunch = $kill !== null || $list || $send !== null || $peers || $show !== null || $answer !== null || $interrupt !== null || $wake !== null || $wakeList || $wakeCancelGiven || $bare || $takeOver !== null || $sessionTarget !== null || $spawned || $reap;
 
 if ($sessionTarget !== null && ($setName === null || $prompt !== '' || $resume !== null || $kill !== null || $list || $send !== null || $peers || $show !== null || $answer !== null || $interrupt !== null || $wake !== null || $wakeList || $wakeCancelGiven || $bare || $takeOver !== null || isset($opts['usage']) || isset($opts['wait']))) {
     fail('--session needs --set-name, and renames that session only: no prompt and no other action');
@@ -555,6 +561,28 @@ if ($setName !== null && $sessionTarget === null && $nonLaunch) {
 
 if (count(array_filter([$kill !== null, $list, $send !== null, $peers, isset($opts['usage']), $show !== null, $answer !== null, $interrupt !== null, $wake !== null, $wakeList, $wakeCancelGiven, $bare, $takeOver !== null])) > 1) {
     fail('--kill, --list, --show, --answer, --interrupt, --wake, --wake-list, --wake-cancel, --bare, --take-over, --send, --peers and --usage cannot be combined');
+}
+
+if ($spawned || $reap) {
+    $flag = $reap ? '--reap' : '--spawned';
+
+    if ($spawned && $reap || $nonLaunch && ($kill !== null || $list || $send !== null || $peers || $show !== null || $answer !== null || $interrupt !== null || $wake !== null || $wakeList || $wakeCancelGiven || $bare || $takeOver !== null || $sessionTarget !== null) || isset($opts['usage'])) {
+        fail('--spawned and --reap cannot be combined with each other or with another action');
+    }
+
+    foreach (['agent', 'model', 'profile', 'workdir', 'task-tools', 'timeout'] as $stray) {
+        if (isset($opts[$stray])) {
+            fail("--{$stray} does not apply to {$flag}");
+        }
+    }
+
+    if ($prompt !== '' || isset($opts['force']) || isset($opts['wait'])) {
+        fail("{$flag} takes no prompt and never forces or waits");
+    }
+
+    if ($self === null) {
+        fail("{$flag} needs a calling Sessioneer session (neither SESSIONEER_SELF nor CODEX_THREAD_ID is set)");
+    }
 }
 
 // Modifiers belong to one action each; a stray one would otherwise be ignored.
@@ -756,6 +784,8 @@ $action = match (true) {
     $list => 'launch_list',
     $send !== null => 'launch_send',
     $peers => 'launch_peers',
+    $spawned => 'launch_spawned',
+    $reap => 'launch_reap',
     $show !== null => 'launch_show',
     $answer !== null => 'launch_answer',
     $interrupt !== null => 'launch_interrupt',
@@ -788,7 +818,7 @@ $reply = AgentClient::agent_call(array_filter([
     'at' => $wakeAt,
     'job' => $wakeCancel !== null ? (int)$wakeCancel : null,
     'include_prompt' => $wakeList && isset($opts['json']) ? true : null,
-    'from' => $send !== null || $peers || $answer !== null || $wake !== null || $wakeCancelGiven ? $self : null,
+    'from' => $send !== null || $peers || $answer !== null || $wake !== null || $wakeCancelGiven || $spawned || $reap || $action === 'launch' ? $self : null,
     'force' => isset($opts['force']) ? true : null,
     'as_user' => isset($opts['as-user']) ? true : null,
     'history' => $history !== null ? (int)$history : null,
