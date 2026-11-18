@@ -51,6 +51,8 @@ class SidecarStore
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'rotated_from', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'rotated_to', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'rotation_closed_at', 'INTEGER');
+        SqliteDb::add_column_if_missing($pdo, 'sidecars', 'spawned_by', 'TEXT');
+        $pdo->exec('CREATE TABLE IF NOT EXISTS launch_ancestry (agent TEXT NOT NULL, conversation_id TEXT NOT NULL, parent TEXT NOT NULL, PRIMARY KEY (agent, conversation_id))');
 
         return $pdo;
     }
@@ -68,11 +70,11 @@ class SidecarStore
     }
 
     /**
-     * @return array{workdir:?string, spawned_at:?int, agent_session_id?:?string, spawned_by_app?:bool, agent?:?string, runtime?:?string, title?:?string, profile?:?string, no_tools?:bool, effort?:?string, allowed_tools?:?string, disallowed_tools?:?string, rotated_from?:?string, rotated_to?:?string}|null
+     * @return array{workdir:?string, spawned_at:?int, agent_session_id?:?string, spawned_by_app?:bool, agent?:?string, runtime?:?string, title?:?string, profile?:?string, no_tools?:bool, effort?:?string, allowed_tools?:?string, disallowed_tools?:?string, rotated_from?:?string, rotated_to?:?string, spawned_by?:array{agent:string, profile:?string, agent_session_id:string, name:string}|null}|null
      */
     public static function read_sidecar(string $sessionName): ?array
     {
-        $stmt = self::db()->prepare('SELECT workdir, spawned_at, agent_session_id, spawned_by_app, agent, runtime, title, profile, no_tools, effort, allowed_tools, disallowed_tools, rotated_from, rotated_to FROM sidecars WHERE session_name = ?');
+        $stmt = self::db()->prepare('SELECT workdir, spawned_at, agent_session_id, spawned_by_app, agent, runtime, title, profile, no_tools, effort, allowed_tools, disallowed_tools, rotated_from, rotated_to, spawned_by FROM sidecars WHERE session_name = ?');
         $stmt->execute([$sessionName]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
 
@@ -119,6 +121,7 @@ class SidecarStore
                 'disallowed_tools' => $row['disallowed_tools'],
                 'rotated_from' => $row['rotated_from'],
                 'rotated_to' => $row['rotated_to'],
+                'spawned_by' => self::parent_of($row),
             ];
         }
 
@@ -153,6 +156,10 @@ class SidecarStore
                 profile = excluded.profile'
         );
 
+        if (array_key_exists('spawned_by', $data)) {
+            $updateParent = self::db()->prepare('UPDATE sidecars SET spawned_by = ? WHERE session_name = ?');
+            // The row may be new, so apply this after the upsert below.
+        }
         $stmt->execute([
             ':session_name' => $sessionName,
             ':workdir' => $data['workdir'] ?? null,
@@ -170,6 +177,9 @@ class SidecarStore
             ':title' => $data['title'] ?? null,
             ':profile' => $data['profile'] ?? null,
         ]);
+        if (isset($updateParent)) {
+            $updateParent->execute([$data['spawned_by'] !== null ? json_encode($data['spawned_by']) : null, $sessionName]);
+        }
     }
 
     /**
@@ -319,6 +329,49 @@ class SidecarStore
         }
 
         return $rows;
+    }
+
+    /** @return list<string> */
+    public static function all_names(): array
+    {
+        return self::db()->query('SELECT session_name FROM sidecars')->fetchAll(\PDO::FETCH_COLUMN);
+    }
+
+    /**
+     * Persist provenance independently of the active sidecar, which archive deletes.
+     *
+     * @param array{agent:string, profile:?string, agent_session_id:string, name:string} $parent
+     */
+    public static function remember_parent(string $name, array $parent): void
+    {
+        $row = self::read_sidecar($name);
+        if ($row === null || empty($row['agent_session_id'])) return;
+        $stmt = self::db()->prepare('INSERT OR IGNORE INTO launch_ancestry (agent, conversation_id, parent) VALUES (?, ?, ?)');
+        $stmt->execute([$row['agent'] ?? 'claude', $row['agent_session_id'], json_encode($parent)]);
+    }
+
+    /**
+     * The sidecar column is only a cache: a resumed conversation gets a fresh
+     * sidecar row, so ancestry is looked up by conversation identity.
+     *
+     * @param array<string, mixed> $row
+     * @return array{agent:string, profile:?string, agent_session_id:string, name:string}|null
+     */
+    private static function parent_of(array $row): ?array
+    {
+        $raw = $row['spawned_by'] ?? null;
+        if (!is_string($raw) || $raw === '') {
+            $id = $row['agent_session_id'] ?? null;
+            if (!is_string($id) || $id === '') return null;
+            $stmt = self::db()->prepare('SELECT parent FROM launch_ancestry WHERE agent = ? AND conversation_id = ?');
+            $stmt->execute([$row['agent'] ?? 'claude', $id]);
+            $raw = $stmt->fetchColumn();
+        }
+        $parent = is_string($raw) ? json_decode($raw, true) : null;
+
+        return is_array($parent) && is_string($parent['agent'] ?? null) && is_string($parent['agent_session_id'] ?? null) && is_string($parent['name'] ?? null)
+            ? ['agent' => $parent['agent'], 'profile' => is_string($parent['profile'] ?? null) ? $parent['profile'] : null, 'agent_session_id' => $parent['agent_session_id'], 'name' => $parent['name']]
+            : null;
     }
 
     /**

@@ -70,6 +70,7 @@ function dispatch_action(array $request): array
     }
 
     if ($action === 'session_detail') {
+        $result['spawned_by'] = SidecarStore::read_sidecar((string)($request['session'] ?? ''))['spawned_by'] ?? null;
         $result = sessioneer_with_detail_extras($result, (string)($request['session'] ?? ''));
         $result = sessioneer_with_flow($result);
     }
@@ -487,6 +488,12 @@ function sessioneer_dispatch_action(array $request): array
         // HostAgent\Launch\SessionLauncher documents the request/reply contract.
         case 'launch':
             return LaunchService::launch($request);
+
+        case 'launch_spawned':
+            return LaunchService::spawned($request);
+
+        case 'launch_reap':
+            return LaunchService::reap($request);
 
         case 'launch_kill':
             return LaunchService::kill($request);
