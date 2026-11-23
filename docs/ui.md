@@ -331,6 +331,10 @@ Deferred: Web Push subscribe, pending messages surviving a reload,
 the "New content" divider and per-block highlight colours (new entries flash instead), and the full-screen
 text editor for long drafts.
 
+### Session hierarchy
+
+Rows carry `launched_by` and `waiting_on` (see docs/cli.md, "Hierarchy fields"). On the dashboard a card whose `launched_by` names another listed card sits directly under it (`ui-card-child`, `data-parent`, indented up to three steps; deeper rows keep their real `data-parent` at the third step). A child whose parent is not listed stays at the top level with its `spawned by` link, and a launch cycle renders every row once. Each waiting target is a `waiting on NAME` chip (`ui-chip-waiting`, greyed with `is-ended`, a muted colour with 4.5:1 contrast, plus a `waiting on NAME (ended)` title and aria-label, when the target is not live; an archived session reads `unknown`) linking to that session. The sessions popup nests and badges rows the same way, keeps a family together despite the status sort and pins the open session on top. The session page shows `Launched by`, `Launched:` and the badges as links, in a line under the bar and in the details sheet.
+
 ## Archived-session page (`/archived-session?agent_session_id=<id>`)
 
 A dormant conversation opens in the same page shell as the session page,

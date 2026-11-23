@@ -54,6 +54,7 @@ function usage(): string
       Rotate to fresh:   sessioneer --rotate [TARGET] (--handoff ID | --plan ID | --prompt TEXT) [--dry-run] [--json]
       Offer a rotation:  sessioneer --offer (--handoff ID | --plan ID | TEXT) | --offer --clear
       Run to the end:    sessioneer --wait [--timeout N] --workdir DIR "do the thing"
+      Waiting on others: sessioneer --waiting-on SESSION[,SESSION] | none [--session TARGET] [--json]
       Name a session:    sessioneer --session NAME_OR_CONVERSATION_ID --set-name "Name"
       New, named:        sessioneer --workdir DIR --set-name "Name" "do the thing"
 
@@ -91,6 +92,10 @@ function usage(): string
                         starts or reuses; with --session it renames that one.
       --session TARGET  with --set-name and no prompt, rename this tracked session
                         (name or conversation id) without sending it anything
+      --waiting-on LIST replace this session's list of sessions it is waiting on (up to 8 live
+                        sessions, comma separated; `none` clears it). With --session TARGET it
+                        sets the list of that session instead. Shown as `waiting on NAME` badges
+                        on the dashboard; separate from who launched whom.
       --kill TARGET     stop a session by name or conversation id (headless or a
                         tmux pane, any agent); its conversation stays resumable
                         (archived). Refuses a working or blocked session unless
@@ -314,7 +319,7 @@ function emit_envelope(array $envelope): void
     echo json_encode($envelope, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
 }
 
-$longOptions = ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'wake:', 'wake-list', 'wake-cancel:', 'at:', 'bare', 'take-over:', 'as-user', 'set-name:', 'session:', 'next', 'rotate', 'offer', 'all', 'intent:', 'post', 'no-gates', 'handoff:', 'plan:', 'prompt:', 'dry-run', 'clear', 'spawned', 'reap', 'resets', 'schedule-reset:', 'approve'];
+$longOptions = ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'wake:', 'wake-list', 'wake-cancel:', 'at:', 'bare', 'take-over:', 'as-user', 'set-name:', 'session:', 'next', 'rotate', 'offer', 'all', 'intent:', 'post', 'no-gates', 'handoff:', 'plan:', 'prompt:', 'dry-run', 'clear', 'spawned', 'reap', 'resets', 'schedule-reset:', 'approve', 'waiting-on:'];
 
 // getopt ignores an unknown option, which would start a launch; these two were removed.
 $argv = $_SERVER['argv'] ?? [];
@@ -353,6 +358,10 @@ if (array_intersect(['--next', '--rotate', '--offer'], $argv) !== []) {
         $proc = proc_open([PHP_BINARY, ...$ordered], [STDIN, STDOUT, STDERR], $pipes);
         exit(proc_close($proc));
     }
+}
+
+if (end($argv) === '--waiting-on') {
+    fail('--waiting-on needs SESSION[,SESSION] or none');
 }
 
 $opts = getopt('h', $longOptions, $restIndex);
@@ -407,6 +416,75 @@ if (isset($opts['whoami'])) {
 
     echo $self, "\n";
     exit(0);
+}
+
+if (isset($opts['waiting-on'])) {
+    $session = $opt('session') ?? $self;
+    $given = $opts['waiting-on'];
+
+    foreach (array_keys($opts) as $other) {
+        if (!in_array($other, ['waiting-on', 'session', 'json'], true)) {
+            fail(in_array($other, ['list', 'wake-list', 'wake-cancel', 'rotate', 'next', 'offer', 'usage', 'resets', 'schedule-reset', 'kill', 'send', 'peers', 'show', 'answer', 'interrupt', 'bare', 'take-over', 'set-name', 'spawned', 'reap', 'whoami', 'wake'], true)
+                ? "--waiting-on cannot be combined with --{$other}"
+                : "--{$other} does not apply to --waiting-on");
+        }
+    }
+
+    if ($prompt !== '') {
+        fail('--waiting-on takes no prompt');
+    }
+
+    if (!is_string($given) || $given === '') {
+        fail('--waiting-on needs SESSION[,SESSION] or none');
+    }
+
+    $targets = [];
+
+    if ($given !== 'none') {
+        foreach (explode(',', $given) as $name) {
+            $name = trim($name);
+
+            if (preg_match('/^[A-Za-z0-9._-]+$/D', $name) !== 1 || $name === 'none') {
+                fail('--waiting-on: invalid session name "' . $name . '" (letters, digits, dot, dash and underscore only)');
+            }
+
+            if ($name === $session) {
+                fail('--waiting-on: a session cannot wait on itself');
+            }
+
+            $targets[] = $name;
+        }
+
+        if (count($targets) > 8) {
+            fail('--waiting-on: at most 8 sessions');
+        }
+
+        $repeated = array_keys(array_filter(array_count_values($targets), static fn (int $n): bool => $n > 1));
+
+        if ($repeated !== []) {
+            fail('--waiting-on: duplicate session ' . $repeated[0]);
+        }
+    }
+
+    if ($session === null) {
+        fail('--waiting-on needs a calling Sessioneer session (neither SESSIONEER_SELF nor CODEX_THREAD_ID is set); name one with --session');
+    }
+
+    $reply = AgentClient::agent_call(['action' => 'waiting_on_set', 'session' => $session, 'targets' => $targets]);
+    $done = ($reply['ok'] ?? false) === true;
+
+    if (isset($opts['json'])) {
+        echo json_encode($reply, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
+    } elseif ($done) {
+        $names = array_map('strval', (array)($reply['waiting_on'] ?? []));
+        echo 'waiting on: ', $names === [] ? 'none' : implode(', ', $names), "\n";
+    }
+
+    if (!$done && !isset($opts['json'])) {
+        fail((string)($reply['message'] ?? 'waiting-on failed'));
+    }
+
+    exit($done ? 0 : 1);
 }
 
 /** Digits-only Dibs id given to a flow option, or null when the option is absent. */

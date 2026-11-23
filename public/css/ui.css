@@ -430,3 +430,13 @@ input[type="search"], select, textarea, input[type="text"], input[type="datetime
 .ui-voice-mode[data-mode="error"] .ui-voice-dot { background: var(--blocked); }
 @keyframes ui-voice-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: 0.55; } }
 @media (prefers-reduced-motion: reduce) { .ui-voice-dot { animation: none !important; } }
+
+/* ---- session hierarchy: launched sessions nest under their launcher, waiting is a separate badge ---- */
+.ui-card-child { margin-left: 16px; }
+.ui-card-child.ui-depth-2 { margin-left: 32px; }
+.ui-card-child.ui-depth-3 { margin-left: 48px; }
+.ui-card-child { border-left: 3px solid var(--accent-line); }
+.ui-chip-waiting { color: var(--blocked); background: var(--blocked-bg); border-color: transparent; text-decoration: none; position: relative; z-index: 1; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.ui-chip-waiting.is-ended { background: #e2e8f0; color: #475569; font-weight: 500; }
+:root[data-theme="dark"] .ui-chip-waiting.is-ended { background: #334155; color: #cbd5e1; }
+.ui-card .ui-chip-waiting { position: relative; z-index: 1; }

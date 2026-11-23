@@ -45,6 +45,13 @@ $bootstrap = json_encode([
 
   <main id="sess-scroll" class="sess-scroll">
     <div class="sess-col">
+      <?php if (!$archived && ($hierarchy['launchedBy'] !== null || $hierarchy['launched'] !== [] || $hierarchy['waiting'] !== [])): ?>
+      <div class="sess-hier">
+        <?php if ($hierarchy['launchedBy'] !== null): ?><span>Launched by <a class="ui-inline-link" href="/session?session=<?= urlencode($hierarchy['launchedBy']) ?>"><?= $this->e($hierarchy['launchedBy']) ?></a></span><?php endif ?>
+        <?php if ($hierarchy['launched'] !== []): ?><span>Launched: <?php foreach ($hierarchy['launched'] as $i => $kid): ?><?= $i > 0 ? ', ' : '' ?><a class="ui-inline-link" href="/session?session=<?= urlencode($kid) ?>"><?= $this->e($kid) ?></a><?php endforeach ?></span><?php endif ?>
+        <?php foreach ($hierarchy['waiting'] as $w): ?><a class="ui-chip ui-chip-waiting<?= $w['ended'] ? ' is-ended' : '' ?>"<?= $w['ended'] ? ' title="waiting on ' . $this->e($w['name']) . ' (ended)" aria-label="waiting on ' . $this->e($w['name']) . ' (ended)"' : '' ?> href="/session?session=<?= urlencode($w['name']) ?>">waiting on <?= $this->e($w['name']) ?></a><?php endforeach ?>
+      </div>
+      <?php endif ?>
       <div id="sess-jump" class="sess-notice" hidden>
         <span>Showing a search result</span>
         <a href="<?= $archived ? '/archived-session?agent_session_id=' : '/session?session=' ?><?= urlencode($sessionName) ?>" class="ui-inline-link">Back to latest &rarr;</a>

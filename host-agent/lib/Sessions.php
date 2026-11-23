@@ -63,19 +63,132 @@ function dispatch_action(array $request): array
             : ['ok' => false, 'message' => 'Session not found'];
     }
 
+    if ($action === 'waiting_on_set') {
+        return sessioneer_waiting_on_set((string)($request['session'] ?? ''), $request['targets'] ?? null);
+    }
+
     $result = sessioneer_dispatch_action($request);
 
     if ($action === 'list') {
-        $result = sessioneer_with_flow(sessioneer_with_stars($result));
+        $result = sessioneer_with_flow(sessioneer_with_stars(sessioneer_with_hierarchy($result)));
     }
 
     if ($action === 'session_detail') {
         $result['spawned_by'] = SidecarStore::read_sidecar((string)($request['session'] ?? ''))['spawned_by'] ?? null;
+        $result = sessioneer_with_detail_hierarchy($result, (string)($request['session'] ?? ''));
         $result = sessioneer_with_detail_extras($result, (string)($request['session'] ?? ''));
         $result = sessioneer_with_flow($result);
     }
 
     return in_array($action, ['list', 'session_detail'], true) ? sessioneer_with_custom_titles($result, (string)($request['session'] ?? '')) : $result;
+}
+
+const SESSIONEER_WAITING_EXPIRY_SECONDS = 86400;
+
+/**
+ * Sets the waiting list of $session (the caller's own list; targets replace it).
+ *
+ * @return array{ok:bool, message?:string, waiting_on?:list<string>}
+ */
+function sessioneer_waiting_on_set(string $session, mixed $targets): array
+{
+    if ($session === '' || !is_array($targets) || !array_is_list($targets)) {
+        return ['ok' => false, 'message' => 'A session and a list of target sessions are required'];
+    }
+    if (!in_array($session, SidecarStore::all_names(), true)) {
+        return ['ok' => false, 'message' => 'Unknown session; pass a session name, not a conversation id'];
+    }
+    $now = time();
+    $entries = [];
+    foreach ($targets as $name) {
+        if (!is_string($name)) {
+            return ['ok' => false, 'message' => 'Target names must be strings'];
+        }
+        $entries[] = ['name' => $name, 'since' => $now];
+    }
+    try {
+        SidecarStore::set_waiting_on($session, $entries);
+    } catch (\InvalidArgumentException $e) {
+        return ['ok' => false, 'message' => $e->getMessage()];
+    }
+
+    return ['ok' => true, 'waiting_on' => array_column($entries, 'name')];
+}
+
+/**
+ * Waiting entries with their target's state. A target that is not live is kept, greyed, for 24 hours
+ * after `since`; a live target never expires.
+ *
+ * @param list<array{name:string, since:int}> $stored
+ * @param array<string, mixed> $live
+ * @param array<string, mixed> $known
+ * @return list<array{name:string, state:string, since:int}>
+ */
+function sessioneer_waiting_view(array $stored, array $live, array $known): array
+{
+    $out = [];
+    foreach ($stored as $entry) {
+        $state = isset($live[$entry['name']]) ? 'live' : (isset($known[$entry['name']]) ? 'ended' : 'unknown');
+        if ($state !== 'live' && $entry['since'] < time() - SESSIONEER_WAITING_EXPIRY_SECONDS) {
+            continue;
+        }
+        $out[] = ['name' => $entry['name'], 'state' => $state, 'since' => $entry['since']];
+    }
+
+    return $out;
+}
+
+/**
+ * Adds launched_by (only while the launcher's sidecar still exists) and waiting_on to every list row.
+ *
+ * @param array<string, mixed> $result
+ * @return array<string, mixed>
+ */
+function sessioneer_with_hierarchy(array $result): array
+{
+    if (($result['ok'] ?? false) !== true || !is_array($result['sessions'] ?? null)) {
+        return $result;
+    }
+    $hierarchy = SidecarStore::hierarchy();
+    $live = array_flip(array_column($result['sessions'], 'name'));
+    foreach ($result['sessions'] as &$row) {
+        $info = $hierarchy[$row['name'] ?? ''] ?? null;
+        $parent = $info['parent'] ?? null;
+        $row['launched_by'] = $parent !== null && isset($hierarchy[$parent]) ? $parent : null;
+        $row['waiting_on'] = sessioneer_waiting_view($info === null ? [] : $info['waiting_on'], $live, $hierarchy);
+    }
+    unset($row);
+
+    return $result;
+}
+
+/**
+ * Adds launched_by, launched (the sessions this one launched) and waiting_on to the detail of a tracked
+ * session, even when the runtime could not answer.
+ *
+ * @param array<string, mixed> $detail
+ * @return array<string, mixed>
+ */
+function sessioneer_with_detail_hierarchy(array $detail, string $session): array
+{
+    $hierarchy = SidecarStore::hierarchy();
+    $own = $hierarchy[$session] ?? null;
+    if ($own === null) {
+        return $detail;
+    }
+    $parent = $own['parent'];
+    $detail['launched_by'] = $parent !== null && isset($hierarchy[$parent]) ? $parent : null;
+    $detail['launched'] = array_map('strval', array_keys(array_filter($hierarchy, static fn (array $h): bool => $h['parent'] === $session)));
+    // The live set is the runtime's current list rows, the same source as the `list` action; it is only built
+    // when this session waits on someone.
+    $live = [];
+    if ($own['waiting_on'] !== []) {
+        $rows = sessioneer_dispatch_action(['action' => 'list'])['sessions'] ?? [];
+        $live = array_flip(array_map('strval', array_column(is_array($rows) ? $rows : [], 'name')));
+    }
+    $detail['waiting_on'] = sessioneer_waiting_view($own['waiting_on'], $live, $hierarchy);
+
+    return $detail;
 }
 
 /**

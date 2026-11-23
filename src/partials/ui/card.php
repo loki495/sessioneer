@@ -7,7 +7,7 @@
   }
 ?>
 <?php /* Whole-card tap target: the title link stretches over the card (.ui-link-cover::after); anything interactive sits above it. */ ?>
-<article class="ui-card ui-status-<?= $this->e($status) ?>" data-session="<?= $this->e($name) ?>" data-status="<?= $this->e($status) ?>" data-kind="<?= $this->e($kind) ?>" data-starred="<?= $starred ? 1 : 0 ?>">
+<article class="ui-card ui-status-<?= $this->e($status) ?><?= $depth > 0 ? ' ui-card-child ui-depth-' . (int)$depth : '' ?>" data-session="<?= $this->e($name) ?>"<?= $launchedBy !== null ? ' data-parent="' . $this->e($launchedBy) . '"' : '' ?> data-status="<?= $this->e($status) ?>" data-kind="<?= $this->e($kind) ?>" data-starred="<?= $starred ? 1 : 0 ?>">
   <div class="ui-card-main">
     <div class="ui-card-head">
       <span class="ui-dot ui-dot-<?= $this->e($status) ?>" role="img" aria-label="<?= $this->e($status === 'blocked' ? 'needs input' : $status) ?>"></span>
@@ -32,6 +32,7 @@
       <?php if ($isWorker): ?><span class="ui-chip ui-chip-accent">Worker</span><?php endif ?>
       <?php if (!empty($conversationId)): ?><span class="ui-chip ui-chip-id" title="Conversation <?= $this->e((string)$conversationId) ?>">&hellip;<?= $this->e(substr((string)$conversationId, -8)) ?></span><?php endif ?>
       <?php if (!empty($pendingWake)): ?><span class="ui-chip ui-chip-wake" data-wake-at="<?= (int)$pendingWake['next_at'] ?>" data-wake-count="<?= (int)$pendingWake['count'] ?>" title="Next wake-up <?= $this->e((string)$pendingWake['next_at_local']) ?>">&#9200; <?= (int)$pendingWake['count'] ?></span><?php endif ?>
+      <?php foreach ($waiting as $w): ?><a class="ui-chip ui-chip-waiting<?= $w['ended'] ? ' is-ended' : '' ?>"<?= $w['ended'] ? ' title="waiting on ' . $this->e($w['name']) . ' (ended)" aria-label="waiting on ' . $this->e($w['name']) . ' (ended)"' : '' ?> href="/session?session=<?= urlencode($w['name']) ?>">waiting on <?= $this->e($w['name']) ?></a><?php endforeach ?>
     </div>
 
     <?php if ($isWorker && $parentSessionId !== null): ?>
