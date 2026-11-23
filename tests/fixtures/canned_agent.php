@@ -606,6 +606,10 @@ if (is_string($flowStatePath) && is_file($flowStatePath)) {
         $response = $flowState['continuation'] ?? ['ok' => true, 'action' => 'takeover', 'can_rotate' => false, 'why' => 'No prepared handoff'];
     } elseif ($action === 'flow_continue_rotate') {
         $response = $flowState['continue_rotate'] ?? ['ok' => true, 'session' => 'cc-fake-headless'];
+    } elseif ($action === 'flow_resets') {
+        $response = $flowState['resets'] ?? ['ok' => true, 'agents' => []];
+    } elseif ($action === 'flow_schedule') {
+        $response = $flowState['schedule'] ?? ['ok' => true, 'job' => 77, 'at' => 0, 'existing' => false];
     }
 }
 

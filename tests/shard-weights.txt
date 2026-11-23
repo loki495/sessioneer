@@ -118,3 +118,5 @@ test_session_flow_archive_replaced.php 1
 test_session_flow_reap_entry.php 2
 test_session_flow_continuation.php 1
 test_session_continuation_browser.php 12
+test_flow_schedule.php 2
+test_cli_flow_schedule.php 4

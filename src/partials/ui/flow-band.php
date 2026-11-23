@@ -5,6 +5,16 @@ $state = (string)($decision['state'] ?? '');
 $why = (string)($decision['why'] ?? '');
 $offer = is_array($offer) ? $offer : [];
 $handoff = is_string($offer['handoff_id'] ?? null) ? $offer['handoff_id'] : '';
+$plan = is_string($offer['plan_id'] ?? null) ? $offer['plan_id'] : '';
+$resets = is_array($resets ?? null) ? $resets : [];
+// A wake resumes this session, so only its own account's reset time can be waited for; a handoff or plan
+// starts a fresh session and may wait for any profile.
+if ($handoff === '' && $plan === '') {
+    $ownAgent = (string)($row['agent'] ?? '');
+    $ownProfile = $ownAgent !== '' && $ownAgent !== 'claude' ? 'default' : (string)($row['profile'] ?? '');
+    // A row that names no agent or profile (a default account may be stored as none) is not narrowed; the host refuses a mismatch.
+    $resets = array_values(array_filter($resets, static fn (array $r): bool => ($ownAgent === '' || $r['agent'] === $ownAgent) && ($ownProfile === '' || $r['profile'] === $ownProfile)));
+}
 $prompt = is_string($offer['prompt'] ?? null) ? $offer['prompt'] : '';
 $receiver = is_array($decision['receiver'] ?? null) ? $decision['receiver'] : [];
 $session = (string)($row['name'] ?? '');
@@ -44,6 +54,8 @@ if ($state === 'ROTATE') {
   data-csrf="<?= $this->e($csrfToken) ?>"
   <?php if ($handoff !== ''): ?>data-handoff-id="<?= $this->e($handoff) ?>"
   <?php endif ?>
+  <?php if ($plan !== ''): ?>data-plan-id="<?= $this->e($plan) ?>"
+  <?php endif ?>
   <?php if ($prompt !== ''): ?>data-prompt="<?= $this->e($prompt) ?>"
   <?php endif ?>
   <?php if (isset($receiver['agent'])): ?>data-receiver-agent="<?= $this->e((string)$receiver['agent']) ?>"
@@ -65,5 +77,13 @@ if ($state === 'ROTATE') {
       <button type="button" class="ui-btn ui-flow-btn" data-flow-act="<?= $act ?>"><?= $this->e($labels[$act]) ?></button>
     <?php endforeach ?>
   </div>
+  <?php if (in_array('wait', $acts, true) && $resets !== []): ?>
+  <div class="ui-flow-actions ui-flow-resets">
+    <?php foreach ($resets as $r): ?>
+      <button type="button" class="ui-btn ui-flow-btn" data-flow-wait-reset
+        data-agent="<?= $this->e($r['agent']) ?>" data-profile="<?= $this->e($r['profile']) ?>" data-reset-at="<?= (int)$r['reset_at'] ?>">Wait for reset: <?= $this->e($r['label']) ?></button>
+    <?php endforeach ?>
+  </div>
+  <?php endif ?>
 </div>
 <?php endif ?>

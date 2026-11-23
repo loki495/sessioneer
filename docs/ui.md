@@ -117,9 +117,16 @@ A `ROTATE` decision offers:
   agent and account when the decision names one, otherwise the session's own, the session's folder, and the
   offer's prompt when it has one. It starts nothing.
 
-`PARK` and `WAIT` offer **Wait for reset** only. `WARM_TIGHT` is one chip carrying the reason, with no button.
+`PARK` and `WAIT` offer **Wait for reset** (dismisses the offer) and, below it, one **Wait for reset: AGENT PROFILE, in 2 h 5 min**
+button per profile with a stored reset time. The page render asks the host for those times (`flow_resets`) only when
+a band is `PARK` or `WAIT`. Each button carries `data-flow-wait-reset`, `data-agent`, `data-profile` and
+`data-reset-at`; nothing is posted on render, poll or dismissal. A tap posts `flow_schedule` with `approved: true`
+(set by `UiController`, never by the page), `expected_reset_at` and one context: the offer's handoff id or plan id
+(with the session's folder), else the session (a wake of its conversation). The band then shows the job id and time,
+or the host's refusal. For a wake (an offer with no handoff or plan) only the session's own agent and profile get a button, because the host refuses a wake whose session runs under another account; a handoff or plan offers every profile. `WARM_TIGHT` is one chip carrying the reason, with no button.
 `GO`, `CHECKPOINT`, `DONE` and `UNKNOWN` draw nothing. **Continue here** and **Wait for reset** dismiss the
-offer, which removes every band of that session.
+offer, which removes every band of that session. The session page is served with `Cache-Control: no-store` so a
+browser never shows a stale band or reset time.
 
 A tap disables that band's buttons and marks it busy, so the dashboard's poll does not replace the band under the
 tap. A failed action shows its message inside the band and removes the message after ten seconds, so the poll

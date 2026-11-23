@@ -11,6 +11,11 @@ declare(strict_types=1);
  *    flow_rotate_request, judge -> flow_judge, continue and wait -> flow_offer_dismiss, edit -> the New Session form
  *    opens prefilled; a tap with a wrong CSRF token never reaches the host;
  *  - the session page carries the same band twice (under the conversation and in the details sheet) and they post the same;
+ *  - quota reset scheduling: a quota PARK band renders one [data-flow-wait-reset] button per profile the host lists in
+ *    flow_resets, carrying data-agent, data-profile and data-reset-at; nothing is posted to flow_schedule on render, on
+ *    a poll, on a wrong-token tap or when the offer is dismissed; a real tap posts flow_schedule with approved true,
+ *    that button's agent, profile and reset (expected_reset_at, an integer) and exactly one context key; a state with
+ *    no quota reset or no stored reset shows no such button;
  *  - the band is readable on a phone (no horizontal overflow, touch-sized buttons) and in both themes, WARM_TIGHT is a
  *    chip with no button, escaped text stays text, and the console stays clean.
  * Skips (exit 0) when no Chrome is installed.
@@ -39,12 +44,17 @@ function fbb_wait(array &$page, string $expression, float $timeout = 8.0): bool
     return cdp_evaluate($page, $expression) === true;
 }
 
-/** @return list<array<string, mixed>> the flow_* requests the host saw since the log was last cleared */
+/**
+ * @return list<array<string, mixed>> the mutating flow_* requests the host saw since the log was last cleared.
+ * flow_resets is excluded on purpose: the page render calls that read-only action server side to list each
+ * profile's reset time, so "nothing reached the host" now means no mutating action (flow_schedule,
+ * flow_offer_dismiss, flow_rotate, flow_offer, flow_judge, flow_rotate_request), not no request at all.
+ */
 function fbb_log(string $path): array
 {
     $lines = is_file($path) ? (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: []) : [];
 
-    return array_map(static fn (string $l): array => json_decode($l, true) ?: [], $lines);
+    return array_values(array_filter(array_map(static fn (string $l): array => json_decode($l, true) ?: [], $lines), static fn (array $r): bool => ($r['action'] ?? '') !== 'flow_resets'));
 }
 
 /** Waits up to $timeout seconds for the log to hold at least one request. */
@@ -253,6 +263,106 @@ try {
         cdp_evaluate($page, $click('[data-flow-where="popup"] [data-flow-act="start"]'));
         $entries = fbb_logged($log);
         assert_equal(['flow_rotate', '4486'], [$entries[0]['action'] ?? null, (string)($entries[0]['handoff_id'] ?? '')], 'session page: the details sheet band starts the receiver with the same handoff');
+
+        cdp_set_viewport($page, 390, 844, 1.0, true);
+        echo "quota reset scheduling: one Wait for reset button per profile, a job only after the tap\n";
+        $R1 = intdiv(time(), 60) * 60 + 7200;
+        $R2 = $R1 + 1800;
+        $setResets = static function (array $resets, ?array $storedOffer = null, array $override = []) use ($state, $log, $decision): void {
+            file_put_contents($state, json_encode(['flow' => $decision('PARK', ['trigger' => 'quota', 'reset_at' => $resets['claude']['personal'] ?? null]), 'offer' => $storedOffer, 'detail_override' => $override, 'log' => $log,
+                'resets' => ['ok' => true, 'agents' => array_map(static fn (array $profiles): array => ['label' => 'Agent', 'profiles' => array_map(static fn (?int $t): array => ['reset_at' => $t], $profiles)], $resets)],
+                'schedule' => ['ok' => true, 'job' => 77, 'at' => ($resets['claude']['personal'] ?? 0) + 60, 'existing' => false]]));
+            file_put_contents($log, '');
+        };
+        $schedules = static fn (): array => array_values(array_filter(fbb_log($log), static fn (array $r): bool => ($r['action'] ?? '') === 'flow_schedule'));
+        $setResets(['claude' => ['personal' => $R1, 'work' => $R2]]);
+        $load('/');
+        assert_true(fbb_wait($page, 'document.querySelectorAll("[data-flow-where=card] [data-flow-wait-reset]").length === 2'), 'one button per profile with a stored reset');
+        assert_equal(
+            [['claude', 'personal', (string)$R1], ['claude', 'work', (string)$R2]],
+            cdp_evaluate($page, 'Array.prototype.map.call(document.querySelectorAll("[data-flow-where=card] [data-flow-wait-reset]"), function (b) { return [b.getAttribute("data-agent"), b.getAttribute("data-profile"), b.getAttribute("data-reset-at")]; }).sort()'),
+            'each carries data-agent, data-profile and data-reset-at'
+        );
+        assert_equal(true, cdp_evaluate($page, 'Array.prototype.every.call(document.querySelectorAll("[data-flow-where=card] [data-flow-wait-reset]"), function (b) { var r = b.getBoundingClientRect(); return r.height >= 32 && r.width > 0 && r.right <= window.innerWidth; })'), 'the buttons are touch-sized and inside the screen');
+        sleep(1);
+        assert_equal([], fbb_log($log), 'nothing mutating is posted on render or on a poll');
+        assert_equal(true, cdp_evaluate($page, 'Array.prototype.every.call(document.querySelectorAll("[data-flow-where=card] [data-flow-wait-reset]"), function (b) { return b.textContent.indexOf("Wait for reset") !== -1; })'), 'each button says Wait for reset');
+
+        cdp_evaluate($page, 'Array.prototype.forEach.call(document.querySelectorAll("[data-csrf]"), function (el) { el.setAttribute("data-csrf", "wrong"); })');
+        cdp_evaluate($page, $click('[data-flow-where="card"] [data-flow-wait-reset][data-profile="work"]'));
+        sleep(2);
+        assert_equal([], $schedules(), 'a tap with a wrong CSRF token never reaches the host');
+
+        $load('/');
+        fbb_wait($page, 'document.querySelectorAll("[data-flow-where=card] [data-flow-wait-reset]").length === 2');
+        cdp_evaluate($page, $click('[data-flow-where="card"] [data-flow-wait-reset][data-profile="work"]'));
+        $deadline = microtime(true) + 6.0;
+        while ($schedules() === [] && microtime(true) < $deadline) {
+            usleep(100000);
+        }
+        $sent = $schedules();
+        assert_equal(1, count($sent), 'one tap, one flow_schedule request');
+        assert_equal([true, 'claude', 'work', $R2], [$sent[0]['approved'] ?? null, $sent[0]['agent'] ?? null, $sent[0]['profile'] ?? null, $sent[0]['expected_reset_at'] ?? null], 'approved true, the tapped profile and its reset');
+        assert_true(is_int($sent[0]['expected_reset_at'] ?? null), 'expected_reset_at is an integer');
+        assert_equal(1, count(array_filter(['session', 'handoff_id', 'plan_id'], static fn (string $k): bool => isset($sent[0][$k]) && $sent[0][$k] !== '')), 'exactly one context key');
+        assert_equal(FBB_SESSION, $sent[0]['session'] ?? null, 'no handoff or plan on the offer: a wake of the source session');
+
+        foreach ([['handoff_id', '4486'], ['plan_id', '1765']] as [$key, $val]) {
+            $setResets(['claude' => ['personal' => $R1, 'work' => $R2]], $offer([$key => $val]));
+            $load('/');
+            fbb_wait($page, 'document.querySelectorAll("[data-flow-where=card] [data-flow-wait-reset]").length === 2');
+            cdp_evaluate($page, $click('[data-flow-where="card"] [data-flow-wait-reset][data-profile="personal"]'));
+            $deadline = microtime(true) + 6.0;
+            while ($schedules() === [] && microtime(true) < $deadline) {
+                usleep(100000);
+            }
+            $req = $schedules()[0] ?? [];
+            assert_equal([$val, true], [(string)($req[$key] ?? ''), count(array_filter(['session', 'handoff_id', 'plan_id'], static fn (string $k): bool => isset($req[$k]) && $req[$k] !== '')) === 1], "an offer with {$key}: that id is the one context key");
+        }
+        $setResets(['claude' => ['personal' => $R1, 'work' => $R2]]);
+        $load('/');
+        fbb_wait($page, 'document.querySelectorAll("[data-flow-where=card] [data-flow-wait-reset]").length === 2');
+
+        echo "a wake context only offers the session's own agent and profile\n";
+        $own = ['agent' => 'claude', 'profile' => 'work'];
+        $setResets(['claude' => ['personal' => $R1, 'work' => $R2]], null, $own);
+        $load('/');
+        assert_true(fbb_wait($page, 'document.querySelectorAll("[data-flow-where=card] [data-flow-wait-reset]").length > 0'), 'a claude:work session with no handoff or plan still gets a button');
+        assert_equal([['claude', 'work']], cdp_evaluate($page, 'Array.prototype.map.call(document.querySelectorAll("[data-flow-where=card] [data-flow-wait-reset]"), function (b) { return [b.getAttribute("data-agent"), b.getAttribute("data-profile")]; })'), 'wake context: only claude:work, no button for claude:personal');
+        $setResets(['claude' => ['personal' => $R1, 'work' => $R2]], $offer(['handoff_id' => '4486']), $own);
+        $load('/');
+        assert_true(fbb_wait($page, 'document.querySelectorAll("[data-flow-where=card] [data-flow-wait-reset]").length === 2'), 'handoff context: every profile keeps its button');
+        $setResets(['claude' => ['personal' => $R1, 'work' => $R2]], $offer(['plan_id' => '1765']), $own);
+        $load('/');
+        assert_true(fbb_wait($page, 'document.querySelectorAll("[data-flow-where=card] [data-flow-wait-reset]").length === 2'), 'plan context: every profile keeps its button');
+
+        $setResets(['claude' => ['personal' => $R1, 'work' => $R2]]);
+        $load('/');
+        fbb_wait($page, 'document.querySelectorAll("[data-flow-where=card] [data-flow-wait-reset]").length === 2');
+        cdp_evaluate($page, $click($card('wait')));
+        fbb_logged($log);
+        sleep(1);
+        assert_equal([], $schedules(), 'dismissing the offer (Continue/Wait) queues nothing');
+
+        $setResets(['claude' => ['personal' => null]]);
+        $load('/');
+        sleep(1);
+        assert_equal(0, cdp_evaluate($page, 'document.querySelectorAll("[data-flow-wait-reset]").length'), 'a profile with no stored reset has no button');
+        $setState($decision('WARM_TIGHT', ['trigger' => 'context']), null);
+        $load('/');
+        sleep(1);
+        assert_equal(0, cdp_evaluate($page, 'document.querySelectorAll("[data-flow-wait-reset]").length'), 'a chip-only state has no button');
+
+        $setResets(['claude' => ['personal' => $R1, 'work' => $R2]]);
+        $load('/session?session=' . FBB_SESSION);
+        assert_true(fbb_wait($page, 'document.querySelectorAll("[data-flow-where=session] [data-flow-wait-reset]").length === 2'), 'the session page band has the buttons too');
+        assert_equal(0, count($schedules()), 'and still nothing is posted');
+        cdp_evaluate($page, $click('[data-flow-where="session"] [data-flow-wait-reset][data-profile="personal"]'));
+        $deadline = microtime(true) + 6.0;
+        while ($schedules() === [] && microtime(true) < $deadline) {
+            usleep(100000);
+        }
+        assert_equal([true, 'personal', $R1], [$schedules()[0]['approved'] ?? null, $schedules()[0]['profile'] ?? null, $schedules()[0]['expected_reset_at'] ?? null], 'session page: the tap posts the same action');
 
         assert_equal([], cdp_drain_console_errors($page), 'the console stays clean through every state');
     }

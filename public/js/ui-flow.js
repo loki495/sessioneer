@@ -21,7 +21,7 @@
   // A request in flight disables this band's buttons only, and marks the host so the dashboard's poll
   // keeps the band it would otherwise swap away underneath the tap.
   function busy(host, on) {
-    Array.prototype.forEach.call(host.querySelectorAll('[data-flow-act]'), function (button) { button.disabled = on; });
+    Array.prototype.forEach.call(host.querySelectorAll('[data-flow-act], [data-flow-wait-reset]'), function (button) { button.disabled = on; });
     if (on) { host.setAttribute('data-busy', '1'); } else { host.removeAttribute('data-busy'); }
   }
 
@@ -78,7 +78,34 @@
     window.location.href = '/';
   }
 
+  // Wait for reset: the tap is the approval. The context is the offer's handoff or plan, else the session itself.
+  function scheduleReset(button, host) {
+    var params = {
+      action: 'flow_schedule',
+      agent: button.getAttribute('data-agent'),
+      profile: button.getAttribute('data-profile'),
+      expected_reset_at: button.getAttribute('data-reset-at')
+    };
+    var handoff = host.getAttribute('data-handoff-id') || '';
+    var plan = host.getAttribute('data-plan-id') || '';
+    if (handoff) { params.handoff_id = handoff; } else if (plan) { params.plan_id = plan; } else { params.session = host.getAttribute('data-session') || ''; }
+    if ((handoff || plan) && host.getAttribute('data-workdir')) { params.workdir = host.getAttribute('data-workdir'); }
+    busy(host, true);
+    post(host, params).then(function (res) {
+      busy(host, false);
+      if (!res || !res.ok) { showError(host, res && res.message); return; }
+      showWhy(host, (res.existing ? 'Already scheduled' : 'Scheduled') + ': job ' + res.job + (res.at ? ' for ' + new Date(res.at * 1000).toLocaleString() : ''));
+      button.disabled = true;
+    }).catch(function () { busy(host, false); showError(host, null); });
+  }
+
   document.addEventListener('click', function (event) {
+    var waitReset = event.target.closest ? event.target.closest('[data-flow-wait-reset]') : null;
+    if (waitReset) {
+      var waitHost = waitReset.closest('[data-flow-host]');
+      if (waitHost) { scheduleReset(waitReset, waitHost); }
+      return;
+    }
     var button = event.target.closest ? event.target.closest('[data-flow-act]') : null;
     if (!button) { return; }
     var host = button.closest('[data-flow-host]');
