@@ -50,7 +50,7 @@ function usage(): string
       Usage stats:       sessioneer --usage
       Quota resets:      sessioneer --resets [--json]
       Wake at a reset:   sessioneer --schedule-reset AGENT[:PROFILE] --approve (--wake TARGET | --handoff ID | --plan ID) [--workdir DIR] [--json]
-      Context state:     sessioneer --next [TARGET | --all] [--intent step-end|wait|done] [--handoff ID | --plan ID] [--post] [--json]
+      Context state:     sessioneer --next [TARGET | --all] [--intent step-end|wait|done] [--handoff ID | --plan ID] [--post] [--no-gates] [--json]
       Rotate to fresh:   sessioneer --rotate [TARGET] (--handoff ID | --plan ID | --prompt TEXT) [--dry-run] [--json]
       Offer a rotation:  sessioneer --offer (--handoff ID | --plan ID | TEXT) | --offer --clear
       Run to the end:    sessioneer --wait [--timeout N] --workdir DIR "do the thing"
@@ -169,6 +169,8 @@ function usage(): string
       --all             with --next and no TARGET, one line per tracked session
       --intent STEP     with --next, what the caller is about to do: step-end, wait or done
       --post            with --next, post (or clear) the offer the decision calls for
+      --no-gates        with --next --plan ID --post, affirm the plan's Auto-continue: on line
+                        so a ROTATE with a receiver starts that receiver at once
       --handoff ID      with --next, --rotate or --offer, the Dibs handoff id (digits) the
                         fresh session takes over from
       --plan ID         with --next, --rotate or --offer, the Dibs plan id (digits) the
@@ -312,7 +314,7 @@ function emit_envelope(array $envelope): void
     echo json_encode($envelope, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
 }
 
-$longOptions = ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'wake:', 'wake-list', 'wake-cancel:', 'at:', 'bare', 'take-over:', 'as-user', 'set-name:', 'session:', 'next', 'rotate', 'offer', 'all', 'intent:', 'post', 'handoff:', 'plan:', 'prompt:', 'dry-run', 'clear', 'spawned', 'reap', 'resets', 'schedule-reset:', 'approve'];
+$longOptions = ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'wake:', 'wake-list', 'wake-cancel:', 'at:', 'bare', 'take-over:', 'as-user', 'set-name:', 'session:', 'next', 'rotate', 'offer', 'all', 'intent:', 'post', 'no-gates', 'handoff:', 'plan:', 'prompt:', 'dry-run', 'clear', 'spawned', 'reap', 'resets', 'schedule-reset:', 'approve'];
 
 // getopt ignores an unknown option, which would start a launch; these two were removed.
 $argv = $_SERVER['argv'] ?? [];
@@ -551,7 +553,7 @@ if ($quotaCommand !== null) {
 
 $flowCommands = array_values(array_filter(['next', 'rotate', 'offer'], static fn (string $c): bool => isset($opts[$c])));
 $flowModifiers = [
-    'intent' => ['next'], 'post' => ['next'], 'all' => ['next'], 'prompt' => ['rotate'], 'dry-run' => ['rotate'], 'clear' => ['offer'],
+    'intent' => ['next'], 'post' => ['next'], 'no-gates' => ['next'], 'all' => ['next'], 'prompt' => ['rotate'], 'dry-run' => ['rotate'], 'clear' => ['offer'],
     'plan' => ['next', 'rotate', 'offer'], 'handoff' => ['next', 'rotate', 'offer'],
 ];
 
@@ -629,6 +631,7 @@ if ($flowCommands !== []) {
         'next' => [
             'action' => 'flow_next', 'session' => isset($opts['all']) ? null : ($target ?? $self), 'all' => isset($opts['all']) ? true : null,
             'intent' => $opts['intent'] ?? null, 'plan_id' => $plan, 'handoff_id' => $handoff, 'post' => isset($opts['post']) ? true : null,
+            'no_gates' => isset($opts['no-gates']) ? true : null,
         ],
         'rotate' => [
             'action' => 'flow_rotate', 'session' => $target ?? $self, 'plan_id' => $plan, 'handoff_id' => $handoff, 'prompt' => $text,
@@ -655,6 +658,10 @@ if ($flowCommands !== []) {
 
         if (!empty($reply['offer'])) {
             echo "offer posted: {$reply['offer']['source']}\n";
+        }
+
+        if (($reply['auto_continued'] ?? false) === true) {
+            echo 'auto-continued: ', (string)($reply['session'] ?? ''), "\n";
         }
     } elseif ($command === 'rotate') {
         if (!empty($reply['dry_run'])) {
