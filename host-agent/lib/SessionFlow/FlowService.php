@@ -100,7 +100,7 @@ final class FlowService
     /**
      * All mode ({all: true}, no session) decides every tracked session (deps 'sessions') and posts nothing.
      *
-     * @param array<string, mixed> $request session, optional intent, handoff_id, plan_id, post; or all
+     * @param array<string, mixed> $request session, optional intent, handoff_id, plan_id, post, no_gates; or all
      * @param array<string, mixed> $deps
      * @return array<string, mixed>
      */
@@ -138,6 +138,35 @@ final class FlowService
             $reply += ['prompt' => $prompt, 'prompt_kind' => $kind];
         }
 
+        $planId = self::id($request, 'plan_id');
+        $reply += $planId !== null && self::id($request, 'handoff_id') === null
+            ? self::autoContinueSetting($planId, $deps)
+            : ['auto_continue' => null];
+        $receiver = $decision['receiver'] ?? null;
+        $startable = ($request['post'] ?? null) === true && ($request['no_gates'] ?? null) === true && ($reply['auto_continue'] ?? null) === true
+            && $decision['state'] === 'ROTATE' && is_array($receiver) && is_string($receiver['key'] ?? null);
+        if ($startable && Config::sessioneer_config('SESSIONEER_CLAIMS_CMD', '') === '') {
+            $startable = false;
+            $reply['auto_continue_note'] = 'The claims check (SESSIONEER_CLAIMS_CMD) is not configured, so the receiver was not started';
+        }
+        if ($startable) {
+            $already = (string) (SidecarStore::read_sidecar($session)['rotated_to'] ?? '');
+            if ($already !== '') {
+                return ['auto_continued' => false, 'auto_continue_note' => "Already rotated to {$already}; no second receiver was started"] + $reply;
+            }
+            [$agent, $profile] = explode('/', $receiver['key'], 2) + [1 => ''];
+            try {
+                $started = self::rotate(['session' => $session, 'plan_id' => $planId, 'agent' => $agent, 'profile' => $profile], $deps);
+            } catch (\Throwable $e) {
+                $started = ['ok' => false, 'message' => get_class($e) . ': ' . $e->getMessage()];
+            }
+            if (($started['ok'] ?? false) === true && is_string($started['session'] ?? null)) {
+                return ['auto_continued' => true, 'session' => $started['session']] + $reply;
+            }
+            $reply['auto_continue_note'] = (string) ($started['message'] ?? 'The receiver did not start');
+        }
+        $reply['auto_continued'] = false;
+
         if (!empty($request['post']) && $decision['state'] !== 'UNKNOWN') {
             if (in_array($decision['state'], ['ROTATE', 'PARK'], true)) {
                 SessionOfferStore::post($session, 'hook', $decision, self::id($request, 'handoff_id'), self::id($request, 'plan_id'), $prompt, $now);
@@ -147,6 +176,37 @@ final class FlowService
         }
 
         return $reply;
+    }
+
+    /**
+     * Reads the plan's `Auto-continue: on` line through SESSIONEER_PLAN_CMD; null (with a note) when it cannot be read.
+     *
+     * @param array<string, mixed> $deps
+     * @return array<string, mixed>
+     */
+    private static function autoContinueSetting(string $planId, array $deps): array
+    {
+        $command = Config::sessioneer_config('SESSIONEER_PLAN_CMD', '');
+        if ($command === '') {
+            return ['auto_continue' => null, 'auto_continue_note' => 'SESSIONEER_PLAN_CMD is not set, so the plan was not read'];
+        }
+        $result = $deps['runner']($command, $planId);
+        $body = (string) ($result['stdout'] ?? '');
+        if (($result['exit'] ?? 1) !== 0 || trim($body) === '') {
+            return ['auto_continue' => null, 'auto_continue_note' => 'The plan command (SESSIONEER_PLAN_CMD) failed or printed nothing'];
+        }
+
+        $values = [];
+        $fenced = false;
+        foreach (preg_split('/\r?\n/', $body) ?: [] as $line) {
+            if (str_starts_with(ltrim($line), '```')) {
+                $fenced = !$fenced;
+            } elseif (!$fenced && preg_match('/^\s*auto-continue\s*:(.*)$/i', $line, $m) === 1) {
+                $values[] = strtolower(trim($m[1]));
+            }
+        }
+
+        return ['auto_continue' => $values !== [] && array_unique($values) === ['on']];
     }
 
     /**
