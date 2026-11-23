@@ -52,6 +52,7 @@ class SidecarStore
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'rotated_to', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'rotation_closed_at', 'INTEGER');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'spawned_by', 'TEXT');
+        SqliteDb::add_column_if_missing($pdo, 'sidecars', 'waiting_on', 'TEXT');
         $pdo->exec('CREATE TABLE IF NOT EXISTS launch_ancestry (agent TEXT NOT NULL, conversation_id TEXT NOT NULL, parent TEXT NOT NULL, PRIMARY KEY (agent, conversation_id))');
 
         return $pdo;
@@ -70,11 +71,11 @@ class SidecarStore
     }
 
     /**
-     * @return array{workdir:?string, spawned_at:?int, agent_session_id?:?string, spawned_by_app?:bool, agent?:?string, runtime?:?string, title?:?string, profile?:?string, no_tools?:bool, effort?:?string, allowed_tools?:?string, disallowed_tools?:?string, rotated_from?:?string, rotated_to?:?string, spawned_by?:array{agent:string, profile:?string, agent_session_id:string, name:string}|null}|null
+     * @return array{workdir:?string, spawned_at:?int, agent_session_id?:?string, spawned_by_app?:bool, agent?:?string, runtime?:?string, title?:?string, profile?:?string, no_tools?:bool, effort?:?string, allowed_tools?:?string, disallowed_tools?:?string, rotated_from?:?string, rotated_to?:?string, spawned_by?:array{agent:string, profile:?string, agent_session_id:string, name:string}|null, waiting_on?:list<array{name:string, since:int}>}|null
      */
     public static function read_sidecar(string $sessionName): ?array
     {
-        $stmt = self::db()->prepare('SELECT workdir, spawned_at, agent_session_id, spawned_by_app, agent, runtime, title, profile, no_tools, effort, allowed_tools, disallowed_tools, rotated_from, rotated_to, spawned_by FROM sidecars WHERE session_name = ?');
+        $stmt = self::db()->prepare('SELECT workdir, spawned_at, agent_session_id, spawned_by_app, agent, runtime, title, profile, no_tools, effort, allowed_tools, disallowed_tools, rotated_from, rotated_to, spawned_by, waiting_on FROM sidecars WHERE session_name = ?');
         $stmt->execute([$sessionName]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
 
@@ -122,6 +123,7 @@ class SidecarStore
                 'rotated_from' => $row['rotated_from'],
                 'rotated_to' => $row['rotated_to'],
                 'spawned_by' => self::parent_of($row),
+                'waiting_on' => self::decode_waiting($row['waiting_on']),
             ];
         }
 
@@ -331,6 +333,80 @@ class SidecarStore
         return $rows;
     }
 
+    public const WAITING_MAX = 8;
+
+    /**
+     * Replaces the session's waiting list (own column, so a sidecar rewrite keeps it). Waiting is never
+     * inferred from launch ancestry.
+     *
+     * @param array<int, array<string, mixed>> $targets
+     * @throws \InvalidArgumentException when the list is refused; nothing is stored then
+     */
+    public static function set_waiting_on(string $sessionName, array $targets): void
+    {
+        if (!array_is_list($targets) || count($targets) > self::WAITING_MAX) {
+            throw new \InvalidArgumentException('At most ' . self::WAITING_MAX . ' sessions can be waited on');
+        }
+        $known = array_flip(self::all_names());
+        if (!isset($known[$sessionName])) {
+            throw new \InvalidArgumentException('Unknown session ' . $sessionName);
+        }
+        $seen = [];
+        foreach ($targets as $target) {
+            $name = $target['name'] ?? null;
+            if (!is_string($name) || preg_match('/^[A-Za-z0-9._-]+$/D', $name) !== 1) {
+                throw new \InvalidArgumentException('Invalid session name');
+            }
+            if ($name === $sessionName) {
+                throw new \InvalidArgumentException('A session cannot wait on itself');
+            }
+            if (isset($seen[$name])) {
+                throw new \InvalidArgumentException('Duplicate target ' . $name);
+            }
+            if (!isset($known[$name])) {
+                throw new \InvalidArgumentException('Unknown session ' . $name);
+            }
+            $seen[$name] = true;
+        }
+        $json = $targets === [] ? null : json_encode(array_map(static fn (array $t): array => ['name' => $t['name'], 'since' => (int)$t['since']], $targets));
+        self::db()->prepare('UPDATE sidecars SET waiting_on = ? WHERE session_name = ?')->execute([$json, $sessionName]);
+    }
+
+    /**
+     * Every sidecar's launcher name and stored waiting list, in one pass.
+     *
+     * @return array<string, array{parent:?string, waiting_on:list<array{name:string, since:int}>}>
+     */
+    public static function hierarchy(): array
+    {
+        $out = [];
+        $rows = self::db()->query('SELECT session_name, agent, agent_session_id, spawned_by, waiting_on FROM sidecars')->fetchAll(\PDO::FETCH_ASSOC);
+        $ancestry = [];
+        foreach (self::db()->query('SELECT agent, conversation_id, parent FROM launch_ancestry')->fetchAll(\PDO::FETCH_ASSOC) as $a) {
+            $ancestry[$a['agent'] . "\0" . $a['conversation_id']] = $a['parent'];
+        }
+        foreach ($rows as $row) {
+            $raw = is_string($row['spawned_by']) && $row['spawned_by'] !== '' ? $row['spawned_by'] : ($ancestry[($row['agent'] ?? 'claude') . "\0" . ($row['agent_session_id'] ?? '')] ?? null);
+            $out[(string)$row['session_name']] = ['parent' => self::decode_parent($raw)['name'] ?? null, 'waiting_on' => self::decode_waiting($row['waiting_on'])];
+        }
+
+        return $out;
+    }
+
+    /** @return list<array{name:string, since:int}> */
+    private static function decode_waiting(mixed $raw): array
+    {
+        $list = is_string($raw) ? json_decode($raw, true) : null;
+        $out = [];
+        foreach (is_array($list) ? $list : [] as $entry) {
+            if (is_array($entry) && is_string($entry['name'] ?? null)) {
+                $out[] = ['name' => $entry['name'], 'since' => (int)($entry['since'] ?? 0)];
+            }
+        }
+
+        return $out;
+    }
+
     /** @return list<string> */
     public static function all_names(): array
     {
@@ -367,6 +443,12 @@ class SidecarStore
             $stmt->execute([$row['agent'] ?? 'claude', $id]);
             $raw = $stmt->fetchColumn();
         }
+        return self::decode_parent($raw);
+    }
+
+    /** @return array{agent:string, profile:?string, agent_session_id:string, name:string}|null */
+    private static function decode_parent(mixed $raw): ?array
+    {
         $parent = is_string($raw) ? json_decode($raw, true) : null;
 
         return is_array($parent) && is_string($parent['agent'] ?? null) && is_string($parent['agent_session_id'] ?? null) && is_string($parent['name'] ?? null)

@@ -122,3 +122,7 @@ test_session_flow_continuation.php 1
 test_session_continuation_browser.php 12
 test_flow_schedule.php 2
 test_cli_flow_schedule.php 4
+test_session_hierarchy_host.php 3
+test_cli_waiting_on.php 4
+test_ui_hierarchy.php 1
+test_ui_hierarchy_browser.php 12

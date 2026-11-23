@@ -613,4 +613,16 @@ if (is_string($flowStatePath) && is_file($flowStatePath)) {
     }
 }
 
+// Hierarchy browser fixture (CANNED_HIERARCHY = a JSON file {rows, detail}); unset for ordinary tests. `rows` replaces the
+// list action's sessions (each row is merged over a minimal idle row), `detail` is merged over the canned session's detail.
+$hierarchyPath = getenv('CANNED_HIERARCHY');
+if (is_string($hierarchyPath) && is_file($hierarchyPath)) {
+    $hierarchy = json_decode((string)file_get_contents($hierarchyPath), true);
+    if ($action === 'list' && is_array($hierarchy['rows'] ?? null)) {
+        $response['sessions'] = array_map(static fn (array $row): array => $row + ['agent' => 'claude', 'agent_label' => 'Claude Code', 'runtime' => 'headless', 'activity' => time() - 120, 'attached' => false, 'workdir' => '/home/user/www/demo-project', 'spawned_by_app' => true, 'working' => false, 'blocked_reason' => null, 'title' => $row['name']], $hierarchy['rows']);
+    } elseif ($action === 'session_detail' && ($request['session'] ?? null) === CANNED_SESSION_NAME && is_array($hierarchy['detail'] ?? null)) {
+        $response = $hierarchy['detail'] + $response;
+    }
+}
+
 fwrite(STDOUT, json_encode($response));

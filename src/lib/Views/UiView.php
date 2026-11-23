@@ -59,6 +59,11 @@ class UiView extends View
         $row = $detail + ['name' => (string)($data['sessionName'] ?? '')];
         $csrfToken = (string)($data['csrfToken'] ?? '');
         $resets = is_array($data['resets'] ?? null) ? $data['resets'] : [];
+        $data['hierarchy'] = [
+            'launchedBy' => is_string($detail['launched_by'] ?? null) && $detail['launched_by'] !== '' ? $detail['launched_by'] : null,
+            'launched' => array_values(array_filter(is_array($detail['launched'] ?? null) ? $detail['launched'] : [], 'is_string')),
+            'waiting' => self::waiting_of($detail),
+        ];
         $data['flowSessionHtml'] = empty($data['archived']) ? self::flow_band_html($row, $csrfToken, 'session', $resets) : '';
         $data['flowPopupHtml'] = empty($data['archived']) ? self::flow_band_html($row, $csrfToken, 'popup', $resets) : '';
 
@@ -170,11 +175,78 @@ class UiView extends View
 
         $html = '';
 
-        foreach ($sessions as $s) {
-            $html .= self::card_html($s, $csrfToken, $resets);
+        foreach (self::nested($sessions) as [$s, $depth]) {
+            $html .= self::card_html($s, $csrfToken, $resets, $depth);
         }
 
         return $html;
+    }
+
+    /** Deepest indentation step; a deeper row keeps its real parent but is drawn at this step. */
+    public const MAX_DEPTH = 3;
+
+    /**
+     * Rows in display order: each row that names another listed row as `launched_by` sits directly under
+     * it, the rest keep their place. A cycle or a self parent still renders every row once.
+     *
+     * @param array<int, array<string, mixed>> $sessions
+     * @return list<array{0: array<string, mixed>, 1: int}> row and its depth (0 = top level)
+     */
+    public static function nested(array $sessions): array
+    {
+        $names = [];
+        foreach ($sessions as $s) {
+            $names[(string)($s['name'] ?? '')] = true;
+        }
+        $children = [];
+        $tops = [];
+        foreach ($sessions as $i => $s) {
+            $parent = $s['launched_by'] ?? null;
+            if (is_string($parent) && $parent !== (string)($s['name'] ?? '') && isset($names[$parent])) {
+                $children[$parent][] = $i;
+            } else {
+                $tops[] = $i;
+            }
+        }
+        $out = [];
+        $seen = [];
+        $walk = static function (int $i, int $depth) use (&$walk, &$out, &$seen, $sessions, $children): void {
+            if (isset($seen[$i])) {
+                return;
+            }
+            $seen[$i] = true;
+            $out[] = [$sessions[$i], min($depth, self::MAX_DEPTH)];
+            foreach ($children[(string)($sessions[$i]['name'] ?? '')] ?? [] as $child) {
+                $walk($child, $depth + 1);
+            }
+        };
+        foreach ($tops as $i) {
+            $walk($i, 0);
+        }
+        // Rows only reachable through a cycle: the first of each starts a group.
+        foreach (array_keys($sessions) as $i) {
+            $walk($i, 0);
+        }
+
+        return $out;
+    }
+
+    /**
+     * The `waiting on` entries of a row or detail, as clean {name, state, since} lists.
+     *
+     * @param array<string, mixed> $s
+     * @return list<array{name:string, ended:bool}>
+     */
+    public static function waiting_of(array $s): array
+    {
+        $out = [];
+        foreach (is_array($s['waiting_on'] ?? null) ? $s['waiting_on'] : [] as $w) {
+            if (is_array($w) && is_string($w['name'] ?? null) && $w['name'] !== '') {
+                $out[] = ['name' => $w['name'], 'ended' => (string)($w['state'] ?? 'live') !== 'live'];
+            }
+        }
+
+        return $out;
     }
 
     /** @param array<int, array<string, mixed>> $bare */
@@ -254,7 +326,7 @@ class UiView extends View
      * @param array<string, mixed> $s
      * @param array<string, mixed> $resets
      */
-    public static function card_html(array $s, string $csrfToken, array $resets = []): string
+    public static function card_html(array $s, string $csrfToken, array $resets = [], int $depth = 0): string
     {
         $name = (string)$s['name'];
         $title = (string)($s['title'] ?? $name);
@@ -287,6 +359,9 @@ class UiView extends View
             'promptIsFolderTrust' => !empty($s['prompt_is_folder_trust']),
             'promptHasQuestions' => !empty($s['prompt_questions']),
             'csrfToken' => $csrfToken,
+            'depth' => $depth,
+            'launchedBy' => $depth > 0 ? (string)$s['launched_by'] : null,
+            'waiting' => self::waiting_of($s),
             'flowHtml' => self::flow_band_html($s, $csrfToken, 'card', $resets),
         ]);
     }

@@ -241,3 +241,12 @@ body:has(dialog[open], .sess-viewer:not([hidden]), .sess-fullscreen:not([hidden]
   .sess-mini { font-size: 0.85rem; }
 }
 .sess-sessions-selects select { flex: 1; min-width: 0; }
+
+/* session hierarchy (detail sheet, page line, sessions popup) */
+.sess-hier { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 0.8rem; color: var(--text-muted); overflow-wrap: anywhere; }
+.sess-srow { flex-wrap: wrap; }
+.sess-srow-child { margin-left: 14px; }
+.sess-srow-child.sess-depth-2 { margin-left: 28px; }
+.sess-srow-child.sess-depth-3 { margin-left: 42px; }
+.sess-srow-wait { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 4px; padding: 0 12px 8px; }
+.sess-srow-wait .ui-chip { padding: 0 7px; font-size: 0.7rem; }

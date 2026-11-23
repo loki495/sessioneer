@@ -164,6 +164,27 @@
   // session details sheet
   // ======================================================================
 
+  // `waiting on NAME` badges for a row or the detail; an ended, archived or unknown target is greyed.
+  function waitBadges(list) {
+    return (list || []).map(function (w) {
+      var ended = w.state && w.state !== 'live';
+      var cue = ended ? ' title="waiting on ' + esc(w.name) + ' (ended)" aria-label="waiting on ' + esc(w.name) + ' (ended)"' : '';
+      return '<a class="ui-chip ui-chip-waiting' + (ended ? ' is-ended' : '') + '"' + cue + ' href="/session?session=' + encodeURIComponent(w.name) + '">waiting on ' + esc(w.name) + '</a>';
+    }).join('');
+  }
+  function sessionLink(name) {
+    return '<a class="ui-inline-link" href="/session?session=' + encodeURIComponent(name) + '">' + esc(name) + '</a>';
+  }
+  function hierarchyInfo(d) {
+    var launched = d.launched || [];
+    var waiting = d.waiting_on || [];
+    if (!d.launched_by && !launched.length && !waiting.length) { return ''; }
+    return '<div class="sess-hier">'
+      + (d.launched_by ? '<span>Launched by ' + sessionLink(d.launched_by) + '</span>' : '')
+      + (launched.length ? '<span>Launched: ' + launched.map(sessionLink).join(', ') + '</span>' : '')
+      + waitBadges(waiting) + '</div>';
+  }
+
   function kv(label, value, copyable) {
     if (!value) { return ''; }
     return '<div class="sess-kv"><div><small>' + esc(label) + '</small><code>' + esc(value) + '</code></div>'
@@ -194,6 +215,7 @@
     html += kv('Runtime', d.runtime, false);
     var pct = d.context_used_percentage;
     html += kv('Context used', typeof pct === 'number' && isFinite(pct) ? Math.round(pct) + '%' : '', false);
+    html += hierarchyInfo(d);
 
     body.innerHTML = html;
 
@@ -656,10 +678,10 @@
     }).sort(function (a, b) {
       return ((b.starred ? 1 : 0) - (a.starred ? 1 : 0)) || (order[statusOfRow(a)] - order[statusOfRow(b)]) || ((b.activity || 0) - (a.activity || 0));
     });
-    var rowHtml = function (x) {
+    var rowHtml = function (x, depth, parent) {
       var st = statusOfRow(x);
       var dir = String(x.workdir || '').replace(/\/+$/, '').replace(/^\/home\/[^\/]+(?=\/|$)/, '~');
-      return '<div class="sess-srow' + (x.name === session ? ' is-current' : '') + (x.starred ? ' is-starred' : '') + '">'
+      return '<div class="sess-srow' + (x.name === session ? ' is-current' : '') + (x.starred ? ' is-starred' : '') + (depth ? ' sess-srow-child sess-depth-' + depth : '') + '"' + (depth ? ' data-parent="' + esc(parent) + '"' : '') + '>'
         + '<a class="sess-srow-main"' + (x.name === session ? ' data-current' : '') + ' href="/session?session=' + encodeURIComponent(x.name) + '"><i class="ui-dot ui-dot-' + st + '" role="img" aria-label="' + (st === 'blocked' ? 'needs input' : st) + '"></i>'
         + '<span class="sess-srow-text"><b>' + esc(x.title || x.name) + '</b>'
         + '<span class="sess-srow-chips">' + (x.name === session ? '<span class="sess-current-pill">Current</span>' : '') + rowChips(x) + '</span>'
@@ -667,11 +689,34 @@
         + '<small>' + esc(api.relTime(x.activity ? new Date(x.activity * 1000).toISOString() : '')) + '</small>'
         + (rowPreview(x) ? '<small class="sess-srow-preview">' + esc(rowPreview(x)) + '</small>' : '')
         + (st === 'working' ? '<span class="ui-thinking" aria-label="Thinking"><i></i><i></i><i></i></span>' : '') + '</span></a>'
-        + '<button type="button" class="ui-icon-btn" data-star="' + esc(x.name) + '" aria-pressed="' + (x.starred ? 'true' : 'false') + '" aria-label="' + (x.starred ? 'Unstar' : 'Star') + '">' + (x.starred ? '&#9733;' : '&#9734;') + '</button></div>';
+        + '<button type="button" class="ui-icon-btn" data-star="' + esc(x.name) + '" aria-pressed="' + (x.starred ? 'true' : 'false') + '" aria-label="' + (x.starred ? 'Unstar' : 'Star') + '">' + (x.starred ? '&#9733;' : '&#9734;') + '</button>'
+        + ((x.waiting_on || []).length ? '<div class="sess-srow-wait">' + waitBadges(x.waiting_on) + '</div>' : '') + '</div>';
     };
-    var html = current.map(rowHtml).join('');
+    // A row launched by another listed row sits under it (depth capped at 3, the real parent kept in data-parent);
+    // rows reachable only through a launch cycle still render once, at the top.
+    var nestedRows = function (list) {
+      var listed = {};
+      var kids = {};
+      var tops = [];
+      var seen = {};
+      var out = [];
+      list.forEach(function (x) { listed[x.name] = true; });
+      list.forEach(function (x) {
+        if (x.launched_by && x.launched_by !== x.name && listed[x.launched_by]) { (kids[x.launched_by] = kids[x.launched_by] || []).push(x); } else { tops.push(x); }
+      });
+      var walk = function (x, depth, parent) {
+        if (seen[x.name]) { return; }
+        seen[x.name] = true;
+        out.push(rowHtml(x, Math.min(depth, 3), parent));
+        (kids[x.name] || []).forEach(function (kid) { walk(kid, depth + 1, x.name); });
+      };
+      tops.forEach(function (x) { walk(x, 0, ''); });
+      list.forEach(function (x) { walk(x, 0, ''); });
+      return out.join('');
+    };
+    var html = current.map(function (x) { return rowHtml(x, 0, ''); }).join('');
     if (current.length && rows.length) { html += '<p class="sess-srow-divider">Other sessions</p>'; }
-    html += rows.length ? rows.map(rowHtml).join('') : '<p class="ui-muted ui-center">' + (current.length ? 'No other sessions' : 'No sessions') + '</p>';
+    html += rows.length ? nestedRows(rows) : '<p class="ui-muted ui-center">' + (current.length ? 'No other sessions' : 'No sessions') + '</p>';
     $('sess-sessions-list').innerHTML = html;
   }
   function loadSessions() {
