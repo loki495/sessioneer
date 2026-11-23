@@ -31,6 +31,7 @@ putenv('SOCKET_CLIENT_FAIL_FAST_IF_ABSENT=1');
 putenv('PUSH_SQLITE_FILE=' . $wake->root . '/push.sqlite');
 putenv('OPENCODE_DB_PATH=' . $wake->root . '/no-opencode.db');
 putenv('SESSIONEER_ATD_CHECK_CMD=true');
+$bumpFlag = $wake->root . '/bump-flag';
 
 require_once dirname(__DIR__) . '/vendor/autoload.php';
 
@@ -48,6 +49,10 @@ GlobalStateStore::write(Config::quota_live_state_key('work'), ['captured_at' => 
 $fake = new CliFlowRig('cli-flow-schedule-fake');
 $realSocket = sys_get_temp_dir() . '/sessioneer-test-cli-flow-schedule-agent.sock';
 $agent = start_harness(['php', dirname(__DIR__) . '/host-agent/agent.php'], $realSocket);
+$driftSocket = sys_get_temp_dir() . '/sessioneer-test-cli-flow-schedule-drift.sock';
+putenv('DRIFT_TARGET=' . $realSocket);
+putenv('DRIFT_FLAG=' . $bumpFlag);
+$drift = start_harness(['php', __DIR__ . '/fixtures/drift_proxy.php'], $driftSocket);
 $noSession = ['SESSIONEER_SELF' => false, 'SESSIONEER_AGENT_SOCKET' => $realSocket, 'SESSIONEER_SESSION_NAME' => 'cc-leak-check'];
 $cli = static fn (array $args): array => $fake->run($args, $noSession);
 $validate = static fn (array $args): array => $fake->run($args, ['SESSIONEER_SELF' => false, 'SESSIONEER_AGENT_SOCKET' => $fake->socket]);
@@ -213,6 +218,17 @@ try {
     assert_equal([true, false], [json_decode($out, true)['ok'] ?? null, json_decode($out, true)['existing'] ?? null], 'plan: a different context is a new job');
     assert_equal(2, $creates(), 'two jobs in total');
 
+    echo "A reset that drifts between the CLI's read and the schedule\n";
+    $wake->reset();
+    file_put_contents($bumpFlag, (string)($resetPersonal + 3));
+    [$code, $out, $err] = $fake->run(['--schedule-reset', 'claude:personal', '--approve', '--handoff', '321', '--json'], array_merge($noSession, ['SESSIONEER_AGENT_SOCKET' => $driftSocket]));
+    $reply = json_decode($out, true);
+    assert_equal([0, true], [$code, $reply['ok'] ?? null], 'stored reset moved +3 s after the read: still scheduled, not refused as stale (stderr: ' . trim($err) . ')');
+    assert_equal($resetPersonal + 120, $reply['at'] ?? null, 'the job time follows the stored (bumped) reset: next whole minute at or after stored + 60');
+    assert_true(!file_exists($bumpFlag), 'the drift really happened between the read and the schedule (proxy applied it)');
+    assert_equal(1, $creates(), 'one job');
+    GlobalStateStore::write(Config::quota_live_state_key(), ['captured_at' => time(), 'session' => ['pct' => 95, 'resets_at' => $resetPersonal]]);
+
     echo "A wake must match the agent and profile of its session\n";
     $wake->reset();
     [$code, $out, $err] = $cli(['--schedule-reset', 'claude:personal', '--approve', '--wake', 'conv-w1']);
@@ -244,6 +260,7 @@ try {
     assert_equal(1, $unreachable[0], 'an unreachable host agent: exit 1');
     assert_contains('Cannot reach host agent', $unreachable[2], 'with the handled message');
 } finally {
+    stop_harness($drift, $driftSocket);
     stop_harness($agent, $realSocket);
     $fake->stop();
     $wake->cleanup();
