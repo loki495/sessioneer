@@ -460,6 +460,7 @@ assert_true($health['children'] >= 3, 'health counts live children');
 assert_equal('0.0.0-fake', $health['claude_version'], 'health reports the CLI version seen in init');
 assert_equal('none', $health['last_api_key_source'], 'health reports the credential source Claude reported');
 assert_equal(0.25, $health['rate_limit']['windows']['five_hour']['utilization'], 'health carries the latest rate-limit window');
+assert_equal('2030-01-02T03:04:05.000Z', $health['login_expires_at'], 'health carries the login end date from the newest result');
 assert_true(is_int($health['rss_mb']), 'health reports resident memory');
 $names = array_column(call($m1, 'sessioneer/list')['children'] ?? [], 'session');
 assert_true(in_array($sn(1), $names, true) && in_array($sn(4), $names, true), 'list names the live sessions');

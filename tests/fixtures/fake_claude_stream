@@ -163,6 +163,7 @@ function result(string $text, bool $error = false, string $reason = 'completed')
         'type' => 'result', 'subtype' => $error ? 'error_during_execution' : 'success', 'is_error' => $error,
         'result' => $text, 'terminal_reason' => $reason, 'session_id' => $sid, 'num_turns' => 1,
         'queued_turn_count' => 0, 'usage' => ['input_tokens' => 3, 'output_tokens' => 5],
+        'credential_expires_at' => '2030-01-02T03:04:05.000Z',
     ]);
 }
 

@@ -20,6 +20,9 @@ class ClaudeHeadlessHealthService
 {
     public const SECTION = 'Claude Code headless';
 
+    /** A claude.ai login ending within this many days turns the credential check red; matches the CLI's own stderr warning. */
+    public const LOGIN_WARN_DAYS = 10;
+
     /**
      * The Claude Code version the stream-json handling was captured and
      * live-tested against (tests/fixtures/claude_stream_json_*_v2_1_278.ndjson,
@@ -97,7 +100,7 @@ class ClaudeHeadlessHealthService
         $source = $reply['last_api_key_source'] ?? null;
         $checks[] = match (true) {
             $source === null => self::check('claude_headless_credential', 'Login used by headless sessions', true, 'no headless session started since the manager started'),
-            $source === 'none' => self::check('claude_headless_credential', 'Login used by headless sessions', true, 'claude.ai login (no API key)'),
+            $source === 'none' => self::login_check($reply['login_expires_at'] ?? null, $now),
             $source === '(not reported)' => self::check('claude_headless_credential', 'Login used by headless sessions', false, 'Claude did not report apiKeySource, so the login cannot be verified'),
             default => self::check('claude_headless_credential', 'Login used by headless sessions', false, "Claude reports apiKeySource='" . (is_string($source) ? $source : 'unknown') . "' (an API key would be billed instead of the subscription)"),
         };
@@ -133,6 +136,35 @@ class ClaudeHeadlessHealthService
         }
 
         return $checks;
+    }
+
+    /**
+     * The claude.ai login check: green with the end date, red when it ends within LOGIN_WARN_DAYS or has ended.
+     *
+     * @return array{key:string, section:string, label:string, ok:bool, detail:?string}
+     */
+    private static function login_check(mixed $expiresAt, int $now): array
+    {
+        $label = 'Login used by headless sessions';
+        $ends = is_string($expiresAt) ? strtotime($expiresAt) : false;
+
+        if ($ends === false) {
+            return self::check('claude_headless_credential', $label, true, 'claude.ai login (no API key)');
+        }
+
+        $date = gmdate('Y-m-d', $ends);
+
+        if ($ends <= $now) {
+            return self::check('claude_headless_credential', $label, false, "claude.ai login ended {$date}; run `claude auth login`");
+        }
+
+        $days = intdiv($ends - $now, 86400);
+
+        if ($days < self::LOGIN_WARN_DAYS) {
+            return self::check('claude_headless_credential', $label, false, "claude.ai login ends {$date} (in {$days} days); run `claude auth login` before then");
+        }
+
+        return self::check('claude_headless_credential', $label, true, "claude.ai login (no API key), ends {$date}");
     }
 
     /** Why the manager's newest reading did or did not reach the stored quota, from the fields on_rate_limit() reports. */

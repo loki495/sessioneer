@@ -240,7 +240,8 @@ Code 2.1.278):
 - A command sent while a turn is running is queued like any message.
 
 The health box's "Claude Code headless" section reports the manager, the credential
-in use, the CLI version against the one this handling was verified on, capacity and
+in use (with the date the claude.ai login ends, taken from the `credential_expires_at` field of the
+newest headless `result`; red within 10 days of it or after it, until `claude auth login`), the CLI version against the one this handling was verified on, capacity and
 whether the quota footer is current. When it is stale, the detail names the account of the
 manager's last reading and whether that reading was stored; a reading with no usable
 `five_hour`/`seven_day` window is not stored and is logged by the manager.
