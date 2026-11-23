@@ -118,6 +118,18 @@ assert_equal(true, $c['claude_headless_credential']['ok'], 'no session started y
 $c = run(reply(['last_api_key_source' => 12]));
 assert_contains("apiKeySource='unknown'", (string)$c['claude_headless_credential']['detail'], 'a garbage credential value is reported, not crashed on');
 
+$c = run(reply(['login_expires_at' => gmdate('c', $now + 30 * 86400)]));
+assert_equal(true, $c['claude_headless_credential']['ok'], 'a login ending in 30 days is green');
+assert_contains('ends ' . gmdate('Y-m-d', $now + 30 * 86400), (string)$c['claude_headless_credential']['detail'], 'and shows the end date');
+$c = run(reply(['login_expires_at' => gmdate('c', $now + 3 * 86400)]));
+assert_equal(false, $c['claude_headless_credential']['ok'], 'a login ending within ' . H::LOGIN_WARN_DAYS . ' days is red');
+assert_contains('claude auth login', (string)$c['claude_headless_credential']['detail'], 'and names the fix');
+$c = run(reply(['login_expires_at' => gmdate('c', $now - 60)]));
+assert_equal(false, $c['claude_headless_credential']['ok'], 'an ended login is red');
+assert_contains('ended', (string)$c['claude_headless_credential']['detail'], 'and says it ended');
+$c = run(reply(['login_expires_at' => 'garbage']));
+assert_equal(true, $c['claude_headless_credential']['ok'], 'an unparseable end date is ignored, not crashed on');
+
 echo "Version\n";
 $c = run(reply(['claude_version' => '2.1.100']));
 assert_equal(false, $c['claude_headless_version']['ok'], 'a version older than the tested one is red');

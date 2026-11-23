@@ -95,6 +95,9 @@ final class ClaudeHeadlessManager
 
     private ?string $lastClaudeVersion = null;
 
+    /** ISO 8601 end of the stored claude.ai login, from the newest `result` event that carried it (2.1.318+). */
+    private ?string $lastLoginExpiresAt = null;
+
     /** @var array<string, mixed>|null */
     private ?array $lastRateLimit = null;
 
@@ -791,6 +794,7 @@ final class ClaudeHeadlessManager
             'spawn_blocked' => $this->spawnBlockedReason,
             'last_api_key_source' => $this->lastApiKeySource,
             'claude_version' => $this->lastClaudeVersion,
+            'login_expires_at' => $this->lastLoginExpiresAt,
             'rate_limit' => $this->lastRateLimit,
         ];
     }
@@ -1398,6 +1402,10 @@ final class ClaudeHeadlessManager
         // requests, below).
         $child->openTurns = 0;
         $child->stallInterruptSentAt = null;
+
+        if (is_string($event['credential_expires_at'] ?? null) && $event['credential_expires_at'] !== '') {
+            $this->lastLoginExpiresAt = $event['credential_expires_at'];
+        }
 
         // A request the CLI is still waiting on must stay answerable, or the
         // subagent that asked hangs forever with nothing on screen (a `result`
