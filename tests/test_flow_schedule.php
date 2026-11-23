@@ -325,6 +325,47 @@ try {
     $sameIdOther = $act(['handoff_id' => '1765', 'profile' => 'work', 'expected_reset_at' => $resetWork] + $base);
     assert_equal(false, $sameIdOther['existing'] ?? null, 'a handoff and a plan with the same digits are different contexts');
 
+    echo "expected_reset_at may differ from the stored reset by up to 120 s (rolling windows)\n";
+    // The Contract tolerates +-120 s (inclusive) because codex and opencode report a reset that moves one second per
+    // second; the job time always comes from the stored value, never from the sent one. The older stale case
+    // (-600 s, and the 7200 s one) is still stale, so no earlier assertion changed.
+    foreach ([1, 60, 120, -1, -60, -120] as $i => $off) {
+        $rig->reset();
+        $r = $act(['expected_reset_at' => $resetPersonal + $off, 'handoff_id' => (string)(80 + $i)] + $base);
+        assert_equal(true, $r['ok'] ?? null, "offset {$off} s: accepted (" . ($r['message'] ?? '') . ')');
+        assert_equal($resetPersonal + 60, $r['at'] ?? null, "offset {$off} s: the job time comes from the stored reset + 60, not the sent value");
+        $expectedStamp = (new DateTimeImmutable('@' . ($resetPersonal + 60)))->setTimezone(new DateTimeZone(SessionWakeService::system_timezone()))->format('YmdHi');
+        assert_equal('-t ' . $expectedStamp, trim((string)@file_get_contents($rig->dir . '/at-args')), "offset {$off} s: at gets the stored reset + 60");
+    }
+    foreach ([121, -121, 600] as $i => $off) {
+        $rig->reset();
+        $r = $act(['expected_reset_at' => $resetPersonal + $off, 'handoff_id' => (string)(90 + $i)] + $base);
+        assert_equal(false, $r['ok'] ?? null, "offset {$off} s: stale");
+        assert_true(preg_match('/stale|changed|differ/', $msg($r)) === 1, "offset {$off} s: the message says stale, got '" . ($r['message'] ?? '') . "'");
+        assert_equal(0, $atCreates(), "offset {$off} s: no job");
+    }
+
+    echo "A drifting store: the sent value is a few seconds old\n";
+    $rig->reset();
+    $seed(null, $resetPersonal + 3);
+    $r = $act(['expected_reset_at' => $resetPersonal, 'handoff_id' => '95'] + $base);
+    assert_equal([true, $resetPersonal + 120], [$r['ok'] ?? null, $r['at'] ?? null], 'stored moved +3 s since the read: accepted, at the next whole minute at or after stored + 60');
+    $seed(null, $resetPersonal);
+
+    echo "Idempotency holds when the sent value differs within tolerance\n";
+    $rig->reset();
+    $first = $act(['handoff_id' => '99'] + $base);
+    assert_equal([true, false], [$first['ok'] ?? null, $first['existing'] ?? null], 'first request queues');
+    foreach ([45, -100, 120] as $off) {
+        $again = $act(['expected_reset_at' => $resetPersonal + $off, 'handoff_id' => '99'] + $base);
+        assert_equal([true, true, $first['job'] ?? null], [$again['ok'] ?? null, $again['existing'] ?? null, $again['job'] ?? null], "a repeat sent {$off} s off is the existing job");
+    }
+    assert_equal(1, $atCreates(), 'nothing more was queued');
+    $stale = $act(['expected_reset_at' => $resetPersonal + 121, 'handoff_id' => '99'] + $base);
+    assert_equal(false, $stale['ok'] ?? null, 'a repeat beyond tolerance is stale, not silently the existing job');
+    assert_equal(1, $atCreates(), 'still one job');
+    $rig->reset();
+
     echo "In-session callers, workdir, and a job that already fired\n";
     $rig->reset();
     $r = $act(['from' => 'claude-headless-w2'] + $ctx + $base);

@@ -19,6 +19,8 @@ use HostAgent\Stores\SidecarStore;
 final class ResetSchedule
 {
     private const DELAY_SECONDS = 60;
+    // Rolling-window agents (codex, opencode) report a reset that moves a second per second, so equality never holds.
+    private const RESET_TOLERANCE_SECONDS = 120;
     private const WAKE_PROMPT = 'The quota window has reset. Continue where you left off.';
 
     /**
@@ -80,8 +82,8 @@ final class ResetSchedule
             return self::refuse('expected_reset_at is required: the reset time you were shown, as a unix time');
         }
 
-        if ($request['expected_reset_at'] !== $stored['reset_at']) {
-            return self::refuse("The reset time for {$agent}/{$profile} changed since it was shown (stale expected_reset_at); read it again");
+        if (abs($request['expected_reset_at'] - $stored['reset_at']) > self::RESET_TOLERANCE_SECONDS) {
+            return self::refuse("The reset time for {$agent}/{$profile} changed by more than " . self::RESET_TOLERANCE_SECONDS . " seconds since it was shown (stale expected_reset_at); read it again");
         }
 
         $context = self::context($request);
