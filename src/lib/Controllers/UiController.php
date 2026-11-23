@@ -48,7 +48,7 @@ class UiController extends Controller
             'agentMessage' => (string)($listResult['message'] ?? 'Unknown error'),
             'csrfToken' => $csrfToken,
             'counts' => UiView::counts($sessions),
-            'sessionsHtml' => UiView::sessions_html($sessions, $csrfToken),
+            'sessionsHtml' => UiView::sessions_html($sessions, $csrfToken, $this->flow_resets($sessions)),
             'bareHtml' => UiView::bare_html($bare, $csrfToken),
             'hooksMissing' => $agentReachable && (bool)($hookResult['ok'] ?? false) && !($hookResult['installed'] ?? false),
             'healthChecks' => (bool)($healthResult['ok'] ?? false) ? ($healthResult['checks'] ?? []) : [],
@@ -78,6 +78,9 @@ class UiController extends Controller
 
         $csrfToken = AuthService::csrf_token();
         AuthService::close_app_session();
+        // The page embeds the flow band and its reset times; PHP's session default (private, max-age=60) would let a
+        // browser show a minute-old band and a stale reset time for a button that then posts.
+        header('Cache-Control: no-store');
 
         $detail = AgentClient::agent_call(['action' => 'session_detail', 'session' => $sessionName]);
         $jumpLine = isset($_GET['jump_line']) ? (int)$_GET['jump_line'] : 0;
@@ -87,6 +90,7 @@ class UiController extends Controller
             'csrfToken' => $csrfToken,
             'found' => (bool)($detail['ok'] ?? false),
             'detail' => $detail,
+            'resets' => $this->flow_resets([$detail]),
             'jumpLine' => $jumpLine > 0 ? $jumpLine : null,
         ]);
     }
@@ -174,7 +178,7 @@ class UiController extends Controller
         echo json_encode([
             'ok' => true,
             'counts' => UiView::counts($sessions),
-            'sessions_html' => UiView::sessions_html($sessions, $csrfToken),
+            'sessions_html' => UiView::sessions_html($sessions, $csrfToken, $this->flow_resets($sessions)),
             'bare_html' => UiView::bare_html($listResult['bare'] ?? [], $csrfToken),
         ]);
     }
@@ -283,6 +287,7 @@ class UiController extends Controller
             'flow_rotate_request' => $this->flow_rotate_request(),
             'flow_offer_dismiss' => $this->flow_offer_dismiss(),
             'flow_judge' => $this->flow_judge(),
+            'flow_schedule' => $this->flow_schedule(),
             'kill' => $this->agent_plain(['action' => 'launch_kill', 'target' => (string)($_POST['session'] ?? ''), 'force' => true]),
             'take_over' => $this->take_over(),
             'take_over_confirm' => trim((string)($_POST['agent_session_id'] ?? '')) === ''
@@ -383,6 +388,54 @@ class UiController extends Controller
         ]);
 
         return ['ok' => (bool)($result['ok'] ?? false), 'message' => (string)($result['message'] ?? '')];
+    }
+
+    /**
+     * Each profile's stored quota reset time, asked of the host only when a rendered row draws a PARK or
+     * WAIT band. A host that cannot answer leaves the band without reset buttons.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<string, mixed>
+     */
+    private function flow_resets(array $rows): array
+    {
+        if (!UiView::wants_resets($rows)) {
+            return [];
+        }
+
+        $reply = AgentClient::agent_call(['action' => 'flow_resets']);
+
+        return ($reply['ok'] ?? false) === true ? $reply : [];
+    }
+
+    /**
+     * The tap on a Wait for reset button: the one place the UI asks for a job, and `approved` is set here,
+     * never taken from the page. The host re-checks the reset time, so a stale button is refused.
+     *
+     * @return array<string, mixed>
+     */
+    private function flow_schedule(): array
+    {
+        $reset = $_POST['expected_reset_at'] ?? null;
+        $params = [
+            'action' => 'flow_schedule',
+            'approved' => true,
+            'agent' => (string)($_POST['agent'] ?? ''),
+            'profile' => (string)($_POST['profile'] ?? ''),
+            'expected_reset_at' => is_string($reset) && preg_match('/^[0-9]+$/D', $reset) === 1 ? (int)$reset : null,
+        ];
+
+        foreach (['session', 'handoff_id', 'plan_id', 'workdir'] as $key) {
+            if (is_string($_POST[$key] ?? null) && $_POST[$key] !== '') {
+                $params[$key] = $_POST[$key];
+            }
+        }
+
+        $result = AgentClient::agent_call($params);
+        $ok = (bool)($result['ok'] ?? false);
+
+        return ['ok' => $ok, 'message' => (string)($result['message'] ?? ($ok ? 'Scheduled' : 'Unknown error'))]
+            + ($ok ? ['job' => $result['job'] ?? null, 'at' => $result['at'] ?? null, 'existing' => (bool)($result['existing'] ?? false)] : []);
     }
 
     /**

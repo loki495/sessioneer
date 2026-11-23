@@ -32,22 +32,10 @@ final class SessionWakeService
     {
         $now ??= time();
         $prompt = trim($prompt);
+        $refusal = self::refuse_prompt_or_time($prompt, $when, $now);
 
-        if ($prompt === '') {
-            return ['ok' => false, 'message' => 'Write the prompt to send'];
-        }
-
-        if (mb_strlen($prompt) > self::MAX_PROMPT_CHARS) {
-            return ['ok' => false, 'message' => 'The prompt is longer than ' . self::MAX_PROMPT_CHARS . ' characters'];
-        }
-
-        // `at` has one-minute resolution, so any later minute is schedulable, seconds included.
-        if (intdiv($when, 60) <= intdiv($now, 60)) {
-            return ['ok' => false, 'message' => 'Pick a time in a later minute than now'];
-        }
-
-        if ($when > $now + self::MAX_AHEAD_SECONDS) {
-            return ['ok' => false, 'message' => 'Pick a time within the next 30 days'];
+        if ($refusal !== null) {
+            return ['ok' => false, 'message' => $refusal];
         }
 
         $sidecar = SidecarStore::read_sidecar($name);
@@ -65,6 +53,50 @@ final class SessionWakeService
             $prompt
         );
 
+        return self::create_job($when, $script);
+    }
+
+    /**
+     * A one-shot fresh session of `$agent` (under `$profile` when given) that starts with `$prompt`, for a
+     * continuation that has no live conversation to wake. The job is the `--agent A [--workdir W] [--profile P]
+     * PROMPT` command start_script() emits; list() and cancel() recognise it by that shape.
+     *
+     * @return array{ok:bool, message:string, job?:int, at?:int}
+     */
+    public static function schedule_start(string $agent, string $profile, string $workdir, string $prompt, int $when, ?int $now = null): array
+    {
+        $now ??= time();
+        $prompt = trim($prompt);
+        $refusal = self::refuse_prompt_or_time($prompt, $when, $now);
+
+        if ($refusal !== null) {
+            return ['ok' => false, 'message' => $refusal];
+        }
+
+        return self::create_job($when, self::start_script($agent, $workdir, $profile, $prompt));
+    }
+
+    private static function refuse_prompt_or_time(string $prompt, int $when, int $now): ?string
+    {
+        if ($prompt === '') {
+            return 'Write the prompt to send';
+        }
+
+        if (mb_strlen($prompt) > self::MAX_PROMPT_CHARS) {
+            return 'The prompt is longer than ' . self::MAX_PROMPT_CHARS . ' characters';
+        }
+
+        // `at` has one-minute resolution, so any later minute is schedulable, seconds included.
+        if (intdiv($when, 60) <= intdiv($now, 60)) {
+            return 'Pick a time in a later minute than now';
+        }
+
+        return $when > $now + self::MAX_AHEAD_SECONDS ? 'Pick a time within the next 30 days' : null;
+    }
+
+    /** @return array{ok:bool, message:string, job?:int, at?:int} */
+    private static function create_job(int $when, string $script): array
+    {
         $local = (new \DateTimeImmutable('@' . $when))->setTimezone(new \DateTimeZone(self::system_timezone()));
         $result = self::at(['-t', $local->format('YmdHi')], $script . "\n");
         $output = $result['stdout'] . "\n" . $result['stderr'];
@@ -81,6 +113,68 @@ final class SessionWakeService
             'at' => $when,
             'message' => 'Wake-up scheduled for ' . $local->format('Y-m-d H:i T') . ' (at job ' . $m[1] . ')',
         ];
+    }
+
+    /**
+     * Whether `at` can take a job: `at -l` answers and the check command (config SESSIONEER_ATD_CHECK_CMD,
+     * default `systemctl is-active --quiet atd`) exits 0. `at -l` succeeds without the atd daemon running, so
+     * it alone would let a job sit in the queue forever.
+     *
+     * @return array{ok:bool, message:string}
+     */
+    public static function atd_health(): array
+    {
+        $queue = self::at(['-l']);
+
+        if ($queue['exit'] !== 0) {
+            return ['ok' => false, 'message' => 'The at queue (atq) cannot be read: ' . ($queue['exit'] === -1 ? 'the at command is not available' : self::first_line($queue['stderr']))];
+        }
+
+        $command = Config::sessioneer_config('SESSIONEER_ATD_CHECK_CMD', 'systemctl is-active --quiet atd');
+        set_error_handler(static fn (): bool => true);
+
+        try {
+            $check = ProcessRunner::run_process(['sh', '-c', $command]);
+        } finally {
+            restore_error_handler();
+        }
+
+        if ($check['exit'] !== 0) {
+            return ['ok' => false, 'message' => "The atd service is not running (check command: {$command})"];
+        }
+
+        return ['ok' => true, 'message' => 'atd is running'];
+    }
+
+    /**
+     * The pending (not running) job at exactly `$at` whose parsed fields equal every key of `$expect`, or null.
+     * Only this checkout's wake and fresh-start jobs can match.
+     *
+     * @param array<string, string|null> $expect keys of a parsed job: agent, agent_session_id, workdir, profile, prompt
+     * @return array{ok:bool, message?:string, job?:int|null}
+     */
+    public static function find_pending(array $expect, int $at): array
+    {
+        $queue = self::read_queue();
+
+        if (!isset($queue['rows'])) {
+            return $queue;
+        }
+
+        foreach ($queue['rows'] as $row) {
+            if ($row['at'] !== $at || $row['queue'] === '=') {
+                continue;
+            }
+
+            $body = self::at(['-c', (string)$row['job']]);
+            $parsed = $body['exit'] === 0 ? self::parse_any($body['stdout']) : null;
+
+            if ($parsed !== null && array_intersect_key($parsed, $expect) === $expect) {
+                return ['ok' => true, 'job' => $row['job']];
+            }
+        }
+
+        return ['ok' => true, 'job' => null];
     }
 
     /**
@@ -132,7 +226,7 @@ final class SessionWakeService
 
         foreach (array_slice($rows, 0, self::MAX_INSPECTED) as $row) {
             $body = self::at(['-c', (string)$row['job']]);
-            $parsed = $body['exit'] === 0 ? self::parse_job_script($body['stdout'], self::bin_path()) : null;
+            $parsed = $body['exit'] === 0 ? self::parse_any($body['stdout']) : null;
 
             if ($parsed === null || ($agentSessionId !== null && $parsed['agent_session_id'] !== $agentSessionId)) {
                 continue;
@@ -212,6 +306,82 @@ final class SessionWakeService
      */
     public static function parse_job_script(string $atC, string $binPath): ?array
     {
+        $rest = self::job_arguments($atC, $binPath);
+
+        if ($rest === null || count($rest) < 5 || $rest[0] !== '--agent' || $rest[2] !== '--resume'
+            || preg_match('/^[a-z][a-z0-9_-]*$/', $rest[1]) !== 1 || $rest[3] === '') {
+            return null;
+        }
+
+        $parsed = ['agent' => $rest[1], 'agent_session_id' => $rest[3], 'workdir' => null, 'profile' => null];
+        $rest = self::take_options(array_slice($rest, 4), $parsed);
+
+        return count($rest) === 1 ? $parsed + ['prompt' => $rest[0]] : null;
+    }
+
+    /**
+     * The same strict reading for a job start_script() emitted: a fresh session, so `agent_session_id` is ''.
+     * Its prompt must be one of the continuation prompts PromptBuilder writes, which keeps a hand-made
+     * `sessioneer --agent X "..."` job from being listed as, or cancelled like, a quota-reset start.
+     *
+     * @return array{agent:string, agent_session_id:string, workdir:?string, profile:?string, prompt:string}|null
+     */
+    public static function parse_start_script(string $atC, string $binPath): ?array
+    {
+        $rest = self::job_arguments($atC, $binPath);
+
+        if ($rest === null || count($rest) < 3 || $rest[0] !== '--agent' || preg_match('/^[a-z][a-z0-9_-]*$/', $rest[1]) !== 1) {
+            return null;
+        }
+
+        $parsed = ['agent' => $rest[1], 'agent_session_id' => '', 'workdir' => null, 'profile' => null];
+        $rest = self::take_options(array_slice($rest, 2), $parsed);
+
+        if (count($rest) !== 1 || preg_match('/^Continue (?:from the handoff in Dibs task|Dibs plan) [0-9]+[ .]/', $rest[0]) !== 1) {
+            return null;
+        }
+
+        return $parsed + ['prompt' => $rest[0]];
+    }
+
+    /**
+     * A wake job or a fresh-start job of this checkout, whichever the body is.
+     *
+     * @return array{agent:string, agent_session_id:string, workdir:?string, profile:?string, prompt:string}|null
+     */
+    private static function parse_any(string $atC): ?array
+    {
+        return self::parse_job_script($atC, self::bin_path()) ?? self::parse_start_script($atC, self::bin_path());
+    }
+
+    /**
+     * Consumes the optional `--workdir X` and `--profile Y` pairs ahead of the prompt.
+     *
+     * @param list<string> $rest
+     * @param array<string, mixed> $parsed
+     * @return list<string>
+     */
+    private static function take_options(array $rest, array &$parsed): array
+    {
+        // A pair counts only with the prompt behind it, so a prompt that is itself `--workdir` survives.
+        foreach (['workdir', 'profile'] as $key) {
+            if (count($rest) >= 3 && $rest[0] === '--' . $key) {
+                $parsed[$key] = $rest[1];
+                $rest = array_slice($rest, 2);
+            }
+        }
+
+        return $rest;
+    }
+
+    /**
+     * The words after this checkout's `bin/sessioneer` in the `env -i ... >> LOG 2>&1` command of an `at -c`
+     * body, or null when the command is anything else.
+     *
+     * @return list<string>|null
+     */
+    private static function job_arguments(string $atC, string $binPath): ?array
+    {
         $start = preg_match('/^env -i \'/m', $atC, $m, PREG_OFFSET_CAPTURE);
 
         if ($start !== 1 || $binPath === '') {
@@ -257,23 +427,7 @@ final class SessionWakeService
             array_shift($rest);
         }
 
-        if (array_shift($rest) !== $binPath || count($rest) < 5 || $rest[0] !== '--agent' || $rest[2] !== '--resume'
-            || preg_match('/^[a-z][a-z0-9_-]*$/', $rest[1]) !== 1 || $rest[3] === '') {
-            return null;
-        }
-
-        $parsed = ['agent' => $rest[1], 'agent_session_id' => $rest[3], 'workdir' => null, 'profile' => null];
-        $rest = array_slice($rest, 4);
-
-        // A pair counts only with the prompt behind it, so a prompt that is itself `--workdir` survives.
-        foreach (['workdir', 'profile'] as $key) {
-            if (count($rest) >= 3 && $rest[0] === '--' . $key) {
-                $parsed[$key] = $rest[1];
-                $rest = array_slice($rest, 2);
-            }
-        }
-
-        return count($rest) === 1 ? $parsed + ['prompt' => $rest[0]] : null;
+        return array_shift($rest) === $binPath ? $rest : null;
     }
 
     /**
@@ -296,7 +450,7 @@ final class SessionWakeService
             $pending = [];
 
             foreach (self::list(null, false, $now)['wakes'] ?? [] as $wake) {
-                if ($wake['state'] !== 'running') {
+                if ($wake['state'] !== 'running' && $wake['agent_session_id'] !== '') {
                     $pending[] = ['id' => $wake['agent_session_id'], 'at' => $wake['at']];
                 }
             }
@@ -393,7 +547,7 @@ final class SessionWakeService
             return $gone;
         }
 
-        $parsed = self::parse_job_script($body['stdout'], self::bin_path());
+        $parsed = self::parse_any($body['stdout']);
 
         if ($parsed === null) {
             return ['ok' => false, 'message' => "Job {$job} is not a Sessioneer wake-up"];
@@ -430,8 +584,9 @@ final class SessionWakeService
             $preview = mb_substr($preview, 0, self::PREVIEW_CHARS) . '…';
         }
 
-        $name = SidecarStore::find_by_agent_session_id($parsed['agent_session_id']);
-        $title = SessionService::session_title($parsed['agent_session_id'], null, $parsed['workdir'], $name ?? '', $parsed['profile']);
+        $isStart = $parsed['agent_session_id'] === '';
+        $name = $isStart ? null : SidecarStore::find_by_agent_session_id($parsed['agent_session_id']);
+        $title = $isStart ? '' : SessionService::session_title($parsed['agent_session_id'], null, $parsed['workdir'], $name ?? '', $parsed['profile']);
 
         $state = $row['queue'] === '=' ? 'running' : ($row['at'] < $now - self::OVERDUE_AFTER_SECONDS ? 'overdue' : 'scheduled');
 
@@ -448,7 +603,7 @@ final class SessionWakeService
             'title' => $title !== '' ? $title : null,
             'prompt_preview' => $preview,
             'prompt_length' => mb_strlen($prompt),
-        ] + ($includePrompt ? ['prompt' => $prompt] : []);
+        ] + ($isStart ? ['kind' => 'start'] : []) + ($includePrompt ? ['prompt' => $prompt] : []);
     }
 
     /** The decoded word at `$pos` (which moves past it), or null when none starts there or it is not UTF-8. */
@@ -480,6 +635,18 @@ final class SessionWakeService
     /** The shell command the job runs. */
     public static function script(string $agent, string $agentSessionId, string $workdir, string $profile, string $prompt): string
     {
+        return self::command(['--agent', $agent, '--resume', $agentSessionId], $agent, $workdir, $profile, $prompt);
+    }
+
+    /** The shell command of a fresh-start job: the same clean environment, no `--resume`. */
+    public static function start_script(string $agent, string $workdir, string $profile, string $prompt): string
+    {
+        return self::command(['--agent', $agent], $agent, $workdir, $profile, $prompt);
+    }
+
+    /** @param list<string> $args */
+    private static function command(array $args, string $agent, string $workdir, string $profile, string $prompt): string
+    {
         $home = (string)getenv('HOME');
         $env = ['HOME=' . $home, 'PATH=' . $home . '/.local/bin:/usr/local/bin:/usr/bin'];
         $socket = getenv('SESSIONEER_AGENT_SOCKET');
@@ -487,8 +654,6 @@ final class SessionWakeService
         if ($socket !== false && $socket !== '') {
             $env[] = 'SESSIONEER_AGENT_SOCKET=' . $socket;
         }
-
-        $args = ['--agent', $agent, '--resume', $agentSessionId];
 
         if ($workdir !== '') {
             array_push($args, '--workdir', $workdir);

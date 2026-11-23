@@ -558,6 +558,12 @@ function sessioneer_dispatch_action(array $request): array
         case 'flow_judge':
             return \HostAgent\SessionFlow\FlowService::judge($request, \HostAgent\SessionFlow\FlowService::live());
 
+        case 'flow_resets':
+            return \HostAgent\SessionFlow\ResetSchedule::resets();
+
+        case 'flow_schedule':
+            return \HostAgent\SessionFlow\ResetSchedule::schedule($request);
+
         case 'flow_offer_dismiss':
             return \HostAgent\SessionFlow\FlowService::offer_dismiss($request, \HostAgent\SessionFlow\FlowService::live());
 

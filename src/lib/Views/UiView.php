@@ -58,8 +58,9 @@ class UiView extends View
         $detail = is_array($data['detail'] ?? null) ? $data['detail'] : [];
         $row = $detail + ['name' => (string)($data['sessionName'] ?? '')];
         $csrfToken = (string)($data['csrfToken'] ?? '');
-        $data['flowSessionHtml'] = empty($data['archived']) ? self::flow_band_html($row, $csrfToken, 'session') : '';
-        $data['flowPopupHtml'] = empty($data['archived']) ? self::flow_band_html($row, $csrfToken, 'popup') : '';
+        $resets = is_array($data['resets'] ?? null) ? $data['resets'] : [];
+        $data['flowSessionHtml'] = empty($data['archived']) ? self::flow_band_html($row, $csrfToken, 'session', $resets) : '';
+        $data['flowPopupHtml'] = empty($data['archived']) ? self::flow_band_html($row, $csrfToken, 'popup', $resets) : '';
 
         return self::render('ui/session', $data);
     }
@@ -70,8 +71,9 @@ class UiView extends View
      * offer's own decision when the row carries no `flow`, and a GO or UNKNOWN state draws nothing.
      *
      * @param array<string, mixed> $s a session row or detail
+     * @param array<string, mixed> $resets the host's flow_resets reply; its per-profile reset times become Wait for reset buttons
      */
-    public static function flow_band_html(array $s, string $csrfToken, string $where): string
+    public static function flow_band_html(array $s, string $csrfToken, string $where, array $resets = []): string
     {
         $flow = is_array($s['flow'] ?? null) ? $s['flow'] : null;
         $offer = is_array($s['offer'] ?? null) ? $s['offer'] : null;
@@ -87,7 +89,57 @@ class UiView extends View
             'offer' => $offer,
             'row' => $s,
             'csrfToken' => $csrfToken,
+            'resets' => self::reset_choices($resets),
         ]);
+    }
+
+    /**
+     * Whether any row draws a PARK or WAIT band, the only ones that list reset times, so a page with none
+     * never asks the host for them.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     */
+    public static function wants_resets(array $rows): bool
+    {
+        foreach ($rows as $s) {
+            $decision = is_array($s['flow'] ?? null) ? $s['flow'] : (is_array($s['offer']['decision'] ?? null) ? $s['offer']['decision'] : null);
+
+            if (in_array((string)($decision['state'] ?? ''), ['PARK', 'WAIT'], true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Time zone free "in 2 h 5 min", since the web container's clock zone is not the user's. */
+    private static function until(int $at): string
+    {
+        $minutes = max(0, intdiv($at - time(), 60));
+
+        return 'in ' . ($minutes >= 60 ? intdiv($minutes, 60) . ' h ' : '') . $minutes % 60 . ' min';
+    }
+
+    /**
+     * One entry per profile that has a stored reset time.
+     *
+     * @param array<string, mixed> $resets
+     * @return list<array{agent:string, profile:string, label:string, reset_at:int}>
+     */
+    private static function reset_choices(array $resets): array
+    {
+        $choices = [];
+
+        foreach ((array)($resets['agents'] ?? []) as $agent => $entry) {
+            foreach ((array)($entry['profiles'] ?? []) as $profile => $reading) {
+                if (is_int($reading['reset_at'] ?? null)) {
+                    $label = (string)($entry['label'] ?? $agent);
+                    $choices[] = ['agent' => (string)$agent, 'profile' => (string)$profile, 'label' => $label . ' ' . $profile . ', ' . self::until($reading['reset_at']), 'reset_at' => $reading['reset_at']];
+                }
+            }
+        }
+
+        return $choices;
     }
 
     /**
@@ -106,8 +158,11 @@ class UiView extends View
         return $counts;
     }
 
-    /** @param array<int, array<string, mixed>> $sessions */
-    public static function sessions_html(array $sessions, string $csrfToken): string
+    /**
+     * @param array<int, array<string, mixed>> $sessions
+     * @param array<string, mixed> $resets
+     */
+    public static function sessions_html(array $sessions, string $csrfToken, array $resets = []): string
     {
         if ($sessions === []) {
             return self::render('ui/empty', ['title' => 'No sessions yet', 'text' => 'Start one with the + button.']);
@@ -116,7 +171,7 @@ class UiView extends View
         $html = '';
 
         foreach ($sessions as $s) {
-            $html .= self::card_html($s, $csrfToken);
+            $html .= self::card_html($s, $csrfToken, $resets);
         }
 
         return $html;
@@ -159,8 +214,8 @@ class UiView extends View
                 'atLocal' => (string)($w['at_local'] ?? ''),
                 'state' => (string)$w['state'],
                 'compact' => $compact,
-                'sessionHref' => $session !== null ? '/session?session=' . urlencode($session) : '/archived-session?agent_session_id=' . urlencode($conversation),
-                'sessionLabel' => $session ?? ('…' . substr($conversation, -8)),
+                'sessionHref' => $conversation === '' ? null : ($session !== null ? '/session?session=' . urlencode($session) : '/archived-session?agent_session_id=' . urlencode($conversation)),
+                'sessionLabel' => $conversation === '' ? 'New session' : ($session ?? ('…' . substr($conversation, -8))),
                 'title' => isset($w['title']) && $w['title'] !== '' ? (string)$w['title'] : null,
                 'preview' => (string)($w['prompt_preview'] ?? ''),
             ]);
@@ -195,8 +250,11 @@ class UiView extends View
         return $html;
     }
 
-    /** @param array<string, mixed> $s */
-    public static function card_html(array $s, string $csrfToken): string
+    /**
+     * @param array<string, mixed> $s
+     * @param array<string, mixed> $resets
+     */
+    public static function card_html(array $s, string $csrfToken, array $resets = []): string
     {
         $name = (string)$s['name'];
         $title = (string)($s['title'] ?? $name);
@@ -229,7 +287,7 @@ class UiView extends View
             'promptIsFolderTrust' => !empty($s['prompt_is_folder_trust']),
             'promptHasQuestions' => !empty($s['prompt_questions']),
             'csrfToken' => $csrfToken,
-            'flowHtml' => self::flow_band_html($s, $csrfToken, 'card'),
+            'flowHtml' => self::flow_band_html($s, $csrfToken, 'card', $resets),
         ]);
     }
 

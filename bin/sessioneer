@@ -48,6 +48,8 @@ function usage(): string
       Peer sessions:     sessioneer --peers [--json]
       Spawned sessions:  sessioneer --spawned [--json]  |  sessioneer --reap [--json]
       Usage stats:       sessioneer --usage
+      Quota resets:      sessioneer --resets [--json]
+      Wake at a reset:   sessioneer --schedule-reset AGENT[:PROFILE] --approve (--wake TARGET | --handoff ID | --plan ID) [--workdir DIR] [--json]
       Context state:     sessioneer --next [TARGET | --all] [--intent step-end|wait|done] [--handoff ID | --plan ID] [--post] [--json]
       Rotate to fresh:   sessioneer --rotate [TARGET] (--handoff ID | --plan ID | --prompt TEXT) [--dry-run] [--json]
       Offer a rotation:  sessioneer --offer (--handoff ID | --plan ID | TEXT) | --offer --clear
@@ -140,6 +142,18 @@ function usage(): string
       --spawned         list the sessions the calling session launched (direct children only)
       --reap            archive the calling session's own spawned sessions that are idle and
                         hold no Dibs claim; never forced, one result line per child
+      --resets          list each agent profile's stored quota reset time (unknown when none).
+                        Read-only.
+      --schedule-reset AGENT[:PROFILE]
+                        with --approve, queue one `at` job one minute after that profile's
+                        stored reset time and print its job id and time. Exactly one of
+                        --wake TARGET (send a wake prompt to that session or conversation),
+                        --handoff ID or --plan ID (start a fresh session of that agent and
+                        profile from the Dibs handoff or plan, in --workdir DIR when given).
+                        PROFILE may be omitted for an agent with a single profile. Repeating
+                        it returns the pending job. Refused when atd is not running. List it
+                        with --wake-list, cancel it with --wake-cancel JOB.
+      --approve         with --schedule-reset: the explicit approval; without it nothing is queued
       --peers           list the other live sessions in this session's git
                         repository: name, status, branch, directory
       --usage           print the last known usage (quota) stats as JSON: one
@@ -298,7 +312,7 @@ function emit_envelope(array $envelope): void
     echo json_encode($envelope, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
 }
 
-$longOptions = ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'wake:', 'wake-list', 'wake-cancel:', 'at:', 'bare', 'take-over:', 'as-user', 'set-name:', 'session:', 'next', 'rotate', 'offer', 'all', 'intent:', 'post', 'handoff:', 'plan:', 'prompt:', 'dry-run', 'clear', 'spawned', 'reap'];
+$longOptions = ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'wake:', 'wake-list', 'wake-cancel:', 'at:', 'bare', 'take-over:', 'as-user', 'set-name:', 'session:', 'next', 'rotate', 'offer', 'all', 'intent:', 'post', 'handoff:', 'plan:', 'prompt:', 'dry-run', 'clear', 'spawned', 'reap', 'resets', 'schedule-reset:', 'approve'];
 
 // getopt ignores an unknown option, which would start a launch; these two were removed.
 $argv = $_SERVER['argv'] ?? [];
@@ -405,6 +419,135 @@ $flowId = static function (string $name) use ($opts): ?string {
 
     return $opts[$name];
 };
+
+$quotaCommand = isset($opts['resets']) ? 'resets' : (isset($opts['schedule-reset']) ? 'schedule-reset' : null);
+
+if (isset($opts['approve']) && !isset($opts['schedule-reset'])) {
+    fail('--approve only applies to --schedule-reset');
+}
+
+if ($quotaCommand !== null) {
+    if (isset($opts['resets'], $opts['schedule-reset'])) {
+        fail('--resets and --schedule-reset cannot be combined');
+    }
+
+    $flag = '--' . $quotaCommand;
+    $allowed = $quotaCommand === 'resets' ? ['resets', 'json'] : ['schedule-reset', 'approve', 'wake', 'handoff', 'plan', 'workdir', 'json'];
+
+    foreach (array_keys($opts) as $given) {
+        if (!in_array($given, $allowed, true)) {
+            fail(in_array($given, ['list', 'wake-list', 'wake-cancel', 'rotate', 'next', 'offer', 'usage', 'resets', 'schedule-reset', 'kill', 'send', 'peers', 'show', 'answer', 'interrupt', 'bare', 'take-over', 'session', 'spawned', 'reap'], true)
+                ? "{$flag} cannot be combined with --{$given}"
+                : "--{$given} does not apply to {$flag}");
+        }
+    }
+
+    if ($prompt !== '') {
+        fail("{$flag} takes no prompt");
+    }
+
+    $stored = AgentClient::agent_call(['action' => 'flow_resets']);
+
+    if ($quotaCommand === 'resets') {
+        if (($stored['ok'] ?? false) !== true) {
+            fail((string)($stored['message'] ?? 'resets unavailable'));
+        }
+
+        date_default_timezone_set(\HostAgent\Services\SessionWakeService::system_timezone());
+
+        if (isset($opts['json'])) {
+            echo json_encode($stored, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
+            exit(0);
+        }
+
+        foreach ($stored['agents'] ?? [] as $agentKey => $entry) {
+            foreach ($entry['profiles'] ?? [] as $profileKey => $profileEntry) {
+                $at = $profileEntry['reset_at'] ?? null;
+                echo implode("\t", [(string)$agentKey, (string)$profileKey, is_int($at) ? date('Y-m-d H:i T', $at) : 'unknown']), "\n";
+            }
+        }
+
+        exit(0);
+    }
+
+    $target = (string)$opts['schedule-reset'];
+    $parts = explode(':', $target);
+    $scheduleAgent = $parts[0];
+    $scheduleProfile = $parts[1] ?? null;
+
+    if (count($parts) > 2 || $scheduleAgent === '' || $scheduleProfile === '') {
+        fail('--schedule-reset takes AGENT or AGENT:PROFILE, both non-empty');
+    }
+
+    if (!isset($opts['approve'])) {
+        fail('--schedule-reset queues a job only with --approve; nothing was queued');
+    }
+
+    $wakeTarget = $opt('wake');
+    $handoff = $flowId('handoff');
+    $plan = $flowId('plan');
+
+    if (count(array_filter([$wakeTarget, $handoff, $plan], static fn (?string $v): bool => $v !== null)) !== 1) {
+        fail('--schedule-reset needs exactly one of --wake TARGET, --handoff ID or --plan ID');
+    }
+
+    $scheduleWorkdir = $opt('workdir');
+
+    if ($scheduleWorkdir !== null && $wakeTarget !== null) {
+        fail('--workdir applies only to a fresh start (--handoff or --plan)');
+    }
+
+    if ($scheduleWorkdir !== null && $scheduleWorkdir[0] !== '/') {
+        $real = realpath($scheduleWorkdir);
+        $scheduleWorkdir = $real !== false ? $real : $scheduleWorkdir;
+    }
+
+    if (($stored['ok'] ?? false) !== true) {
+        fail((string)($stored['message'] ?? 'resets unavailable'));
+    }
+
+    $profiles = $stored['agents'][$scheduleAgent]['profiles'] ?? null;
+
+    if (!is_array($profiles)) {
+        fail("Unknown agent {$scheduleAgent}");
+    }
+
+    if ($scheduleProfile === null && count($profiles) === 1) {
+        $scheduleProfile = (string)array_key_first($profiles);
+    }
+
+    if ($scheduleProfile === null) {
+        fail("--schedule-reset {$scheduleAgent} needs a profile: " . implode(', ', array_map('strval', array_keys($profiles))));
+    }
+
+    if (!array_key_exists($scheduleProfile, $profiles)) {
+        fail("Unknown profile {$scheduleProfile} for {$scheduleAgent} (known: " . implode(', ', array_map('strval', array_keys($profiles))) . ')');
+    }
+
+    $resetAt = $profiles[$scheduleProfile]['reset_at'] ?? null;
+
+    if (!is_int($resetAt)) {
+        fail("No quota reset time is known for {$scheduleAgent}:{$scheduleProfile}; nothing was queued");
+    }
+
+    $reply = AgentClient::agent_call(array_filter([
+        'action' => 'flow_schedule', 'agent' => $scheduleAgent, 'profile' => $scheduleProfile, 'approved' => true,
+        'expected_reset_at' => $resetAt, 'session' => $wakeTarget, 'handoff_id' => $handoff, 'plan_id' => $plan, 'workdir' => $scheduleWorkdir,
+    ], static fn ($v): bool => $v !== null));
+
+    if (($reply['ok'] ?? false) !== true) {
+        fail((string)($reply['message'] ?? 'schedule failed'));
+    }
+
+    if (isset($opts['json'])) {
+        echo json_encode($reply, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
+    } else {
+        date_default_timezone_set(\HostAgent\Services\SessionWakeService::system_timezone());
+        echo (!empty($reply['existing']) ? 'Already scheduled: job ' : 'Scheduled job ') . (int)$reply['job'] . ' for ' . date('Y-m-d H:i T', (int)($reply['at'] ?? $resetAt)) . "\n";
+    }
+
+    exit(0);
+}
 
 $flowCommands = array_values(array_filter(['next', 'rotate', 'offer'], static fn (string $c): bool => isset($opts[$c])));
 $flowModifiers = [
