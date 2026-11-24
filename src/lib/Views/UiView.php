@@ -347,6 +347,7 @@ class UiView extends View
             'pendingWake' => is_array($s['pending_wake'] ?? null) ? $s['pending_wake'] : null,
             'parentSessionId' => $s['parent_session_id'] ?? null,
             'starred' => !empty($s['starred']),
+            'quotaOut' => (($s['quota_exhausted'] ?? null) === true),
             'workdir' => $s['workdir'] ?? null,
             'relativeTime' => self::relative_time((int)($s['activity'] ?? time())),
             'contextPct' => isset($s['context_used_percentage']) ? (int)round((float)$s['context_used_percentage']) : null,

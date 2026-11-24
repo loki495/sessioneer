@@ -79,6 +79,9 @@ try {
     }
     assert_true(file_exists($socket), 'fixture bridge is listening');
     putenv("CODEX_BRIDGE_SOCKET={$socket}");
+    // The earlier live() calls wrote the 30 second flow-quota.json cache with no Codex reading; drop it so this
+    // section reads the bridge afresh (the cache has its own tests below).
+    @unlink($dir . '/cache/flow-quota.json');
     $live = FlowService::live();
     $codex = ($live['quota'])('codex/main');
     assert_equal([41, 52, $now + 2000], [$codex['session_pct'] ?? null, $codex['week_pct'] ?? null, $codex['resets_at'] ?? null], 'live Codex quota maps session, week and reset');
@@ -86,6 +89,80 @@ try {
     ($live['quota'])('codex/main');
     $requests = is_file($log) ? file($log, FILE_IGNORE_NEW_LINES) : [];
     assert_equal(1, count($requests ?: []), 'one assembled dependency set reuses its quota snapshot');
+
+    echo "flow quota cache (flow-quota.json, 30 seconds)\n";
+    $cachePath = $dir . '/cache/flow-quota.json';
+    $bridgeRequests = static fn (): int => is_file($log) ? count(file($log, FILE_IGNORE_NEW_LINES) ?: []) : 0;
+    $codexNow = static fn (array $deps): ?array => ($deps['quota'])('codex/main');
+    assert_true(is_file($cachePath), 'cache: the first read wrote flow-quota.json');
+    $written = json_decode((string) file_get_contents($cachePath), true);
+    assert_true(is_array($written) && is_numeric($written['at'] ?? null) && is_array($written['usage'] ?? null), 'cache: the file is complete JSON with `at` and `usage`');
+
+    $before = $bridgeRequests();
+    $again = $codexNow(FlowService::live());
+    assert_equal($before, $bridgeRequests(), 'cache: a second live() set within 30 seconds makes no bridge request');
+    assert_equal([41, 52, $now + 2000], [$again['session_pct'] ?? null, $again['week_pct'] ?? null, $again['resets_at'] ?? null], 'cache: and returns the cached values');
+
+    $stale = $written;
+    $stale['at'] = microtime(true) - 31;
+    file_put_contents($cachePath, json_encode($stale));
+    $before = $bridgeRequests();
+    $fresh = $codexNow(FlowService::live());
+    assert_equal($before + 1, $bridgeRequests(), 'cache: an `at` older than 30 seconds triggers exactly one new read');
+    assert_equal(41, $fresh['session_pct'] ?? null, 'cache: the refreshed reading is returned');
+    $rewritten = json_decode((string) file_get_contents($cachePath), true);
+    assert_true(is_array($rewritten) && microtime(true) - (float) ($rewritten['at'] ?? 0) < 5, 'cache: the refresh rewrote the file with a current `at`');
+    $edge = $written;
+    $edge['at'] = microtime(true) - 25;
+    file_put_contents($cachePath, json_encode($edge));
+    $before = $bridgeRequests();
+    $codexNow(FlowService::live());
+    assert_equal($before, $bridgeRequests(), 'cache: 25 seconds old is still fresh');
+
+    foreach (['half written' => '{"at": 17', 'empty' => '', 'not json' => 'garbage', 'wrong shape' => '{"at":"x","usage":5}', 'no usage' => '{"at":' . microtime(true) . '}'] as $label => $content) {
+        file_put_contents($cachePath, $content);
+        $before = $bridgeRequests();
+        $r = $codexNow(FlowService::live());
+        assert_equal($before + 1, $bridgeRequests(), "cache: a {$label} file is ignored and read again");
+        assert_equal(41, $r['session_pct'] ?? null, "cache: a {$label} file still yields the real reading");
+        assert_true(is_array(json_decode((string) file_get_contents($cachePath), true)), "cache: a {$label} file is replaced by valid JSON");
+    }
+
+    echo "flow quota cache: atomic write\n";
+    clearstatcache();
+    $stale['at'] = microtime(true) - 40;
+    file_put_contents($cachePath, json_encode($stale));
+    clearstatcache();
+    $inodeBefore = fileinode($cachePath);
+    $codexNow(FlowService::live());
+    clearstatcache();
+    assert_true(fileinode($cachePath) !== $inodeBefore, 'cache: the file is replaced by a rename (new inode), never rewritten in place');
+    $leftovers = array_values(array_diff(scandir($dir . '/cache') ?: [], ['.', '..', 'flow-quota.json']));
+    assert_equal([], array_values(array_filter($leftovers, static fn (string $f): bool => str_contains($f, 'flow-quota') || str_ends_with($f, '.tmp'))), 'cache: no temp file is left in the cache directory after a successful write');
+    assert_true(is_array(json_decode((string) file_get_contents($cachePath), true)), 'cache: the written file is complete JSON');
+
+    echo "flow quota cache: failed write\n";
+    if (function_exists('posix_geteuid') && posix_geteuid() === 0) {
+        echo "  SKIP: running as root, a read-only directory cannot be simulated\n";
+    } else {
+        @unlink($cachePath);
+        $errLog = $dir . '/php-error.log';
+        $oldLog = ini_get('error_log');
+        ini_set('error_log', $errLog);
+        chmod($dir . '/cache', 0500);
+        try {
+            $before = $bridgeRequests();
+            $r = $codexNow(FlowService::live());
+            assert_equal(41, $r['session_pct'] ?? null, 'cache: an unwritable cache directory does not fail live(); the reading is still returned');
+            assert_equal($before + 1, $bridgeRequests(), 'cache: and it was read from the bridge');
+        } finally {
+            chmod($dir . '/cache', 0700);
+            ini_set('error_log', $oldLog === false ? '' : (string) $oldLog);
+        }
+        $logged = is_file($errLog) ? (string) file_get_contents($errLog) : '';
+        assert_contains('flow-quota', $logged, 'cache: the failed write is logged through error_log and names the cache file');
+        assert_true(!is_file($cachePath), 'cache: nothing was written');
+    }
 } finally {
     proc_terminate($process);
     proc_close($process);

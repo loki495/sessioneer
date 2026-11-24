@@ -681,7 +681,7 @@
     var rowHtml = function (x, depth, parent) {
       var st = statusOfRow(x);
       var dir = String(x.workdir || '').replace(/\/+$/, '').replace(/^\/home\/[^\/]+(?=\/|$)/, '~');
-      return '<div class="sess-srow' + (x.name === session ? ' is-current' : '') + (x.starred ? ' is-starred' : '') + (depth ? ' sess-srow-child sess-depth-' + depth : '') + '"' + (depth ? ' data-parent="' + esc(parent) + '"' : '') + '>'
+      return '<div class="sess-srow' + (x.name === session ? ' is-current' : '') + (x.starred ? ' is-starred' : '') + (x.quota_exhausted === true ? ' ui-quota-out' : '') + (depth ? ' sess-srow-child sess-depth-' + depth : '') + '"' + (depth ? ' data-parent="' + esc(parent) + '"' : '') + (x.quota_exhausted === true ? ' data-quota="out"' : '') + '>'
         + '<a class="sess-srow-main"' + (x.name === session ? ' data-current' : '') + ' href="/session?session=' + encodeURIComponent(x.name) + '"><i class="ui-dot ui-dot-' + st + '" role="img" aria-label="' + (st === 'blocked' ? 'needs input' : st) + '"></i>'
         + '<span class="sess-srow-text"><b>' + esc(x.title || x.name) + '</b>'
         + '<span class="sess-srow-chips">' + (x.name === session ? '<span class="sess-current-pill">Current</span>' : '') + rowChips(x) + '</span>'
