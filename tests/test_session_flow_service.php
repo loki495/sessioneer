@@ -228,7 +228,9 @@ $rows = [
 ];
 [$deps, $log] = $make(['o-active' => $facts['lowctx'], 'o-fresh' => $facts['lowctx']], $quotas);
 $out = FlowService::overlay($rows, $deps);
-assert_equal(0, count($log->quota), 'overlay: no row passes the cheap pre-check, so zero quota calls');
+// Contract change: every list row now reads its own account's quota (quota_exhausted), so a list with no flow-eligible
+// row still makes one read per distinct account. The intent stays: the cheap pre-check keeps the facts reader idle.
+assert_equal(['claude/work'], $log->quota, 'overlay: no row passes the cheap pre-check, so the facts reader is idle and quota is read once per distinct account');
 assert_equal(0, count($log->facts), 'overlay: and the facts reader is not called either');
 assert_equal(['o-active', 'o-fresh'], array_column($out, 'name'), 'overlay: order and count are kept');
 foreach ($out as $row) {
@@ -238,6 +240,9 @@ foreach ($out as $row) {
 assert_equal(true, $out[0]['starred'] ?? null, 'overlay: fields the overlay does not own are untouched');
 assert_equal($rows[1]['activity'], $out[1]['activity'], 'overlay: activity is untouched');
 assert_equal([], FlowService::overlay([], $deps), 'overlay: an empty list stays empty');
+// The previous case left its one account read in the log; an empty list must add none, so count from a clean log.
+$log->quota = [];
+FlowService::overlay([], $deps);
 assert_equal(0, count($log->quota), 'overlay: an empty list makes zero quota calls');
 
 $rows = [
@@ -259,7 +264,9 @@ assert_equal(true, isset($out[3]['flow']['state']), 'overlay: idle for exactly I
 assert_equal(false, isset($out[4]['flow']), 'overlay: 59m59s idle with context just below CTX_GO_MAX does not pass');
 assert_equal(['o-idle', 'o-bigctx', 'o-busy', 'o-edge', 'o-nearly'], array_column($out, 'name'), 'overlay: order kept');
 assert_equal(['o-idle', 'o-bigctx', 'o-edge'], $log->facts, 'overlay: the facts reader runs only for rows that pass');
-assert_equal(['claude/work', 'claude/work', 'claude/work'], $log->quota, 'overlay: a GO decision reads only the source quota, once per passing row');
+// Contract change: one tint read for the account plus one source read per passing row (three rows) = four reads.
+assert_equal(['claude/work', 'claude/work', 'claude/work', 'claude/work'], $log->quota, 'overlay: a GO decision reads only the source quota: one account tint read plus one per passing row');
+assert_equal([], array_values(array_diff($log->quota, ['claude/work'])), 'overlay: no receiver key is ever read for a GO decision');
 
 echo "overlay: offers\n";
 $reset();

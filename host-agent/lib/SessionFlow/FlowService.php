@@ -24,6 +24,8 @@ use HostAgent\Stores\SidecarStore;
  */
 final class FlowService
 {
+    private const QUOTA_CACHE_TTL = 30;
+
     /**
      * @param array<string, mixed> $request
      * @param array<string, mixed> $deps
@@ -529,8 +531,9 @@ final class FlowService
     }
 
     /**
-     * Adds `offer` (live offer or null) to every row, and `flow` to an idle row that is cold or
-     * has a large stored context. Rows that fail that cheap check cost no facts or quota read.
+     * Adds `offer` (live offer or null) and `quota_exhausted` to every row, and `flow` to an idle row
+     * that is cold or has a large stored context. Facts are read only for those idle rows; the quota
+     * reader runs once per distinct account key (and is cached for QUOTA_CACHE_TTL by live()).
      *
      * @param list<array<string, mixed>> $rows
      * @param array<string, mixed> $deps
@@ -542,6 +545,7 @@ final class FlowService
         $t = $deps['thresholds'];
         $out = [];
         $statuses = isset($deps['stored_statuses']) ? $deps['stored_statuses']() : null;
+        $readings = [];
         foreach ($rows as $row) {
             $name = is_string($row['name'] ?? null) ? $row['name'] : '';
             if ($statuses !== null) {
@@ -563,10 +567,55 @@ final class FlowService
                 }
             }
             unset($row['_flow_status']);
+            $row['quota_exhausted'] = self::quotaExhausted($row, $deps, $readings, $now);
             $out[] = $row;
         }
 
         return $out;
+    }
+
+    /**
+     * Whether the row's own account has a bucket at 100 percent whose reset is unknown or still ahead; null when
+     * its reading is missing, unparsable or the reader throws. One read per key per overlay call.
+     *
+     * @param array<string, mixed> $row
+     * @param array<string, mixed> $deps
+     * @param array<string, mixed> $readings per-call cache by account key
+     */
+    private static function quotaExhausted(array $row, array $deps, array &$readings, int $now): ?bool
+    {
+        $agent = is_string($row['agent'] ?? null) && $row['agent'] !== '' ? $row['agent'] : 'claude';
+        $key = match ($agent) {
+            'claude' => 'claude/' . (is_string($row['profile'] ?? null) && $row['profile'] !== '' ? $row['profile'] : 'personal'),
+            'codex' => 'codex/default',
+            default => $agent,
+        };
+        if (!array_key_exists($key, $readings)) {
+            $reader = $deps['quota'];
+            try {
+                $readings[$key] = $reader($key);
+            } catch (\Throwable $e) {
+                error_log('FlowService quota read failed for ' . $key . ': ' . $e::class . ': ' . $e->getMessage());
+                $readings[$key] = null;
+            }
+        }
+        $r = $readings[$key];
+        $at = static fn (mixed $v): ?int => is_int($v) ? $v : null;
+        if (!is_array($r) || !array_key_exists('session_pct', $r) || !array_key_exists('week_pct', $r)
+            || ($r['session_pct'] !== null && !is_int($r['session_pct'])) || ($r['week_pct'] !== null && !is_int($r['week_pct']))) {
+            return null;
+        }
+        if ($r['session_pct'] === null && $r['week_pct'] === null) {
+            return null;
+        }
+        foreach ([['session_pct', 'session_resets_at'], ['week_pct', 'week_resets_at']] as [$pct, $reset]) {
+            $resetAt = $at($r[$reset] ?? null);
+            if ($r[$pct] !== null && $r[$pct] >= 100 && ($resetAt === null || $resetAt > $now)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -578,7 +627,7 @@ final class FlowService
     {
         $quota = null;
         $usage = static function () use (&$quota): array {
-            return $quota ??= QuotaService::get_quota();
+            return $quota ??= self::cachedUsage();
         };
 
         return [
@@ -876,8 +925,41 @@ final class FlowService
     }
 
     /**
+     * QuotaService::get_quota() costs about half a second here (it reads five stores, one over the
+     * network), and every host request is its own process, so the result is shared through a file
+     * for QUOTA_CACHE_TTL seconds.
+     *
+     * @return array<string, mixed>
+     */
+    private static function cachedUsage(): array
+    {
+        $path = Config::cache_dir() . '/flow-quota.json';
+        $cached = json_decode((string) @file_get_contents($path), true);
+        if (is_array($cached) && is_array($cached['usage'] ?? null) && is_numeric($cached['at'] ?? null) && microtime(true) - (float) $cached['at'] < self::QUOTA_CACHE_TTL) {
+            return $cached['usage'];
+        }
+        $usage = QuotaService::get_quota();
+        $dir = dirname($path);
+        $tmp = $dir . '/flow-quota.json.' . getmypid() . '.tmp';
+        $error = null;
+        if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+            $error = 'cannot create ' . $dir;
+        } elseif (@file_put_contents($tmp, json_encode(['at' => microtime(true), 'usage' => $usage])) === false) {
+            $error = 'cannot write ' . $tmp;
+        } elseif (!@rename($tmp, $path)) {
+            $error = 'cannot rename ' . $tmp . ' to ' . $path;
+        }
+        if ($error !== null) {
+            @unlink($tmp);
+            error_log('FlowService flow-quota cache not written: ' . $error);
+        }
+
+        return $usage;
+    }
+
+    /**
      * @param array<string, mixed> $usage QuotaService::get_quota()
-     * @return array{session_pct: ?int, week_pct: ?int, resets_at: ?int}|null
+     * @return array{session_pct: ?int, week_pct: ?int, resets_at: ?int, session_resets_at: ?int, week_resets_at: ?int}|null
      */
     private static function quotaReading(array $usage, string $key): ?array
     {
@@ -895,6 +977,8 @@ final class FlowService
             'session_pct' => $pct($session),
             'week_pct' => $pct($week),
             'resets_at' => is_int($worst['resets_at'] ?? null) ? $worst['resets_at'] : null,
+            'session_resets_at' => is_int($session['resets_at'] ?? null) ? $session['resets_at'] : null,
+            'week_resets_at' => is_int($week['resets_at'] ?? null) ? $week['resets_at'] : null,
         ];
     }
 

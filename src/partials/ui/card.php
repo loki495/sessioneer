@@ -7,7 +7,7 @@
   }
 ?>
 <?php /* Whole-card tap target: the title link stretches over the card (.ui-link-cover::after); anything interactive sits above it. */ ?>
-<article class="ui-card ui-status-<?= $this->e($status) ?><?= $depth > 0 ? ' ui-card-child ui-depth-' . (int)$depth : '' ?>" data-session="<?= $this->e($name) ?>"<?= $launchedBy !== null ? ' data-parent="' . $this->e($launchedBy) . '"' : '' ?> data-status="<?= $this->e($status) ?>" data-kind="<?= $this->e($kind) ?>" data-starred="<?= $starred ? 1 : 0 ?>">
+<article class="ui-card ui-status-<?= $this->e($status) ?><?= $depth > 0 ? ' ui-card-child ui-depth-' . (int)$depth : '' ?><?= $quotaOut ? ' ui-quota-out' : '' ?>" data-session="<?= $this->e($name) ?>"<?= $launchedBy !== null ? ' data-parent="' . $this->e($launchedBy) . '"' : '' ?> data-status="<?= $this->e($status) ?>" data-kind="<?= $this->e($kind) ?>" data-starred="<?= $starred ? 1 : 0 ?>"<?= $quotaOut ? ' data-quota="out"' : '' ?>>
   <div class="ui-card-main">
     <div class="ui-card-head">
       <span class="ui-dot ui-dot-<?= $this->e($status) ?>" role="img" aria-label="<?= $this->e($status === 'blocked' ? 'needs input' : $status) ?>"></span>

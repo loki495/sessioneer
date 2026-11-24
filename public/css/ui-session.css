@@ -250,3 +250,9 @@ body:has(dialog[open], .sess-viewer:not([hidden]), .sess-fullscreen:not([hidden]
 .sess-srow-child.sess-depth-3 { margin-left: 42px; }
 .sess-srow-wait { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 4px; padding: 0 12px 8px; }
 .sess-srow-wait .ui-chip { padding: 0 7px; font-size: 0.7rem; }
+
+/* Quota tint for a popup row of a session whose account is out of quota; the current row keeps its inset outline. */
+.sess-srow.ui-quota-out { background: color-mix(in srgb, #dc2626 6%, var(--surface)); }
+.sess-srow.ui-quota-out.is-starred { background: color-mix(in srgb, #f59e0b 6%, color-mix(in srgb, #dc2626 6%, var(--surface))); }
+:root[data-theme="dark"] .sess-srow.ui-quota-out { background: color-mix(in srgb, #1c0404 60%, var(--surface)); }
+:root[data-theme="dark"] .sess-srow.ui-quota-out.is-starred { background: color-mix(in srgb, #f59e0b 6%, color-mix(in srgb, #1c0404 60%, var(--surface))); }
