@@ -22,6 +22,7 @@ Both are opened with WAL mode by one connection per request; the schemas live in
 | `session_name` (primary key) | the session's stable ref: `cc-*`, `ag-*`, `oc-*` for tmux sessions, `claude-headless-*` for headless Claude, or the native id (`ses_*`, a Codex thread id) |
 | `workdir`, `spawned_at`, `spawned_by_app` | where and when it was started, and whether Sessioneer started it |
 | `waiting_on` | JSON list of `{name, since}`: the sessions this one is waiting on (`sessioneer --waiting-on`), at most 8; empty or NULL when none. Entries whose target is gone are filtered on read after 24 hours and not pruned. Set by `SidecarStore::set_waiting_on` and kept by sidecar rewrites |
+| `tags` | JSON list of normalized session tags, empty when none. Up to 8 unique tags; edited through `SidecarStore::edit_tags` (read and write in one transaction) and retained when the sidecar is rewritten. |
 | `agent` | `claude`, `antigravity`, `opencode` or `codex` |
 | `agent_session_id` | the agent's current conversation id. A Claude id changes on `/clear` and on a fork: the `SessionStart` hook re-points it for tmux sessions, the headless manager from each `init` event |
 | `runtime` | `headless`, or empty for tmux |

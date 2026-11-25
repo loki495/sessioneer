@@ -118,6 +118,12 @@ class SessionController extends Controller
         ]));
     }
 
+    public function tags(): void
+    {
+        $this->require_post_json();
+        echo json_encode(AgentClient::agent_call(['action' => 'tags_set', 'session' => (string)($_POST['session'] ?? ''), 'mode' => (string)($_POST['mode'] ?? ''), 'tags' => $_POST['tags'] ?? []]));
+    }
+
     /** POST-only JSON endpoint for the star toggle on session cards. */
     public function star(): void
     {

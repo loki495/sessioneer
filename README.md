@@ -119,6 +119,10 @@ sessioneer --take-over <pid>
 sessioneer --peers
 sessioneer --send <session> "The migration on my branch is ready to review"
 
+# tag the new session, or filter peers by tag
+sessioneer --tag 'project sessioneer,reviewer' --workdir ~/www/sessioneer "Review the change"
+sessioneer --peers --tag reviewer
+
 # decide whether to continue, checkpoint, rotate or wait (reads state, never acts)
 sessioneer --next
 

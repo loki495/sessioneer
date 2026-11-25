@@ -62,6 +62,10 @@ function usage(): string
     requires one; a resume does not.
 
     Options:
+      --tag LIST        add tags on launch or filter list, peers or spawned
+      --tag-add LIST    add tags to a tracked session
+      --tag-remove LIST remove tags from a tracked session
+      --tag-set LIST    replace tags (none clears them)
       --agent NAME      agent to launch (default: claude; claude, codex, ollama or
                         opencode)
       --resume ID       existing conversation id. A session Sessioneer already
@@ -319,7 +323,7 @@ function emit_envelope(array $envelope): void
     echo json_encode($envelope, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
 }
 
-$longOptions = ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'wake:', 'wake-list', 'wake-cancel:', 'at:', 'bare', 'take-over:', 'as-user', 'set-name:', 'session:', 'next', 'rotate', 'offer', 'all', 'intent:', 'post', 'no-gates', 'handoff:', 'plan:', 'prompt:', 'dry-run', 'clear', 'spawned', 'reap', 'resets', 'schedule-reset:', 'approve', 'waiting-on:'];
+$longOptions = ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'wake:', 'wake-list', 'wake-cancel:', 'at:', 'bare', 'take-over:', 'as-user', 'set-name:', 'session:', 'next', 'rotate', 'offer', 'all', 'intent:', 'post', 'no-gates', 'handoff:', 'plan:', 'prompt:', 'dry-run', 'clear', 'spawned', 'reap', 'resets', 'schedule-reset:', 'approve', 'waiting-on:', 'tag:', 'tag-add:', 'tag-remove:', 'tag-set:'];
 
 // getopt ignores an unknown option, which would start a launch; these two were removed.
 $argv = $_SERVER['argv'] ?? [];
@@ -359,6 +363,8 @@ if (array_intersect(['--next', '--rotate', '--offer'], $argv) !== []) {
         exit(proc_close($proc));
     }
 }
+
+if (in_array(end($argv), ['--tag', '--tag-add', '--tag-remove', '--tag-set'], true)) fail('Tag option needs a value');
 
 if (end($argv) === '--waiting-on') {
     fail('--waiting-on needs SESSION[,SESSION] or none');
@@ -409,12 +415,50 @@ if (getenv('SESSIONEER_AGENT_SOCKET') === false || getenv('SESSIONEER_AGENT_SOCK
 // A Codex session carries no SESSIONEER_SELF; its thread id is its session name.
 $self = getenv('SESSIONEER_SELF') ?: getenv('CODEX_THREAD_ID') ?: null;
 
+$tagValues = [];
+try {
+    foreach ((array)($opts['tag'] ?? []) as $value) {
+        $tagValues = array_values(array_unique(array_merge($tagValues, \HostAgent\Services\TagService::parse($value, true))));
+    }
+} catch (\InvalidArgumentException $e) { fail($e->getMessage()); }
+$edits = array_values(array_filter(['tag-add', 'tag-remove', 'tag-set'], static fn ($key) => isset($opts[$key])));
+if ($edits !== []) {
+    if (count($edits) !== 1 || $prompt !== '') fail('Tag edits need one action and no prompt');
+    foreach (array_keys($opts) as $key) {
+        if (!in_array($key, [$edits[0], 'session', 'json'], true)) fail('Tag edits cannot be combined with --' . $key);
+    }
+    $value = $opts[$edits[0]];
+    if (!is_string($value)) fail('Tag edit needs a list');
+    try {
+        $tags = $edits[0] === 'tag-set' && $value === 'none' ? [] : \HostAgent\Services\TagService::parse($value, true);
+        if ($tags === [] && !($edits[0] === 'tag-set' && $value === 'none')) fail('Tag edit needs a list');
+        \HostAgent\Services\TagService::apply([], 'set', $tags);
+    } catch (\InvalidArgumentException $e) { fail($e->getMessage()); }
+    $session = $opt('session') ?? $self;
+    if ($session === null) fail('Tag edit needs a session');
+    $reply = AgentClient::agent_call(['action' => 'tags_set', 'session' => $session, 'mode' => substr($edits[0], 4), 'tags' => $tags]);
+    if (isset($opts['json'])) echo json_encode($reply, JSON_UNESCAPED_SLASHES), "\n";
+    if (($reply['ok'] ?? false) !== true) fail((string)($reply['error'] ?? $reply['message'] ?? 'Tag edit failed'));
+    if (!isset($opts['json'])) echo 'tags: ', empty($reply['tags']) ? 'none' : implode(', ', $reply['tags']), "\n";
+    exit(0);
+}
+if (isset($opts['tag'])) {
+    foreach (['whoami', 'kill', 'send', 'show', 'answer', 'interrupt', 'wake', 'wake-list', 'wake-cancel', 'bare', 'take-over', 'session', 'next', 'offer', 'reap', 'usage', 'waiting-on'] as $other) {
+        if (isset($opts[$other])) fail('--tag cannot be combined with --' . $other);
+    }
+    if (!isset($opts['list']) && !isset($opts['peers']) && !isset($opts['spawned']) && count($tagValues) > \HostAgent\Services\TagService::MAX_TAGS) fail('A session may have at most ' . \HostAgent\Services\TagService::MAX_TAGS . ' tags');
+}
+
 if (isset($opts['whoami'])) {
     if ($self === null) {
         fail('not running inside a Sessioneer session (neither SESSIONEER_SELF nor CODEX_THREAD_ID is set)');
     }
 
-    echo $self, "\n";
+    if (isset($opts['json'])) {
+        $identity = AgentClient::agent_call(['action' => 'launch_whoami', 'session' => $self]);
+        if (($identity['ok'] ?? false) !== true) fail((string)($identity['error'] ?? $identity['message'] ?? 'Session not found'));
+        echo json_encode(['name' => $identity['name'], 'conversation_id' => $identity['conversation_id'], 'tags' => $identity['tags']], JSON_UNESCAPED_SLASHES), "\n";
+    } else echo $self, "\n";
     exit(0);
 }
 
@@ -714,7 +758,7 @@ if ($flowCommands !== []) {
         'rotate' => [
             'action' => 'flow_rotate', 'session' => $target ?? $self, 'plan_id' => $plan, 'handoff_id' => $handoff, 'prompt' => $text,
             'agent' => $opt('agent'), 'model' => $opt('model'), 'effort' => $opt('effort'), 'profile' => $opt('profile'),
-            'workdir' => $opt('workdir'), 'set_name' => $opt('set-name'), 'dry_run' => isset($opts['dry-run']) ? true : null,
+            'workdir' => $opt('workdir'), 'set_name' => $opt('set-name'), 'tags' => isset($opts['tag']) ? $tagValues : null, 'dry_run' => isset($opts['dry-run']) ? true : null,
         ],
         default => ['action' => isset($opts['clear']) ? 'flow_offer_dismiss' : 'flow_offer', 'self' => $self, 'plan_id' => $plan, 'handoff_id' => $handoff, 'prompt' => $text],
     }, static fn ($v): bool => $v !== null));
@@ -1027,6 +1071,8 @@ $action = match (true) {
 
 $reply = AgentClient::agent_call(array_filter([
     'action' => $action,
+    'tags' => $action === 'launch' && isset($opts['tag']) ? $tagValues : null,
+    'tag_filter' => in_array($action, ['launch_list', 'launch_peers', 'launch_spawned'], true) && isset($opts['tag']) ? $tagValues : null,
     'agent' => $opt('agent'),
     'prompt' => $prompt,
     'agent_session_id' => $resume,
@@ -1053,6 +1099,7 @@ $reply = AgentClient::agent_call(array_filter([
 ] + $answerPayload, static fn ($v): bool => $v !== null && $v !== ''));
 
 $ok = ($reply['ok'] ?? false) === true;
+if (isset($reply['tags_error'])) fwrite(STDERR, (string)$reply['tags_error'] . "\n");
 
 if (isset($opts['wait'])) {
     $json = isset($opts['json']);
@@ -1150,7 +1197,7 @@ if (isset($opts['json'])) {
     echo json_encode($reply, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
 } elseif ($ok && $list) {
     foreach ($reply['sessions'] ?? [] as $s) {
-        echo implode("\t", [(string)$s['name'], (string)$s['status'], (string)($s['agent_session_id'] ?? '-'), (string)($s['workdir'] ?? '-')]), "\n";
+        echo implode("\t", [(string)$s['name'], (string)$s['status'], (string)($s['agent_session_id'] ?? '-'), (string)($s['workdir'] ?? '-'), implode(', ', $s['tags'] ?? [])]), "\n";
     }
 } elseif ($ok && $wakeList) {
     foreach ($reply['wakes'] ?? [] as $w) {
@@ -1158,6 +1205,7 @@ if (isset($opts['json'])) {
     }
 } elseif ($ok && $show !== null) {
     echo show_text($reply);
+    if (!empty($reply['tags'])) echo 'tags: ', implode(', ', $reply['tags']), "\n";
 } elseif ($ok && $bare) {
     foreach ($reply['bare'] ?? [] as $b) {
         echo implode("\t", [(string)$b['pid'], (string)($b['resolved_agent_session_id'] ?? '-'), (string)($b['cwd'] ?? '-'), (string)($b['resolved_title'] ?? '-')]), "\n";
@@ -1173,7 +1221,7 @@ if (isset($opts['json'])) {
     exit(1);
 } elseif ($ok && $peers) {
     foreach ($reply['peers'] ?? [] as $p) {
-        echo implode("\t", [(string)$p['name'], (string)$p['status'], (string)($p['branch'] ?? '-'), (string)($p['workdir'] ?? '-')]), "\n";
+        echo implode("\t", [(string)$p['name'], (string)$p['status'], (string)($p['branch'] ?? '-'), (string)($p['workdir'] ?? '-'), implode(', ', $p['tags'] ?? [])]), "\n";
     }
 } elseif ($ok) {
     echo (string)($reply['name'] ?? ''), "\n";

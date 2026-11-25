@@ -53,6 +53,7 @@ class SidecarStore
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'rotation_closed_at', 'INTEGER');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'spawned_by', 'TEXT');
         SqliteDb::add_column_if_missing($pdo, 'sidecars', 'waiting_on', 'TEXT');
+        SqliteDb::add_column_if_missing($pdo, 'sidecars', 'tags', 'TEXT');
         $pdo->exec('CREATE TABLE IF NOT EXISTS launch_ancestry (agent TEXT NOT NULL, conversation_id TEXT NOT NULL, parent TEXT NOT NULL, PRIMARY KEY (agent, conversation_id))');
 
         return $pdo;
@@ -71,11 +72,11 @@ class SidecarStore
     }
 
     /**
-     * @return array{workdir:?string, spawned_at:?int, agent_session_id?:?string, spawned_by_app?:bool, agent?:?string, runtime?:?string, title?:?string, profile?:?string, no_tools?:bool, effort?:?string, allowed_tools?:?string, disallowed_tools?:?string, rotated_from?:?string, rotated_to?:?string, spawned_by?:array{agent:string, profile:?string, agent_session_id:string, name:string}|null, waiting_on?:list<array{name:string, since:int}>}|null
+     * @return array{workdir:?string, spawned_at:?int, agent_session_id?:?string, spawned_by_app?:bool, agent?:?string, runtime?:?string, title?:?string, profile?:?string, no_tools?:bool, effort?:?string, allowed_tools?:?string, disallowed_tools?:?string, rotated_from?:?string, rotated_to?:?string, spawned_by?:array{agent:string, profile:?string, agent_session_id:string, name:string}|null, waiting_on?:list<array{name:string, since:int}>, tags:list<string>}|null
      */
     public static function read_sidecar(string $sessionName): ?array
     {
-        $stmt = self::db()->prepare('SELECT workdir, spawned_at, agent_session_id, spawned_by_app, agent, runtime, title, profile, no_tools, effort, allowed_tools, disallowed_tools, rotated_from, rotated_to, spawned_by, waiting_on FROM sidecars WHERE session_name = ?');
+        $stmt = self::db()->prepare('SELECT workdir, spawned_at, agent_session_id, spawned_by_app, agent, runtime, title, profile, no_tools, effort, allowed_tools, disallowed_tools, rotated_from, rotated_to, spawned_by, waiting_on, tags FROM sidecars WHERE session_name = ?');
         $stmt->execute([$sessionName]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
 
@@ -124,6 +125,7 @@ class SidecarStore
                 'rotated_to' => $row['rotated_to'],
                 'spawned_by' => self::parent_of($row),
                 'waiting_on' => self::decode_waiting($row['waiting_on']),
+                'tags' => self::decode_tags($row['tags']),
             ];
         }
 
@@ -182,6 +184,49 @@ class SidecarStore
         if (isset($updateParent)) {
             $updateParent->execute([$data['spawned_by'] !== null ? json_encode($data['spawned_by']) : null, $sessionName]);
         }
+    }
+
+    /** @param list<string> $tags */
+    public static function set_tags(string $sessionName, array $tags): void
+    {
+        self::db()->prepare('UPDATE sidecars SET tags = ? WHERE session_name = ?')->execute([json_encode($tags), $sessionName]);
+    }
+
+    /**
+     * @param list<string> $tags
+     * @return list<string>
+     */
+    public static function edit_tags(string $sessionName, string $mode, array $tags): array
+    {
+        $pdo = self::db();
+        $pdo->exec('BEGIN IMMEDIATE');
+        try {
+            $stmt = $pdo->prepare('SELECT tags FROM sidecars WHERE session_name = ?');
+            $stmt->execute([$sessionName]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($row === false) throw new \InvalidArgumentException('Session not found');
+            $result = \HostAgent\Services\TagService::apply(self::decode_tags($row['tags']), $mode, $tags);
+            $pdo->prepare('UPDATE sidecars SET tags = ? WHERE session_name = ?')->execute([json_encode($result), $sessionName]);
+            $pdo->exec('COMMIT');
+            return $result;
+        } catch (\Throwable $e) {
+            $pdo->exec('ROLLBACK');
+            throw $e;
+        }
+    }
+
+    /** @return array<string, list<string>> */
+    public static function tags_by_session(): array
+    {
+        $rows = self::db()->query('SELECT session_name, tags FROM sidecars')->fetchAll(\PDO::FETCH_KEY_PAIR);
+        return array_map([self::class, 'decode_tags'], $rows);
+    }
+
+    /** @return list<string> */
+    private static function decode_tags(mixed $value): array
+    {
+        $tags = is_string($value) ? json_decode($value, true) : null;
+        return is_array($tags) ? array_values(array_filter($tags, 'is_string')) : [];
     }
 
     /**

@@ -72,7 +72,7 @@ the service worker needs to answer prompts from a notification).
 The page and its poll (`/fragment`, every 3s by default, paused while the tab
 is hidden) call the host agent's `list` action. The poll
 leaves the list alone while a card menu is open. Existing endpoints are reused
-as they are: `/session_star.php`, `/session_rename.php`, `/answer_prompt.php`,
+as they are: `/session_star.php`, `/session_rename.php`, `/session_tags.php`, `/answer_prompt.php`,
 `/browse.php`, `/create_folder.php`, `/session_list_models.php`,
 `/session_list_claude_profiles.php`, `/search_sessions.php`, `/quota.php`.
 
@@ -93,6 +93,17 @@ starts the receiver; it refuses unless the source is idle and has a conversation
 `flow_judge` (`session`) makes the one small model call for a close quota call and answers
 `{flow}` with the decision. `flow_offer_dismiss` (`session`) dismisses the session's live
 offer. `/action` has the same same-origin and CSRF checks as every other mutating endpoint.
+
+Session tags appear as chips on dashboard cards and in the session page's
+hierarchy row, including when there are no parent or child links. The dashboard
+tag select filters cards by one tag; its options are rebuilt from each poll's
+listed sessions and the selected value is retained. The details sheet includes
+a Tags row and **Edit tags** action, which replaces the list using
+comma-separated input. The New Session form accepts optional comma-separated
+tags and sends them with the create request. `POST /session_tags.php` accepts
+`csrf_token`, `session`, `mode` (`add`, `remove` or `set`) and `tags[]`, returns
+the host agent's JSON result, and forwards to `tags_set`; `POST /action` with
+`action=tags` uses the same operation.
 
 ## The session-flow band
 
@@ -368,6 +379,8 @@ Additive changes:
   --resume <id>` line, with the account's `CLAUDE_CONFIG_DIR` and binary when the
   session runs under a work profile; Codex and OpenCode have their own forms,
   Ollama and Antigravity none).
+- `session_detail` includes `tags`, a list of normalized strings, empty when
+  the session has no tags. The dashboard `list` rows carry the same field.
 
 - A headless Claude `AskUserQuestion` answer may carry a typed answer inside a
   multi-select list (`[1, {"text": "..."}]`); a blank one is refused.

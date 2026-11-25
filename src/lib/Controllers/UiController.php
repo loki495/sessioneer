@@ -48,6 +48,7 @@ class UiController extends Controller
             'agentMessage' => (string)($listResult['message'] ?? 'Unknown error'),
             'csrfToken' => $csrfToken,
             'counts' => UiView::counts($sessions),
+            'sessions' => $sessions,
             'sessionsHtml' => UiView::sessions_html($sessions, $csrfToken, $this->flow_resets($sessions)),
             'bareHtml' => UiView::bare_html($bare, $csrfToken),
             'hooksMissing' => $agentReachable && (bool)($hookResult['ok'] ?? false) && !($hookResult['installed'] ?? false),
@@ -268,6 +269,7 @@ class UiController extends Controller
 
         $result = match ((string)($_POST['action'] ?? '')) {
             'new' => $this->create_session(),
+            'tags' => AgentClient::agent_call(['action' => 'tags_set', 'session' => (string)($_POST['session'] ?? ''), 'mode' => (string)($_POST['mode'] ?? ''), 'tags' => $_POST['tags'] ?? []]),
             'resume' => $this->resume_session(),
             'switch_runtime' => $this->agent_with_redirect([
                 'action' => 'switch_runtime',
@@ -461,6 +463,7 @@ class UiController extends Controller
     {
         $params = [
             'action' => 'create',
+            'tags' => $_POST['tags'] ?? '',
             'workdir' => trim((string)($_POST['workdir'] ?? '')),
             'enable_task_tools' => ($_POST['enable_task_tools'] ?? '') === '1',
             'starting_mode' => trim((string)($_POST['starting_mode'] ?? '')),

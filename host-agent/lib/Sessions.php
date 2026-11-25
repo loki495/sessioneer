@@ -51,6 +51,45 @@ function dispatch_action(array $request): array
 {
     $action = $request['action'] ?? '';
 
+    if ($action === 'tags_set') {
+        $name = SessionControl::resolve(is_string($request['session'] ?? null) ? $request['session'] : '');
+        if ($name === null) return ['ok' => false, 'error' => 'Session not found'];
+        try {
+            $tags = \HostAgent\Services\TagService::parse($request['tags'] ?? null);
+            $tags = SidecarStore::edit_tags($name, (string)($request['mode'] ?? ''), $tags);
+            return ['ok' => true, 'tags' => $tags];
+        } catch (\InvalidArgumentException $e) {
+            return ['ok' => false, 'error' => $e->getMessage()];
+        }
+    }
+    if ($action === 'launch_whoami') {
+        $name = SessionControl::resolve(is_string($request['session'] ?? null) ? $request['session'] : '');
+        if ($name === null) return ['ok' => false, 'error' => 'Session not found'];
+        $sidecar = SidecarStore::read_sidecar($name);
+        return ['ok' => true, 'name' => $name, 'conversation_id' => $sidecar['agent_session_id'] ?? null, 'tags' => $sidecar['tags'] ?? []];
+    }
+    if (in_array($action, ['launch', 'create'], true)) {
+        try {
+            $tags = \HostAgent\Services\TagService::parse($request['tags'] ?? [], is_string($request['tags'] ?? null));
+            \HostAgent\Services\TagService::apply([], 'set', $tags);
+        } catch (\InvalidArgumentException $e) {
+            return ['ok' => false, 'error' => $e->getMessage(), 'message' => $e->getMessage()];
+        }
+        $result = sessioneer_dispatch_action($request);
+        if (($result['ok'] ?? false) && is_string($result['name'] ?? null)) {
+            $name = $result['name'];
+            try {
+                $result['tags'] = $tags === []
+                    ? (SidecarStore::read_sidecar($name)['tags'] ?? [])
+                    : SidecarStore::edit_tags($name, 'add', $tags);
+            } catch (\InvalidArgumentException $e) {
+                $result['tags'] = SidecarStore::read_sidecar($name)['tags'] ?? [];
+                $result['tags_error'] = $e->getMessage();
+            }
+        }
+        return $result;
+    }
+
     if ($action === 'rename_session') {
         return sessioneer_rename_session((string)($request['session'] ?? ''), (string)($request['title'] ?? ''));
     }
@@ -68,6 +107,23 @@ function dispatch_action(array $request): array
     }
 
     $result = sessioneer_dispatch_action($request);
+
+    if (in_array($action, ['list', 'launch_list', 'launch_peers', 'launch_spawned'], true)) {
+        $key = $action === 'launch_peers' ? 'peers' : 'sessions';
+        if (isset($result[$key]) && is_array($result[$key])) {
+            $tagsBySession = SidecarStore::tags_by_session();
+            foreach ($result[$key] as &$row) {
+                $row['tags'] = $tagsBySession[(string)($row['name'] ?? '')] ?? [];
+            }
+            unset($row);
+            $filter = is_array($request['tag_filter'] ?? null) ? $request['tag_filter'] : [];
+            $result[$key] = array_values(array_filter($result[$key], static fn ($row) => array_diff($filter, $row['tags']) === []));
+        }
+    }
+    if ($action === 'session_detail' || $action === 'launch_show') {
+        $name = $action === 'session_detail' ? (string)($request['session'] ?? '') : (string)($result['name'] ?? '');
+        $result['tags'] = SidecarStore::read_sidecar($name)['tags'] ?? [];
+    }
 
     if ($action === 'list') {
         $result = sessioneer_with_flow(sessioneer_with_stars(sessioneer_with_hierarchy($result)));
