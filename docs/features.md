@@ -466,6 +466,12 @@ deliberately narrow.
   and in the session detail, survives the headless sync that rewrites the
   sidecar, and is dropped when the session is killed. An empty name clears it.
   Names are trimmed, whitespace-collapsed and capped at 120 characters.
+- Session tags: dashboard cards and the session page show tag chips. The
+  dashboard can filter to sessions carrying a selected tag. The details sheet
+  can replace a session's tags, and the New Session form can assign tags at
+  launch. Tags are free-form validated labels stored in the session sidecar;
+  see [cli.md](cli.md#session-tags-stable-interface) for the stable vocabulary,
+  normalization, limits and CLI/host contract.
 - Dashboard and session-detail polling pause while the browser tab is hidden;
   manual refresh remains available.
 - Transcript blocks support Markdown, collapsing, copying, attachments,

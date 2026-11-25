@@ -77,6 +77,7 @@ $router->get('/archived_session_search.php', [SessionController::class, 'archive
 $router->get('/session_send.php', [SessionController::class, 'send']);
 $router->post('/session_send.php', [SessionController::class, 'send']);
 $router->post('/session_rename.php', [SessionController::class, 'rename']);
+$router->post('/session_tags.php', [SessionController::class, 'tags']);
 $router->post('/session_star.php', [SessionController::class, 'star']);
 $router->get('/session_mode.php', [SessionController::class, 'setMode']);
 $router->post('/session_mode.php', [SessionController::class, 'setMode']);

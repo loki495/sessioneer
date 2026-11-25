@@ -1006,6 +1006,16 @@
 
   function render(d) {
     detail = d;
+    var tagsEl = $('sess-tags');
+    if (tagsEl) {
+      tagsEl.textContent = '';
+      (d.tags || []).forEach(function (tag) {
+        var chip = document.createElement('span');
+        chip.className = 'ui-chip ui-chip-tag';
+        chip.textContent = tag;
+        tagsEl.appendChild(chip);
+      });
+    }
     renderHeader(d);
     renderThinking(d, false);
     renderError(d);

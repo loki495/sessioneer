@@ -7,7 +7,7 @@
   }
 ?>
 <?php /* Whole-card tap target: the title link stretches over the card (.ui-link-cover::after); anything interactive sits above it. */ ?>
-<article class="ui-card ui-status-<?= $this->e($status) ?><?= $depth > 0 ? ' ui-card-child ui-depth-' . (int)$depth : '' ?><?= $quotaOut ? ' ui-quota-out' : '' ?>" data-session="<?= $this->e($name) ?>"<?= $launchedBy !== null ? ' data-parent="' . $this->e($launchedBy) . '"' : '' ?> data-status="<?= $this->e($status) ?>" data-kind="<?= $this->e($kind) ?>" data-starred="<?= $starred ? 1 : 0 ?>"<?= $quotaOut ? ' data-quota="out"' : '' ?>>
+<article class="ui-card ui-status-<?= $this->e($status) ?><?= $depth > 0 ? ' ui-card-child ui-depth-' . (int)$depth : '' ?><?= $quotaOut ? ' ui-quota-out' : '' ?>" data-tags="<?= $this->e(implode(',', $tags)) ?>" data-session="<?= $this->e($name) ?>"<?= $launchedBy !== null ? ' data-parent="' . $this->e($launchedBy) . '"' : '' ?> data-status="<?= $this->e($status) ?>" data-kind="<?= $this->e($kind) ?>" data-starred="<?= $starred ? 1 : 0 ?>"<?= $quotaOut ? ' data-quota="out"' : '' ?>>
   <div class="ui-card-main">
     <div class="ui-card-head">
       <span class="ui-dot ui-dot-<?= $this->e($status) ?>" role="img" aria-label="<?= $this->e($status === 'blocked' ? 'needs input' : $status) ?>"></span>
@@ -26,6 +26,7 @@
     </div>
 
     <div class="ui-chips">
+      <?php foreach ($tags as $tag): ?><span class="ui-chip ui-chip-tag"><?= $this->e($tag) ?></span><?php endforeach ?>
       <span class="ui-chip ui-agent-<?= $this->e($agentId) ?>"><?= $this->e($agentPill ?? $agentLabel) ?></span>
       <?php if ($profile !== null): ?><span class="ui-chip<?= $profile !== 'Personal' ? ' ui-chip-accent' : '' ?>"><?= $this->e($profile) ?></span><?php endif ?>
       <?php if ($readOnly): ?><span class="ui-chip ui-chip-warn">Terminal, read only</span><?php endif ?>

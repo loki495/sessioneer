@@ -233,6 +233,7 @@ select { background-image: linear-gradient(45deg, transparent 50%, var(--text-mu
   background: var(--surface-2); border: 1px solid var(--border);
   font-size: 0.72rem; font-weight: 600; color: var(--text-muted); white-space: nowrap;
 }
+.ui-chip-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .ui-chip-accent { color: var(--accent); }
 .ui-chip-ok { color: var(--working); background: var(--working-bg); border-color: transparent; }
 .ui-chip-warn { color: var(--blocked); background: var(--blocked-bg); border-color: transparent; }

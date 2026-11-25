@@ -40,6 +40,8 @@
       <button type="button" class="ui-filter" data-filter="working">Working <b id="ui-n-working"><?= (int)$counts['working'] ?></b></button>
       <button type="button" class="ui-filter" data-filter="idle">Idle <b id="ui-n-idle"><?= (int)$counts['idle'] ?></b></button>
     </div>
+    <?php $tagOptions = []; foreach ($sessions as $row) { foreach (($row['tags'] ?? []) as $tag) { $tagOptions[$tag] = $tag; } } sort($tagOptions); ?>
+    <select id="ui-tag-filter" aria-label="Filter by tag"><option value="">All tags</option><?php foreach ($tagOptions as $tag): ?><option value="<?= $this->e($tag) ?>"><?= $this->e($tag) ?></option><?php endforeach ?></select>
     <div id="ui-sessions" class="ui-stack"><?= $sessionsHtml ?></div>
     <p id="ui-filter-empty" class="ui-muted ui-center" hidden>Nothing matches this filter.</p>
     <div id="ui-bare"><?= $bareHtml ?></div>
@@ -160,6 +162,7 @@
     <label class="ui-check" data-agent-field><input type="checkbox" id="ui-new-tasktools"> Enable task tracking tools</label>
 
     <label class="ui-field" id="ui-new-prompt-wrap">First message (optional)
+      <label>Tags <input type="text" name="tags" placeholder="Comma separated"></label>
       <textarea id="ui-new-prompt" name="prompt" rows="3" placeholder="Sent as soon as the session starts"></textarea>
     </label>
     <button type="button" class="ui-btn ui-mic-btn" id="ui-new-mic" hidden>&#127908; Dictate the first message</button>

@@ -213,6 +213,7 @@
     html += kv('Worktree', d.git_worktree, false);
     html += kv('Account', d.agent === 'claude' ? d.profile : '', false);
     html += kv('Runtime', d.runtime, false);
+    html += kv('Tags', (d.tags || []).join(', ') || 'none', false);
     var pct = d.context_used_percentage;
     html += kv('Context used', typeof pct === 'number' && isFinite(pct) ? Math.round(pct) + '%' : '', false);
     html += hierarchyInfo(d);
@@ -224,7 +225,7 @@
       + '<button type="button" class="ui-btn" data-info="rename">Rename</button>'
       + '<button type="button" class="ui-btn ui-btn-danger" data-info="kill">Kill</button>';
 
-    var actions = '';
+    var actions = '<button type="button" class="ui-btn" data-info="tags">Edit tags</button>';
     if (d.agent_session_id) {
       var rotate = '<button type="button" class="ui-btn' + (continuation.action === 'rotate' ? ' ui-btn-primary' : '') + '" data-info="rotate-new"' + (continuationBusy ? ' disabled' : '') + '>Rotate session</button>';
       var takeover = '<button type="button" class="ui-btn' + (continuation.action !== 'rotate' ? ' ui-btn-primary' : '') + '" data-info="takeover-new"' + (continuationBusy ? ' disabled' : '') + '>Take over in new session</button>';
@@ -261,6 +262,14 @@
       api.post('/session_star.php', { session: session, starred: on ? '1' : '0' }).then(function (res) {
         if (!res.ok) { api.toast(res.message || 'Could not star', true); return; }
         d.starred = on; buildInfo(d);
+      });
+    } else if (what === 'tags') {
+      var tagText = window.prompt('Tags (comma separated):', (d.tags || []).join(', '));
+      if (tagText === null) { return; }
+      var tags = tagText.split(',').map(function (tag) { return tag.trim(); }).filter(function (tag) { return tag !== ''; });
+      api.post('/session_tags.php', { session: session, mode: 'set', tags: tags }).then(function (res) {
+        if (!res.ok) { api.toast(res.error || res.message || 'Could not update tags', true); return; }
+        d.tags = res.tags; buildInfo(d); api.pollNow();
       });
     } else if (what === 'rename') {
       var title = window.prompt('Session name (empty clears it):', d.title || '');

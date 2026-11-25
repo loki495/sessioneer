@@ -99,7 +99,9 @@
     var visible = 0;
     $all('.ui-card', sessionsEl).forEach(function (card) {
       var status = card.getAttribute('data-status');
-      var hide = (state.filter !== 'all' && status !== state.filter)
+      var selectedTag = document.getElementById('ui-tag-filter').value;
+      var hide = (selectedTag && (card.getAttribute('data-tags') || '').split(',').indexOf(selectedTag) === -1)
+        || (state.filter !== 'all' && status !== state.filter)
         || (!state.showWorkers && card.getAttribute('data-kind') === 'worker')
         || (state.hideIdle && status === 'idle' && card.getAttribute('data-starred') !== '1');
       card.hidden = hide;
@@ -109,6 +111,25 @@
     document.getElementById('ui-filter-empty').hidden = !hasCards || visible > 0;
     $all('.ui-filter').forEach(function (b) { b.classList.toggle('is-on', b.getAttribute('data-filter') === state.filter); });
   }
+
+  function refreshTags() {
+    var select = document.getElementById('ui-tag-filter');
+    var chosen = select.value;
+    var tags = [];
+    $all('.ui-card[data-tags]', sessionsEl).forEach(function (card) {
+      (card.getAttribute('data-tags') || '').split(',').forEach(function (tag) {
+        if (tag && tags.indexOf(tag) === -1) { tags.push(tag); }
+      });
+    });
+    if (chosen && tags.indexOf(chosen) === -1) { tags.push(chosen); }
+    tags.sort();
+    select.textContent = '';
+    var all = document.createElement('option');
+    all.value = ''; all.textContent = 'All tags'; select.appendChild(all);
+    tags.forEach(function (tag) { var option = document.createElement('option'); option.value = tag; option.textContent = tag; select.appendChild(option); });
+    select.value = chosen;
+  }
+  document.getElementById('ui-tag-filter').addEventListener('change', applyFilters);
 
   function applyCounts(c) {
     state.counts = c;
@@ -146,6 +167,7 @@
         lastHtml = key;
         sessionsEl.innerHTML = data.sessions_html;
         bareEl.innerHTML = data.bare_html;
+        refreshTags();
         applyFilters();
       })
       .catch(function () { inFlight = false; });
@@ -624,6 +646,7 @@
     if (!profileSel.disabled && profileSel.value) { p.profile = profileSel.value; }
     var mode = document.getElementById('ui-new-mode');
     if (!mode.disabled && mode.value) { p.starting_mode = mode.value; }
+    p.tags = newForm.elements.tags.value;
     var promptEl = document.getElementById('ui-new-prompt');
     if (!promptEl.disabled && promptEl.value.trim()) { p.prompt = promptEl.value.trim(); }
     var tools = document.getElementById('ui-new-tasktools');

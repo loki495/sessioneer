@@ -363,6 +363,7 @@ class UiView extends View
             'depth' => $depth,
             'launchedBy' => $depth > 0 ? (string)$s['launched_by'] : null,
             'waiting' => self::waiting_of($s),
+            'tags' => is_array($s['tags'] ?? null) ? $s['tags'] : [],
             'flowHtml' => self::flow_band_html($s, $csrfToken, 'card', $resets),
         ]);
     }
