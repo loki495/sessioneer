@@ -8,7 +8,9 @@ declare(strict_types=1);
 //                             no-op when nothing is a candidate
 //   host-agent/systemd/sessioneer-flow-reap.service|.timer  oneshot + 30 s OnUnitActiveSec, same shape as the
 //                             antigravity quota check units
-//   host-agent/install.sh     installs them like the antigravity units and does not enable them
+//   host-agent/install.sh     installs them like the antigravity units; enables the timer itself when
+//                             SESSIONEER_CLAIMS_CMD is set in host-agent/.env, otherwise prints the NOT enabled hint
+//                             (Contract E); host-agent/.env.example documents SESSIONEER_CLAIMS_CMD
 // Hermetic: the script runs as a child php process against temp SQLite files, with the claims command unset or
 // every candidate decided before any kill (receiver gone or claims command missing), so no session is ever
 // killed and no systemd, tmux, agent or network is touched. Written before the implementation.
@@ -57,14 +59,12 @@ assert_true(preg_match('/^Unit=sessioneer-flow-reap\.service\s*$/m', $tm) === 1,
 assert_true(preg_match('/^\[Timer\]/m', $tm) === 1 && preg_match('/^\[Install\]/m', $tm) === 1, 'timer: has [Timer] and [Install]');
 assert_true(preg_match('/^WantedBy=timers\.target\s*$/m', $tm) === 1, 'timer: WantedBy=timers.target');
 
-echo "install.sh: installed like the antigravity units, not enabled\n";
+echo "install.sh: installed like the antigravity units\n";
 $sh = $read($install);
 assert_true(preg_match('/^render_unit sessioneer-flow-reap\.service\s*$/m', $sh) === 1, 'install: renders the service unit with render_unit');
 assert_true(preg_match('#^cp "\$SCRIPT_DIR/systemd/sessioneer-flow-reap\.timer" "\$UNIT_DIR/sessioneer-flow-reap\.timer"\s*$#m', $sh) === 1, 'install: copies the timer unit');
 $wired = array_filter(explode("\n", $sh), static fn (string $l): bool => str_contains($l, 'flow-reap'));
 assert_true($wired !== [], 'install: mentions flow-reap');
-$enabling = array_filter($wired, static fn (string $l): bool => preg_match('/^\s*systemctl\b.*\benable\b/', $l) === 1 || preg_match('/^\s*systemctl\b.*\bstart\b/', $l) === 1);
-assert_equal([], array_values($enabling), 'install: no line enables or starts the flow-reap units automatically');
 $flowAt = strpos($sh, 'render_unit sessioneer-flow-reap.service');
 $nextSection = $flowAt === false ? false : strpos($sh, "\n# ", $flowAt);
 $block = $flowAt === false ? '' : substr($sh, $flowAt, $nextSection === false ? null : $nextSection - $flowAt);
@@ -80,6 +80,74 @@ if (is_resource($check)) {
     $checkErr = (string) stream_get_contents($p[2]);
     $code = proc_close($check);
     assert_equal(0, $code, 'install: bash -n finds no syntax error' . ($checkErr !== '' ? " ($checkErr)" : ''));
+}
+
+echo "install.sh: enabling the timer follows SESSIONEER_CLAIMS_CMD in .env (Contract E)\n";
+$envExample = $read($root . '/host-agent/.env.example');
+assert_true(preg_match('/^#?[ \t]*SESSIONEER_CLAIMS_CMD=docker exec -u www-data dibs-app php artisan todo:agent:claims --held-by[ \t]*$/m', $envExample) === 1, '.env.example: documents SESSIONEER_CLAIMS_CMD=docker exec -u www-data dibs-app php artisan todo:agent:claims --held-by');
+// The script runs from a throwaway copy of host-agent/ with a throwaway HOME, XDG dirs and a PATH whose systemctl and
+// loginctl are recording fakes, so no real unit is written and nothing real is enabled.
+$installRun = static function (string $envFile) use ($root): array {
+    $t = sys_get_temp_dir() . '/sessioneer-test-reap-install-' . getmypid() . '-' . bin2hex(random_bytes(3));
+    foreach (['repo/vendor', 'fakebin', 'home', 'run'] as $d) {
+        mkdir($t . '/' . $d, 0700, true);
+    }
+    exec('cp -r ' . escapeshellarg($root . '/host-agent') . ' ' . escapeshellarg($t . '/repo/host-agent'));
+    @unlink($t . '/repo/host-agent/.env');
+    file_put_contents($t . '/repo/host-agent/.env', $envFile);
+    $fake = "#!/bin/sh\necho \"$(basename \"$0\") $*\" >> " . $t . "/calls.log\nexit 0\n";
+    foreach (['systemctl', 'loginctl'] as $bin) {
+        file_put_contents($t . '/fakebin/' . $bin, $fake);
+        chmod($t . '/fakebin/' . $bin, 0755);
+    }
+    touch($t . '/run/sessioneer-agent.sock');
+    $env = ['PATH' => $t . '/fakebin:/usr/bin:/bin', 'HOME' => $t . '/home', 'XDG_RUNTIME_DIR' => $t . '/run', 'XDG_CONFIG_HOME' => $t . '/home/.config'];
+    $proc = proc_open(['timeout', '60', 'bash', $t . '/repo/host-agent/install.sh'], [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $t, $env);
+    $out = '';
+    $err = '';
+    $code = -1;
+    if (is_resource($proc)) {
+        $out = (string) stream_get_contents($pipes[1]);
+        $err = (string) stream_get_contents($pipes[2]);
+        $code = proc_close($proc);
+    }
+    $calls = is_file($t . '/calls.log') ? (string) file_get_contents($t . '/calls.log') : '';
+    $units = array_map('basename', glob($t . '/home/.config/systemd/user/sessioneer-flow-reap.*') ?: []);
+    sort($units);
+    exec('rm -rf ' . escapeshellarg($t));
+
+    return [$code, $out, $err, $calls, $units];
+};
+$enableCall = 'systemctl --user enable --now sessioneer-flow-reap.timer';
+$envBase = "CLAUDE_BIN=/nonexistent/claude\n";
+$withCmd = [
+    'a command' => 'SESSIONEER_CLAIMS_CMD=/usr/bin/claims-of',
+    'the documented command' => 'SESSIONEER_CLAIMS_CMD=docker exec -u www-data dibs-app php artisan todo:agent:claims --held-by',
+];
+foreach ($withCmd as $label => $line) {
+    [$code, $out, $err, $calls, $units] = $installRun($envBase . $line . "\n");
+    assert_equal(0, $code, "install with $label set: exit 0 ($err)");
+    assert_equal(['sessioneer-flow-reap.service', 'sessioneer-flow-reap.timer'], $units, "install with $label set: both units are installed");
+    assert_contains($enableCall, $calls . "\n", "install with $label set: the timer is enabled and started (" . json_encode(array_values(array_filter(explode("\n", $calls), static fn (string $l): bool => str_contains($l, 'flow-reap')))) . ')');
+    assert_true(!preg_match('/flow[- ]reap[^\n]*NOT enabled/i', $out), "install with $label set: no NOT enabled message for the flow-reap timer");
+    $callLines = explode("\n", $calls);
+    $enableAt = array_keys(array_filter($callLines, static fn (string $l): bool => $l === $enableCall));
+    assert_equal(1, count($enableAt), "install with $label set: enabled exactly once");
+    $reloadsBefore = $enableAt === [] ? [] : array_filter(array_slice($callLines, 0, $enableAt[0]), static fn (string $l): bool => $l === 'systemctl --user daemon-reload');
+    assert_true($reloadsBefore !== [], "install with $label set: a daemon-reload runs before the timer is enabled");
+}
+$withoutCmd = [
+    'no SESSIONEER_CLAIMS_CMD line' => '',
+    'an empty SESSIONEER_CLAIMS_CMD=' => "SESSIONEER_CLAIMS_CMD=\n",
+    'a commented-out SESSIONEER_CLAIMS_CMD' => "# SESSIONEER_CLAIMS_CMD=/usr/bin/claims-of\n",
+];
+foreach ($withoutCmd as $label => $line) {
+    [$code, $out, $err, $calls, $units] = $installRun($envBase . $line);
+    assert_equal(0, $code, "install with $label: exit 0 ($err)");
+    assert_equal(['sessioneer-flow-reap.service', 'sessioneer-flow-reap.timer'], $units, "install with $label: both units are still installed");
+    assert_true(!str_contains($calls, 'sessioneer-flow-reap.timer'), "install with $label: the timer is not enabled or started");
+    assert_true(preg_match('/flow[- ]reap[^\n]*NOT enabled/i', $out) === 1, "install with $label: prints the NOT enabled hint");
+    assert_contains('  ' . $enableCall, $out, "install with $label: and shows how to enable the timer");
 }
 
 echo "flow_reap.php: static shape\n";

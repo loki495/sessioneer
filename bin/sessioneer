@@ -55,6 +55,7 @@ function usage(): string
       Offer a rotation:  sessioneer --offer (--handoff ID | --plan ID | TEXT) | --offer --clear
       Run to the end:    sessioneer --wait [--timeout N] --workdir DIR "do the thing"
       Waiting on others: sessioneer --waiting-on SESSION[,SESSION] | none [--session TARGET] [--json]
+      Replace a session: sessioneer --replaces SOURCE [--session RECEIVER] [--json]
       Name a session:    sessioneer --session NAME_OR_CONVERSATION_ID --set-name "Name"
       New, named:        sessioneer --workdir DIR --set-name "Name" "do the thing"
 
@@ -100,6 +101,11 @@ function usage(): string
                         sessions, comma separated; `none` clears it). With --session TARGET it
                         sets the list of that session instead. Shown as `waiting on NAME` badges
                         on the dashboard; separate from who launched whom.
+      --replaces SOURCE tell Sessioneer that this session (or --session RECEIVER, a name
+                        or conversation id) continues
+                        SOURCE; Sessioneer archives SOURCE once it is idle and holds no Dibs
+                        claim. With a prompt it is a launch option: the new session replaces
+                        SOURCE, even when SOURCE launched it.
       --kill TARGET     stop a session by name or conversation id (headless or a
                         tmux pane, any agent); its conversation stays resumable
                         (archived). Refuses a working or blocked session unless
@@ -323,7 +329,7 @@ function emit_envelope(array $envelope): void
     echo json_encode($envelope, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
 }
 
-$longOptions = ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'wake:', 'wake-list', 'wake-cancel:', 'at:', 'bare', 'take-over:', 'as-user', 'set-name:', 'session:', 'next', 'rotate', 'offer', 'all', 'intent:', 'post', 'no-gates', 'handoff:', 'plan:', 'prompt:', 'dry-run', 'clear', 'spawned', 'reap', 'resets', 'schedule-reset:', 'approve', 'waiting-on:', 'tag:', 'tag-add:', 'tag-remove:', 'tag-set:'];
+$longOptions = ['agent:', 'resume:', 'workdir:', 'model:', 'effort:', 'mode:', 'profile:', 'task-tools', 'no-tools', 'allowed-tools:', 'disallowed-tools:', 'json', 'help', 'kill:', 'force', 'list', 'send:', 'whoami', 'peers', 'usage', 'wait', 'timeout:', 'show:', 'history:', 'answer:', 'option:', 'text:', 'answers:', 'expect:', 'expect-request:', 'interrupt:', 'wake:', 'wake-list', 'wake-cancel:', 'at:', 'bare', 'take-over:', 'as-user', 'set-name:', 'session:', 'next', 'rotate', 'offer', 'all', 'intent:', 'post', 'no-gates', 'handoff:', 'plan:', 'prompt:', 'dry-run', 'clear', 'spawned', 'reap', 'resets', 'schedule-reset:', 'approve', 'waiting-on:', 'replaces:', 'tag:', 'tag-add:', 'tag-remove:', 'tag-set:'];
 
 // getopt ignores an unknown option, which would start a launch; these two were removed.
 $argv = $_SERVER['argv'] ?? [];
@@ -368,6 +374,10 @@ if (in_array(end($argv), ['--tag', '--tag-add', '--tag-remove', '--tag-set'], tr
 
 if (end($argv) === '--waiting-on') {
     fail('--waiting-on needs SESSION[,SESSION] or none');
+}
+
+if (end($argv) === '--replaces') {
+    fail('--replaces needs the source session');
 }
 
 $opts = getopt('h', $longOptions, $restIndex);
@@ -526,6 +536,39 @@ if (isset($opts['waiting-on'])) {
 
     if (!$done && !isset($opts['json'])) {
         fail((string)($reply['message'] ?? 'waiting-on failed'));
+    }
+
+    exit($done ? 0 : 1);
+}
+
+if (isset($opts['replaces'])) {
+    if (!is_string($opts['replaces']) || trim($opts['replaces']) === '') {
+        fail('--replaces needs the source session');
+    }
+}
+
+if (isset($opts['replaces']) && $prompt === '') {
+    foreach (array_keys($opts) as $other) {
+        if (!in_array($other, ['replaces', 'session', 'json'], true)) {
+            fail("--replaces cannot be combined with --{$other}");
+        }
+    }
+
+    $receiver = $opt('session') ?? $self;
+
+    if ($receiver === null) {
+        fail('--replaces needs a calling Sessioneer session (neither SESSIONEER_SELF nor CODEX_THREAD_ID is set); name one with --session');
+    }
+
+    $reply = AgentClient::agent_call(['action' => 'flow_replaces', 'receiver' => $receiver, 'source' => $opts['replaces']]);
+    $done = ($reply['ok'] ?? false) === true;
+
+    if (isset($opts['json'])) {
+        echo json_encode($reply, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
+    } elseif ($done) {
+        echo 'replaces ', $opts['replaces'], ': ', $reply['outcome'] ?? 'unknown', ' (', $reply['detail'] ?? '', ")\n";
+    } else {
+        fail((string)($reply['message'] ?? 'replaces failed'));
     }
 
     exit($done ? 0 : 1);
@@ -1100,6 +1143,11 @@ $reply = AgentClient::agent_call(array_filter([
 
 $ok = ($reply['ok'] ?? false) === true;
 if (isset($reply['tags_error'])) fwrite(STDERR, (string)$reply['tags_error'] . "\n");
+
+if ($ok && $action === 'launch' && isset($opts['replaces']) && is_string($reply['name'] ?? null)) {
+    $link = AgentClient::agent_call(['action' => 'flow_replaces', 'receiver' => $reply['name'], 'source' => $opts['replaces'], 'launched' => true]);
+    if (($link['ok'] ?? false) !== true) fwrite(STDERR, '--replaces ' . $opts['replaces'] . ': ' . (string)($link['message'] ?? 'failed') . "\n");
+}
 
 if (isset($opts['wait'])) {
     $json = isset($opts['json']);

@@ -29,7 +29,7 @@ Both are opened with WAL mode by one connection per request; the schemas live in
 | `profile` | the Claude account (a `host-agent/config/agents.php` profile) the session runs under; empty is the default account |
 | `title` | a title the agent or a sync supplied |
 | `rotated_from`, `rotated_to` | set when a session started as another's receiver, and on the source that rotated to it; both stay empty for a session that never rotated |
-| `rotation_closed_at` | set on a source when the `sessioneer-flow-reap` timer (`host-agent/flow_reap.php`, every 30 seconds, installed but not enabled) has archived it or found it or its receiver gone; a new rotate of the source clears it; NULL means the reaper still visits it |
+| `rotation_closed_at` | set on a source when the `sessioneer-flow-reap` timer (`host-agent/flow_reap.php`, every 30 seconds; `install.sh` enables it when `SESSIONEER_CLAIMS_CMD` is set in `.env`) has archived it or found it or its receiver gone, or `--replaces` or a rotate attempted it right away with the same result; a new link for the source clears it; NULL means the reaper still visits it |
 
 **`session_status`** - one row per tracked session, its live state: `status` (`idle`, `working`, `blocked`), `blocked_json` (the pending prompt), `mode`, `model`, `last_message`, `last_turn_error`, `token_usage_json`, `updated_at`.
 

@@ -48,7 +48,7 @@ final class PromptBuilder
 
         $args = $agent . ($profile !== null ? ' ' . self::token($profile, 'profile') : '') . ' ' . $source;
         $text = 'Use the global /takeover skill for source ' . $args
-            . '. Read the entire source conversation and Dibs state, transfer its work and claims safely, then archive the old session only when it is idle, claim-free, and a cold session can continue from Dibs. Continue its work.';
+            . '. Read the entire source conversation and Dibs state, transfer its work and claims safely. Sessioneer archives the old session once it is idle and claim-free; do not archive it by hand. Continue its work.';
         if ($transcriptPath !== null) {
             $text .= ' Source transcript: ' . self::line($transcriptPath, 'transcript path') . '.';
         }
@@ -97,8 +97,8 @@ final class PromptBuilder
         $id = (string) ($source['id'] ?? '');
         $who = $name . ($id !== '' ? ' ' . self::token($id, 'source id') : '') . " ({$agent})";
 
-        return "\n\nSource session: {$who}. Claim your Dibs task first. Sessioneer archives the source once it is idle and holds no claim; "
-            . 'do not archive or force-stop it yourself, and if it is still working or holds a claim, leave it and tell Andres.';
+        return "\n\nSource session: {$who}. Claim your Dibs task first. Sessioneer archives the source as soon as it is idle and holds no claim; "
+            . 'do not archive or force-stop it yourself, and do not wait for it to release a claim.';
     }
 
     private static function receiverArgs(string $receiver, ?string $model, ?string $effort, ?string $profile): string
