@@ -733,6 +733,9 @@ function sessioneer_dispatch_action(array $request): array
         case 'flow_schedule':
             return \HostAgent\SessionFlow\ResetSchedule::schedule($request);
 
+        case 'flow_replaces':
+            return \HostAgent\SessionFlow\FlowService::replaces($request, \HostAgent\SessionFlow\FlowService::live());
+
         case 'flow_offer_dismiss':
             return \HostAgent\SessionFlow\FlowService::offer_dismiss($request, \HostAgent\SessionFlow\FlowService::live());
 

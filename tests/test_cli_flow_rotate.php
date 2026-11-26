@@ -7,8 +7,10 @@ declare(strict_types=1);
  * Intent notes:
  *  - rotate request shape: action flow_rotate, session (target or the calling session), exactly one of handoff_id,
  *    plan_id or prompt, optional agent, model, effort, profile, workdir, set_name, dry_run; absent keys omitted;
- *  - rotate output: the receiver name alone on stdout, exit 1 on refusal, never archives or kills the source
- *    (no other host action is called);
+ *  - rotate output: the receiver name alone on stdout, exit 1 on refusal; the CLI makes one host call only
+ *    (flow_rotate): archiving the source is done host side, and its result comes back as `archive` {outcome,
+ *    detail} in the reply (Contract B), which --json prints untouched and the plain output never
+ *    mixes into stdout;
  *  - offer: flow_offer with self (the calling session) and one of handoff_id, plan_id or prompt; --clear calls
  *    flow_offer_dismiss with self;
  *  - limits: ids are digits only, prompts at most 8000 characters (8000 passes, 8001 fails), both checked before
@@ -27,7 +29,7 @@ try {
     $req = $reqs[0] ?? [];
     assert_equal(0, $code, '--rotate --handoff: exit 0');
     assert_equal("cc-receiver-1\n", $out, '--rotate: prints the receiver name and nothing else on stdout');
-    assert_equal(1, count($reqs), '--rotate: exactly one host call, so the source is never archived or killed');
+    assert_equal(1, count($reqs), '--rotate: exactly one host call, the CLI never archives or kills the source itself (the host does, see archive in the reply)');
     assert_equal(['flow_rotate', 'cc-self', '123'], [$req['action'] ?? null, $req['session'] ?? null, $req['handoff_id'] ?? null], '--rotate: flow_rotate for the calling session with handoff_id');
     foreach (['plan_id', 'prompt', 'agent', 'model', 'effort', 'profile', 'workdir', 'set_name', 'dry_run'] as $key) {
         assert_true(!array_key_exists($key, $req), "--rotate: $key omitted when not given");
@@ -63,6 +65,22 @@ try {
     [, $out, $err] = $rig->run(['--rotate', '--handoff', '5']);
     assert_contains('SESSIONEER_CLAIMS_CMD is not set', $err, '--rotate: host warnings go to stderr');
     assert_equal("cc-receiver-2\n", $out, '--rotate: warnings never pollute stdout');
+
+    // The host reply of a rotate carries archive {outcome, detail} (Contract B). --json passes it on, the plain output stays
+    // the receiver name alone on stdout, and still one host call: the CLI archives nothing.
+    foreach (['archived' => 'archived', 'waiting' => 'the receiver has not started yet', 'closed' => 'receiver gone', 'error' => 'claims backend exploded'] as $outcome => $detail) {
+        $rig->reset();
+        $rig->reply(['ok' => true, 'session' => 'cc-receiver-3', 'source' => 'cc-self', 'warnings' => [], 'prompt' => 'p', 'archive' => ['outcome' => $outcome, 'detail' => $detail]]);
+        [$code, $out] = $rig->run(['--rotate', '--handoff', '5', '--json']);
+        $json = json_decode($out, true);
+        assert_equal([0, $outcome, $detail], [$code, $json['archive']['outcome'] ?? null, $json['archive']['detail'] ?? null], "--rotate --json: archive $outcome is passed on with its detail");
+        [$code, $out] = $rig->run(['--rotate', '--handoff', '5']);
+        assert_equal([0, "cc-receiver-3\n"], [$code, $out], "--rotate: archive $outcome never changes the exit code or the receiver-only stdout");
+        assert_equal(2, count($rig->requests()), "--rotate: archive $outcome, still one host call per run (flow_rotate only)");
+        foreach ($rig->requests() as $request) {
+            assert_equal('flow_rotate', $request['action'] ?? null, "--rotate: archive $outcome, the only host action is flow_rotate");
+        }
+    }
 
     $rig->reply(['ok' => false, 'message' => 'Session cc-self holds Dibs claims: 1764']);
     [$code, $out, $err] = $rig->run(['--rotate', '--handoff', '5']);

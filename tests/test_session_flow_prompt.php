@@ -93,14 +93,21 @@ $old = 'Use the global /takeover skill for source claude abc123. Read the entire
 $t = P::takeover('abc123');
 assert_contains('Use the global /takeover skill for source ', $t, 'takeover: old opening wording');
 assert_contains('abc123', $t, 'takeover: names the source');
-$tail = 'Read the entire source conversation and Dibs state, transfer its work and claims safely, then archive the old session only when it is idle, claim-free, and a cold session can continue from Dibs. Continue its work.';
-assert_contains($tail, $t, 'takeover: old body wording is identical');
-assert_true(str_ends_with($t, 'Continue its work.'), 'takeover: no transcript, ends with the old text');
+// Contract F: the old clause "then archive the old session only when it is idle, claim-free, and a cold session
+// can continue from Dibs" is replaced by Sessioneer archiving the old session itself; the rest of the body is unchanged.
+$tail = 'Read the entire source conversation and Dibs state, transfer its work and claims safely';
+assert_contains($tail, $t, 'takeover: the body still starts with reading the source conversation and Dibs state and transferring work and claims');
+assert_contains('takeover skill for source claude abc123', $t, 'takeover: the source pattern the continuation-link hook reads stays (takeover skill for source <agent> <id>)');
+assert_contains('Sessioneer archives the old session once it is idle and claim-free', $t, 'takeover: says Sessioneer archives the old session once it is idle and claim-free');
+assert_true(preg_match('/\b(do not|don\'t|never)\b[^.]*\barchive\b[^.]*\bby hand\b/i', $t) === 1, 'takeover: tells the new session not to archive the old one by hand');
+assert_true(!str_contains($t, 'then archive the old session only when'), 'takeover: the old instruction to archive the old session itself is gone');
+assert_contains('Continue its work.', $t, 'takeover: still tells the new session to continue the work');
 assert_true(!str_contains($t, 'Source transcript'), 'takeover: no transcript sentence without a path');
 $tp = P::takeover($uuid, '/home/a/.claude/projects/x/s.jsonl');
 assert_contains($uuid, $tp, 'takeover: accepts a UUID source');
 assert_true(str_ends_with($tp, ' Source transcript: /home/a/.claude/projects/x/s.jsonl.'), 'takeover: transcript appended exactly');
-assert_contains($tail, $tp, 'takeover: old body kept with transcript');
+assert_contains($tail, $tp, 'takeover: body kept with transcript');
+assert_contains('Sessioneer archives the old session once it is idle and claim-free', $tp, 'takeover: the archive wording is kept with a transcript');
 $tf = P::takeover('abc123', null, 'work');
 assert_contains('work', $tf, 'takeover: profile in the slash arguments');
 assert_true(strpos($tf, 'work') < strpos($tf, 'abc123'), 'takeover: profile precedes the id in the source argument');

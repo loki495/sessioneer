@@ -62,9 +62,15 @@ $rejects = static function (callable $fn, string $msg): void {
 };
 
 $UUID = '11111111-1111-4111-8111-111111111111';
-$TAIL = 'Claim your Dibs task first. Sessioneer archives the source once it is idle and holds no claim; do not archive or force-stop it yourself, and if it is still working or holds a claim, leave it and tell Andres.';
-$para = static fn (string $head): string => 'Source session: ' . $head . '. ' . $TAIL;
 $src = ['name' => 'Next leg', 'id' => $UUID, 'agent' => 'claude'];
+// Contract F: the closing sentences of the paragraph changed (Sessioneer archives the source as soon as it is
+// idle and holds no claim, no wait for a claim). The wording is pinned once below ("paragraph: the archive wording");
+// everywhere else the tail is read back from the builder so the structure assertions stay independent of the wording.
+$headSrc = "Source session: Next leg {$UUID} (claude). ";
+$fullSrc = P::plan('1762', '', $src);
+$tailMarker = strpos($fullSrc, $headSrc);
+$TAIL = $tailMarker === false ? '' : substr($fullSrc, $tailMarker + strlen($headSrc));
+$para = static fn (string $head): string => 'Source session: ' . $head . '. ' . $TAIL;
 $paraSrc = $para("Next leg {$UUID} (claude)");
 
 // ---------------------------------------------------------------- part 1: PromptBuilder
@@ -78,6 +84,14 @@ foreach (['plan' => P::plan('1762', '', $src), 'handoff' => P::handoff('1800', $
     assert_true(str_ends_with($text, "\n\n" . $paraSrc), "$k: ends with the exact paragraph after a blank line");
     assert_equal(1, substr_count($text, 'Source session:'), "$k: the paragraph appears once");
     assert_true(!str_starts_with(ltrim($text), '/'), "$k: still no leading slash command with a source");
+}
+
+echo "paragraph: the archive wording (Contract F)\n";
+assert_true($TAIL !== '', 'wording: the paragraph still opens with "Source session: <name> <id> (<agent>). "');
+foreach (['plan' => P::plan('1762', '', $src), 'handoff' => P::handoff('1800', $src), 'selfContained' => P::selfContained('x', $src)] as $k => $text) {
+    assert_contains('Sessioneer archives the source as soon as it is idle', $text, "wording $k: Sessioneer archives the source as soon as it is idle");
+    assert_contains('holds no claim', $text, "wording $k: and holds no claim");
+    assert_true(!str_contains($text, 'once it is idle'), "wording $k: the old once it is idle wording is gone");
 }
 
 echo "paragraph: id omitted when null or empty\n";

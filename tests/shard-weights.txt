@@ -133,3 +133,4 @@ test_session_tags_cli.php 5
 test_session_tags_host.php 1
 test_session_tags_ui.php 1
 test_session_tags_browser.php 12
+test_cli_replaces.php 3

@@ -2,16 +2,19 @@
 
 declare(strict_types=1);
 
-// FlowService::archive_replaced(array $deps): array (task 1786, plan step 1978). Sessioneer, not the
-// receiver, archives a rotated source once it is safe. Candidate = sidecar with a non-empty rotated_to
-// and rotation_closed_at NULL (column set by SidecarStore::close_rotation(string $source, int $now)).
+// FlowService::archive_replaced(array $deps): array (task 1786, plan step 1978; Contract A and B).
+// Sessioneer, not the receiver, archives a rotated source once it is safe. Candidate = sidecar with a non-empty
+// rotated_to and rotation_closed_at NULL (column set by SidecarStore::close_rotation(string $source, int $now)).
 // Steps per candidate, with fresh reads, in this order:
 //   a. source and receiver sidecars exist, receiver != source (source gone: closed; receiver gone: closed, no kill)
 //   b. SESSIONEER_CLAIMS_CMD set, else waiting
-//   c. receiver has a conversation id and a non-empty claims list, else waiting
-//   d. source status exactly idle and its claims list empty (id present), else waiting
+//   c. the receiver has started (a conversation id), else waiting ("the receiver has not started yet"); the
+//      receiver's claims are never read (no receiver-claim gate)
+//   d. source has a conversation id and status exactly idle and its claims list empty (strict read), else waiting
 //   e. $deps['kill'](['target' => name, 'agent' => agent]) never with force: ok:true archived,
 //      ok:false "unknown/not found" closed, other ok:false waiting
+// FlowService::archive_source(string $source, array $deps): array runs a-e for one open rotation under the
+// flow-reap lock (busy: outcome waiting, "a reap pass is running"); rotate() calls it and adds archive:{outcome,detail}.
 // Isolation: temp SQLite files and cache dir; fake `runner` (claims command) and `kill` deps that record
 // calls. No process, session, tmux or network is touched. Written before the implementation: every call
 // goes through $run(), which reports a missing method as per-assertion failures instead of a fatal.
@@ -194,12 +197,12 @@ $reset();
 [$deps, $log] = $make();
 assert_equal([true, []], [($run($deps))['ok'] ?? null, ($run($deps))['results'] ?? null], 'none: an empty database is ok with no results');
 
-echo "happy path: receiver holds a claim, source idle and claim-free\n";
+echo "happy path: receiver started, source idle and claim-free (the receiver's claims are never read)\n";
 $reset();
 $mk('s1', 'r1');
 $mk('s-other', 'r-other', ['recv_exists' => false]);
 $close('s-other', $NOW);
-[$deps, $log] = $make(['conv-r1' => '[{"id":1764}]', 'conv-s1' => '[]']);
+[$deps, $log] = $make(['conv-s1' => '[]']);
 $r = $run($deps);
 assert_equal(true, $r['ok'] ?? null, 'happy: ok');
 assert_equal(1, count((array) ($r['results'] ?? [])), 'happy: one entry, only for the candidate');
@@ -207,7 +210,7 @@ $row = $bySource($r)['s1'] ?? [];
 assert_equal(['s1', 'r1', 'archived'], [$row['source'] ?? null, $row['receiver'] ?? null, $row['outcome'] ?? null], 'happy: entry names source, receiver and outcome archived');
 assert_true(is_string($row['detail'] ?? null), 'happy: detail is a string');
 assert_equal([['agent' => 'claude', 'target' => 's1']], $norm($log->kill), 'happy: kill called exactly once with only target and agent');
-assert_equal([[$CMD, 'conv-r1'], [$CMD, 'conv-s1']], $log->runner, 'happy: claims run with the receiver id first, then the source id');
+assert_equal([[$CMD, 'conv-s1']], $log->runner, 'happy: the claims command runs once, for the source id only; the receiver id is never asked');
 assert_equal($NOW, $closedAt('s1'), 'happy: rotation_closed_at equals clock() at close');
 assert_equal(null, $closedAt('r1'), 'happy: nothing is marked on the receiver');
 $r2 = $run($deps);
@@ -221,16 +224,16 @@ $safe($log, ['s1'], 'happy');
 echo "claims list shapes and the source agent\n";
 $reset();
 $mk('s2', 'r2', ['src_agent' => 'codex']);
-[$deps, $log] = $make(['conv-r2' => '{"claims":[{"id":9}]}', 'conv-s2' => '{"claims":[]}']);
+[$deps, $log] = $make(['conv-s2' => '{"claims":[]}']);
 $r = $run($deps);
-assert_equal('archived', $outcome($r, 's2'), 'shapes: {"claims":[...]} for the receiver and {"claims":[]} for the source archive');
+assert_equal('archived', $outcome($r, 's2'), 'shapes: {"claims":[]} for the source archives');
 assert_equal([['agent' => 'codex', 'target' => 's2']], $norm($log->kill), 'shapes: kill names the source agent from its sidecar');
 
 echo "b. claims command not configured fails closed\n";
 $reset();
 putenv('SESSIONEER_CLAIMS_CMD');
 $mk('s3', 'r3');
-[$deps, $log] = $make(['conv-r3' => '[{"id":1}]']);
+[$deps, $log] = $make();
 $r = $run($deps);
 assert_equal('waiting', $outcome($r, 's3'), 'unset cmd: waiting');
 assert_equal([[], []], [$log->kill, $log->runner], 'unset cmd: nothing archived and no command run');
@@ -241,29 +244,30 @@ assert_equal('archived', $outcome($r, 's3'), 'unset cmd: once configured the sam
 $reset();
 putenv('SESSIONEER_CLAIMS_CMD=');
 $mk('s3e', 'r3e');
-[$deps, $log] = $make(['conv-r3e' => '[{"id":1}]']);
+[$deps, $log] = $make();
 $r = $run($deps);
 assert_equal('waiting', $outcome($r, 's3e'), 'empty cmd (SESSIONEER_CLAIMS_CMD=): waiting');
 assert_equal([[], []], [$log->kill, $log->runner], 'empty cmd: no runner call and nothing killed');
 assert_equal(null, $closedAt('s3e'), 'empty cmd: still a candidate');
 putenv('SESSIONEER_CLAIMS_CMD=/usr/bin/claims-of');
 
-echo "c. the receiver must hold a claim\n";
+echo "c. the receiver's claims are never read; a receiver that has not started waits\n";
 $cases = [
-    'empty list' => ['[]'], 'empty object' => ['{"claims":[]}'], 'command failed' => [['exit' => 1, 'stdout' => '']],
-    'failed with claims printed' => [['exit' => 1, 'stdout' => '[{"id":1}]']], 'not json' => ['not-json'], 'empty output' => [''],
-    'scalar 5' => ['5'], 'scalar string' => ['"x"'], 'scalar true' => ['true'], 'literal null' => ['null'], 'claims null' => ['{"claims":null}'],
-    'empty object (strict receiver side)' => ['{}'], 'object without a claims key' => ['{"other":1}'],
+    'no claims' => ['[]'], 'a claim' => ['[{"id":1}]'], 'command failed' => [['exit' => 1, 'stdout' => '']],
+    'not json' => ['not-json'], 'empty output' => [''], 'literal null' => ['null'], 'claims null' => ['{"claims":null}'],
+    'a runner that throws' => [static function (): array {
+        throw new RuntimeException('receiver claims must not be asked');
+    }],
 ];
 foreach ($cases as $label => [$answer]) {
     $reset();
     $mk('s4', 'r4');
     [$deps, $log] = $make(['conv-r4' => $answer]);
     $r = $run($deps);
-    assert_equal('waiting', $outcome($r, 's4'), "receiver $label: waiting");
-    assert_equal([], $log->kill, "receiver $label: nothing archived");
-    assert_equal(null, $closedAt('s4'), "receiver $label: stays a candidate");
-    assert_true(!in_array([$CMD, 'conv-s4'], $log->runner, true), "receiver $label: the source claims are not even asked");
+    assert_equal('archived', $outcome($r, 's4'), "receiver claims $label: archived, the receiver's claims decide nothing");
+    assert_equal([['agent' => 'claude', 'target' => 's4']], $norm($log->kill), "receiver claims $label: the source is killed once");
+    assert_true(!in_array([$CMD, 'conv-r4'], $log->runner, true), "receiver claims $label: the claims command is never run with the receiver id");
+    assert_equal($NOW, $closedAt('s4'), "receiver claims $label: the candidate is closed at clock()");
 }
 foreach (['null id' => null, 'empty id' => ''] as $label => $id) {
     $reset();
@@ -271,40 +275,35 @@ foreach (['null id' => null, 'empty id' => ''] as $label => $id) {
     [$deps, $log] = $make();
     $r = $run($deps);
     assert_equal('waiting', $outcome($r, 's5'), "receiver $label: waiting");
+    assert_contains('the receiver has not started yet', (string) (($bySource($r))['s5']['detail'] ?? ''), "receiver $label: the detail says the receiver has not started yet");
     assert_equal([], $log->kill, "receiver $label: nothing archived");
+    assert_equal(null, $closedAt('s5'), "receiver $label: stays a candidate");
     foreach ($log->runner as [$c, $conv]) {
         assert_true($conv !== '', "receiver $label: the claims command is never run with an empty id");
     }
 }
 $reset();
-$mk('s6', 'r6');
-$flip = false;
-[$deps, $log] = $make(['conv-r6' => static function () use (&$flip): array {
-    return ['exit' => 0, 'stdout' => $flip ? '[{"id":2}]' : '[]'];
-}]);
-assert_equal('waiting', $outcome($run($deps), 's6'), 'receiver retry: waiting while it holds no claim');
-$flip = true;
-assert_equal('archived', $outcome($run($deps), 's6'), 'receiver retry: archived on a later pass once it holds one');
+$mk('s6', 'r6', ['recv_id' => null]);
+[$deps, $log] = $make();
+assert_equal('waiting', $outcome($run($deps), 's6'), 'receiver start retry: waiting while the receiver has no conversation id');
+SidecarStore::write_sidecar('r6', ['workdir' => '/w/r6', 'agent_session_id' => 'conv-r6', 'agent' => 'claude', 'runtime' => 'headless']);
+assert_equal('archived', $outcome($run($deps), 's6'), 'receiver start retry: archived on a later pass once the receiver has started');
+$reset();
+$mk('s6b', 'r6b', ['recv_id' => null, 'src_status' => ['status' => 'working', 'mode' => 'plan']]);
+[$deps, $log] = $make();
+assert_equal('waiting', $outcome($run($deps), 's6b'), 'receiver not started and source working: waiting');
+assert_equal([], $log->kill, 'receiver not started and source working: nothing archived');
 
 echo "d. the source must be idle\n";
 foreach (['Idle (capitalised)' => ['status' => 'Idle', 'mode' => 'plan'], 'idle with a leading space' => ['status' => ' idle', 'mode' => 'plan'], 'working' => ['status' => 'working', 'mode' => 'plan'], 'blocked' => ['status' => 'blocked', 'mode' => 'plan', 'blocked' => ['tool' => 'Bash']], 'unknown' => ['status' => 'unknown', 'mode' => 'plan'], 'no status row' => null, 'empty status' => ['status' => '', 'mode' => 'plan']] as $label => $status) {
     $reset();
     $mk('s7', 'r7', ['src_status' => $status]);
-    [$deps, $log] = $make(['conv-r7' => '[{"id":1}]']);
+    [$deps, $log] = $make();
     $r = $run($deps);
     assert_equal('waiting', $outcome($r, 's7'), "source $label: waiting");
     assert_equal([], $log->kill, "source $label: never killed");
     assert_equal(null, $closedAt('s7'), "source $label: stays a candidate");
 }
-$reset();
-$mk('s7b', 'r7b');
-[$deps, $log] = $make(['conv-r7b' => static function () {
-    SessionStatusStore::write_status('s7b', ['status' => 'working', 'mode' => 'plan']);
-
-    return '[{"id":1}]';
-}]);
-assert_equal('waiting', $outcome($run($deps), 's7b'), 'fresh status: a source that went working during the receiver check is read fresh and waits');
-assert_equal([], $log->kill, 'fresh status: and is not killed');
 
 echo "d. the source must hold no claim\n";
 $cases = [
@@ -316,7 +315,7 @@ $cases = [
 foreach ($cases as $label => [$answer]) {
     $reset();
     $mk('s8', 'r8');
-    [$deps, $log] = $make(['conv-r8' => '[{"id":1}]', 'conv-s8' => $answer]);
+    [$deps, $log] = $make(['conv-s8' => $answer]);
     $r = $run($deps);
     assert_equal('waiting', $outcome($r, 's8'), "source $label: waiting");
     assert_equal([], $log->kill, "source $label: nothing archived");
@@ -325,7 +324,7 @@ foreach ($cases as $label => [$answer]) {
 foreach (['null id' => null, 'empty id' => ''] as $label => $id) {
     $reset();
     $mk('s9', 'r9', ['src_id' => $id]);
-    [$deps, $log] = $make(['conv-r9' => '[{"id":1}]']);
+    [$deps, $log] = $make();
     $r = $run($deps);
     assert_equal('waiting', $outcome($r, 's9'), "source $label: waiting, claims cannot be checked");
     assert_equal([], $log->kill, "source $label: nothing archived");
@@ -336,7 +335,7 @@ foreach (['null id' => null, 'empty id' => ''] as $label => $id) {
 $reset();
 $mk('s9b', 'r9b');
 $held = true;
-[$deps, $log] = $make(['conv-r9b' => '[{"id":1}]', 'conv-s9b' => static function () use (&$held): array {
+[$deps, $log] = $make(['conv-s9b' => static function () use (&$held): array {
     return ['exit' => 0, 'stdout' => $held ? '[{"id":5}]' : '[]'];
 }]);
 assert_equal('waiting', $outcome($run($deps), 's9b'), 'source claim retry: waiting while it holds one');
@@ -356,7 +355,7 @@ assert_true(SidecarStore::read_sidecar('s10') !== null, 'receiver gone: the sour
 assert_equal([], ($run($deps))['results'] ?? null, 'receiver gone: a second call reports nothing');
 $reset();
 $mk('s10b', 's10b');
-[$deps, $log] = $make(['conv-s10b' => '[{"id":1}]']);
+[$deps, $log] = $make();
 $r = $run($deps);
 assert_equal('closed', $outcome($r, 's10b'), 'receiver is the source: closed');
 assert_equal([], $log->kill, 'receiver is the source: nothing killed');
@@ -404,7 +403,7 @@ $replies = [
 foreach ($replies as $label => [$reply, $expectOutcome, $closes]) {
     $reset();
     $mk('s11', 'r11');
-    [$deps, $log] = $make(['conv-r11' => '[{"id":1}]'], static fn (array $q): array => $reply);
+    [$deps, $log] = $make([], static fn (array $q): array => $reply);
     $r = $run($deps);
     assert_equal($expectOutcome, $outcome($r, 's11'), "kill $label: outcome $expectOutcome");
     assert_equal(1, count($log->kill), "kill $label: asked once");
@@ -426,9 +425,9 @@ echo "exceptions are isolated per candidate\n";
 $reset();
 $mk('sx', 'rx');
 $mk('sy', 'ry');
-[$deps, $log] = $make(['conv-rx' => static function (): array {
+[$deps, $log] = $make(['conv-sx' => static function (): array {
     throw new RuntimeException('claims backend exploded');
-}, 'conv-ry' => '[{"id":1}]']);
+}]);
 $r = $run($deps);
 assert_equal(true, $r['ok'] ?? null, 'runner throws: the pass is still ok');
 assert_equal(2, count((array) ($r['results'] ?? [])), 'runner throws: one entry per candidate');
@@ -437,12 +436,12 @@ assert_equal([['agent' => 'claude', 'target' => 'sy']], $norm($log->kill), 'runn
 assert_true(is_string(($bySource($r))['sx']['detail'] ?? null), 'runner throws: error entry has a detail string');
 assert_equal(null, $closedAt('sx'), 'runner throws: the errored candidate stays open');
 $boom = true;
-[$deps2, $log2] = $make(['conv-rx' => static function () use (&$boom): array {
+[$deps2, $log2] = $make(['conv-sx' => static function () use (&$boom): array {
     if ($boom) {
         throw new RuntimeException('claims backend exploded');
     }
 
-    return ['exit' => 0, 'stdout' => '[{"id":1}]'];
+    return ['exit' => 0, 'stdout' => '[]'];
 }]);
 assert_equal('error', $outcome($run($deps2), 'sx'), 'error retry: still an error on the next pass');
 $boom = false;
@@ -450,7 +449,7 @@ assert_equal('archived', $outcome($run($deps2), 'sx'), 'error retry: archived on
 $reset();
 $mk('sx', 'rx');
 $mk('sy', 'ry');
-[$deps, $log] = $make(['conv-rx' => '[{"id":1}]', 'conv-ry' => '[{"id":1}]'], static function (array $q): array {
+[$deps, $log] = $make([], static function (array $q): array {
     if ($q['target'] === 'sx') {
         throw new RuntimeException('kill exploded');
     }
@@ -477,29 +476,29 @@ $mk('m3', 'n3', ['recv_exists' => false]);
 $mk('m4', 'n4', ['src_status' => ['status' => 'working', 'mode' => 'plan']]);
 SidecarStore::write_sidecar('bystander', ['workdir' => '/w', 'agent_session_id' => 'conv-by', 'agent' => 'claude', 'runtime' => 'headless']);
 SessionStatusStore::write_status('bystander', ['status' => 'idle', 'mode' => 'plan']);
-[$deps, $log] = $make(['conv-n1' => '[{"id":1}]', 'conv-n2' => '[]', 'conv-n4' => '[{"id":1}]']);
+[$deps, $log] = $make(['conv-m2' => '[]']);
 $r = $run($deps);
 assert_equal(4, count((array) ($r['results'] ?? [])), 'mixed: four candidates, four entries, nothing for the bystander');
-assert_equal(['archived', 'waiting', 'closed', 'waiting'], [$outcome($r, 'm1'), $outcome($r, 'm2'), $outcome($r, 'm3'), $outcome($r, 'm4')], 'mixed: each candidate gets its own outcome');
+assert_equal(['archived', 'archived', 'closed', 'waiting'], [$outcome($r, 'm1'), $outcome($r, 'm2'), $outcome($r, 'm3'), $outcome($r, 'm4')], 'mixed: each candidate gets its own outcome (m2 archives although its receiver holds no claim)');
 assert_equal(['n1', 'n2', 'n3', 'n4'], array_map(static fn (string $s): mixed => ($bySource($r))[$s]['receiver'] ?? null, ['m1', 'm2', 'm3', 'm4']), 'mixed: each entry names its receiver');
-assert_equal([['agent' => 'claude', 'target' => 'm1']], $norm($log->kill), 'mixed: exactly one kill, for the archived source');
-$safe($log, ['m1'], 'mixed');
+assert_equal([['agent' => 'claude', 'target' => 'm1'], ['agent' => 'claude', 'target' => 'm2']], $norm($log->kill), 'mixed: exactly two kills, for the two archived sources');
+$safe($log, ['m1', 'm2'], 'mixed');
 assert_true(SidecarStore::read_sidecar('bystander') !== null && SidecarStore::read_sidecar('n1') !== null, 'mixed: receivers and bystanders are never touched');
 
 echo "claims lists: null inside an object counts as empty\n";
 $reset();
 $mk('t0', 'u0');
-[$deps, $log] = $make(['conv-u0' => '[{"id":1}]', 'conv-t0' => '{}']);
+[$deps, $log] = $make(['conv-t0' => '{}']);
 assert_equal('archived', $outcome($run($deps), 't0'), 'source {} is an empty list, claim-free (rotate semantics)');
 $reset();
 $mk('t1', 'u1');
-[$deps, $log] = $make(['conv-u1' => '[{"id":1}]', 'conv-t1' => '{"claims":null}']);
+[$deps, $log] = $make(['conv-t1' => '{"claims":null}']);
 assert_equal('archived', $outcome($run($deps), 't1'), 'source {"claims":null} is claim-free');
 $reset();
 $mk('t2', 'u2');
 [$deps, $log] = $make(['conv-u2' => '{"claims":null}']);
-assert_equal('waiting', $outcome($run($deps), 't2'), 'receiver {"claims":null} holds none, so waiting');
-assert_equal([], $log->kill, 'receiver {"claims":null}: nothing archived');
+assert_equal('archived', $outcome($run($deps), 't2'), 'receiver {"claims":null} is not read, so the source is archived');
+assert_equal([['agent' => 'claude', 'target' => 't2']], $norm($log->kill), 'receiver {"claims":null}: the source is killed');
 
 echo "set_rotation reopens a closed link\n";
 $reset();
@@ -509,31 +508,171 @@ SidecarStore::set_rotation('o1', 'earlier-source', null);
 assert_equal(1234567, $closedAt('o1'), 'reopen: set_rotation with only a from value keeps it closed');
 SidecarStore::set_rotation('o1', null, 'p1');
 assert_equal(null, $closedAt('o1'), 'reopen: set_rotation with a non-null to sets rotation_closed_at back to NULL');
-[$deps, $log] = $make(['conv-p1' => '[{"id":1}]']);
+[$deps, $log] = $make();
 assert_equal('archived', $outcome($run($deps), 'o1'), 'reopen: the source is a candidate again');
 $reset();
 $mk('o2', 'p2');
 $close('o2', 1234567);
+$logRot = new stdClass();
+$logRot->kill = [];
 $rotateDeps = [
     'clock' => static fn (): int => $NOW,
     'facts' => static fn (string $s, array $row): ?array => $s === 'o2' ? ['context_tokens' => 260000, 'idle_seconds' => 60, 'source' => ['agent' => 'claude', 'profile' => 'work', 'status' => 'idle']] : null,
     'quota' => static fn (string $k): ?array => null,
     'receivers' => ['claude/work'],
     'thresholds' => Thresholds::fromFile($dir . '/none.conf'),
+    // The new receiver exists but has not started (no conversation id yet), as right after a launch.
     'launch' => static function (array $req): array {
-        SidecarStore::write_sidecar('p2-new', ['workdir' => '/w/p2-new', 'agent_session_id' => 'conv-p2-new', 'agent' => 'claude', 'runtime' => 'headless']);
+        SidecarStore::write_sidecar('p2-new', ['workdir' => '/w/p2-new', 'agent' => 'claude', 'runtime' => 'headless']);
 
         return ['ok' => true, 'name' => 'p2-new', 'message' => ''];
     },
     'runner' => static fn (string $command, string $conv): array => ['exit' => 0, 'stdout' => '[]'],
+    'kill' => static function (array $request) use ($logRot): array {
+        $logRot->kill[] = $request;
+
+        return ['ok' => true, 'message' => 'archived'];
+    },
 ];
+[$deps, $log] = $make();
 $rot = FlowService::rotate(['session' => 'o2', 'handoff_id' => '5'], $rotateDeps);
 assert_equal([true, 'p2-new'], [$rot['ok'] ?? null, $rot['session'] ?? null], 'reopen: the second rotate of a closed source succeeds');
+assert_equal(['waiting'], [$rot['archive']['outcome'] ?? null], 'reopen: rotate replies archive.outcome waiting while the receiver has not started');
+assert_contains('the receiver has not started yet', (string) ($rot['archive']['detail'] ?? ''), 'reopen: rotate replies archive.detail, the receiver has not started yet');
 assert_equal(null, $closedAt('o2'), 'reopen: a successful fresh rotate reopens the link');
-[$deps, $log] = $make(['conv-p2-new' => '[{"id":1}]', 'conv-p2' => '[{"id":1}]']);
+assert_equal([], $logRot->kill, 'reopen: nothing is killed while the receiver has not started');
+SidecarStore::write_sidecar('p2-new', ['workdir' => '/w/p2-new', 'agent_session_id' => 'conv-p2-new', 'agent' => 'claude', 'runtime' => 'headless']);
 $r = $run($deps);
-assert_equal('archived', $outcome($r, 'o2'), 'reopen: the re-rotated source is archived once the new receiver holds a claim');
+assert_equal('archived', $outcome($r, 'o2'), 'reopen: the re-rotated source is archived on a pass after the new receiver started, with no claim on it');
 assert_equal('p2-new', ($bySource($r))['o2']['receiver'] ?? null, 'reopen: and the entry names the new receiver');
+
+echo "rotate() archives the source right away when the receiver has started (Contract B)\n";
+$reset();
+$mk('o5', 'p5');
+$close('o5', 1234567);
+$log5 = new stdClass();
+$log5->kill = [];
+$started = $rotateDeps;
+$started['facts'] = static fn (string $s, array $row): ?array => ['context_tokens' => 260000, 'idle_seconds' => 60, 'source' => ['agent' => 'claude', 'profile' => 'work', 'status' => 'idle']];
+$started['launch'] = static function (array $req): array {
+    SidecarStore::write_sidecar('p5-new', ['workdir' => '/w/p5-new', 'agent_session_id' => 'conv-p5-new', 'agent' => 'claude', 'runtime' => 'headless']);
+
+    return ['ok' => true, 'name' => 'p5-new', 'message' => ''];
+};
+$started['kill'] = static function (array $request) use ($log5): array {
+    $log5->kill[] = $request;
+
+    return ['ok' => true, 'message' => 'archived'];
+};
+putenv('SESSIONEER_CLAIMS_CMD=/usr/bin/claims-of');
+$rot = FlowService::rotate(['session' => 'o5', 'handoff_id' => '5'], $started);
+assert_equal(true, $rot['ok'] ?? null, 'rotate archive: ok');
+assert_equal('archived', $rot['archive']['outcome'] ?? null, 'rotate archive: archive.outcome archived right after the link is recorded');
+assert_true(is_string($rot['archive']['detail'] ?? null), 'rotate archive: archive.detail is a string');
+assert_equal([['agent' => 'claude', 'target' => 'o5']], $norm($log5->kill), 'rotate archive: the source is killed once, without force');
+assert_equal($NOW, $closedAt('o5'), 'rotate archive: the link is closed at clock()');
+$reset();
+$mk('o6', 'p6');
+$log5->kill = [];
+putenv('SESSIONEER_CLAIMS_CMD');
+$rot = FlowService::rotate(['session' => 'o6', 'handoff_id' => '5'], $started);
+assert_equal(true, $rot['ok'] ?? null, 'rotate archive, claims command unset: the rotate itself still succeeds');
+assert_equal('waiting', $rot['archive']['outcome'] ?? null, 'rotate archive, claims command unset: archive.outcome waiting');
+assert_equal([], $log5->kill, 'rotate archive, claims command unset: nothing killed');
+putenv('SESSIONEER_CLAIMS_CMD=/usr/bin/claims-of');
+$reset();
+$mk('o7', 'p7');
+$close('o7', 1234567);
+$log5->kill = [];
+$busy = fopen($LOCK, 'c');
+assert_true($busy !== false && flock($busy, LOCK_EX | LOCK_NB), 'rotate archive, reap pass running: the test holds the flow-reap lock');
+$rot = FlowService::rotate(['session' => 'o7', 'handoff_id' => '5'], $started);
+assert_equal(true, $rot['ok'] ?? null, 'rotate archive, reap pass running: the rotate itself still succeeds');
+assert_equal('waiting', $rot['archive']['outcome'] ?? null, 'rotate archive, reap pass running: archive.outcome waiting');
+assert_contains('a reap pass is running', (string) ($rot['archive']['detail'] ?? ''), 'rotate archive, reap pass running: archive.detail says a reap pass is running');
+assert_equal([], $log5->kill, 'rotate archive, reap pass running: nothing killed');
+assert_equal(null, $closedAt('o7'), 'rotate archive, reap pass running: the link stays open for the next pass');
+if ($busy !== false) {
+    flock($busy, LOCK_UN);
+    fclose($busy);
+}
+
+echo "archive_source: one open rotation, the same check, under the flow-reap lock (Contract B)\n";
+$callSource = static function (string $source, array $deps): array {
+    if (!method_exists(FlowService::class, 'archive_source')) {
+        return ['missing' => true];
+    }
+    try {
+        return FlowService::archive_source($source, $deps);
+    } catch (Throwable $e) {
+        return ['threw' => $e::class . ': ' . $e->getMessage()];
+    }
+};
+assert_true(method_exists(FlowService::class, 'archive_source'), 'FlowService::archive_source exists');
+$reset();
+$mk('as1', 'ar1');
+[$deps, $log] = $make();
+$r = $callSource('as1', $deps);
+assert_equal('archived', $r['outcome'] ?? ($r['threw'] ?? 'no outcome'), 'archive_source: archived for a started receiver and an idle, claim-free source');
+assert_true(is_string($r['detail'] ?? null), 'archive_source: detail is a string');
+assert_equal([['agent' => 'claude', 'target' => 'as1']], $norm($log->kill), 'archive_source: the source is killed once, without force');
+assert_equal([[$CMD, 'conv-as1']], $log->runner, 'archive_source: only the source claims are read');
+assert_equal($NOW, $closedAt('as1'), 'archive_source: the link is closed at clock()');
+assert_equal(null, $closedAt('ar1'), 'archive_source: nothing is marked on the receiver');
+$reset();
+$mk('as2', 'ar2', ['recv_id' => null]);
+[$deps, $log] = $make();
+$r = $callSource('as2', $deps);
+assert_equal('waiting', $r['outcome'] ?? ($r['threw'] ?? 'no outcome'), 'archive_source: waiting while the receiver has not started');
+assert_contains('the receiver has not started yet', (string) ($r['detail'] ?? ''), 'archive_source: detail says so');
+assert_equal([[], null], [$log->kill, $closedAt('as2')], 'archive_source: nothing killed, the link stays open');
+$reset();
+$mk('as3', 'ar3', ['src_status' => ['status' => 'working', 'mode' => 'plan']]);
+[$deps, $log] = $make();
+assert_equal('waiting', ($callSource('as3', $deps))['outcome'] ?? 'no outcome', 'archive_source: waiting while the source is working');
+$reset();
+$mk('as4', 'ar4');
+[$deps, $log] = $make(['conv-as4' => '[{"id":7}]']);
+assert_equal('waiting', ($callSource('as4', $deps))['outcome'] ?? 'no outcome', 'archive_source: waiting while the source holds a claim');
+assert_equal([], $log->kill, 'archive_source: a source holding a claim is never killed');
+$reset();
+$mk('as5', 'ar5', ['recv_exists' => false]);
+[$deps, $log] = $make();
+assert_equal('closed', ($callSource('as5', $deps))['outcome'] ?? 'no outcome', 'archive_source: closed when the receiver is gone');
+assert_equal($NOW, $closedAt('as5'), 'archive_source: and the link is closed at clock()');
+$reset();
+$mk('as6', 'ar6');
+[$deps, $log] = $make([], static fn (array $q): array => ['ok' => false, 'message' => 'Unknown session as6']);
+assert_equal('closed', ($callSource('as6', $deps))['outcome'] ?? 'no outcome', 'archive_source: closed when the kill reply says the session is unknown');
+$reset();
+$mk('as7', 'ar7');
+putenv('SESSIONEER_CLAIMS_CMD');
+[$deps, $log] = $make();
+assert_equal('waiting', ($callSource('as7', $deps))['outcome'] ?? 'no outcome', 'archive_source: waiting while the claims command is unset');
+assert_equal([[], []], [$log->kill, $log->runner], 'archive_source, claims command unset: nothing killed, no command run');
+putenv('SESSIONEER_CLAIMS_CMD=/usr/bin/claims-of');
+$reset();
+$mk('as8', 'ar8');
+[$deps, $log] = $make();
+$handle = fopen($LOCK, 'c');
+assert_true($handle !== false && flock($handle, LOCK_EX | LOCK_NB), 'archive_source lock: the test holds the flow-reap lock');
+$r = $callSource('as8', $deps);
+assert_equal('waiting', $r['outcome'] ?? ($r['threw'] ?? 'no outcome'), 'archive_source lock: busy returns waiting');
+assert_contains('a reap pass is running', (string) ($r['detail'] ?? ''), 'archive_source lock: detail says a reap pass is running');
+assert_equal([[], []], [$log->kill, $log->runner], 'archive_source lock: nothing killed, no command run while busy');
+assert_equal(null, $closedAt('as8'), 'archive_source lock: the link stays open');
+if ($handle !== false) {
+    flock($handle, LOCK_UN);
+    fclose($handle);
+}
+assert_equal('archived', ($callSource('as8', $deps))['outcome'] ?? 'no outcome', 'archive_source lock: once released the next call archives');
+$probe = fopen($LOCK, 'c');
+assert_true($probe !== false && flock($probe, LOCK_EX | LOCK_NB), 'archive_source: the lock is released afterwards');
+if ($probe !== false) {
+    flock($probe, LOCK_UN);
+    fclose($probe);
+}
+
 $reset();
 $mk('o3', 'p3');
 $close('o3', 1234567);
@@ -562,7 +701,7 @@ assert_equal(null, $closedAt('c1'), 'rewrite: any non-null $to, even the same re
 echo "per-run lock\n";
 $reset();
 $mk('l1', 'p1');
-[$deps, $log] = $make(['conv-p1' => '[{"id":1}]']);
+[$deps, $log] = $make();
 $handle = fopen($LOCK, 'c');
 assert_true($handle !== false && flock($handle, LOCK_EX | LOCK_NB), 'lock: the test holds the lock file');
 $r = $run($deps);
@@ -581,9 +720,9 @@ echo "the CLAIMS command line is passed through unchanged\n";
 $reset();
 putenv('SESSIONEER_CLAIMS_CMD=/opt/bin/dibs claims --json');
 $mk('q1', 'q2');
-[$deps, $log] = $make(['conv-q2' => '[{"id":1}]']);
+[$deps, $log] = $make();
 $run($deps);
-assert_equal([['/opt/bin/dibs claims --json', 'conv-q2'], ['/opt/bin/dibs claims --json', 'conv-q1']], $log->runner, 'cmd: the configured command string is handed to the runner as is, with the conversation id');
+assert_equal([['/opt/bin/dibs claims --json', 'conv-q1']], $log->runner, 'cmd: the configured command string is handed to the runner as is, with the source conversation id (the receiver is never asked)');
 putenv('SESSIONEER_CLAIMS_CMD=/usr/bin/claims-of');
 
 test_exit();

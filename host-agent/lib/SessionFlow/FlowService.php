@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace HostAgent\SessionFlow;
 
 use HostAgent\Launch\LaunchService;
+use HostAgent\Launch\SessionControl;
 use HostAgent\Services\Config;
 use HostAgent\Services\ProcessRunner;
 use HostAgent\Services\QuotaService;
@@ -256,8 +257,8 @@ final class FlowService
     }
 
     /**
-     * Start a fresh receiver session for a source session. Never archives or kills the source:
-     * archive_replaced() does that once the receiver holds a claim.
+     * Start a fresh receiver session for a source session, then try archive_source() once; the
+     * source is archived only when the receiver has started and the source is idle and claim-free.
      *
      * @param array<string, mixed> $request session; one of handoff_id, plan_id, prompt; optional agent,
      *     profile, model, effort, workdir, set_name, dry_run
@@ -322,6 +323,7 @@ final class FlowService
             }
             SidecarStore::set_rotation($name, $session, null);
             SidecarStore::set_rotation($session, null, $name);
+            $archive = self::archive_source($session, $deps);
         } finally {
             if (!$dispatched && $reservation !== null) {
                 SessionOfferStore::rollback($session, $reservation, $deps['clock']());
@@ -330,11 +332,48 @@ final class FlowService
             fclose($lock);
         }
 
-        return ['session' => $name] + $reply;
+        return ['session' => $name, 'archive' => ['outcome' => $archive['outcome'], 'detail' => $archive['detail']]] + $reply;
     }
 
     /**
-     * Archives each rotated source once its receiver holds a claim and the source is idle and
+     * Links a receiver to the source it replaces, both ways, and runs the archive check for the pair.
+     *
+     * @param array<string, mixed> $request receiver (a session name), source (a name or conversation id), optional launched (the receiver was launched to replace the source, so the launcher may be the source)
+     * @param array<string, mixed> $deps
+     * @return array<string, mixed> ok, source, receiver, outcome, detail; or ok false with a message
+     */
+    public static function replaces(array $request, array $deps): array
+    {
+        $given = is_string($request['receiver'] ?? null) ? $request['receiver'] : '';
+        $receiver = $given === '' ? null : SessionControl::resolve($given);
+        $new = $receiver === null ? null : SidecarStore::read_sidecar($receiver);
+        if ($new === null) {
+            return ['ok' => false, 'message' => "Unknown session {$given}"];
+        }
+        $source = SessionControl::resolve(is_string($request['source'] ?? null) ? $request['source'] : '');
+        $old = $source === null ? null : SidecarStore::read_sidecar($source);
+        if ($source === null || $old === null) {
+            return ['ok' => true, 'source' => $source ?? (string) ($request['source'] ?? ''), 'receiver' => $receiver, 'outcome' => 'gone', 'detail' => 'the source is not a tracked session'];
+        }
+        if ($source === $receiver) {
+            return ['ok' => false, 'message' => 'A session cannot replace itself'];
+        }
+        if (empty($request['launched']) && ($new['spawned_by']['name'] ?? null) === $source) {
+            return ['ok' => false, 'message' => "{$source} launched {$receiver}; the launcher uses --rotate or launches with --replaces"];
+        }
+        $linked = (string) ($old['rotated_to'] ?? '');
+        $open = in_array($source, array_column(SidecarStore::list_open_rotations(), 'session_name'), true);
+        if ($open && $linked !== $receiver && SidecarStore::read_sidecar($linked) !== null) {
+            return ['ok' => false, 'message' => "{$source} already has an open rotation to {$linked}"];
+        }
+        SidecarStore::set_rotation($receiver, $source, null);
+        SidecarStore::set_rotation($source, null, $receiver);
+
+        return ['ok' => true, 'source' => $source, 'receiver' => $receiver] + self::archive_source($source, $deps);
+    }
+
+    /**
+     * Archives each rotated source once the receiver has started and the source is idle and
      * claim-free, then closes the rotation. Every read is fresh; one candidate failing never stops
      * the others. A source is never force-stopped: a refusal leaves it waiting for the next pass.
      *
@@ -350,14 +389,7 @@ final class FlowService
         $results = [];
         try {
             foreach (SidecarStore::list_open_rotations() as $candidate) {
-                $source = $candidate['session_name'];
-                $receiver = $candidate['rotated_to'];
-                try {
-                    [$outcome, $detail] = self::reap($source, $receiver, $deps);
-                } catch (\Throwable $e) {
-                    [$outcome, $detail] = ['error', $e->getMessage()];
-                }
-                $results[] = ['source' => $source, 'receiver' => $receiver, 'outcome' => $outcome, 'detail' => $detail];
+                $results[] = self::attempt($candidate['session_name'], $candidate['rotated_to'], $deps);
             }
         } finally {
             flock($lock, LOCK_UN);
@@ -365,6 +397,42 @@ final class FlowService
         }
 
         return ['ok' => true, 'results' => $results];
+    }
+
+    /**
+     * The same check as one reap pass, for one open rotation, under the flow-reap lock.
+     *
+     * @param array<string, mixed> $deps
+     * @return array{source: string, receiver: string, outcome: string, detail: string}
+     */
+    public static function archive_source(string $source, array $deps): array
+    {
+        $receiver = (string) (SidecarStore::read_sidecar($source)['rotated_to'] ?? '');
+        $lock = self::lockFile('flow-reap');
+        if ($lock === null) {
+            return ['source' => $source, 'receiver' => $receiver, 'outcome' => 'waiting', 'detail' => 'a reap pass is running'];
+        }
+        try {
+            return self::attempt($source, $receiver, $deps);
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $deps
+     * @return array{source: string, receiver: string, outcome: string, detail: string}
+     */
+    private static function attempt(string $source, string $receiver, array $deps): array
+    {
+        try {
+            [$outcome, $detail] = self::reap($source, $receiver, $deps);
+        } catch (\Throwable $e) {
+            [$outcome, $detail] = ['error', $e->getMessage()];
+        }
+
+        return ['source' => $source, 'receiver' => $receiver, 'outcome' => $outcome, 'detail' => $detail];
     }
 
     /**
@@ -394,15 +462,14 @@ final class FlowService
         if ($command === '') {
             return ['waiting', 'SESSIONEER_CLAIMS_CMD is not set'];
         }
-        $receiverId = (string) ($new['agent_session_id'] ?? '');
-        if ($receiverId === '' || (self::claimList($command, $receiverId, $deps, true) ?? []) === []) {
-            return ['waiting', 'the receiver holds no claim yet'];
+        if (($new['agent_session_id'] ?? '') === '') {
+            return ['waiting', 'the receiver has not started yet'];
         }
         $sourceId = (string) ($old['agent_session_id'] ?? '');
-        if (($old['agent_session_id'] ?? '') === '' || (SessionStatusStore::read_status($source)['status'] ?? null) !== 'idle') {
+        if ($sourceId === '' || (SessionStatusStore::read_status($source)['status'] ?? null) !== 'idle') {
             return ['waiting', 'the source is not idle'];
         }
-        if (self::claimList($command, $sourceId, $deps) !== []) {
+        if (self::claimList($command, $sourceId, $deps, true) !== []) {
             return ['waiting', 'the source still holds claims or they could not be read'];
         }
 
