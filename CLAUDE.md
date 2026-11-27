@@ -231,6 +231,9 @@ Docker-spawned, makes that impossible by construction — not by convention.
    (`ClaudeHeadlessManager::PROMPT_HELD_PREFIX`, also written to
    `last_turn_error`), a turn-start event or a 3s timeout accepts it. Without
    this a hook-refused prompt looked delivered and the session just sat idle.
+   A peer send (`send_peer_message`) also sets `synthetic_if_busy`: the manager
+   writes `isSynthetic: true` only if the child is busy then (`openTurns`,
+   `pending`, or a main-thread assistant event since the last `result`).
    `ClaudeHeadlessChild::$pending` is an ordered queue of `can_use_tool`
    requests keyed by request_id (parallel subagents send several at once):
    the head is the prompt the dashboard shows, `answer_prompt` matches the

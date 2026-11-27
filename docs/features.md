@@ -484,6 +484,9 @@ deliberately narrow.
   calls are hidden. Both have a copy button and are searchable. A dimmed
   "Sending…" or "Queued" entry is replaced by a matching user message, not by
   another agent's message.
+- A `sessioneer --send` peer message to a busy headless Claude session is marked
+  as not coming from the user; idle and tmux receivers get it unmarked. The
+  conditions and limits are in [Peer messaging](cli.md#peer-messaging).
 - Each tool call is one collapsed entry labelled by what it did ("Ran
   <command>", "Edit <path>", ...). When the call carries its own short
   description (Claude Code's Bash `description`, for example), that line

@@ -131,6 +131,67 @@ function has_result(array $m, string $needle): bool
     return false;
 }
 
+/** Same value with every object's keys sorted, so === compares shapes without depending on key order. */
+function canonical(mixed $value): mixed
+{
+    if (!is_array($value)) {
+        return $value;
+    }
+
+    $value = array_map('canonical', $value);
+
+    if (!array_is_list($value)) {
+        ksort($value);
+    }
+
+    return $value;
+}
+
+/**
+ * The user lines the fake process read from the manager that contain $token.
+ *
+ * @return list<array<string, mixed>>
+ */
+function user_lines(array $m, string $token): array
+{
+    $lines = [];
+
+    foreach (fake_log($m) as $row) {
+        if (isset($row['stdin']) && str_contains((string)$row['stdin'], $token)) {
+            $lines[] = (array)json_decode((string)$row['stdin'], true);
+        }
+    }
+
+    return $lines;
+}
+
+/**
+ * Asserts the exact line written to the Claude process for the message carrying
+ * $token: with `isSynthetic: true` when $synthetic, with no such key otherwise.
+ */
+function assert_user_line(array $m, string $token, bool $synthetic, mixed $content, string $message): void
+{
+    wait_until(static fn (): bool => user_lines($m, $token) !== []);
+    $lines = user_lines($m, $token);
+
+    if (count($lines) !== 1) {
+        assert_true(false, "{$message} (expected one line carrying {$token} to reach the process, got " . count($lines) . ')');
+
+        return;
+    }
+
+    $expected = ['type' => 'user', 'message' => ['role' => 'user', 'content' => $content]] + ($synthetic ? ['isSynthetic' => true] : []);
+    $ok = canonical($expected) === canonical($lines[0]);
+
+    assert_true($ok, $ok ? $message : "{$message} (expected " . ($synthetic ? 'isSynthetic: true' : 'no isSynthetic key') . ', got ' . substr((string)json_encode($lines[0]), 0, 300) . ')');
+}
+
+/** Waits until the manager has processed the fake process's BARRIER=$n / AFTER=$n marker. */
+function manager_saw(array $m, int $n): bool
+{
+    return (bool)wait_until(static fn (): bool => abs((float)(call($m, 'sessioneer/health')['rate_limit']['windows']['five_hour']['utilization'] ?? -1) - $n / 1000) < 1e-9);
+}
+
 /** @param array<string, mixed> $over */
 function make_session(string $root, string $name, array $over = []): string
 {

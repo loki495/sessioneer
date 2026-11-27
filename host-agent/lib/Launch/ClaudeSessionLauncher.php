@@ -254,7 +254,7 @@ class ClaudeSessionLauncher implements SessionLauncher
 
         $stamp = $this->peer_stamp($from, $sender);
 
-        return $this->deliver($name, 'sent', "{$stamp} {$message}", $runtime, (string)($receiver['runtime'] ?? RuntimeType::TMUX));
+        return $this->deliver($name, 'sent', "{$stamp} {$message}", $runtime, (string)($receiver['runtime'] ?? RuntimeType::TMUX), fromPeer: true);
     }
 
     /**
@@ -297,11 +297,13 @@ class ClaudeSessionLauncher implements SessionLauncher
     }
 
     /** @return array<string, mixed> */
-    private function deliver(string $name, string $action, string $prompt, ClaudeHeadlessRuntime $runtime, string $runtimeType = RuntimeType::HEADLESS): array
+    private function deliver(string $name, string $action, string $prompt, ClaudeHeadlessRuntime $runtime, string $runtimeType = RuntimeType::HEADLESS, bool $fromPeer = false): array
     {
-        $sent = $runtimeType === RuntimeType::HEADLESS
-            ? $runtime->send_message($name, $prompt)
-            : PromptInteractionService::send_message($name, $prompt, []);
+        $sent = match (true) {
+            $runtimeType !== RuntimeType::HEADLESS => PromptInteractionService::send_message($name, $prompt, []),
+            $fromPeer => $runtime->send_peer_message($name, $prompt),
+            default => $runtime->send_message($name, $prompt),
+        };
 
         if ($sent['ok'] !== true) {
             return ['ok' => false, 'name' => $name, 'action' => $action, 'prompt_sent' => false, 'message' => "Session {$name} {$action}, but the prompt was not delivered: " . (string)($sent['message'] ?? 'unknown error')];

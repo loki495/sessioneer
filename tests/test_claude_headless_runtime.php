@@ -393,4 +393,64 @@ foreach ([$quickA, $quickB] as $quick) {
     assert_equal([], $quick['session'], 'lightweight creation skips unrelated transcript enrichment');
 }
 
+echo "Runtime: send_peer_message\n";
+assert_true(method_exists($rt, 'send_peer_message'), 'the runtime has send_peer_message()');
+
+if (method_exists($rt, 'send_peer_message')) {
+    $method = new ReflectionMethod(ClaudeHeadlessRuntime::class, 'send_peer_message');
+    assert_true($method->isPublic() && !$method->isStatic(), 'as a public instance method');
+    assert_equal(['string $sessionRef', 'string $text'], array_map(static fn (ReflectionParameter $p): string => $p->getType() . ' $' . $p->getName(), $method->getParameters()), 'taking a session reference and a text');
+    assert_equal('array', (string)$method->getReturnType(), 'and returning an array');
+
+    $fake->calls = [];
+    $fake->responses = [];
+    $missing = 'claude-headless-t' . $tag . '-missing';
+    assert_equal('Session not found', $rt->send_peer_message($missing, 'hi')['message'] ?? null, 'sending to an unknown session is rejected');
+    foreach (['', '  ', "\n\t "] as $blank) {
+        assert_equal('Rejected: empty message', $rt->send_peer_message($s1, $blank)['message'] ?? null, 'a blank message ' . json_encode($blank) . ' is rejected');
+    }
+    foreach ([[$missing, 'hi'], [$missing, ' '], [$s1, ' '], ['cc-tmux-t' . $tag, 'hi'], ['codex-headless-t' . $tag, 'hi'], ['../etc/passwd', 'hi']] as [$ref, $text]) {
+        $refusal = $rt->send_message($ref, $text);
+        assert_equal(false, $refusal['ok'] ?? null, 'send_message refuses ' . json_encode([$ref, $text]));
+        assert_equal($refusal, $rt->send_peer_message($ref, $text), 'and send_peer_message refuses it the same way');
+    }
+    assert_equal([], $fake->calls, 'no refused send reaches the manager');
+
+    $sent = $rt->send_peer_message($s1, 'hello');
+    assert_equal(true, $sent['ok'] ?? null, 'a peer message is sent');
+    assert_equal(['sessioneer/sendInput'], $fake->methods(), 'as one sendInput request');
+    assert_equal(
+        ['await_hooks' => true, 'content' => 'hello', 'session' => $s1, 'synthetic_if_busy' => true],
+        (static function (array $params): array { ksort($params); return $params; })($fake->calls[0]['params'] ?? []),
+        'carrying synthetic_if_busy next to the usual params'
+    );
+
+    foreach (["two\nlines \"quoted\" é ✓", '  padded  ', '/status', str_repeat('y', 200000)] as $text) {
+        $fake->calls = [];
+        $rt->send_message($s1, $text);
+        $rt->send_peer_message($s1, $text);
+        assert_true(($fake->calls[1]['params']['content'] ?? null) === ($fake->calls[0]['params']['content'] ?? false), 'content is passed as send_message passes it: ' . json_encode(substr($text, 0, 12)));
+    }
+
+    foreach ([
+        'accepted' => ['ok' => true],
+        'queued' => ['ok' => true, 'queued' => true],
+        'refused' => ['ok' => false, 'message' => 'Spawning is disabled: nope'],
+        'held by a hook' => ['ok' => false, 'message' => 'Prompt not sent: stale'],
+        'refused without a message' => ['ok' => false],
+        'manager down' => ['ok' => false, 'message' => 'Cannot reach Claude headless manager: gone'],
+    ] as $label => $response) {
+        $fake->responses['sessioneer/sendInput'] = $response;
+        assert_equal($rt->send_message($s1, 'x'), $rt->send_peer_message($s1, 'x'), "same reply shape as send_message when {$label}");
+    }
+    unset($fake->responses['sessioneer/sendInput']);
+
+    $fake->calls = [];
+    $rt->send_peer_message($s1, 'peer first');
+    $rt->send_message($s1, 'then mine');
+    $rt->send_message($s1, 'with a file', ['pic.png']);
+    assert_true(!array_key_exists('synthetic_if_busy', $fake->calls[1]['params']), 'a send_message after a peer send carries no synthetic_if_busy');
+    assert_true(!array_key_exists('synthetic_if_busy', $fake->calls[2]['params']), 'nor does one with attachments');
+}
+
 test_exit();
