@@ -106,6 +106,14 @@ try {
     assert_contains('No tracked session found', $err, '--show: with the reason');
     assert_equal('', $out, '--show: and nothing on stdout');
 
+    // Another agent's message is an entry with no role whose only block is agent_message.
+    [$code, $out] = $cli(['--show', 'mid-turn', '--history', '4']);
+    assert_equal(0, $code, '--show --history with an agent message: exit 0');
+    assert_true(preg_match('/\n\[[^\]\n]*\] \*\*Two\*\* tests fail\n\nsecond line\n/', $out) === 1, '--show --history: an agent message prints its text, verbatim, as its entry');
+    assert_true(preg_match('/\n\[[^\]\n]*\] report without a summary\n/', $out) === 1, '--show --history: an agent message without a summary prints its text too');
+    assert_true(preg_match('/\n\[[^\]\n]*\] \n/', $out) === 0, '--show --history: no entry is printed empty');
+    assert_true(preg_match('/first question.*Two\*\* tests fail.*report without a summary.*first answer/s', $out) === 1, '--show --history: entries stay in order');
+
     echo "--answer\n";
     @unlink($logPath);
     [$code, $out, $err] = $cli(['--answer', 'blocked', '--option', '2', '--text', 'not that', '--expect', 'No']);

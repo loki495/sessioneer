@@ -477,6 +477,13 @@ deliberately narrow.
 - Transcript blocks support Markdown, collapsing, copying, attachments,
   tool-call grouping, subagent/worker lineage, thinking state, and turn errors
   where the source agent records them.
+- A message delivered to a Claude Code session while it is working shows where
+  it arrived. Your own is a user message, so "load until the last user message"
+  stops at it. Another agent's is an **Agent message** card headed "Message from
+  <name>" (or "Message from another agent"); it stays visible when subagent
+  calls are hidden. Both have a copy button and are searchable. A dimmed
+  "Sending…" or "Queued" entry is replaced by a matching user message, not by
+  another agent's message.
 - Each tool call is one collapsed entry labelled by what it did ("Ran
   <command>", "Edit <path>", ...). When the call carries its own short
   description (Claude Code's Bash `description`, for example), that line

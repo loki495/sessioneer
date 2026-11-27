@@ -1311,4 +1311,389 @@ assert_equal(
 @rmdir($titleFakeHome);
 putenv('HOME_ROOT');
 
+// --- Mid-turn messages: a message delivered while the agent is working is recorded only as an
+// `attachment` line of type queued_command / commandMode prompt. All fixtures are synthetic. ---
+const TQ_TS = '2026-01-01T00:00:00Z';
+const TQ_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+function tq_json(array $record): string
+{
+    return (string)json_encode($record, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+}
+
+/** A queued_command / prompt attachment; $extra overrides or adds attachment keys. */
+function tq_att(mixed $prompt, array $extra = []): array
+{
+    return array_merge(['type' => 'queued_command', 'commandMode' => 'prompt', 'prompt' => $prompt], $extra);
+}
+
+function tq_peer(mixed $prompt, array $origin = []): array
+{
+    return tq_att($prompt, ['origin' => ['kind' => 'peer'] + $origin, 'isMeta' => true]);
+}
+
+function tq_line(mixed $attachment): string
+{
+    return tq_json(['type' => 'attachment', 'timestamp' => TQ_TS, 'attachment' => $attachment]);
+}
+
+function tq_user_line(mixed $content): string
+{
+    return tq_json(['type' => 'user', 'timestamp' => TQ_TS, 'message' => ['role' => 'user', 'content' => $content]]);
+}
+
+function tq_assistant_line(string $text): string
+{
+    return tq_json(['type' => 'assistant', 'timestamp' => TQ_TS, 'message' => ['role' => 'assistant', 'content' => [['type' => 'text', 'text' => $text]]]]);
+}
+
+/** Key order is not part of the contract; list order, key sets and value types are. */
+function tq_canon(mixed $value): mixed
+{
+    if (!is_array($value)) {
+        return $value;
+    }
+
+    ksort($value);
+
+    return array_map('tq_canon', $value);
+}
+
+/** @return array{0:mixed, 1:string[]} the call's result and every warning, notice or exception it raised */
+function tq_guard(callable $call): array
+{
+    $problems = [];
+    set_error_handler(static function (int $severity, string $message) use (&$problems): bool {
+        $problems[] = $message;
+
+        return true;
+    });
+
+    try {
+        $result = $call();
+    } catch (Throwable $e) {
+        $problems[] = get_class($e) . ': ' . $e->getMessage();
+        $result = 'threw';
+    } finally {
+        restore_error_handler();
+    }
+
+    return [$result, $problems];
+}
+
+function tq_assert_parse(?array $expected, string $line, string $message): void
+{
+    [$result, $problems] = tq_guard(static fn(): ?array => TranscriptService::parse_transcript_line($line));
+    assert_equal(tq_canon($expected), tq_canon($result), "queued: {$message}");
+    assert_equal([], $problems, "queued: {$message} - no warning, notice or exception");
+}
+
+function tq_user_entry(array $blocks, ?string $timestamp = TQ_TS): array
+{
+    return ['type' => 'user', 'role' => 'user', 'timestamp' => $timestamp, 'blocks' => $blocks];
+}
+
+function tq_agent_entry(string $text, ?string $summary = null, ?string $timestamp = TQ_TS): array
+{
+    $block = ['kind' => 'agent_message', 'text' => $text];
+
+    if ($summary !== null) {
+        $block['summary'] = $summary;
+    }
+
+    return ['type' => 'user', 'role' => null, 'timestamp' => $timestamp, 'blocks' => [$block]];
+}
+
+function tq_text(string $text): array
+{
+    return ['kind' => 'text', 'text' => $text];
+}
+
+// A line carrying every extra field real ones have: none of them changes the result.
+$tqPreamble = "<system-reminder>\nThe user sent a new message while you were working:\nzzpreamble\n</system-reminder>";
+$tqRealShape = tq_json([
+    'type' => 'attachment',
+    'timestamp' => TQ_TS,
+    'uuid' => 'zzuuid-0001',
+    'attachment' => tq_att('Also check the logs', [
+        'origin' => ['kind' => 'human'],
+        'isMeta' => false,
+        'source_uuid' => 'zzsourceuuid-0002',
+        'delivery_id' => 'zzdelivery-0003',
+        'hostsOwnTurn' => false,
+        'rowSource' => 'zzrowsource',
+        'humanTurn' => true,
+    ]),
+    'rendered' => [['content' => $tqPreamble]],
+]);
+tq_assert_parse(tq_user_entry([tq_text('Also check the logs')]), $tqRealShape, 'a real-shaped user message renders as a user entry with only the prompt text');
+
+// --- rule 1: which attachment lines render at all ---
+foreach ([
+    'commandMode task-notification' => tq_att('<task-notification><summary>done</summary></task-notification>', ['commandMode' => 'task-notification']),
+    'commandMode task-notification with a human origin' => tq_att('hello', ['commandMode' => 'task-notification', 'origin' => ['kind' => 'human']]),
+    'commandMode task-notification with a peer origin' => tq_att('hello', ['commandMode' => 'task-notification', 'origin' => ['kind' => 'peer', 'body' => 'hello']]),
+    'commandMode missing' => ['type' => 'queued_command', 'prompt' => 'hello'],
+    'commandMode other' => tq_att('hello', ['commandMode' => 'bash']),
+    'commandMode empty' => tq_att('hello', ['commandMode' => '']),
+    'commandMode null' => tq_att('hello', ['commandMode' => null]),
+    'commandMode true' => tq_att('hello', ['commandMode' => true]),
+    'commandMode an array' => tq_att('hello', ['commandMode' => ['prompt']]),
+    'attachment type other' => tq_att('hello', ['type' => 'todo_reminder']),
+    'attachment type missing' => ['commandMode' => 'prompt', 'prompt' => 'hello'],
+    'attachment type an array' => tq_att('hello', ['type' => ['queued_command']]),
+    'attachment a string' => 'queued_command',
+    'attachment a number' => 7,
+    'attachment a boolean' => true,
+    'attachment null' => null,
+    'attachment a list' => [tq_att('hello')],
+    'attachment an empty list' => [],
+] as $case => $attachment) {
+    tq_assert_parse(null, tq_line($attachment), "{$case} -> null");
+}
+tq_assert_parse(null, '{"type":"attachment","timestamp":"2026-01-01T00:00:00Z"}', 'attachment missing -> null');
+tq_assert_parse(null, '{"type":"attachment","message":{"role":"user","content":"hello"}}', 'an attachment line with only a message key -> null');
+tq_assert_parse(null, '{"type":"attachment","attachment":{"type":"queued_command","commandMode":"prompt","prompt":"cut off', 'a truncated (still being written) line -> null');
+
+// --- rules 2 and 3: the prompt shapes of a user's message ---
+tq_assert_parse(tq_user_entry([tq_text('0')]), tq_line(tq_att('0')), 'the string "0" is a non-empty prompt');
+$tqVerbatim = "  [sessioneer peer: worker-a] first line\n\n    indented **markdown** <b>x</b> \"quoted\" é ✓\n";
+tq_assert_parse(tq_user_entry([tq_text($tqVerbatim)]), tq_line(tq_att($tqVerbatim, ['origin' => ['kind' => 'human']])), 'text is verbatim, a leading peer stamp and whitespace included');
+$tqWrapped = "<agent-message from=\"a1\">\nbody\n</agent-message>";
+tq_assert_parse(tq_user_entry([tq_text($tqWrapped)]), tq_line(tq_att($tqWrapped, ['origin' => ['kind' => 'human']])), 'a human message that looks like an agent wrapper stays a verbatim user message');
+$tqTaskText = '<task-notification><result>typed by the user</result></task-notification>';
+tq_assert_parse(tq_user_entry([tq_text($tqTaskText)]), tq_line(tq_att($tqTaskText)), 'a prompt-mode string is one text block even when it looks like a task notification');
+
+$tqList = [['type' => 'text', 'text' => 'first'], ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/png', 'data' => TQ_PNG]], ['type' => 'text', 'text' => 'second']];
+[$tqListResult] = tq_guard(static fn(): ?array => TranscriptService::parse_transcript_line(tq_line(tq_att($tqList))));
+assert_equal(['text', 'image', 'text'], array_column($tqListResult['blocks'] ?? [], 'kind'), 'queued: a list prompt keeps its blocks in order');
+assert_equal('first', $tqListResult['blocks'][0]['text'] ?? null, 'queued: list prompt - text block text');
+assert_equal('image/png', $tqListResult['blocks'][1]['image']['media_type'] ?? null, 'queued: list prompt - image media type');
+assert_equal(TQ_PNG, $tqListResult['blocks'][1]['image']['data'] ?? null, 'queued: list prompt - image data');
+assert_equal('second', $tqListResult['blocks'][2]['text'] ?? null, 'queued: list prompt - last text block');
+assert_equal('user', $tqListResult['role'] ?? null, 'queued: list prompt - role user');
+
+foreach ([
+    'text and images' => $tqList,
+    'an image only' => [$tqList[1]],
+    'non-object items and thinking mixed in' => ['loose string', 5, null, true, ['type' => 'thinking', 'thinking' => 'private'], ['type' => 'text', 'text' => 'kept']],
+    'a URL image and an unknown block type beside text' => [['type' => 'text', 'text' => 'kept'], ['type' => 'image', 'source' => ['type' => 'url', 'url' => 'x']], ['type' => 'mystery']],
+] as $case => $content) {
+    $asUserLine = TranscriptService::parse_transcript_line(tq_user_line($content));
+    tq_assert_parse(tq_user_entry($asUserLine['blocks']), tq_line(tq_att($content)), "list prompt ({$case}) converts exactly like a user line's content");
+}
+tq_assert_parse(tq_user_entry([tq_text('kept')]), tq_line(tq_att(['loose', 5, null, false, ['type' => 'thinking', 'thinking' => 'private'], ['type' => 'text', 'text' => 'kept']])), 'non-object items and thinking blocks are skipped');
+
+foreach ([
+    'an empty string' => '',
+    'an empty list' => [],
+    'null' => null,
+    'a number' => 42,
+    'true' => true,
+    'false' => false,
+    'a list of non-objects only' => ['a', 1, null, true],
+    'a list of thinking blocks only' => [['type' => 'thinking', 'thinking' => 'private']],
+] as $case => $prompt) {
+    tq_assert_parse(null, tq_line(tq_att($prompt)), "prompt {$case} -> null");
+}
+tq_assert_parse(null, tq_line(['type' => 'queued_command', 'commandMode' => 'prompt']), 'prompt missing -> null');
+
+// Malformed nested values: only the absence of any warning or exception is fixed here, not the result.
+foreach ([
+    'a single block instead of a list' => ['type' => 'text', 'text' => 'x'],
+    'a nested list item' => [['a', 'b']],
+    'a text block whose text is an array' => [['type' => 'text', 'text' => ['x']]],
+    'a text block whose text is an object' => [['type' => 'text', 'text' => ['a' => 'b']]],
+    'a text block without text' => [['type' => 'text']],
+    'a block whose type is an array' => [['type' => ['text'], 'text' => 'x']],
+    'a block without a type' => [['text' => 'x']],
+    'an image without a source' => [['type' => 'image']],
+    'an image whose source is a string' => [['type' => 'image', 'source' => 'x']],
+    'image data that is an array' => [['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/png', 'data' => ['x']]]],
+    'an image media type that is an array' => [['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => ['x'], 'data' => TQ_PNG]]],
+] as $case => $prompt) {
+    foreach (['user' => tq_att($prompt), 'peer' => tq_peer($prompt)] as $who => $attachment) {
+        [$result, $problems] = tq_guard(static fn(): ?array => TranscriptService::parse_transcript_line(tq_line($attachment)));
+        assert_equal([], $problems, "queued: {$who} prompt with {$case} - no warning, notice or exception");
+        assert_true($result === null || is_array($result), "queued: {$who} prompt with {$case} - returns an entry or null");
+    }
+}
+
+// --- rule 3: every origin that is not a peer is the user's message, whatever isMeta says ---
+foreach ([
+    'origin absent' => [],
+    'origin null' => ['origin' => null],
+    'origin the string "peer"' => ['origin' => 'peer'],
+    'origin a number' => ['origin' => 5],
+    'origin true' => ['origin' => true],
+    'origin a list' => ['origin' => ['peer']],
+    'origin an empty object' => ['origin' => (object)[]],
+    'origin without kind' => ['origin' => ['name' => 'a1', 'body' => 'other body']],
+    'origin.kind human' => ['origin' => ['kind' => 'human']],
+    'origin.kind unclassified' => ['origin' => ['kind' => 'unclassified']],
+    'origin.kind unknown, with body and name' => ['origin' => ['kind' => 'webhook', 'name' => 'a1', 'body' => 'other body']],
+    'origin.kind an array' => ['origin' => ['kind' => ['peer']]],
+    'origin.kind null' => ['origin' => ['kind' => null]],
+] as $case => $extra) {
+    foreach (['isMeta absent' => [], 'isMeta true' => ['isMeta' => true], 'isMeta false' => ['isMeta' => false]] as $meta => $metaExtra) {
+        tq_assert_parse(tq_user_entry([tq_text('hello')]), tq_line(tq_att('hello', $extra + $metaExtra)), "{$case}, {$meta} -> the user's message");
+    }
+}
+
+// --- timestamp: only a top-level string ---
+foreach (['missing' => [], 'null' => ['timestamp' => null], 'a number' => ['timestamp' => 1767225600], 'an array' => ['timestamp' => [TQ_TS]]] as $case => $top) {
+    $line = tq_json(['type' => 'attachment', 'attachment' => tq_att('hello', ['timestamp' => TQ_TS])] + $top);
+    tq_assert_parse(tq_user_entry([tq_text('hello')], null), $line, "user message, timestamp {$case} -> null");
+    $peerLine = tq_json(['type' => 'attachment', 'attachment' => tq_peer('hello', ['body' => 'hi'])] + $top);
+    tq_assert_parse(tq_agent_entry('hi', null, null), $peerLine, "agent message, timestamp {$case} -> null");
+}
+
+// --- rule 4: another agent's message ---
+$tqAgentPrompt = "<agent-message from=\"a1\">\nReport ready\n</agent-message>";
+$tqCrossPrompt = "<cross-session-message from=\"b2\" name=\"worker-b\">\nTwo tests fail\n</cross-session-message>";
+tq_assert_parse(tq_agent_entry('Report ready', 'a1'), tq_line(tq_peer($tqAgentPrompt, ['name' => 'a1', 'body' => 'Report ready'])), 'agent-message shape: body without the wrapper, name as summary');
+tq_assert_parse(tq_agent_entry('Two tests fail', 'worker-b'), tq_line(tq_peer($tqCrossPrompt, ['name' => 'worker-b', 'body' => 'Two tests fail'])), 'cross-session-message shape: body without the wrapper');
+tq_assert_parse(tq_agent_entry('Report ready', 'a1'), tq_line(tq_att($tqAgentPrompt, ['origin' => ['kind' => 'peer', 'name' => 'a1', 'body' => 'Report ready']])), 'peer without isMeta is still an agent message');
+tq_assert_parse(tq_agent_entry('Report ready', 'a1'), tq_line(tq_att($tqAgentPrompt, ['isMeta' => false, 'origin' => ['kind' => 'peer', 'name' => 'a1', 'body' => 'Report ready']])), 'peer with isMeta false is still an agent message');
+tq_assert_parse(tq_agent_entry('0', '0'), tq_line(tq_peer($tqAgentPrompt, ['name' => '0', 'body' => '0'])), '"0" is a non-empty body and name');
+foreach (['absent' => [], 'empty' => ['name' => ''], 'null' => ['name' => null], 'a number' => ['name' => 7], 'an array' => ['name' => ['a1']], 'a boolean' => ['name' => true]] as $case => $origin) {
+    tq_assert_parse(tq_agent_entry('Report ready'), tq_line(tq_peer($tqAgentPrompt, $origin + ['body' => 'Report ready'])), "origin.name {$case} -> no summary key");
+}
+foreach (['absent' => [], 'empty' => ['body' => ''], 'null' => ['body' => null], 'a number' => ['body' => 7], 'an array' => ['body' => ['x']], 'a boolean' => ['body' => true]] as $case => $origin) {
+    tq_assert_parse(tq_agent_entry($tqAgentPrompt, 'a1'), tq_line(tq_peer($tqAgentPrompt, $origin + ['name' => 'a1'])), "origin.body {$case} -> the prompt text");
+}
+tq_assert_parse(
+    tq_agent_entry("one\ntwo", 'a1'),
+    tq_line(tq_peer([['type' => 'text', 'text' => 'one'], $tqList[1], 'loose', ['type' => 'thinking', 'thinking' => 'private'], ['type' => 'text', 'text' => 'two']], ['name' => 'a1'])),
+    'list prompt without a body: its text blocks joined with newlines, in one agent_message block'
+);
+tq_assert_parse(tq_agent_entry('the body'), tq_line(tq_peer($tqList, ['body' => 'the body'])), 'a body wins over a list prompt, images included, and gives one block');
+foreach (['empty' => '', 'null' => null, 'an empty list' => []] as $case => $prompt) {
+    tq_assert_parse(tq_agent_entry('only the body', 'a1'), tq_line(tq_peer($prompt, ['name' => 'a1', 'body' => 'only the body'])), "a body with the prompt {$case} still renders");
+}
+foreach (['an empty string' => '', 'null' => null, 'a number' => 3, 'an empty list' => [], 'images only' => [$tqList[1]], 'non-objects only' => ['a', 2]] as $case => $prompt) {
+    tq_assert_parse(null, tq_line(tq_peer($prompt, ['name' => 'a1'])), "agent message with no body and the prompt {$case} -> null");
+    tq_assert_parse(null, tq_line(tq_peer($prompt, ['name' => 'a1', 'body' => ''])), "agent message with an empty body and the prompt {$case} -> null");
+}
+tq_assert_parse(null, tq_line(['type' => 'queued_command', 'commandMode' => 'prompt', 'origin' => ['kind' => 'peer']]), 'agent message with neither body nor prompt key -> null');
+
+// --- rule 5: the hard cap ---
+$tqCap = TranscriptService::TRANSCRIPT_BLOCK_HARD_CAP_LENGTH;
+$tqAtCap = str_repeat('a', $tqCap);
+$tqOver = $tqAtCap . 'b';
+$tqCapped = $tqAtCap . "\n… (truncated)";
+tq_assert_parse(tq_user_entry([tq_text($tqAtCap)]), tq_line(tq_att($tqAtCap)), 'user text exactly at the cap is untouched');
+tq_assert_parse(tq_user_entry([tq_text($tqCapped)]), tq_line(tq_att($tqOver)), 'user string over the cap is truncated');
+tq_assert_parse(tq_user_entry([tq_text('short'), tq_text($tqCapped)]), tq_line(tq_att([['type' => 'text', 'text' => 'short'], ['type' => 'text', 'text' => $tqOver]])), 'each list block is capped on its own');
+tq_assert_parse(tq_agent_entry($tqAtCap, 'a1'), tq_line(tq_peer('x', ['name' => 'a1', 'body' => $tqAtCap])), 'agent body exactly at the cap is untouched');
+tq_assert_parse(tq_agent_entry($tqCapped, 'a1'), tq_line(tq_peer('x', ['name' => 'a1', 'body' => $tqOver])), 'agent body over the cap is truncated');
+tq_assert_parse(tq_agent_entry($tqCapped), tq_line(tq_peer($tqOver)), 'agent prompt-text fallback over the cap is truncated');
+$tqHalf = str_repeat('a', $tqCap - 10);
+tq_assert_parse(
+    tq_agent_entry(substr($tqHalf . "\n" . $tqHalf, 0, $tqCap) . "\n… (truncated)"),
+    tq_line(tq_peer([['type' => 'text', 'text' => $tqHalf], ['type' => 'text', 'text' => $tqHalf]])),
+    'joined agent list text over the cap is truncated as one block'
+);
+
+// --- rule 6: pages and polls ---
+function tq_file(array $lines): string
+{
+    $path = (string)tempnam(sys_get_temp_dir(), 'sessioneer-test-queued-');
+    file_put_contents($path, implode("\n", $lines) . "\n");
+
+    return $path;
+}
+
+function tq_numbers(array $page): array
+{
+    return array_column($page['entries'] ?? [], 'line');
+}
+
+$tqFile = tq_file([
+    tq_user_line('zzfirst prompt'),                                                                      // 1
+    tq_assistant_line('reply one'),                                                                      // 2
+    tq_line(['type' => 'todo_reminder', 'content' => []]),                                               // 3
+    $tqRealShape,                                                                                        // 4
+    tq_assistant_line('reply two'),                                                                      // 5
+    tq_line(tq_att('<task-notification>zzfinished</task-notification>', ['commandMode' => 'task-notification'])), // 6
+    tq_line(tq_peer($tqCrossPrompt, ['name' => 'worker-b', 'body' => 'Two tests fail with zzpeerword'])), // 7
+    tq_assistant_line('reply three'),                                                                    // 8
+    tq_line('zzbroken attachment'),                                                                      // 9
+    tq_user_line([['type' => 'tool_result', 'tool_use_id' => 't1', 'content' => 'tool output']]),         // 10
+]);
+
+[$tqPage, $tqProblems] = tq_guard(static fn(): array => TranscriptService::read_transcript_page($tqFile, null, 50));
+assert_equal([], $tqProblems, 'queued page: no warning, notice or exception on a mixed file');
+assert_equal([1, 2, 4, 5, 7, 8, 10], tq_numbers($tqPage), 'queued page: queued entries carry their raw line number, in file order');
+assert_equal(tq_canon(tq_user_entry([tq_text('Also check the logs')]) + ['line' => 4]), tq_canon($tqPage['entries'][2] ?? null), 'queued page: the user entry shape');
+assert_equal(tq_canon(tq_agent_entry('Two tests fail with zzpeerword', 'worker-b') + ['line' => 7]), tq_canon($tqPage['entries'][4] ?? null), 'queued page: the agent entry shape');
+
+$tqNewest = TranscriptService::read_transcript_page($tqFile, null, 3);
+assert_equal([7, 8, 10], tq_numbers($tqNewest), 'queued page: an agent message counts towards the limit');
+assert_equal(7, $tqNewest['next_before'] ?? null, 'queued page: cursor sits at the oldest returned entry');
+assert_equal([2, 4, 5], tq_numbers(TranscriptService::read_transcript_page($tqFile, 7, 3)), 'queued page: the older page includes the queued user message');
+
+$tqUntil = TranscriptService::read_transcript_page($tqFile, null, 2, true);
+assert_equal([4, 5, 7, 8, 10], tq_numbers($tqUntil), "queued until-user: walks past the agent message and stops at the user's queued message");
+assert_equal(4, $tqUntil['next_before'] ?? null, 'queued until-user: resumes before the queued message');
+assert_equal(true, $tqUntil['has_more'] ?? null, 'queued until-user: older entries remain');
+assert_equal([1, 2], tq_numbers(TranscriptService::read_transcript_page($tqFile, 4, 2, true)), 'queued until-user: the next walk stops at the ordinary user line');
+
+assert_equal([1, 2, 4, 5, 7, 8, 10], tq_numbers(TranscriptService::read_transcript_page_since($tqFile, 0, 50)), 'queued poll: the whole file forward');
+assert_equal([4, 5, 7, 8, 10], tq_numbers(TranscriptService::read_transcript_page_since($tqFile, 3, 50)), 'queued poll: a queued message just after the cursor is returned');
+assert_equal([5, 7, 8, 10], tq_numbers(TranscriptService::read_transcript_page_since($tqFile, 4, 50)), 'queued poll: the cursor line itself is not repeated');
+assert_equal([4], tq_numbers(TranscriptService::read_transcript_page_since($tqFile, 3, 1)), 'queued poll: the limit applies to queued entries');
+assert_equal([], tq_numbers(TranscriptService::read_transcript_page_since($tqFile, 10, 50)), 'queued poll: nothing new yet');
+file_put_contents($tqFile, tq_line(tq_att('appended later')) . "\n", FILE_APPEND);
+$tqPolled = TranscriptService::read_transcript_page_since($tqFile, 10, 50);
+assert_equal([tq_canon(tq_user_entry([tq_text('appended later')]) + ['line' => 11])], tq_canon($tqPolled['entries'] ?? null), 'queued poll: an appended queued message arrives on the next poll');
+
+// --- rule 7: search ---
+$tqSearch = static fn(string $query): array => TranscriptService::search_transcript_file($tqFile, $query, 10);
+$tqHit = $tqSearch('CHECK THE LOGS');
+assert_equal(1, count($tqHit), "queued search: finds a user's queued message, ignoring case");
+assert_equal(4, $tqHit[0]['line'] ?? null, 'queued search: user message line number');
+assert_equal('user', $tqHit[0]['role'] ?? null, 'queued search: user message role');
+assert_equal('text', $tqHit[0]['kind'] ?? null, 'queued search: user message kind');
+assert_contains('check the logs', (string)($tqHit[0]['snippet'] ?? ''), 'queued search: user message snippet');
+assert_equal(strtotime(TQ_TS), $tqHit[0]['timestamp'] ?? null, 'queued search: timestamp from the top-level field');
+$tqPeerHit = $tqSearch('zzpeerword');
+assert_equal(1, count($tqPeerHit), 'queued search: finds an agent message');
+assert_equal(7, $tqPeerHit[0]['line'] ?? null, 'queued search: agent message line number');
+assert_true(isset($tqPeerHit[0]) && array_key_exists('role', $tqPeerHit[0]) && $tqPeerHit[0]['role'] === null, 'queued search: agent message role key is present and null');
+assert_equal('agent_message', $tqPeerHit[0]['kind'] ?? null, 'queued search: agent message kind');
+foreach (['The user sent a new message while you were working', 'zzpreamble', 'zzsourceuuid-0002', 'zzdelivery-0003', 'zzrowsource', 'zzfinished', 'zzbroken', 'queued_command'] as $query) {
+    assert_equal([], $tqSearch($query), "queued search: \"{$query}\" only matches fields that are never shown -> no match");
+}
+unlink($tqFile);
+
+// An image-only queued message starts an exchange too; an agent message alone never does.
+$tqImageFile = tq_file([tq_user_line('older'), tq_line(tq_att([$tqList[1]])), tq_assistant_line('after')]);
+assert_equal([2, 3], tq_numbers(TranscriptService::read_transcript_page($tqImageFile, null, 1, true)), 'queued until-user: an image-only queued message stops the walk');
+unlink($tqImageFile);
+$tqAgentOnly = tq_file([tq_user_line('real prompt'), tq_assistant_line('a'), tq_line(tq_peer($tqAgentPrompt, ['body' => 'Report ready'])), tq_assistant_line('b')]);
+assert_equal([1, 2, 3, 4], tq_numbers(TranscriptService::read_transcript_page($tqAgentOnly, null, 1, true)), 'queued until-user: an agent message does not stop the walk');
+unlink($tqAgentOnly);
+
+// --- rule 8: a queued message and a later user line with the same text are two sends ---
+$tqTwice = tq_file([tq_line(tq_att('zzsame text')), tq_assistant_line('ok'), tq_user_line('zzsame text')]);
+assert_equal([1, 2, 3], tq_numbers(TranscriptService::read_transcript_page($tqTwice, null, 10)), 'queued repeat: both sends are in the page');
+assert_equal([1, 2, 3], tq_numbers(TranscriptService::read_transcript_page_since($tqTwice, 0, 10)), 'queued repeat: both sends are in the poll');
+assert_equal([3, 1], array_column(TranscriptService::search_transcript_file($tqTwice, 'zzsame', 10), 'line'), 'queued repeat: search lists both, newest first');
+assert_equal([3], array_column(TranscriptService::search_transcript_file($tqTwice, 'zzsame', 1), 'line'), 'queued repeat: the match limit still applies');
+unlink($tqTwice);
+$tqAdjacent = tq_file([tq_line(tq_att('again')), tq_line(tq_att('again'))]);
+assert_equal([1, 2], tq_numbers(TranscriptService::read_transcript_page($tqAdjacent, null, 10)), 'queued repeat: two identical queued lines are two entries');
+unlink($tqAdjacent);
+
+// --- rule 9: titles do not change ---
+$tqTitled = tq_file([tq_line(tq_att('queued before the first prompt')), tq_line(tq_peer('x', ['body' => 'agent before the first prompt'])), tq_user_line('the real first prompt')]);
+assert_equal('the real first prompt', TranscriptService::find_first_prompt_title($tqTitled), 'queued title: queued and agent messages never become the title');
+assert_equal('the real first prompt', TranscriptService::find_display_title($tqTitled), 'queued title: nor the display title');
+unlink($tqTitled);
+// A prompt block shaped like a user record puts "type":"user" in the raw line, which the title scan prefilters on.
+$tqNoTitle = tq_file([tq_line(tq_att('only queued')), tq_line(tq_att([['type' => 'user'], ['type' => 'text', 'text' => 'still queued']]))]);
+assert_equal(null, TranscriptService::find_first_prompt_title($tqNoTitle), 'queued title: a transcript with only queued messages has no first-prompt title');
+unlink($tqNoTitle);
+
 test_exit();

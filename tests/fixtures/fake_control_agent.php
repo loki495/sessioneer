@@ -36,6 +36,15 @@ switch ($request['action'] ?? '') {
             $session['history'] = [['role' => 'user', 'blocks' => [['kind' => 'text', 'text' => 'first question']]], ['role' => 'assistant', 'blocks' => [['kind' => 'text', 'text' => 'first answer']]]];
         }
 
+        if ($target === 'mid-turn' && isset($request['history'])) {
+            $session['history'] = [
+                ['role' => 'user', 'blocks' => [['kind' => 'text', 'text' => 'first question']]],
+                ['role' => null, 'blocks' => [['kind' => 'agent_message', 'text' => "**Two** tests fail\n\nsecond line", 'summary' => 'worker-b']]],
+                ['role' => null, 'blocks' => [['kind' => 'agent_message', 'text' => 'report without a summary']]],
+                ['role' => 'assistant', 'blocks' => [['kind' => 'text', 'text' => 'first answer']]],
+            ];
+        }
+
         echo json_encode($session);
         break;
 

@@ -232,8 +232,9 @@ transcript comes from `/history` (the `session_history` action plus
 "Load older", and the live tail. An archived page opened on a search hit (`jump_line`) ends at the hit and has a **Load newer** button that calls `/archived-history` with `after` set to the last line shown (50 at a time; a short page hides the button, since `after` carries no `has_more`). Archived pages never poll. Each user and assistant message is a bubble or
 free text with markdown (`markdown.js`); every tool
 call and its result is one collapsed `<details>` whose headline is the call's
-description; pretty-printed JSON results; plan, question, subagent and
-task-notification cards; inline images and attachments as thumbnails. Polling is
+description; pretty-printed JSON results; plan, question, subagent,
+task-notification and agent-message cards; inline images and attachments as
+thumbnails. Polling is
 `session_detail` plus `session_history?after=<newest line>` on the same interval
 setting as the dashboard, paused while the tab is hidden, and a rotated transcript
 (`/clear`, `/compact`, `--resume`) restarts from its first page.
