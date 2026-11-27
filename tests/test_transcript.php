@@ -1696,4 +1696,16 @@ $tqNoTitle = tq_file([tq_line(tq_att('only queued')), tq_line(tq_att([['type' =>
 assert_equal(null, TranscriptService::find_first_prompt_title($tqNoTitle), 'queued title: a transcript with only queued messages has no first-prompt title');
 unlink($tqNoTitle);
 
+// The cap counts bytes, and a three-byte character straddling it must be dropped whole.
+$tqWide = str_repeat('a', $tqCap - 1) . str_repeat('€', 3);
+foreach ([
+    'queued' => tq_line(tq_att($tqWide)),
+    'agent' => tq_line(tq_peer('p', ['body' => $tqWide])),
+    'user line' => tq_user_line($tqWide),
+] as $tqLabel => $tqLine) {
+    $tqEntry = TranscriptService::parse_transcript_line($tqLine);
+    assert_equal(str_repeat('a', $tqCap - 1) . "\n… (truncated)", $tqEntry['blocks'][0]['text'] ?? null, "cap multibyte: {$tqLabel} text is cut before the split character");
+    assert_true(is_string(json_encode($tqEntry)), "cap multibyte: {$tqLabel} entry still encodes as JSON");
+}
+
 test_exit();

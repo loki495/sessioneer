@@ -769,9 +769,7 @@ class OpenCodeTranscriptService
         }
 
         foreach ($blocks as &$block) {
-            if (strlen($block['text']) > TranscriptService::TRANSCRIPT_BLOCK_HARD_CAP_LENGTH) {
-                $block['text'] = substr($block['text'], 0, TranscriptService::TRANSCRIPT_BLOCK_HARD_CAP_LENGTH) . "\n… (truncated)";
-            }
+            $block['text'] = TranscriptService::cap_block_text($block['text']);
         }
         unset($block);
 

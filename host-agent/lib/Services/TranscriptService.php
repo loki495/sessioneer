@@ -1819,10 +1819,11 @@ class TranscriptService
         return [$blocks, $toolResultToolUseIds];
     }
 
-    private static function cap_block_text(string $text): string
+    /** Cuts on a character boundary: half a multibyte character makes the whole history response fail to encode. */
+    public static function cap_block_text(string $text): string
     {
         return strlen($text) > self::TRANSCRIPT_BLOCK_HARD_CAP_LENGTH
-            ? substr($text, 0, self::TRANSCRIPT_BLOCK_HARD_CAP_LENGTH) . "\n… (truncated)"
+            ? mb_strcut($text, 0, self::TRANSCRIPT_BLOCK_HARD_CAP_LENGTH, 'UTF-8') . "\n… (truncated)"
             : $text;
     }
 
