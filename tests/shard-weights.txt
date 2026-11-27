@@ -10,6 +10,7 @@ test_bare_headless_exclusion.php 1
 test_claude_headless_dispatch.php 3
 test_claude_headless_health.php 1
 test_claude_headless_manager.php 21
+test_claude_headless_peer_synthetic.php 18
 test_claude_headless_replay.php 8
 test_claude_headless_runtime.php 1
 test_claude_model_catalog.php 1
@@ -17,6 +18,7 @@ test_cli_flow.php 3
 test_cli_flow_auto_continue.php 1
 test_cli_flow_rotate.php 3
 test_cli_flow_removed.php 3
+test_peer_synthetic_send.php 68
 test_session_flow_auto_continue.php 1
 test_session_flow_next_all.php 1
 test_codex_bridge.php 6

@@ -42,10 +42,33 @@ declare(strict_types=1);
  *               only depend on is_error/result/terminal_reason)
  *   STUBBORN    ignore stdin EOF and interrupts, and log (not obey) SIGTERM,
  *               so only SIGKILL ends it
+ *   HOLD        stay mid-turn emitting nothing at all (no assistant event)
+ *               until interrupted (aborted result) or until a later message
+ *               containing RELEASE arrives (normal result; that message is
+ *               consumed and gets no result of its own). Messages received
+ *               meanwhile are queued; a queued HOOKBLOCK one is refused at once
+ *   AUTO(steps) end this turn with a normal result, then act on its own
+ *   TURN(steps) the same steps as this message's own turn (no result first).
+ *               Steps, comma separated, run in order: main (main-thread
+ *               assistant event, parent_tool_use_id null), nokey (the same
+ *               without that key), sub (subagent assistant event), ok / error
+ *               (a result), hold (as HOLD)
+ *   ASKEND      ask an AskUserQuestion (id ask-1) and end the turn with a
+ *               normal result while it is still unanswered
+ *   WITHDRAW    withdraw multi-1, multi-2 and ask-1 with control_cancel_request,
+ *               then echo
  *   (anything else) echo the text back
  *
+ * Barriers, so a test knows the manager has processed everything before them:
+ * a rate_limit_event whose five_hour utilization is n/1000 (read back through
+ * sessioneer/health) is emitted for BARRIER=n once an AUTO/TURN message's steps
+ * are out (before it holds) or a prompt is refused, and for AFTER=n right after
+ * the next result.
+ *
  * Env: FAKE_CLAUDE_LOG=<file> appends one JSON line per process start with
- * the argv and the credential/hook-relevant environment it was given.
+ * the argv and the credential/hook-relevant environment it was given, one
+ * {"stdin": "<raw line>"} per user message read, and one {"result": ...} per
+ * turn result.
  */
 
 $sid = null;
@@ -121,6 +144,10 @@ function read_message(float $timeout): ?array
             $buffer = substr($buffer, $nl + 1);
             $decoded = json_decode($line, true);
 
+            if (is_array($decoded) && ($decoded['type'] ?? '') === 'user') {
+                log_line(['stdin' => $line]);
+            }
+
             return is_array($decoded) ? $decoded : null;
         }
 
@@ -165,6 +192,82 @@ function result(string $text, bool $error = false, string $reason = 'completed')
         'queued_turn_count' => 0, 'usage' => ['input_tokens' => 3, 'output_tokens' => 5],
         'credential_expires_at' => '2030-01-02T03:04:05.000Z',
     ]);
+
+    global $after;
+
+    if ($after !== null) {
+        barrier($after);
+        $after = null;
+    }
+}
+
+/** The number following BARRIER= / AFTER= in a message, if any. */
+function marker(string $name, string $text): ?int
+{
+    return preg_match('/\b' . $name . '=(\d+)/', $text, $found) === 1 ? (int)$found[1] : null;
+}
+
+function barrier(?int $n): void
+{
+    if ($n === null) {
+        return;
+    }
+
+    emit(['type' => 'rate_limit_event', 'rate_limit_info' => [
+        'status' => 'allowed', 'rateLimitType' => 'five_hour', 'isUsingOverage' => false,
+        'unifiedWindows' => ['five_hour' => ['utilization' => $n / 1000, 'resetsAt' => 1], 'seven_day' => ['utilization' => 0.1, 'resetsAt' => 2]],
+    ]]);
+}
+
+function prompt_hooks(bool $blocked): void
+{
+    $hookOut = $blocked ? json_encode(['decision' => 'block', 'reason' => 'Idle 935 min with a 228k-token context. Not sent.']) : '';
+    emit(['type' => 'system', 'subtype' => 'hook_started', 'hook_name' => 'UserPromptSubmit', 'hook_event' => 'UserPromptSubmit']);
+    emit(['type' => 'system', 'subtype' => 'hook_response', 'hook_name' => 'UserPromptSubmit', 'hook_event' => 'UserPromptSubmit',
+        'output' => $hookOut, 'stdout' => $hookOut, 'stderr' => '', 'exit_code' => 0, 'outcome' => 'success']);
+}
+
+/** A turn that stays open and silent until interrupted or released (see HOLD above). */
+function hold(array &$queue): void
+{
+    global $after;
+    $deadline = microtime(true) + 25;
+
+    while (microtime(true) < $deadline) {
+        $next = read_message(0.2);
+
+        if ($next === null) {
+            continue;
+        }
+
+        if (($next['type'] ?? '') === 'control_request') {
+            control_reply($next);
+
+            if (($next['request']['subtype'] ?? '') === 'interrupt') {
+                result('', true, 'aborted_streaming');
+
+                return;
+            }
+        } elseif (($next['type'] ?? '') === 'user') {
+            $text = text_of($next);
+
+            if (str_contains($text, 'RELEASE')) {
+                $after = marker('AFTER', $text) ?? $after;
+                result('released');
+
+                return;
+            }
+
+            if (str_contains($text, 'HOOKBLOCK')) {
+                prompt_hooks(true);
+                barrier(marker('BARRIER', $text));
+            } else {
+                $queue[] = $next;
+            }
+        }
+    }
+
+    result('hold timed out');
 }
 
 function control_reply(array $msg, array $body = []): void
@@ -253,6 +356,7 @@ function text_of(array $msg): string
 
 $forceApiKey = false;
 $queue = [];
+$after = null;
 
 while (true) {
     $msg = $queue !== [] ? array_shift($queue) : read_message(1.0);
@@ -275,14 +379,14 @@ while (true) {
     init();
 
     $blocked = str_contains($text, 'HOOKBLOCK');
-    $hookOut = $blocked ? json_encode(['decision' => 'block', 'reason' => 'Idle 935 min with a 228k-token context. Not sent.']) : '';
-    emit(['type' => 'system', 'subtype' => 'hook_started', 'hook_name' => 'UserPromptSubmit', 'hook_event' => 'UserPromptSubmit']);
-    emit(['type' => 'system', 'subtype' => 'hook_response', 'hook_name' => 'UserPromptSubmit', 'hook_event' => 'UserPromptSubmit',
-        'output' => $hookOut, 'stdout' => $hookOut, 'stderr' => '', 'exit_code' => 0, 'outcome' => 'success']);
+    prompt_hooks($blocked);
 
     if ($blocked) {
+        barrier(marker('BARRIER', $text));
         continue;
     }
+
+    $after = marker('AFTER', $text);
 
     if (str_contains($text, 'CRASH')) {
         fwrite(STDERR, "fake claude: simulated crash\n");
@@ -304,6 +408,60 @@ while (true) {
             'status' => 'allowed', 'rateLimitType' => 'five_hour', 'isUsingOverage' => false,
             'unifiedWindows' => ['five_hour' => ['utilization' => 0.25, 'resetsAt' => 1], 'seven_day' => ['utilization' => 0.1, 'resetsAt' => 2]],
         ]]);
+    }
+
+    if (preg_match('/\b(AUTO|TURN)\(([a-z,]+)\)/', $text, $script) === 1) {
+        if ($script[1] === 'AUTO') {
+            result('armed');
+            usleep(50000);
+        }
+
+        $held = false;
+
+        foreach (explode(',', $script[2]) as $step) {
+            if ($step === 'main' || $step === 'nokey' || $step === 'sub') {
+                $event = ['type' => 'assistant', 'session_id' => $sid, 'message' => ['role' => 'assistant', 'content' => [['type' => 'text', 'text' => "unprompted {$step}"]]]];
+
+                if ($step !== 'nokey') {
+                    $event['parent_tool_use_id'] = $step === 'sub' ? 'toolu_sub' : null;
+                }
+
+                emit($event);
+            } elseif ($step === 'ok') {
+                result('unprompted turn done');
+            } elseif ($step === 'error') {
+                result('unprompted turn failed', true, 'error_during_execution');
+            } elseif ($step === 'hold') {
+                barrier(marker('BARRIER', $text));
+                $held = true;
+                hold($queue);
+            }
+        }
+
+        if (!$held) {
+            barrier(marker('BARRIER', $text));
+        }
+
+        continue;
+    }
+
+    if (str_contains($text, 'HOLD')) {
+        hold($queue);
+        continue;
+    }
+
+    if (str_contains($text, 'ASKEND')) {
+        emit(['type' => 'control_request', 'request_id' => 'ask-1', 'request' => ['subtype' => 'can_use_tool', 'tool_name' => 'AskUserQuestion', 'display_name' => 'AskUserQuestion',
+            'input' => ['questions' => [['question' => 'Which color?', 'header' => 'Color', 'options' => [['label' => 'Red', 'description' => 'r'], ['label' => 'Blue', 'description' => 'b']], 'multiSelect' => false]]],
+            'description' => 'fake', 'permission_suggestions' => [], 'tool_use_id' => 'toolu_ask', 'requires_user_interaction' => true]]);
+        result('ended with a question open');
+        continue;
+    }
+
+    if (str_contains($text, 'WITHDRAW')) {
+        foreach (['multi-1', 'multi-2', 'ask-1'] as $withdrawn) {
+            emit(['type' => 'control_cancel_request', 'request_id' => $withdrawn]);
+        }
     }
 
     // Synthetic context cases use the captured assistant/result wire shapes.

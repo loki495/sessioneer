@@ -113,6 +113,13 @@ final class ClaudeHeadlessChild
      */
     public int $openTurns = 0;
 
+    /**
+     * A main-thread assistant event arrived since the last `result`. Covers the
+     * turns openTurns does not count: ones the CLI starts on its own, and a
+     * queued message running after an earlier result.
+     */
+    public bool $mainThreadActive = false;
+
     /** Set when the manager sends a diagnostic interrupt to a silent `working` child; cleared once it shows any sign of life. */
     public ?float $stallInterruptSentAt = null;
 

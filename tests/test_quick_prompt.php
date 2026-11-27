@@ -185,6 +185,7 @@ $failed = $start(['prompt' => 'next'], $failedKey);
 $sentBeforeRetry = count($manager->sent);
 assert_equal($failed, $start(['prompt' => 'next'], $failedKey), 'delivery failure retry preserves same session and error');
 assert_equal($sentBeforeRetry, count($manager->sent), 'ambiguous delivery is never automatically repeated');
+assert_true($manager->sent !== [] && array_filter($manager->sent, static fn(array $p): bool => array_key_exists('synthetic_if_busy', $p)) === [], 'a Quick Prompt send never asks to be marked synthetic');
 assert_equal('delivery_failed', $failed['code'], 'delivery failure handled');
 assert_true(!isset($failed['session_id']), 'a session that could not take its prompt is archived, not handed out');
 assert_equal($killsBeforeFailure + 1, $runtime->kills, 'and was stopped');

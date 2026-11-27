@@ -365,6 +365,27 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
 
     public function send_message(string $sessionRef, string $text, array $attachmentPaths = []): array
     {
+        return $this->send_input($sessionRef, $text, $attachmentPaths);
+    }
+
+    /**
+     * Another session's message: the manager marks it synthetic if the receiver
+     * is busy, so it cannot pass as the user's.
+     *
+     * @return array<string, mixed>
+     */
+    public function send_peer_message(string $sessionRef, string $text): array
+    {
+        return $this->send_input($sessionRef, $text, [], ['synthetic_if_busy' => true]);
+    }
+
+    /**
+     * @param string[] $attachmentPaths
+     * @param array<string, mixed> $extraParams
+     * @return array<string, mixed>
+     */
+    private function send_input(string $sessionRef, string $text, array $attachmentPaths, array $extraParams = []): array
+    {
         $sidecar = $this->sidecar($sessionRef);
 
         if ($sidecar === null) {
@@ -380,7 +401,7 @@ class ClaudeHeadlessRuntime implements RuntimeProvider
             'session' => $sessionRef,
             'content' => $attachmentPaths === [] ? $text : $this->content_with_attachments($text, $attachmentPaths, $workdir),
             'await_hooks' => true,
-        ]);
+        ] + $extraParams);
 
         return ($reply['ok'] ?? false) === true
             ? ['ok' => true, 'message' => 'Message sent']

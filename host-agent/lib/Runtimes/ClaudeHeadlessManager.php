@@ -495,7 +495,17 @@ final class ClaudeHeadlessManager
             }
         }
 
-        if (!$child->write(['type' => 'user', 'message' => ['role' => 'user', 'content' => $content]])) {
+        $message = ['type' => 'user', 'message' => ['role' => 'user', 'content' => $content]];
+
+        // Unmarked, a message reaching a busy session reads to the model as its
+        // user's interjection or approval. An idle one stays unmarked so the
+        // message starts work. Decided here, before this message changes the state.
+        if (!empty($params['synthetic_if_busy'])
+            && ($child->openTurns > 0 || $child->pending !== [] || $child->mainThreadActive)) {
+            $message['isSynthetic'] = true;
+        }
+
+        if (!$child->write($message)) {
             $this->finalize_child($child);
 
             return ['ok' => false, 'message' => 'Could not write to the Claude process; it has been stopped, send the message again to resume'];
@@ -1110,6 +1120,11 @@ final class ClaudeHeadlessManager
         }
 
         if ($type === 'assistant') {
+            // Subagent events carry their tool call's id and say nothing about the main thread.
+            if (($event['parent_tool_use_id'] ?? null) === null) {
+                $child->mainThreadActive = true;
+            }
+
             $snapshot = ContextUsage::claude_assistant($event, $child->contextUsage);
             if ($snapshot !== $child->contextUsage) {
                 $child->contextUsage = $snapshot;
@@ -1401,6 +1416,7 @@ final class ClaudeHeadlessManager
         // in-flight work is now resolved, full stop (except permission
         // requests, below).
         $child->openTurns = 0;
+        $child->mainThreadActive = false;
         $child->stallInterruptSentAt = null;
 
         if (is_string($event['credential_expires_at'] ?? null) && $event['credential_expires_at'] !== '') {
