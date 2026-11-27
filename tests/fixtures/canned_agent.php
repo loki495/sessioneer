@@ -613,6 +613,21 @@ if (is_string($flowStatePath) && is_file($flowStatePath)) {
     }
 }
 
+// Mid-turn browser fixture (CANNED_TRANSCRIPT = a synthetic JSONL file); unset for ordinary tests. The canned session's
+// history is read from it by the real TranscriptService, and its detail is working with no prompt, so a message can be sent.
+$transcriptPath = getenv('CANNED_TRANSCRIPT');
+if (is_string($transcriptPath) && is_file($transcriptPath) && is_array($request) && ($request['session'] ?? null) === CANNED_SESSION_NAME) {
+    if ($action === 'session_history') {
+        require_once dirname(__DIR__, 2) . '/vendor/autoload.php';
+        $limit = (int)($request['limit'] ?? 30);
+        $response = isset($request['after'])
+            ? \HostAgent\Services\TranscriptService::read_transcript_page_since($transcriptPath, (int)$request['after'], $limit)
+            : \HostAgent\Services\TranscriptService::read_transcript_page($transcriptPath, isset($request['before']) ? (int)$request['before'] : null, $limit);
+    } elseif ($action === 'session_detail') {
+        $response = ['working' => true, 'blocked_reason' => null, 'prompt_context' => null, 'prompt_options' => []] + $response;
+    }
+}
+
 // Hierarchy browser fixture (CANNED_HIERARCHY = a JSON file {rows, detail}); unset for ordinary tests. `rows` replaces the
 // list action's sessions (each row is merged over a minimal idle row), `detail` is merged over the canned session's detail.
 $hierarchyPath = getenv('CANNED_HIERARCHY');

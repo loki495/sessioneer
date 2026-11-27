@@ -288,4 +288,43 @@ try {
     }
 }
 
+// --- card preview of another agent's message (a last_message whose only block is agent_message): shaped like a
+// text block preview. Each expectation is compared with the card rendered for a text block with the same text. ---
+require_once dirname(__DIR__) . '/vendor/autoload.php';
+
+function ui_preview_card(string $kind, string $text, array $extra = []): string
+{
+    $message = ['role' => $kind === 'text' ? 'assistant' : null, 'timestamp' => '2026-01-01T12:00:00Z', 'blocks' => [['kind' => $kind, 'text' => $text] + $extra]];
+
+    return \App\Views\UiView::sessions_html([['name' => 'preview-one', 'title' => 'Preview', 'agent' => 'claude', 'agent_label' => 'Claude Code', 'runtime' => 'headless', 'working' => false, 'activity' => time() - 60, 'workdir' => '/tmp/x', 'last_message' => $message]], 'tok');
+}
+
+/** The preview text of a rendered card, without its "who:" label; null when the card has no preview. */
+function ui_preview_of(string $html): ?string
+{
+    return preg_match('#<p class="ui-preview"><span class="ui-muted">[^<]*</span>\s*(.*?)</p>#s', $html, $m) === 1 ? $m[1] : null;
+}
+
+$markdown = "  **Report**   ready\n\nwith `code`\tand more  ";
+assert_equal('Report ready with code and more', ui_preview_of(ui_preview_card('agent_message', $markdown, ['summary' => 'zzsummary'])), 'preview: an agent message shows its text, whitespace collapsed and markdown markers stripped');
+assert_equal('Report ready with code and more', ui_preview_of(ui_preview_card('agent_message', $markdown)), 'preview: the same without a summary');
+assert_equal('Report ready with code and more', ui_preview_of(ui_preview_card('text', $markdown)), 'preview: which is how a text block previews');
+
+foreach ([219, 220, 221, 600] as $length) {
+    $long = str_repeat('é', $length);
+    $expected = ui_preview_of(ui_preview_card('text', $long));
+    assert_true($expected !== null, "preview: a {$length} character text block has a preview");
+    assert_equal($expected, ui_preview_of(ui_preview_card('agent_message', $long)), "preview: a {$length} character agent message has the same length cap");
+}
+assert_true(str_ends_with((string)ui_preview_of(ui_preview_card('agent_message', str_repeat('é', 600))), '…'), 'preview: a long agent message is cut with an ellipsis');
+
+$hostile = '<script>zzpreview()</script> & "quoted"';
+$card = ui_preview_card('agent_message', $hostile);
+assert_equal(ui_preview_of(ui_preview_card('text', $hostile)), ui_preview_of($card), 'preview: an agent message is escaped like a text block');
+assert_true(!str_contains($card, '<script>zzpreview') && str_contains($card, '&lt;script&gt;zzpreview'), 'preview: no markup injection from an agent message');
+
+foreach (['empty' => '', 'whitespace only' => " \n\t "] as $case => $text) {
+    assert_equal(null, ui_preview_of(ui_preview_card('agent_message', $text)), "preview: an agent message with {$case} text has no preview");
+}
+
 test_exit();

@@ -250,6 +250,9 @@
         var status = block.status === 'failed' ? 'Subagent failed' : (block.status == null || block.status === 'completed' ? 'Subagent finished' : 'Subagent ' + block.status);
         return '<div data-line="' + line + '"><p class="sess-desc">' + esc(block.summary != null ? status + ': ' + block.summary : status) + '</p>'
           + '<div class="sess-text">' + markdown(text) + '</div></div>';
+      case 'agent_message':
+        return '<div data-line="' + line + '"><p class="sess-desc">' + esc(block.summary != null ? 'Message from ' + block.summary : 'Message from another agent') + '</p>'
+          + textBlock(text) + '</div>';
       case 'image':
         return media || (text ? '<p class="ui-muted ui-small" data-line="' + line + '">' + esc(text) + '</p>' : '');
       case 'question':
@@ -271,6 +274,7 @@
     if (!hasText && has('question')) { return 'question'; }
     if (!hasText && isSub) { return has('tool_use') ? 'sub_call' : 'sub_result'; }
     if (!hasText && has('task_notification')) { return 'sub_result'; }
+    if (!hasText && has('agent_message')) { return 'agent_message'; }
     if (!hasText && has('thinking')) { return 'thinking'; }
     if (!hasText && has('tool_use')) { return 'tool_use'; }
     if (!hasText && has('tool_result')) { return 'tool_result'; }
@@ -280,7 +284,7 @@
 
   var KIND_LABEL = {
     plan: 'Plan', plan_approved: 'Plan approved', plan_rejected: 'Plan rejected', question: 'Question',
-    sub_call: 'Subagent call', sub_result: 'Subagent report', tool_use: 'Tool call', tool_result: 'Tool output', system: 'System'
+    sub_call: 'Subagent call', sub_result: 'Subagent report', agent_message: 'Agent message', tool_use: 'Tool call', tool_result: 'Tool output', system: 'System'
   };
 
   function hasMedia(entry) {

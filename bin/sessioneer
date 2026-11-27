@@ -315,7 +315,7 @@ function transcript_text(?array $entry): string
     $parts = [];
 
     foreach ($entry['blocks'] ?? [] as $b) {
-        if (($b['kind'] ?? null) === 'text') {
+        if (in_array($b['kind'] ?? null, ['text', 'agent_message'], true)) {
             $parts[] = (string)$b['text'];
         }
     }

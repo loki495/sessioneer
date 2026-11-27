@@ -100,14 +100,16 @@ class TranscriptService
      * Documentation of what gets skipped, not the gate: Claude Code 2.1.300
      * added `api-request-blob` records that DO carry a `message` (a request's
      * system prompt/tools), so parse_transcript_line() renders only `user` and
-     * `assistant` lines instead of excluding known meta types.
+     * `assistant` lines instead of excluding known meta types. `attachment`
+     * lines are not listed because one shape of them is a real message (see
+     * parse_queued_message()); every other attachment is skipped too.
      *
      * @return string[]
      */
     public static function transcript_meta_only_types(): array
     {
         return [
-            'mode', 'permission-mode', 'bridge-session', 'last-prompt', 'attachment', 'ai-title',
+            'mode', 'permission-mode', 'bridge-session', 'last-prompt', 'ai-title',
             'system', 'queue-operation', 'file-history-snapshot', 'file-history-delta',
             'api-request', 'api-request-shape', 'api-request-blob', 'atis', 'atis-latch', 'cost-state',
         ];
@@ -677,7 +679,7 @@ class TranscriptService
      */
     public static function summarize_content_block(array $block): array
     {
-        $type = (string)($block['type'] ?? '');
+        $type = self::scalar_string($block['type'] ?? null);
 
         $planText = $type === 'tool_use' && (string)($block['name'] ?? '') === 'ExitPlanMode' && is_array($block['input'] ?? null) && is_string($block['input']['plan'] ?? null)
             ? trim($block['input']['plan'])
@@ -691,7 +693,7 @@ class TranscriptService
             // a real message rather than collapsed behind a one-line
             // summary the way a routine tool call's params are.
             $planText !== null && $planText !== '' => ['kind' => 'plan', 'text' => $planText],
-            $type === 'text' => ['kind' => 'text', 'text' => (string)($block['text'] ?? '')],
+            $type === 'text' => ['kind' => 'text', 'text' => self::scalar_string($block['text'] ?? null)],
             $type === 'tool_use' => array_filter(
                 [
                     'kind' => 'tool_use',
@@ -772,7 +774,7 @@ class TranscriptService
 
         foreach ($content as $item) {
             if (is_array($item) && ($item['type'] ?? null) === 'text') {
-                $text = (string)($item['text'] ?? '');
+                $text = self::scalar_string($item['text'] ?? null);
 
                 if (self::is_subagent_metadata_text($text)) {
                     continue;
@@ -797,13 +799,19 @@ class TranscriptService
             return null;
         }
 
-        $data = (string)($source['data'] ?? '');
+        $data = self::scalar_string($source['data'] ?? null);
 
         if ($data === '' || strlen($data) > self::TRANSCRIPT_IMAGE_MAX_BASE64_LENGTH) {
             return null;
         }
 
-        return ['media_type' => (string)($source['media_type'] ?? 'image/png'), 'data' => $data];
+        return ['media_type' => self::scalar_string($source['media_type'] ?? null, 'image/png'), 'data' => $data];
+    }
+
+    /** A malformed transcript can hold an array where a string belongs, and casting one raises a warning. */
+    private static function scalar_string(mixed $value, string $default = ''): string
+    {
+        return is_scalar($value) ? (string)$value : $default;
     }
 
     /**
@@ -1602,7 +1610,9 @@ class TranscriptService
 
     /**
      * Parses one JSONL line into a renderable transcript entry, or null for a
-     * meta-only, malformed, or content-less line. $exitPlanModeToolUseIds
+     * meta-only, malformed, or content-less line. Renderable lines are `user`,
+     * `assistant` and queued-message `attachment` ones (see
+     * parse_queued_message()). $exitPlanModeToolUseIds
      * (see find_exit_plan_mode_tool_use_ids()) is how a plan's tool_result
      * gets recognized as approved/rejected rather than rendering as a
      * generic tool_result - optional (defaults to none found), so existing
@@ -1624,6 +1634,10 @@ class TranscriptService
 
         $type = (string)($decoded['type'] ?? '');
 
+        if ($type === 'attachment') {
+            return self::parse_queued_message($decoded);
+        }
+
         if (!in_array($type, ['user', 'assistant'], true)) {
             return null;
         }
@@ -1637,9 +1651,7 @@ class TranscriptService
         $content = $message['content'] ?? null;
         $blocks = [];
         // index within $blocks => the raw tool_use_id, tool_result blocks
-        // only - kept OUTSIDE the public block shape (never merged into
-        // $blocks itself) since some callers assert exact block array
-        // equality; consumed below to recognize a plan's tool_result via
+        // only - consumed below to recognize a plan's tool_result via
         // find_exit_plan_mode_tool_use_ids(), then discarded.
         $toolResultToolUseIds = [];
 
@@ -1655,18 +1667,7 @@ class TranscriptService
                 ], static fn(mixed $v): bool => $v !== null)
                 : ['kind' => 'text', 'text' => $content];
         } elseif (is_array($content)) {
-            foreach ($content as $block) {
-                if ($includeThinking && is_array($block) && ($block['type'] ?? null) === 'thinking' && is_string($block['thinking'] ?? null) && trim($block['thinking']) !== '') {
-                    $blocks[] = ['kind' => 'thinking', 'text' => $block['thinking']];
-                } elseif (is_array($block) && ($block['type'] ?? null) !== 'thinking') {
-                    $summarized = self::summarize_content_block($block);
-                    $blocks[] = $summarized;
-
-                    if ($summarized['kind'] === 'tool_result' && is_string($block['tool_use_id'] ?? null)) {
-                        $toolResultToolUseIds[count($blocks) - 1] = $block['tool_use_id'];
-                    }
-                }
-            }
+            [$blocks, $toolResultToolUseIds] = self::convert_content_blocks($content, $includeThinking);
         }
 
         // Thinking is never persisted as a chat entry, even a hidden one - a
@@ -1700,9 +1701,7 @@ class TranscriptService
         $planApproved = is_array($toolUseResult) && is_string($toolUseResult['plan'] ?? null);
 
         foreach ($blocks as $i => &$block) {
-            if (strlen($block['text']) > self::TRANSCRIPT_BLOCK_HARD_CAP_LENGTH) {
-                $block['text'] = substr($block['text'], 0, self::TRANSCRIPT_BLOCK_HARD_CAP_LENGTH) . "\n… (truncated)";
-            }
+            $block['text'] = self::cap_block_text($block['text']);
 
             if ($agentType !== null && $block['kind'] === 'tool_result') {
                 $block['agent_type'] = $agentType;
@@ -1737,6 +1736,94 @@ class TranscriptService
             'timestamp' => is_string($decoded['timestamp'] ?? null) ? $decoded['timestamp'] : null,
             'blocks' => $blocks,
         ];
+    }
+
+    /**
+     * A message delivered while the agent is working is recorded only as an
+     * `attachment` line (queued_command, commandMode `prompt`). A `peer`
+     * origin is another agent's message and gets no role, so it never counts
+     * as something the user typed; any other origin is the user's.
+     *
+     * @param array<mixed> $decoded
+     * @return array{type:string, role:?string, timestamp:?string, blocks:array<int, array<string, mixed>>}|null
+     */
+    private static function parse_queued_message(array $decoded): ?array
+    {
+        $attachment = $decoded['attachment'] ?? null;
+
+        if (!is_array($attachment) || ($attachment['type'] ?? null) !== 'queued_command' || ($attachment['commandMode'] ?? null) !== 'prompt') {
+            return null;
+        }
+
+        $prompt = $attachment['prompt'] ?? null;
+        // A string prompt is always plain text: only a `user` line's string can be a task notification.
+        $blocks = match (true) {
+            is_string($prompt) && $prompt !== '' => [['kind' => 'text', 'text' => $prompt]],
+            is_array($prompt) => self::convert_content_blocks($prompt)[0],
+            default => [],
+        };
+        $role = 'user';
+        $origin = $attachment['origin'] ?? null;
+
+        if (is_array($origin) && ($origin['kind'] ?? null) === 'peer') {
+            $role = null;
+            $body = $origin['body'] ?? null;
+            // `body` is the message without the wrapper tags the prompt carries around it.
+            $text = is_string($body) && $body !== ''
+                ? $body
+                : implode("\n", array_column(array_filter($blocks, static fn(array $b): bool => $b['kind'] === 'text'), 'text'));
+            $name = $origin['name'] ?? null;
+            $summary = is_string($name) && $name !== '' ? ['summary' => $name] : [];
+            $blocks = $text !== '' ? [['kind' => 'agent_message', 'text' => $text] + $summary] : [];
+        }
+
+        if ($blocks === []) {
+            return null;
+        }
+
+        return [
+            'type' => 'user',
+            'role' => $role,
+            'timestamp' => is_string($decoded['timestamp'] ?? null) ? $decoded['timestamp'] : null,
+            'blocks' => array_map(static fn(array $b): array => ['text' => self::cap_block_text($b['text'])] + $b, $blocks),
+        ];
+    }
+
+    /**
+     * A message's list content as renderable blocks. Items that are not blocks
+     * are skipped, as is thinking unless $includeThinking asks for it. The
+     * tool_use ids are returned beside the blocks, keyed by block index, to
+     * keep them out of the public block shape.
+     *
+     * @param array<mixed> $content
+     * @return array{0:array<int, array<string, mixed>>, 1:array<int, string>}
+     */
+    private static function convert_content_blocks(array $content, bool $includeThinking = false): array
+    {
+        $blocks = [];
+        $toolResultToolUseIds = [];
+
+        foreach ($content as $block) {
+            if ($includeThinking && is_array($block) && ($block['type'] ?? null) === 'thinking' && is_string($block['thinking'] ?? null) && trim($block['thinking']) !== '') {
+                $blocks[] = ['kind' => 'thinking', 'text' => $block['thinking']];
+            } elseif (is_array($block) && ($block['type'] ?? null) !== 'thinking') {
+                $summarized = self::summarize_content_block($block);
+                $blocks[] = $summarized;
+
+                if ($summarized['kind'] === 'tool_result' && is_string($block['tool_use_id'] ?? null)) {
+                    $toolResultToolUseIds[count($blocks) - 1] = $block['tool_use_id'];
+                }
+            }
+        }
+
+        return [$blocks, $toolResultToolUseIds];
+    }
+
+    private static function cap_block_text(string $text): string
+    {
+        return strlen($text) > self::TRANSCRIPT_BLOCK_HARD_CAP_LENGTH
+            ? substr($text, 0, self::TRANSCRIPT_BLOCK_HARD_CAP_LENGTH) . "\n… (truncated)"
+            : $text;
     }
 
     /**

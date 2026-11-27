@@ -426,7 +426,7 @@ class UiView extends View
         return !empty($s['working']) || ($s['status'] ?? '') === 'working' ? 'working' : 'idle';
     }
 
-    /** First text block of the newest message, shortened. */
+    /** First text or agent-message block of the newest message, shortened. */
     private static function preview_text(mixed $entry): string
     {
         if (!is_array($entry)) {
@@ -434,7 +434,7 @@ class UiView extends View
         }
 
         foreach ($entry['blocks'] ?? [] as $block) {
-            if (($block['kind'] ?? '') === 'text' && trim((string)($block['text'] ?? '')) !== '') {
+            if (in_array($block['kind'] ?? '', ['text', 'agent_message'], true) && trim((string)($block['text'] ?? '')) !== '') {
                 // Agents answer in Markdown; a plain-text preview reads better without its markers.
                 $text = trim((string)preg_replace('/\s+/', ' ', str_replace(['**', '`'], '', (string)$block['text'])));
 
